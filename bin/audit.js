@@ -51,6 +51,9 @@ function parseArgs(argv) {
       options.vulnerabilityCheck = false;
     } else if (arg === "--no-github") {
       options.githubMetadata = false;
+      options.githubDiff = false;
+    } else if (arg === "--no-github-diff") {
+      options.githubDiff = false;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }

@@ -157,7 +157,8 @@ function normalizeEvidence(input) {
       evidence.knownVulnerabilities || evidence.vulnerabilities || evidence.osvVulnerabilities || [],
     sourceFiles: normalizeSourceFiles(
       evidence.sourceFiles || evidence.SOURCE_FILES || evidence.files || {}
-    )
+    ),
+    npmVsGithubDiff: evidence.npmVsGithubDiff || null
   };
 }
 
@@ -243,7 +244,9 @@ const BAND_DEFINITIONS = [
   { band: "github-archived", label: "github-archived", categories: ["github-archived"], rationale: "Linked repository is archived or disabled — no maintenance, security issues will not be fixed." },
   { band: "github-young", label: "github-young", categories: ["github-young"], rationale: "Linked repository was created within the last 30 days — common slopsquat shape." },
   { band: "github-lonely", label: "github-lonely", categories: ["github-lonely"], rationale: "0 stars + 0 forks + low watcher count on a young repo. Low community signal." },
-  { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." }
+  { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." },
+  { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. Strong account-takeover / build-tampering signal." },
+  { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." }
 ];
 
 const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3 };
@@ -291,6 +294,54 @@ function auditMetadata(evidence, findings) {
   inspectMetadataObject("NPM_METADATA", evidence.npmMetadata, findings);
   inspectGithubMetadata(evidence, findings);
   inspectKnownVulnerabilities(evidence.knownVulnerabilities, findings);
+  inspectNpmVsGithubDiff(evidence, findings);
+}
+
+function inspectNpmVsGithubDiff(evidence, findings) {
+  const diff = evidence.npmVsGithubDiff;
+  if (!diff || !diff.compared) {
+    // Not gating — silent skip. Common reasons: no github repo,
+    // ref not found, github fetch failed.
+    return;
+  }
+  const c = diff.counts || {};
+  if (c.extraSource > 0) {
+    const examples = (diff.suspiciousExtras || [])
+      .filter((f) => f.category === "extra-source")
+      .slice(0, 5)
+      .map((f) => f.path);
+    findings.push({
+      severity: "high",
+      category: "npm-vs-github-divergence",
+      file: "NPM_VS_GITHUB",
+      snippet: `npm tarball contains ${c.extraSource} source file(s) not in the linked GitHub repo @${diff.githubRef}: ${examples.join(", ")}`,
+      rationale:
+        "Source files present in the published tarball but absent from the matching GitHub ref. Classic account-takeover / build-server-compromise signal."
+    });
+  }
+  if (c.mismatchedSource > 0) {
+    const examples = (diff.suspiciousMismatches || [])
+      .filter((f) => f.category === "content-mismatch-source")
+      .slice(0, 5)
+      .map((f) => f.path);
+    findings.push({
+      severity: "high",
+      category: "npm-vs-github-divergence",
+      file: "NPM_VS_GITHUB",
+      snippet: `${c.mismatchedSource} source file(s) differ between npm tarball and GitHub repo @${diff.githubRef}: ${examples.join(", ")}`,
+      rationale:
+        "Source files with the same path but different SHA256 in the published tarball vs the linked GitHub repo at the matching ref. Strong tampering signal."
+    });
+  }
+  if (c.extraSource === 0 && c.mismatchedSource === 0 && (c.matched > 0 || c.npmFiles > 0)) {
+    findings.push({
+      severity: "info",
+      category: "npm-vs-github-clean",
+      file: "NPM_VS_GITHUB",
+      snippet: `${c.matched}/${c.npmFiles} files match GitHub @${diff.githubRef}`,
+      rationale: "npm tarball source files match the linked GitHub repo at the matching ref."
+    });
+  }
 }
 
 const YOUNG_REPO_DAYS = 30;

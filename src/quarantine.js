@@ -8,7 +8,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { auditEvidence } = require("./auditor");
-const { fetchRepoMetadata } = require("./github");
+const { fetchRepoMetadata, fetchRepoTarballForVersion, extractTarball: extractTarballGh } = require("./github");
+const { diffNpmVsGithub } = require("./diff");
 
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
@@ -104,13 +105,41 @@ async function guardExtension(reference, options = {}) {
   const githubMetadata = await githubMetadataPromise;
   timings.githubMetadataMs = elapsed(githubStart);
 
+  // npm vs GitHub diff (Phase 3) — only for npm packages where we have repo
+  // metadata. Runs serially after we have both trees; tarballs are cached so
+  // re-runs are fast.
+  let npmVsGithubDiff = null;
+  if (
+    options.githubDiff !== false &&
+    resolved.type === "npm" &&
+    githubMetadata && githubMetadata.found &&
+    vulnerabilities.length === 0 &&
+    Object.keys(sourceFiles).length > 0
+  ) {
+    const diffStart = now();
+    try {
+      npmVsGithubDiff = await runNpmVsGithubDiff({
+        resolved,
+        npmStagedPath: stagedPath,
+        githubMetadata,
+        workspace
+      });
+    } catch (error) {
+      npmVsGithubDiff = { compared: false, reason: "diff-error", message: error.message };
+    }
+    timings.diffMs = elapsed(diffStart);
+  } else {
+    timings.diffMs = 0;
+  }
+
   const evidence = {
     packageName: resolved.packageName || reference,
     npmMetadata: resolved.npmMetadata || null,
     githubMetadata,
     webPresence: null,
     knownVulnerabilities: vulnerabilities,
-    sourceFiles
+    sourceFiles,
+    npmVsGithubDiff
   };
   const auditStart = now();
   const report = auditEvidence(evidence);
@@ -123,6 +152,7 @@ async function guardExtension(reference, options = {}) {
     resolved,
     sourceFiles,
     githubMetadata,
+    npmVsGithubDiff,
     vulnerabilityPrecheck: {
       enabled: options.vulnerabilityCheck !== false,
       database: "OSV",
@@ -141,6 +171,53 @@ async function guardExtension(reference, options = {}) {
   }
 
   return result;
+}
+
+async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, workspace }) {
+  const version = resolved.version;
+  const tarball = await fetchRepoTarballForVersion(
+    githubMetadata.owner,
+    githubMetadata.repo,
+    version,
+    githubMetadata.default_branch
+  );
+  if (!tarball) {
+    return { compared: false, reason: "no-matching-ref", versionTried: version };
+  }
+
+  const ghStagePath = path.join(workspace, "github-tree");
+  await extractTarballGh(tarball.archivePath, ghStagePath);
+
+  // package.json may set repository.directory for monorepos — narrow the
+  // comparison to that subpath if present.
+  const pkgRepo = resolved.npmMetadata && resolved.npmMetadata.repository;
+  const subdir = pkgRepo && typeof pkgRepo === "object" ? pkgRepo.directory || null : null;
+
+  // Detect a publish-time build script (means built artifacts ≠ repo is normal)
+  const scripts = await readScripts(npmStagedPath);
+  const hasBuildScript = Boolean(scripts.prepare || scripts.prepack || scripts.build);
+
+  const diff = await diffNpmVsGithub({
+    npmStagedPath,
+    githubStagedPath: ghStagePath,
+    subdir,
+    hasBuildScript
+  });
+
+  return {
+    ...diff,
+    githubRef: tarball.ref,
+    tarballFromCache: tarball.fromCache
+  };
+}
+
+async function readScripts(stagedPath) {
+  try {
+    const pkg = JSON.parse(await fsp.readFile(path.join(stagedPath, "package.json"), "utf8"));
+    return pkg.scripts || {};
+  } catch {
+    return {};
+  }
 }
 
 async function stageReference(reference, stagedPath, options) {

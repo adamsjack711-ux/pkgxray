@@ -107,6 +107,11 @@ function guardToolDefinition() {
           default: true,
           description: "Set false to skip the GitHub provenance cross-check."
         },
+        githubDiff: {
+          type: "boolean",
+          default: true,
+          description: "Set false to skip the npm-vs-GitHub source diff (saves a tarball download)."
+        },
         outputFormat: {
           type: "string",
           enum: ["markdown", "json"],

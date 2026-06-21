@@ -1,9 +1,12 @@
 "use strict";
 
+const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const https = require("node:https");
+const crypto = require("node:crypto");
+const { spawn } = require("node:child_process");
 
 const USER_AGENT = "pkgxray/0.6.0";
 const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "github");
@@ -160,7 +163,135 @@ async function fetchRepoMetadata(repository, options = {}) {
   }
 }
 
+// ---- Tarball download + ref resolution ----
+
+const TARBALL_CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "tarballs");
+const TARBALL_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const TARBALL_TIMEOUT_MS = 15000;
+const MAX_TARBALL_BYTES = 100 * 1024 * 1024; // 100MB
+
+function tarballCachePath(owner, repo, ref) {
+  const key = crypto
+    .createHash("sha1")
+    .update(`${owner}/${repo}@${ref}`)
+    .digest("hex");
+  return path.join(TARBALL_CACHE_DIR, `${key}.tgz`);
+}
+
+async function downloadCodeload(url, destination) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destination, { mode: 0o600 });
+    let written = 0;
+    let cleanedUp = false;
+    const cleanup = (err) => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      file.destroy();
+      fs.unlink(destination, () => reject(err));
+    };
+    const get = (currentUrl, hops) => {
+      if (hops > 5) return cleanup(new Error("Too many redirects"));
+      const parsed = new URL(currentUrl);
+      const request = https.get(
+        {
+          hostname: parsed.hostname,
+          path: parsed.pathname + parsed.search,
+          headers: { "user-agent": USER_AGENT },
+          timeout: TARBALL_TIMEOUT_MS
+        },
+        (response) => {
+          if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+            response.resume();
+            return get(new URL(response.headers.location, currentUrl).toString(), hops + 1);
+          }
+          if (response.statusCode === 404) {
+            response.resume();
+            const err = new Error(`GitHub codeload 404: ${currentUrl}`);
+            err.statusCode = 404;
+            return cleanup(err);
+          }
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            response.resume();
+            return cleanup(new Error(`Codeload HTTP ${response.statusCode}`));
+          }
+          response.on("data", (chunk) => {
+            written += chunk.length;
+            if (written > MAX_TARBALL_BYTES) {
+              response.destroy();
+              cleanup(new Error(`Codeload exceeded ${MAX_TARBALL_BYTES} bytes`));
+            }
+          });
+          response.pipe(file);
+          file.on("finish", () => file.close(() => resolve()));
+        }
+      );
+      request.on("error", cleanup);
+      request.on("timeout", () => request.destroy(new Error("Codeload request timed out")));
+    };
+    get(url, 0);
+  });
+}
+
+function run(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
+async function extractTarball(archivePath, destination) {
+  await fsp.mkdir(destination, { recursive: true, mode: 0o700 });
+  return run("tar", [
+    "-xzf", archivePath,
+    "-C", destination,
+    "--strip-components", "1",
+    "--no-same-owner", "--no-same-permissions"
+  ]);
+}
+
+// Try refs in order until one downloads. Caches the first successful one.
+async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch) {
+  await fsp.mkdir(TARBALL_CACHE_DIR, { recursive: true, mode: 0o700 });
+  const candidates = [];
+  if (version) {
+    candidates.push(`v${version}`);
+    candidates.push(version);
+  }
+  if (defaultBranch) candidates.push(defaultBranch);
+
+  for (const ref of candidates) {
+    const cachePath = tarballCachePath(owner, repo, ref);
+    try {
+      const stat = await fsp.stat(cachePath);
+      if (Date.now() - stat.mtimeMs < TARBALL_TTL_MS) {
+        return { ref, archivePath: cachePath, fromCache: true };
+      }
+    } catch {
+      // not cached, fall through to download
+    }
+    const url = `https://codeload.github.com/${owner}/${repo}/tar.gz/${encodeURIComponent(ref)}`;
+    try {
+      await downloadCodeload(url, cachePath);
+      return { ref, archivePath: cachePath, fromCache: false };
+    } catch (error) {
+      if (error.statusCode === 404) continue;
+      throw error;
+    }
+  }
+  return null;
+}
+
 module.exports = {
   parseGithubRepo,
-  fetchRepoMetadata
+  fetchRepoMetadata,
+  fetchRepoTarballForVersion,
+  extractTarball
 };
