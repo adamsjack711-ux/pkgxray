@@ -11,6 +11,8 @@ const { auditEvidence } = require("./auditor");
 
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
+const DEFAULT_TARBALL_MAX_BYTES = 256 * 1024 * 1024;
+const DEFAULT_TARBALL_MAX_ENTRIES = 5000;
 const SKIP_DIRS = new Set([
   ".git",
   "node_modules",
@@ -394,8 +396,169 @@ async function hashFile(filePath) {
   return hash.digest("hex");
 }
 
-function extractTarball(archivePath, destination) {
-  return run("tar", ["-xzf", archivePath, "-C", destination, "--strip-components", "1"]);
+async function extractTarball(archivePath, destination, options = {}) {
+  const maxBytes = options.maxTarballBytes || DEFAULT_TARBALL_MAX_BYTES;
+  const maxEntries = options.maxTarballEntries || DEFAULT_TARBALL_MAX_ENTRIES;
+
+  const listing = await runCapture("tar", ["-tvzf", archivePath]);
+  const lines = listing.split("\n").filter((line) => line.trim().length > 0);
+
+  if (lines.length > maxEntries) {
+    throw new Error(
+      `Tarball rejected: ${lines.length} entries exceeds limit of ${maxEntries}`
+    );
+  }
+
+  let totalBytes = 0;
+  for (const line of lines) {
+    const entry = parseTarListingLine(line);
+    if (!entry) {
+      throw new Error(`Tarball rejected: unparseable listing line: ${line}`);
+    }
+
+    assertSafeTarPath(entry.path);
+    if (entry.linkTarget !== null) {
+      assertSafeSymlinkTarget(entry.path, entry.linkTarget);
+    }
+
+    totalBytes += entry.size;
+    if (totalBytes > maxBytes) {
+      throw new Error(
+        `Tarball rejected: uncompressed size exceeds limit of ${maxBytes} bytes`
+      );
+    }
+  }
+
+  await run("tar", [
+    "-xzf",
+    archivePath,
+    "-C",
+    destination,
+    "--strip-components",
+    "1",
+    "--no-same-owner",
+    "--no-same-permissions"
+  ]);
+}
+
+// tar -tvzf listing formats differ between bsdtar (macOS default) and GNU tar:
+//   bsdtar: "-rw-r--r--  0 user group   1234 Jan  1  2020 path/to/file"
+//             mode  nlinks owner group size mon day yr/time  path
+//             (8 fields before the path)
+//   GNU:    "-rw-r--r-- user/group 1234 2020-01-01 12:00 path/to/file"
+//             mode owner/group size date time path
+//             (5 fields before the path)
+// Detect which format by whether field 2 contains "/" (GNU owner/group).
+// For symlinks/hardlinks, the path is followed by " -> target".
+function parseTarListingLine(line) {
+  const parts = line.split(/\s+/).filter((p) => p.length > 0);
+  const mode = parts[0];
+  if (!mode || mode.length === 0) {
+    return null;
+  }
+  const typeChar = mode[0];
+
+  let sizeFieldIndex;
+  let prefixFieldCount;
+  if (parts.length >= 2 && parts[1].includes("/")) {
+    // GNU format
+    sizeFieldIndex = 2;
+    prefixFieldCount = 5;
+  } else {
+    // bsdtar format
+    sizeFieldIndex = 4;
+    prefixFieldCount = 8;
+  }
+
+  if (parts.length < prefixFieldCount + 1) {
+    return null;
+  }
+
+  const size = Number.parseInt(parts[sizeFieldIndex], 10);
+  if (!Number.isFinite(size) || size < 0) {
+    return null;
+  }
+
+  // Reconstruct the trailing "path [-> target]" by walking the original line
+  // to find the byte offset of the (prefixFieldCount+1)-th whitespace field.
+  let fieldsSeen = 0;
+  let i = 0;
+  while (i < line.length && fieldsSeen < prefixFieldCount) {
+    while (i < line.length && /\s/.test(line[i])) {
+      i++;
+    }
+    if (i >= line.length) {
+      return null;
+    }
+    while (i < line.length && !/\s/.test(line[i])) {
+      i++;
+    }
+    fieldsSeen++;
+  }
+  while (i < line.length && /\s/.test(line[i])) {
+    i++;
+  }
+  if (i >= line.length) {
+    return null;
+  }
+
+  const remainder = line.slice(i);
+  let entryPath = remainder;
+  let linkTarget = null;
+  const arrowIdx = remainder.indexOf(" -> ");
+  if (arrowIdx !== -1) {
+    entryPath = remainder.slice(0, arrowIdx);
+    linkTarget = remainder.slice(arrowIdx + 4);
+  } else if (typeChar === "l") {
+    // Symlink listing without a target is malformed; reject conservatively.
+    return null;
+  }
+
+  // Hardlinks (typeChar 'h') also use " -> "; treat their target the same way.
+
+  if (entryPath.length === 0) {
+    return null;
+  }
+
+  return { path: entryPath, size, linkTarget, typeChar };
+}
+
+function assertSafeTarPath(entryPath) {
+  if (entryPath.startsWith("/")) {
+    throw new Error(`Tarball rejected: absolute path entry: ${entryPath}`);
+  }
+  if (/^[A-Za-z]:[\\/]/.test(entryPath)) {
+    throw new Error(`Tarball rejected: drive-letter path entry: ${entryPath}`);
+  }
+  const segments = entryPath.split(/[\\/]+/);
+  for (const segment of segments) {
+    if (segment === "..") {
+      throw new Error(`Tarball rejected: parent-traversal segment in: ${entryPath}`);
+    }
+  }
+}
+
+function assertSafeSymlinkTarget(entryPath, linkTarget) {
+  if (linkTarget.length === 0) {
+    throw new Error(`Tarball rejected: empty link target for: ${entryPath}`);
+  }
+  if (linkTarget.startsWith("/")) {
+    throw new Error(`Tarball rejected: absolute link target: ${entryPath} -> ${linkTarget}`);
+  }
+  if (/^[A-Za-z]:[\\/]/.test(linkTarget)) {
+    throw new Error(`Tarball rejected: drive-letter link target: ${entryPath} -> ${linkTarget}`);
+  }
+  // Resolve the symlink target relative to the directory containing the link
+  // inside the tarball's virtual root. If the resolved path escapes that
+  // root (i.e. starts with "..") the link is unsafe.
+  const normalizedPath = entryPath.replace(/\\/g, "/");
+  const normalizedTarget = linkTarget.replace(/\\/g, "/");
+  const linkDir = path.posix.dirname(normalizedPath);
+  const joined = linkDir === "." ? normalizedTarget : path.posix.join(linkDir, normalizedTarget);
+  const normalized = path.posix.normalize(joined);
+  if (normalized.startsWith("../") || normalized === "..") {
+    throw new Error(`Tarball rejected: link escapes destination: ${entryPath} -> ${linkTarget}`);
+  }
 }
 
 function run(command, args) {
@@ -411,6 +574,30 @@ function run(command, args) {
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
+      } else {
+        reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
+      }
+    });
+  });
+}
+
+function runCapture(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout);
       } else {
         reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
       }
