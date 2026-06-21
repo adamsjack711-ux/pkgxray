@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
+const http = require("node:http");
 const https = require("node:https");
 const os = require("node:os");
 const path = require("node:path");
@@ -364,22 +365,102 @@ function postJson(url, payload) {
   });
 }
 
-function downloadFile(url, destination) {
+function downloadFile(url, destination, maxBytes = 64 * 1024 * 1024) {
+  const MAX_REDIRECTS = 5;
+  const originalUrl = url;
+
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destination, { mode: 0o600 });
-    https
-      .get(url, { headers: { "user-agent": "supply-chain-auditor/0.1.0" } }, (response) => {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`HTTP ${response.statusCode} from ${url}`));
-          response.resume();
-          return;
+    let settled = false;
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      file.destroy();
+      fsp.unlink(destination).catch(() => {});
+      reject(err);
+    };
+
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      file.close((closeErr) => {
+        if (closeErr) reject(closeErr);
+        else resolve();
+      });
+    };
+
+    file.on("error", fail);
+    file.on("finish", succeed);
+
+    const attempt = (currentUrl, redirectsRemaining) => {
+      let client;
+      try {
+        client = new URL(currentUrl).protocol === "http:" ? http : https;
+      } catch (error) {
+        fail(error);
+        return;
+      }
+
+      const request = client.get(
+        currentUrl,
+        { headers: { "user-agent": "supply-chain-auditor/0.1.0" } },
+        (response) => {
+          const status = response.statusCode;
+          if (
+            status === 301 ||
+            status === 302 ||
+            status === 303 ||
+            status === 307 ||
+            status === 308
+          ) {
+            const location = response.headers.location;
+            response.resume();
+            if (!location) {
+              fail(new Error(`HTTP ${status} from ${currentUrl} missing Location header`));
+              return;
+            }
+            if (redirectsRemaining <= 0) {
+              fail(new Error(`Too many redirects from ${originalUrl}`));
+              return;
+            }
+            let nextUrl;
+            try {
+              nextUrl = new URL(location, currentUrl).toString();
+            } catch (error) {
+              fail(error);
+              return;
+            }
+            attempt(nextUrl, redirectsRemaining - 1);
+            return;
+          }
+
+          if (status < 200 || status >= 300) {
+            response.resume();
+            fail(new Error(`HTTP ${status} from ${currentUrl}`));
+            return;
+          }
+
+          let received = 0;
+          response.on("data", (chunk) => {
+            received += chunk.length;
+            if (received > maxBytes) {
+              response.destroy();
+              fail(
+                new Error(
+                  `Download exceeded max size of ${maxBytes} bytes from ${currentUrl}`
+                )
+              );
+            }
+          });
+          response.on("error", fail);
+          response.pipe(file);
         }
-        response.pipe(file);
-        file.on("finish", () => {
-          file.close(resolve);
-        });
-      })
-      .on("error", reject);
+      );
+      request.on("error", fail);
+    };
+
+    attempt(url, MAX_REDIRECTS);
   });
 }
 
