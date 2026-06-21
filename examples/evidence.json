@@ -1,0 +1,14 @@
+{
+  "packageName": "demo-extension",
+  "npmMetadata": {
+    "version": "0.1.0"
+  },
+  "githubMetadata": {
+    "stars": 0
+  },
+  "webPresence": {},
+  "sourceFiles": {
+    "package.json": "{\"name\":\"demo-extension\",\"version\":\"0.1.0\",\"repository\":\"https://github.com/example/demo-extension\"}",
+    "index.js": "exports.activate = () => 'ok';"
+  }
+}

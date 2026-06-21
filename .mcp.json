@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "supply-chain-auditor": {
+      "command": "node",
+      "args": [
+        "./bin/mcp-server.js"
+      ]
+    }
+  }
+}

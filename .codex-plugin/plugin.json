@@ -1,0 +1,25 @@
+{
+  "name": "supply-chain-auditor",
+  "version": "0.1.0",
+  "description": "Local MCP and CLI extension for triaging AI-agent extension supply-chain risk.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Supply Chain Auditor",
+    "shortDescription": "Audit agent extensions before install.",
+    "longDescription": "Supply Chain Auditor provides a local CLI, MCP server, and Codex skill for conservative security triage of AI coding-agent extensions, Codex plugins, Claude Code extensions, and MCP servers.",
+    "developerName": "Local developer",
+    "category": "Security",
+    "capabilities": [
+      "MCP",
+      "Local Analysis"
+    ],
+    "defaultPrompt": [
+      "Audit this extension evidence for install risk.",
+      "Review this MCP server for supply-chain issues."
+    ]
+  }
+}

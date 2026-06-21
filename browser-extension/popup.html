@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Supply Chain Auditor</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Supply Chain Auditor</h1>
+          <p>Paste evidence JSON and get a local install-risk verdict.</p>
+        </div>
+        <div class="status-pill" id="statusPill">Local</div>
+      </header>
+
+      <section class="workspace">
+        <label for="evidenceInput">Evidence JSON</label>
+        <textarea id="evidenceInput" spellcheck="false"></textarea>
+        <div class="actions">
+          <button id="sampleButton" type="button">Load Sample</button>
+          <button id="analyzeButton" type="button">Analyze</button>
+        </div>
+      </section>
+
+      <section class="result" id="result" aria-live="polite">
+        <div class="empty">Run an audit to see the verdict, letter grade, parameter grades, and cited findings.</div>
+      </section>
+    </main>
+
+    <script src="auditor.browser.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

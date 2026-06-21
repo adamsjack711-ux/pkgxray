@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Supply Chain Auditor",
+  "version": "0.1.0",
+  "description": "Local triage for AI-agent extension supply-chain risk.",
+  "action": {
+    "default_title": "Supply Chain Auditor",
+    "default_popup": "popup.html"
+  }
+}
