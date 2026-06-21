@@ -1,7 +1,7 @@
 {
   "name": "@jackadamslovell/agentguard",
-  "version": "0.2.0",
-  "description": "Local CLI and MCP server that audits AI-agent extensions and npm packages for supply-chain risk. Zero-dep static heuristics + sandboxed quarantine + optional Claude-powered reasoning layer.",
+  "version": "0.3.0",
+  "description": "Local CLI and MCP server that audits AI-agent extensions and npm packages for supply-chain risk. Zero-dep static heuristics + sandboxed quarantine + optional multi-provider (Claude / GPT / Gemini) reasoning layer.",
   "license": "MIT",
   "author": "Jack Adams-Lovell",
   "type": "commonjs",
@@ -36,18 +36,22 @@
     "npm-audit",
     "agent-extension",
     "ai-safety",
-    "claude"
+    "claude",
+    "openai",
+    "gemini"
   ],
   "engines": {
     "node": ">=18"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.40.0"
+    "@anthropic-ai/sdk": ">=0.40.0",
+    "openai": ">=4.0.0",
+    "@google/generative-ai": ">=0.20.0"
   },
   "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": {
-      "optional": true
-    }
+    "@anthropic-ai/sdk": { "optional": true },
+    "openai": { "optional": true },
+    "@google/generative-ai": { "optional": true }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.105.0"

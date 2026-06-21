@@ -119,7 +119,7 @@ function reasonToolDefinition() {
   return {
     name: REASON_TOOL_NAME,
     description:
-      "Consult Claude (claude-opus-4-7 by default) as an authoritative reasoning layer over supplied evidence. Returns a structured JSON verdict with the same shape as audit_agent_extension_supply_chain. Requires ANTHROPIC_API_KEY in the server's environment.",
+      "Consult an LLM as an authoritative reasoning layer over supplied evidence. Supports Anthropic, OpenAI, and Gemini providers; defaults to Anthropic + claude-opus-4-7. Returns a structured JSON verdict (verdict, summary, findings, evidenceGaps, promotable). Requires the matching env key (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY) and SDK installed.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -148,9 +148,15 @@ function reasonToolDefinition() {
             }
           ]
         },
+        provider: {
+          type: "string",
+          enum: ["anthropic", "openai", "gemini"],
+          description: "LLM provider. Defaults to anthropic, or auto-detected from model."
+        },
         model: {
           type: "string",
-          description: "Claude model ID. Defaults to claude-opus-4-7."
+          description:
+            "Model ID. Defaults per provider: anthropic=claude-opus-4-7, openai=gpt-5, gemini=gemini-2.5-pro."
         },
         maxFiles: {
           type: "integer",
@@ -210,7 +216,11 @@ function handleRequest(request) {
     const args = (params && params.arguments) || {};
 
     if (name === REASON_TOOL_NAME) {
-      return reasonAbout(args, { model: args.model, maxFiles: args.maxFiles })
+      return reasonAbout(args, {
+        provider: args.provider,
+        model: args.model,
+        maxFiles: args.maxFiles
+      })
         .then((reasoning) => ({
           jsonrpc: "2.0",
           id,

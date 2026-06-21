@@ -122,20 +122,39 @@ the prompt's schema (`verdict`, `summary`, `findings`, `evidenceGaps`,
 
 ## Reasoning mode (`--reason`)
 
-Layer a Claude-powered authoritative verdict on top of the static heuristics:
+Layer an LLM-powered authoritative verdict on top of the static heuristics.
+Supports Anthropic (Claude), OpenAI (GPT), and Google (Gemini).
 
 ```bash
+# Anthropic (default)
 export ANTHROPIC_API_KEY=sk-ant-...
-npm install -g @anthropic-ai/sdk          # one-time, alongside agentguard
+npm install -g @anthropic-ai/sdk
 agentguard --reason --file evidence.json
 agentguard guard npm:some-pkg --reason --format json
+
+# OpenAI
+export OPENAI_API_KEY=sk-...
+npm install -g openai
+agentguard guard npm:some-pkg --reason --reason-provider openai
+
+# Gemini
+export GEMINI_API_KEY=...
+npm install -g @google/generative-ai
+agentguard guard npm:some-pkg --reason --reason-model gemini-2.5-pro
 ```
 
-By default the reasoner uses `claude-opus-4-7` with adaptive thinking and
-`effort: "high"`. The system prompt is cached (5-min TTL) so repeated calls
-in the same window are ~90% cheaper on prompt tokens. Source files are capped
-at 200 files / 32 KB each / 500 KB total before sending — override with
-`--reason-max-files`.
+Provider is selected by `--reason-provider <anthropic|openai|gemini>` or
+auto-detected from the model prefix (`claude-*` → anthropic, `gpt-*`/`o*` →
+openai, `gemini-*` → gemini). Defaults: `claude-opus-4-7`, `gpt-5`,
+`gemini-2.5-pro` — overridable with `--reason-model`.
+
+The Anthropic path uses adaptive thinking, `effort: "high"`, and caches the
+system prompt for 5-minute TTL (~90% cheaper on prompt tokens for repeated
+calls in the window). OpenAI uses strict structured outputs against the same
+JSON Schema. Gemini uses JSON-mode responses.
+
+Source files are capped at 200 files / 32 KB each / 500 KB total before
+sending — override with `--reason-max-files`.
 
 The reasoning verdict supersedes the static decision when `--reason` is used.
 Exit codes: `0` = safe, `2` = block, `3` = review.

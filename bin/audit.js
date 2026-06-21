@@ -19,9 +19,11 @@ function printUsage() {
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
       "",
-      "--reason consults Claude (claude-opus-4-7 by default) for an authoritative",
-      "verdict on top of the static heuristics. Requires ANTHROPIC_API_KEY in env",
-      "and the @anthropic-ai/sdk package installed.",
+      "--reason consults an LLM as an authoritative verdict on top of the static",
+      "heuristics. Provider auto-detected from --reason-model, or pass",
+      "--reason-provider <anthropic|openai|gemini>. Defaults: anthropic +",
+      "claude-opus-4-7. Each provider needs its own env key (ANTHROPIC_API_KEY,",
+      "OPENAI_API_KEY, GEMINI_API_KEY) and SDK installed.",
       ""
     ].join("\n")
   );
@@ -59,6 +61,8 @@ function parseArgs(argv) {
       options.reason = true;
     } else if (arg === "--reason-model") {
       options.reasonModel = argv[++i];
+    } else if (arg === "--reason-provider") {
+      options.reasonProvider = argv[++i];
     } else if (arg === "--reason-max-files") {
       options.reasonMaxFiles = Number(argv[++i]);
     } else {
@@ -82,6 +86,7 @@ async function maybeReason(evidence, options) {
   if (!options.reason) return null;
   try {
     return await reasonAbout(evidence, {
+      provider: options.reasonProvider,
       model: options.reasonModel,
       maxFiles: options.reasonMaxFiles
     });
@@ -188,7 +193,7 @@ function renderReasoningMarkdown(reasoning) {
   }
   const lines = [
     `Reasoning verdict: **${(reasoning.verdict || "?").toUpperCase()}**`,
-    `Model: \`${reasoning.model}\` · latency: ${reasoning.latencyMs} ms`,
+    `Provider: \`${reasoning.provider || "?"}\` · Model: \`${reasoning.model}\` · latency: ${reasoning.latencyMs} ms`,
     "",
     reasoning.summary || "",
     ""
