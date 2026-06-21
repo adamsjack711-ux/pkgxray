@@ -46,6 +46,13 @@ const TEXT_FILE_PATTERNS = [
   ".env"
 ];
 
+const TEXT_EXTENSIONS = TEXT_FILE_PATTERNS.filter((pattern) => pattern.startsWith(".")).map(
+  (pattern) => pattern.toLowerCase()
+);
+const TEXT_BASENAMES = TEXT_FILE_PATTERNS.filter((pattern) => !pattern.startsWith(".")).map(
+  (pattern) => pattern.toLowerCase()
+);
+
 async function guardExtension(reference, options = {}) {
   if (!reference) {
     throw new Error("Missing extension reference");
@@ -460,7 +467,19 @@ async function collectSourceFiles(root, options = {}) {
 
 function looksTextLike(filePath) {
   const normalized = filePath.replace(/\\/g, "/").toLowerCase();
-  return TEXT_FILE_PATTERNS.some((pattern) => normalized.endsWith(pattern) || normalized.includes(pattern));
+  const basename = path.basename(normalized);
+
+  for (const name of TEXT_BASENAMES) {
+    if (name === "readme") {
+      if (basename.startsWith("readme")) {
+        return true;
+      }
+    } else if (basename === name) {
+      return true;
+    }
+  }
+
+  return TEXT_EXTENSIONS.some((extension) => normalized.endsWith(extension));
 }
 
 function decisionForReport(report, policy) {
