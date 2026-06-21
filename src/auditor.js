@@ -238,11 +238,10 @@ function inspectMetadataObject(label, metadata, findings) {
   }
 
   const text = typeof metadata === "string" ? metadata : JSON.stringify(metadata, null, 2);
-  const lower = text.toLowerCase();
   const isDeprecated =
-    metadata && typeof metadata === "object"
+    typeof metadata === "object" && metadata !== null
       ? Boolean(metadata.deprecated || metadata.archived)
-      : lower.includes("deprecated") || lower.includes("archived");
+      : false;
   if (isDeprecated) {
     findings.push({
       severity: "low",
