@@ -340,13 +340,13 @@ function inspectInjectionAttempt(file, lower, findings) {
 }
 
 function inspectObfuscation(file, content, lower, findings) {
-  const base64Match = content.match(/[A-Za-z0-9+/]{240,}={0,2}/);
-  if (base64Match && /(eval|exec|function|atob|fromcharcode|spawn|child_process)/i.test(content)) {
+  const base64Match = content.match(/(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/);
+  if (base64Match && /(eval|exec|atob|fromcharcode|spawn|child_process)/i.test(content)) {
     findings.push({
       severity: "high",
       category: "obfuscation",
       file: file.path,
-      snippet: clip(base64Match[0]),
+      snippet: clip(base64Match[1]),
       rationale:
         "Large encoded-looking data appears in the same file as execution primitives, a common malware pattern."
     });
