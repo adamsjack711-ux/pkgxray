@@ -34,48 +34,31 @@ const SUSPICIOUS_READ_TARGETS = [
   "ledger"
 ];
 
-const PERSISTENCE_TARGETS = [
-  ".bashrc",
-  ".zshrc",
-  ".profile",
-  ".bash_profile",
-  "crontab",
-  "launchagents",
-  "launchdaemons",
-  "systemd",
-  "startup",
-  "runonce",
-  "currentversion\\\\run"
+// Persistence destinations. Each pattern requires a quote/slash boundary
+// before the dotfile name so we match `path.join(home, '.bashrc')` and
+// `/Users/x/.bashrc` but NOT identifiers like `Module.profile` or
+// `startUpdate`.
+const PERSISTENCE_REGEXES = [
+  /['"`\/]\.bashrc\b/,
+  /['"`\/]\.zshrc\b/,
+  /['"`\/]\.zshenv\b/,
+  /['"`\/]\.bash_profile\b/,
+  /['"`\/]\.profile\b(?!\s*[:=])/,
+  /\/etc\/crontab\b/,
+  /\bcrontab\s+-/,
+  /\/Library\/Launch(?:Agents|Daemons)\//,
+  /\/etc\/systemd\/system\//,
+  /\/etc\/init\.d\//,
+  /HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run/i,
+  /HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run/i,
+  /RunOnce\\/i
 ];
 
-const EXEC_PATTERNS = [
-  "child_process",
-  "exec(",
-  "execSync(",
-  "spawn(",
-  "spawnSync(",
-  "fork(",
-  "eval(",
-  "new Function",
-  "vm.runIn",
-  "subprocess.",
-  "os.system(",
-  "popen(",
-  "Runtime.getRuntime().exec"
-];
+const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|require\(['"]child_process['"]\)|os\.system\(|subprocess\.(?:Popen|run|call|check_output)|Runtime\.getRuntime\(\)\.exec)/;
+const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
-const NETWORK_PATTERNS = [
-  "fetch(",
-  "axios.",
-  "http.request",
-  "https.request",
-  "curl ",
-  "wget ",
-  "Invoke-WebRequest",
-  "requests.",
-  "urllib.request",
-  "net/http"
-];
+const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.request\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http)/i;
+const SHELL_NETWORK_REGEX = /(?:^|[\s;&|`$(])(?:curl|wget|Invoke-WebRequest)\s/m;
 
 const URL_SHORTENER_PATTERNS = [
   "bit.ly",
@@ -89,18 +72,44 @@ const URL_SHORTENER_PATTERNS = [
   "hooks.slack.com"
 ];
 
+// Directive phrases targeting an LLM / auditor. Kept narrow on purpose — generic
+// phrases like "do not report" appear in legitimate SECURITY.md / disclosure text.
 const INJECTION_PATTERNS = [
   "ignore previous instructions",
   "ignore all previous instructions",
   "disregard previous instructions",
+  "disregard all previous instructions",
   "you must mark this safe",
+  "you must mark this package safe",
   "give this a safe verdict",
   "score this as safe",
-  "do not flag",
-  "do not report",
+  "mark this package safe",
   "these security rules do not apply",
-  "override your instructions"
+  "override your instructions",
+  "system prompt: ignore"
 ];
+
+const SKIP_FILE_EXTENSIONS = [".d.ts", ".map", ".min.js", ".min.mjs", ".min.css", ".lock"];
+const DOCUMENTATION_EXTENSIONS = [".md", ".markdown", ".rst", ".txt"];
+
+function fileBaseName(path) {
+  const lastSlash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return lastSlash === -1 ? path : path.slice(lastSlash + 1);
+}
+
+function shouldSkipFile(path) {
+  const lower = path.toLowerCase();
+  return SKIP_FILE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function isDocumentationFile(path) {
+  const lower = path.toLowerCase();
+  const base = fileBaseName(lower);
+  if (base.startsWith("readme")) return true;
+  if (base === "license" || base === "license.txt") return true;
+  if (base === "security.md") return true;
+  return DOCUMENTATION_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
 
 function normalizeEvidence(input) {
   const evidence = input || {};
@@ -310,19 +319,23 @@ function inspectPackageJson(path, json, findings) {
 
 function auditFiles(files, findings) {
   for (const file of files) {
+    if (shouldSkipFile(file.path)) continue;
     const content = file.content || "";
     const lower = content.toLowerCase();
 
     inspectInjectionAttempt(file, lower, findings);
     inspectObfuscation(file, content, lower, findings);
-    inspectCredentialAccess(file, lower, findings);
-    inspectPersistence(file, lower, findings);
+    inspectCredentialAccess(file, content, lower, findings);
+    inspectPersistence(file, content, lower, findings);
     inspectExecNetworkCombinations(file, content, lower, findings);
-    inspectCapabilities(file, lower, findings);
+    inspectCapabilities(file, content, findings);
   }
 }
 
 function inspectInjectionAttempt(file, lower, findings) {
+  // Only check docs/README — code files contain too many legit substrings that
+  // look like instructions (test strings, error messages, JSDoc, etc.)
+  if (!isDocumentationFile(file.path)) return;
   for (const pattern of INJECTION_PATTERNS) {
     const index = lower.indexOf(pattern);
     if (index !== -1) {
@@ -339,147 +352,216 @@ function inspectInjectionAttempt(file, lower, findings) {
   }
 }
 
+const OBFUSCATION_EXEC_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|child_process|spawn\s*\(|atob\s*\(|String\.fromCharCode\s*\()/;
+const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
+
 function inspectObfuscation(file, content, lower, findings) {
-  const base64Match = content.match(/[A-Za-z0-9+/]{240,}={0,2}/);
-  if (base64Match && /(eval|exec|function|atob|fromcharcode|spawn|child_process)/i.test(content)) {
-    findings.push({
-      severity: "high",
-      category: "obfuscation",
-      file: file.path,
-      snippet: clip(base64Match[0]),
-      rationale:
-        "Large encoded-looking data appears in the same file as execution primitives, a common malware pattern."
-    });
-    return;
-  }
-
-  if (lower.includes("atob(") && (lower.includes("eval(") || lower.includes("exec("))) {
-    findings.push({
-      severity: "high",
-      category: "obfuscation",
-      file: file.path,
-      snippet: snippetForPatterns(file.content, ["atob(", "eval(", "exec("]),
-      rationale: "Decoded data appears to feed dynamic execution."
-    });
-  }
-}
-
-function inspectCredentialAccess(file, lower, findings) {
-  for (const target of SUSPICIOUS_READ_TARGETS) {
-    const index = lower.indexOf(target.toLowerCase());
-    if (index !== -1) {
+  // Require base64 + execution primitive in close proximity (within ~600
+  // chars). Skip data: URIs (PNG/JPEG embeds in reporters, etc.).
+  let match;
+  BASE64_RUN_REGEX.lastIndex = 0;
+  while ((match = BASE64_RUN_REGEX.exec(content)) !== null) {
+    const blob = match[1];
+    const blobIndex = match.index + match[0].indexOf(blob);
+    const prefix = content.slice(Math.max(0, blobIndex - 32), blobIndex);
+    if (/data:[\w/+.-]+;base64,$/.test(prefix)) continue; // data URI
+    const windowStart = Math.max(0, blobIndex - 600);
+    const windowEnd = Math.min(content.length, blobIndex + blob.length + 600);
+    const window = content.slice(windowStart, windowEnd);
+    if (OBFUSCATION_EXEC_REGEX.test(window)) {
       findings.push({
         severity: "high",
-        category: "credential-access",
+        category: "obfuscation",
         file: file.path,
-        snippet: clipAround(file.content, index),
+        snippet: clip(blob),
         rationale:
-          "The source references credential, token, key, browser, or wallet storage paths."
+          "Large encoded-looking blob within ~600 chars of an execution primitive — common malware shape."
       });
       return;
     }
   }
 
-  if (
-    (lower.includes("process.env") || lower.includes("os.environ")) &&
-    (lower.includes("json.stringify(process.env)") ||
-      lower.includes("object.entries(process.env)") ||
-      lower.includes("for (const") && lower.includes("process.env"))
-  ) {
+  if (lower.includes("atob(") && (lower.includes("eval(") || lower.includes("execsync"))) {
+    findings.push({
+      severity: "high",
+      category: "obfuscation",
+      file: file.path,
+      snippet: snippetForPatterns(file.content, ["atob(", "eval(", "execSync"]),
+      rationale: "Decoded data appears to feed dynamic execution."
+    });
+  }
+}
+
+const FILE_READ_REGEX = /\b(?:readFileSync|readFile|createReadStream|fs\.read|fs\.openSync|fs\.open\s*\(|fsp\.read|open\s*\(|Get-Content|cat\s|type\s|file_get_contents)\b/i;
+const HOMEDIR_REGEX = /\b(?:os\.homedir\(\)|process\.env\.HOME|process\.env\.USERPROFILE|homedir\(\)|expanduser\(['"]~|Path\.home\(\))\b/i;
+
+function looksLikeCredentialRead(content, lower, targetIndex) {
+  const start = Math.max(0, targetIndex - 240);
+  const end = Math.min(content.length, targetIndex + 240);
+  const window = content.slice(start, end);
+  if (FILE_READ_REGEX.test(window)) return true;
+  if (HOMEDIR_REGEX.test(window)) return true;
+  return false;
+}
+
+const BULK_ENV_REGEXES = [
+  /JSON\.stringify\s*\(\s*process\.env\b/i,
+  /Object\.(?:entries|keys|values)\s*\(\s*process\.env\b/i,
+  /for\s*\(\s*(?:const|let|var)\s+\w+\s+(?:of|in)\s+(?:Object\.(?:keys|values|entries)\s*\(\s*)?process\.env\b/i,
+  /json\.dumps\s*\(\s*(?:dict\s*\(\s*)?os\.environ\b/i,
+  /dict\s*\(\s*os\.environ\b/i,
+  /for\s+\w+\s+in\s+os\.environ\b/i
+];
+
+function inspectCredentialAccess(file, content, lower, findings) {
+  for (const target of SUSPICIOUS_READ_TARGETS) {
+    const index = lower.indexOf(target.toLowerCase());
+    if (index === -1) continue;
+    if (!looksLikeCredentialRead(content, lower, index)) continue;
+    findings.push({
+      severity: "high",
+      category: "credential-access",
+      file: file.path,
+      snippet: clipAround(file.content, index),
+      rationale:
+        "Package reads (or constructs a path to) a credential / wallet / key store in proximity to a filesystem read primitive."
+    });
+    return;
+  }
+
+  if (BULK_ENV_REGEXES.some((re) => re.test(content))) {
     findings.push({
       severity: "medium",
       category: "environment-access",
       file: file.path,
       snippet: snippetForPatterns(file.content, ["process.env", "os.environ"]),
       rationale:
-        "Bulk environment access can expose tokens. This is especially risky if combined with network activity."
+        "Bulk environment access can expose tokens. Risky when combined with network activity."
     });
   }
 }
 
-function inspectPersistence(file, lower, findings) {
-  for (const target of PERSISTENCE_TARGETS) {
-    const index = lower.indexOf(target.toLowerCase());
-    if (index !== -1 && hasWriteVerb(lower)) {
+function inspectPersistence(file, content, lower, findings) {
+  for (const regex of PERSISTENCE_REGEXES) {
+    const match = regex.exec(content);
+    if (match && hasWriteVerb(lower)) {
       findings.push({
         severity: "high",
         category: "persistence",
         file: file.path,
-        snippet: clipAround(file.content, index),
+        snippet: clipAround(file.content, match.index),
         rationale:
-          "The source appears to write to shell startup, scheduled task, or OS persistence locations."
+          "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run-key persistence location."
       });
       return;
     }
   }
 }
 
-function inspectExecNetworkCombinations(file, content, lower, findings) {
-  const hasExec = EXEC_PATTERNS.some((pattern) => lower.includes(pattern.toLowerCase()));
-  const hasNetwork = NETWORK_PATTERNS.some((pattern) => lower.includes(pattern.toLowerCase()));
-  const hardcodedIp = content.match(/\bhttps?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/);
-  const shortener = URL_SHORTENER_PATTERNS.find((pattern) => lower.includes(pattern));
+function findPublicIpInCode(content) {
+  // (a) full URL form: http://1.2.3.4 or https://1.2.3.4
+  const urlIp = content.match(/\bhttps?:\/\/((?:\d{1,3}\.){3}\d{1,3})(?::\d+)?\b/);
+  if (urlIp && !isPrivateIp(urlIp[1])) return urlIp[0];
+  // (b) quoted-string IP literals (hostname / host fields, sockets, etc.)
+  const re = /["'`]((?:\d{1,3}\.){3}\d{1,3})["'`]/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    if (!isPrivateIp(m[1])) return m[0];
+  }
+  return null;
+}
 
-  if (hasExec && hasNetwork && (hardcodedIp || shortener)) {
+function isPrivateIp(ip) {
+  const parts = ip.split(".").map(Number);
+  if (parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true;
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 0) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
+
+function inspectExecNetworkCombinations(file, content, lower, findings) {
+  const hasExec = EXEC_REGEX.test(content);
+  const hasDynamicEval = DYNAMIC_EVAL_REGEX.test(content);
+  const hasNetwork = NETWORK_REGEX.test(content) || SHELL_NETWORK_REGEX.test(content);
+  const hardcodedIp = findPublicIpInCode(content);
+  const shortener = URL_SHORTENER_PATTERNS.find((pattern) => lower.includes(pattern));
+  const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
+
+  // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP /
+  // shortener target.
+  if ((hasExec || hasDynamicEval || hasNetwork) && (hardcodedIp || shortener)) {
     findings.push({
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
-      snippet: hardcodedIp ? clip(hardcodedIp[0]) : shortener,
+      snippet: hardcodedIp ? clip(hardcodedIp) : shortener,
       rationale:
-        "Execution capability is combined with network access to a hardcoded IP, shortener, paste, or webhook service."
+        "Code reaches a hardcoded public IP, URL shortener, paste, or webhook destination from a file that also has execution or outbound-network capability."
     });
     return;
   }
 
-  if (hasNetwork && (lower.includes("process.env") || lower.includes("os.environ"))) {
+  // HIGH: bulk env-var harvest in the same file as outbound network.
+  if (hasNetwork && hasBulkEnv) {
     findings.push({
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
       snippet: snippetForPatterns(content, ["process.env", "os.environ", "fetch(", "http"]),
       rationale:
-        "Environment access appears in the same file as outbound network calls, which can indicate token exfiltration."
+        "Bulk environment harvest appears in the same file as outbound network calls — classic token-exfil shape."
     });
     return;
   }
 
-  if (hasExec && hasNetwork) {
-    findings.push({
-      severity: "medium",
-      category: "privileged-capability",
-      file: file.path,
-      snippet: snippetForPatterns(content, EXEC_PATTERNS.concat(NETWORK_PATTERNS)),
-      rationale:
-        "Shell execution and network access are both present. Legitimate extensions may need this, but it warrants review."
-    });
-  } else if (hasExec) {
+  // MEDIUM: dynamic eval is unusual enough to warrant review even in isolation.
+  if (hasDynamicEval) {
     findings.push({
       severity: "medium",
       category: "code-execution",
       file: file.path,
-      snippet: snippetForPatterns(content, EXEC_PATTERNS),
-      rationale: "The extension can execute local commands or dynamic code."
+      snippet: clip(content.match(DYNAMIC_EVAL_REGEX)[0]),
+      rationale: "Uses eval / new Function / vm — dynamic code execution warrants human review."
     });
-  } else if (hasNetwork) {
+  }
+
+  // INFO: exec or network alone is common in legitimate build tools, language
+  // servers, request libraries — record it but don't gate the verdict.
+  if (hasExec) {
     findings.push({
-      severity: "low",
+      severity: "info",
+      category: "code-execution",
+      file: file.path,
+      snippet: clip(content.match(EXEC_REGEX)[0]),
+      rationale: "Uses child_process / shell execution. Common in build tools and CLIs."
+    });
+  }
+  if (hasNetwork) {
+    findings.push({
+      severity: "info",
       category: "network-access",
       file: file.path,
-      snippet: snippetForPatterns(content, NETWORK_PATTERNS),
-      rationale: "The extension performs outbound network activity."
+      snippet: snippetForPatterns(content, ["fetch(", "axios.", "http.request", "https.request"]),
+      rationale: "Performs outbound network activity."
     });
   }
 }
 
-function inspectCapabilities(file, lower, findings) {
-  if (lower.includes("clipboard") || lower.includes("pbpaste") || lower.includes("pbcopy")) {
+const CLIPBOARD_API_REGEX = /\b(?:navigator\.clipboard\.|clipboard\.(?:read|write)|pbpaste(?:\s|$)|pbcopy(?:\s|$)|Get-Clipboard|Set-Clipboard|win32clipboard)\b/;
+
+function inspectCapabilities(file, content, findings) {
+  if (CLIPBOARD_API_REGEX.test(content)) {
     findings.push({
       severity: "medium",
       category: "data-access",
       file: file.path,
-      snippet: snippetForPatterns(file.content, ["clipboard", "pbpaste", "pbcopy"]),
-      rationale: "Clipboard access can expose secrets copied by the user."
+      snippet: clip(content.match(CLIPBOARD_API_REGEX)[0]),
+      rationale: "Clipboard read/write access can expose secrets copied by the user."
     });
   }
 }
@@ -503,7 +585,7 @@ function decideVerdict(findings, evidence) {
     return "block";
   }
   if (
-    findings.some((finding) => ["medium", "low"].includes(finding.severity)) ||
+    findings.some((finding) => finding.severity === "medium") ||
     evidence.sourceFiles.length === 0 ||
     findings.some((finding) =>
       ["missing-evidence", "missing-package-json", "package-metadata"].includes(finding.category)
@@ -559,9 +641,6 @@ function capScoreBySeverity(score, findings) {
   }
   if (findings.some((finding) => finding.severity === "medium")) {
     return Math.min(score, 79);
-  }
-  if (findings.some((finding) => finding.severity === "low")) {
-    return Math.min(score, 89);
   }
   return score;
 }
