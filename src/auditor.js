@@ -13,25 +13,24 @@ const SEVERITY_ORDER = {
   high: 3
 };
 
+// Suspicious credential / wallet read targets. Each entry is a regex that
+// requires a path or quote boundary so we don't match identifiers like
+// `process.env` or `someObj.ledger`.
 const SUSPICIOUS_READ_TARGETS = [
-  "~/.ssh",
-  ".ssh/",
-  "id_rsa",
-  "id_dsa",
-  "id_ecdsa",
-  "id_ed25519",
-  "~/.aws",
-  ".aws/credentials",
-  ".npmrc",
-  ".env",
-  "keychain",
-  "login.keychain",
-  "cookies.sqlite",
-  "local state",
-  "metamask",
-  "electrum",
-  "exodus",
-  "ledger"
+  { re: /['"`\/\\]\.?ssh\/(?:id_(?:rsa|dsa|ecdsa|ed25519)|authorized_keys)/i, label: "ssh-private-key" },
+  { re: /['"`\/\\]id_(?:rsa|dsa|ecdsa|ed25519)\b/i, label: "ssh-key-file" },
+  { re: /['"`\/\\]\.ssh(?:\/|['"`])/, label: ".ssh-dir" },
+  { re: /['"`\/\\]\.aws\/credentials\b/, label: ".aws/credentials" },
+  { re: /['"`\/\\]\.aws\/(?:config|credentials)\b/, label: ".aws-files" },
+  { re: /['"`\/\\]\.npmrc(?:['"`]|\s|$)/, label: ".npmrc" },
+  { re: /['"`\/\\]\.env(?:\.[a-z]+)?(?:['"`]|\s|$)/i, label: ".env-file" },
+  { re: /['"`]login\.keychain(?:-db)?['"`]/i, label: "macOS keychain" },
+  { re: /\bsecurity\s+find-(?:generic|internet)-password\b/, label: "macOS security CLI" },
+  { re: /['"`]\/?(?:Cookies|Login Data|Web Data|cookies\.sqlite)['"`]/i, label: "browser-creds" },
+  { re: /['"`]Local State['"`]/, label: "browser local-state" },
+  { re: /\bkeytar\.[a-z]+Password\(/i, label: "keytar API" },
+  { re: /\bmetamask['"`\s\/]/i, label: "metamask wallet" },
+  { re: /\b(?:electrum|exodus|ledger live|atomic wallet)\b/i, label: "crypto wallet" }
 ];
 
 // Persistence destinations. Each pattern requires a quote/slash boundary
@@ -607,16 +606,16 @@ const BULK_ENV_REGEXES = [
 
 function inspectCredentialAccess(file, content, lower, findings) {
   for (const target of SUSPICIOUS_READ_TARGETS) {
-    const index = lower.indexOf(target.toLowerCase());
-    if (index === -1) continue;
-    if (!looksLikeCredentialRead(content, lower, index)) continue;
+    const match = target.re.exec(content);
+    if (!match) continue;
+    if (!looksLikeCredentialRead(content, lower, match.index)) continue;
     findings.push({
       severity: "high",
       category: "credential-access",
       file: file.path,
-      snippet: clipAround(file.content, index),
+      snippet: clipAround(file.content, match.index),
       rationale:
-        "Package reads (or constructs a path to) a credential / wallet / key store in proximity to a filesystem read primitive."
+        `Reads or references ${target.label} near a filesystem read primitive.`
     });
     return;
   }

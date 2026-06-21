@@ -12,7 +12,7 @@ function printUsage() {
       "  pkgxray < evidence.json",
       "  pkgxray --format json < evidence.json",
       "  pkgxray --file evidence.json --format markdown",
-      "  pkgxray guard <npm-package|npm:name@version|./path> [--promote-to dir] [--no-source-scan]",
+      "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan]",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",

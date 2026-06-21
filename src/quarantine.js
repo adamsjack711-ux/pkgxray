@@ -158,6 +158,10 @@ async function stageReference(reference, stagedPath, options) {
     return resolveNpmPackage(parsed.specifier, options);
   }
 
+  if (parsed.type === "github") {
+    return resolveGithubRepo(parsed, options);
+  }
+
   throw new Error(`Unsupported reference type: ${reference}`);
 }
 
@@ -168,6 +172,21 @@ function parseReference(reference) {
 
   if (reference.startsWith("file:")) {
     return { type: "local", path: path.resolve(reference.slice("file:".length)) };
+  }
+
+  if (reference.startsWith("github:")) {
+    return parseGithubReference(reference.slice("github:".length));
+  }
+
+  // github.com URLs as a convenience shorthand
+  const ghMatch = reference.match(/^https?:\/\/github\.com\/([^/]+)\/([^/?#]+?)(?:\.git)?(?:#(.+))?$/);
+  if (ghMatch) {
+    return {
+      type: "github",
+      owner: ghMatch[1],
+      repo: ghMatch[2],
+      ref: ghMatch[3] || null
+    };
   }
 
   if (
@@ -182,6 +201,62 @@ function parseReference(reference) {
   }
 
   return { type: "npm", specifier: reference };
+}
+
+function parseGithubReference(spec) {
+  // Supports owner/repo[#ref] and owner/repo[@ref]
+  const match = spec.match(/^([^/#@]+)\/([^/#@]+?)(?:[#@](.+))?$/);
+  if (!match) throw new Error(`Invalid github reference: github:${spec}`);
+  return {
+    type: "github",
+    owner: match[1],
+    repo: match[2].replace(/\.git$/, ""),
+    ref: match[3] || null
+  };
+}
+
+async function resolveGithubRepo(parsed, options) {
+  // Resolve default branch if no ref pinned. Uses the existing GitHub metadata
+  // helper which is already cached + parallel-safe.
+  const { fetchRepoMetadata } = require("./github");
+  let ref = parsed.ref;
+  let resolvedMeta = null;
+  if (!ref) {
+    const meta = await fetchRepoMetadata(`https://github.com/${parsed.owner}/${parsed.repo}`).catch(() => null);
+    if (meta && meta.found === false && meta.reason === "not-found") {
+      throw new Error(`GitHub repository not found: ${parsed.owner}/${parsed.repo}`);
+    }
+    if (meta && meta.found) {
+      ref = meta.default_branch || "HEAD";
+      resolvedMeta = meta;
+    } else {
+      ref = "HEAD";
+    }
+  }
+
+  // GitHub's "codeload" endpoint returns a .tar.gz of the repo at the given
+  // ref. Works for branch names, tags, and commit SHAs.
+  const tarballUrl = `https://codeload.github.com/${parsed.owner}/${parsed.repo}/tar.gz/${encodeURIComponent(ref)}`;
+
+  return {
+    type: "github",
+    owner: parsed.owner,
+    repo: parsed.repo,
+    ref,
+    needsDownload: true,
+    tarballUrl,
+    packageName: `${parsed.owner}/${parsed.repo}`,
+    githubArchive: true,
+    npmMetadata: resolvedMeta
+      ? {
+          // Synthetic shape so the downstream auditor still sees a repository
+          // URL and the github cross-check finds the same data we already have.
+          name: parsed.repo,
+          repository: { url: resolvedMeta.html_url, type: "git" },
+          maintainers: []
+        }
+      : null
+  };
 }
 
 async function copyLocalPath(sourcePath, stagedPath) {
