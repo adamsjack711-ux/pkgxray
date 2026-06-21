@@ -106,6 +106,7 @@ async function guardExtension(reference, options = {}) {
     decision,
     reference,
     resolved,
+    sourceFiles,
     vulnerabilityPrecheck: {
       enabled: options.vulnerabilityCheck !== false,
       database: "OSV",

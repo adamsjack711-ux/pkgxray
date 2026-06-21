@@ -96,10 +96,11 @@ Use the stdio server from any MCP-capable agent:
 }
 ```
 
-The server exposes one tool:
+The server exposes three tools:
 
-- `audit_agent_extension_supply_chain`
-- `guard_agent_extension_install`
+- `audit_agent_extension_supply_chain` — zero-dep static heuristics
+- `guard_agent_extension_install` — stage, vuln-check, audit a real package
+- `reason_about_extension_supply_chain` — Claude-powered authoritative verdict (requires `ANTHROPIC_API_KEY`)
 
 Tool arguments:
 
@@ -112,6 +113,32 @@ Tool arguments:
 
 `guard_agent_extension_install` accepts `reference`, optional `quarantineRoot`,
 optional `promoteTo`, `policy`, `force`, and `outputFormat`.
+
+`reason_about_extension_supply_chain` accepts the same evidence shape as
+`audit_agent_extension_supply_chain`, plus optional `model` (default
+`claude-opus-4-7`) and `maxFiles` (default 200). It returns a JSON verdict per
+the prompt's schema (`verdict`, `summary`, `findings`, `evidenceGaps`,
+`promotable`) plus `usage` and `latencyMs`.
+
+## Reasoning mode (`--reason`)
+
+Layer a Claude-powered authoritative verdict on top of the static heuristics:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+npm install -g @anthropic-ai/sdk          # one-time, alongside agentguard
+agentguard --reason --file evidence.json
+agentguard guard npm:some-pkg --reason --format json
+```
+
+By default the reasoner uses `claude-opus-4-7` with adaptive thinking and
+`effort: "high"`. The system prompt is cached (5-min TTL) so repeated calls
+in the same window are ~90% cheaper on prompt tokens. Source files are capped
+at 200 files / 32 KB each / 500 KB total before sending — override with
+`--reason-max-files`.
+
+The reasoning verdict supersedes the static decision when `--reason` is used.
+Exit codes: `0` = safe, `2` = block, `3` = review.
 
 ## Browser Extension
 

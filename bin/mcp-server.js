@@ -3,9 +3,11 @@
 
 const { auditEvidence, renderMarkdown } = require("../src/auditor");
 const { guardExtension } = require("../src/quarantine");
+const { reasonAbout } = require("../src/reasoner");
 
 const TOOL_NAME = "audit_agent_extension_supply_chain";
 const GUARD_TOOL_NAME = "guard_agent_extension_install";
+const REASON_TOOL_NAME = "reason_about_extension_supply_chain";
 let buffer = "";
 
 function send(message) {
@@ -113,6 +115,53 @@ function guardToolDefinition() {
   };
 }
 
+function reasonToolDefinition() {
+  return {
+    name: REASON_TOOL_NAME,
+    description:
+      "Consult Claude (claude-opus-4-7 by default) as an authoritative reasoning layer over supplied evidence. Returns a structured JSON verdict with the same shape as audit_agent_extension_supply_chain. Requires ANTHROPIC_API_KEY in the server's environment.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        packageName: { type: "string" },
+        npmMetadata: {},
+        githubMetadata: {},
+        webPresence: {},
+        sourceFiles: {
+          description:
+            "Map of file path to source text, or an array of objects with path/name and content/text.",
+          anyOf: [
+            { type: "object", additionalProperties: { type: "string" } },
+            {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: true,
+                properties: {
+                  path: { type: "string" },
+                  name: { type: "string" },
+                  content: { type: "string" },
+                  text: { type: "string" }
+                }
+              }
+            }
+          ]
+        },
+        model: {
+          type: "string",
+          description: "Claude model ID. Defaults to claude-opus-4-7."
+        },
+        maxFiles: {
+          type: "integer",
+          description: "Cap on source files sent to the model. Default 200."
+        }
+      },
+      required: ["sourceFiles"]
+    }
+  };
+}
+
 function handleRequest(request) {
   const { id, method, params } = request;
 
@@ -140,14 +189,14 @@ function handleRequest(request) {
       jsonrpc: "2.0",
       id,
       result: {
-        tools: [toolDefinition(), guardToolDefinition()]
+        tools: [toolDefinition(), guardToolDefinition(), reasonToolDefinition()]
       }
     };
   }
 
   if (method === "tools/call") {
     const name = params && params.name;
-    if (name !== TOOL_NAME && name !== GUARD_TOOL_NAME) {
+    if (name !== TOOL_NAME && name !== GUARD_TOOL_NAME && name !== REASON_TOOL_NAME) {
       return {
         jsonrpc: "2.0",
         id,
@@ -159,6 +208,23 @@ function handleRequest(request) {
     }
 
     const args = (params && params.arguments) || {};
+
+    if (name === REASON_TOOL_NAME) {
+      return reasonAbout(args, { model: args.model, maxFiles: args.maxFiles })
+        .then((reasoning) => ({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: textContent(JSON.stringify(reasoning, null, 2)),
+            structuredContent: reasoning
+          }
+        }))
+        .catch((error) => ({
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32603, message: `${error.code || "REASONER_ERROR"}: ${error.message}` }
+        }));
+    }
 
     if (name === GUARD_TOOL_NAME) {
       return guardExtension(args.reference, args).then((guardResult) => {
