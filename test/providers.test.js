@@ -7,7 +7,9 @@ const {
   listProviders,
   getProvider,
   detectProvider,
-  resolveProvider
+  resolveProvider,
+  detectAvailableProvider,
+  reasoningSetupHint
 } = require("../src/providers");
 
 test("ships three providers", () => {
@@ -56,4 +58,43 @@ test("each provider declares a default model", () => {
   assert.equal(PROVIDERS.anthropic.defaultModel, "claude-opus-4-7");
   assert.equal(PROVIDERS.openai.defaultModel, "gpt-5");
   assert.equal(PROVIDERS.gemini.defaultModel, "gemini-2.5-pro");
+});
+
+test("detectAvailableProvider returns null when no key set", () => {
+  const saved = {
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY
+  };
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    assert.equal(detectAvailableProvider(), null);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v !== undefined) process.env[k] = v;
+    }
+  }
+});
+
+test("reasoningSetupHint mentions all env vars when none set", () => {
+  const saved = {
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY
+  };
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    const hint = reasoningSetupHint();
+    assert.match(hint, /ANTHROPIC_API_KEY/);
+    assert.match(hint, /OPENAI_API_KEY/);
+    assert.match(hint, /GEMINI_API_KEY/);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v !== undefined) process.env[k] = v;
+    }
+  }
 });
