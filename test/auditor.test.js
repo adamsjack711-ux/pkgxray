@@ -68,3 +68,42 @@ test("requires review when package metadata is missing", () => {
 
   assert.equal(report.verdict, "review");
 });
+
+test("riskBands group findings into named buckets", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "example",
+        repository: "https://github.com/example/example",
+        scripts: { postinstall: "node setup.js" }
+      }),
+      "index.js": "module.exports = function () { return eval('1+1'); };"
+    }
+  });
+
+  assert.equal(report.verdict, "review");
+  const bandNames = report.riskBands.map((b) => b.band);
+  assert.ok(bandNames.includes("lifecycle-script"), `bands: ${bandNames.join(",")}`);
+  assert.ok(bandNames.includes("dynamic-eval"), `bands: ${bandNames.join(",")}`);
+  // Highest-severity band should come first.
+  assert.equal(report.riskBands[0].severity, "medium");
+});
+
+test("riskBands are empty when only INFO findings present", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "example",
+        repository: "https://github.com/example/example"
+      }),
+      "index.js": "exports.run = () => 'ok';"
+    }
+  });
+
+  assert.equal(report.verdict, "safe");
+  assert.ok(Array.isArray(report.riskBands));
+  // Either no bands, or only "missing-metadata" band (INFO)
+  for (const band of report.riskBands) {
+    assert.equal(band.severity, "info");
+  }
+});

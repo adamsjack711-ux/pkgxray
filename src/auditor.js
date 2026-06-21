@@ -175,6 +175,7 @@ function auditEvidence(input) {
 
   const verdict = decideVerdict(findings, evidence);
   const grading = gradeEvidence(findings, evidence);
+  const riskBands = computeRiskBands(findings);
   return {
     verdict,
     grade: grading.grade,
@@ -182,8 +183,56 @@ function auditEvidence(input) {
     parameters: grading.parameters,
     summary: summarizeVerdict(verdict, findings),
     packageName: evidence.packageName || null,
+    riskBands,
     findings: findings.sort(compareFindings)
   };
+}
+
+// Maps the granular finding categories the auditor produces into a smaller
+// set of human-readable "bands" so the verdict explainer can say things like
+// "review because: lifecycle-script + dynamic-eval" instead of dumping the
+// raw category list.
+const BAND_DEFINITIONS = [
+  { band: "prompt-injection", label: "prompt-injection", categories: ["injection-attempt"], rationale: "README/docs contain text aimed at instructing an LLM auditor." },
+  { band: "credential-access", label: "credential-access", categories: ["credential-access"], rationale: "Reads a path to a credential / wallet / key store near a filesystem read." },
+  { band: "persistence", label: "persistence", categories: ["persistence"], rationale: "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run key." },
+  { band: "exfiltration", label: "network-exfiltration", categories: ["network-exfil-or-loader"], rationale: "Code reaches a hardcoded public IP / shortener / webhook from a file that also has exec or net capability." },
+  { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
+  { band: "known-vulnerability", label: "known-vulnerability", categories: ["known-vulnerability"], rationale: "OSV reports this package/version as affected by a published vulnerability." },
+  { band: "lifecycle-script", label: "lifecycle-script", categories: ["install-hook"], rationale: "Runs a script at install time with the installing user's privileges." },
+  { band: "dynamic-eval", label: "dynamic-eval", categories: ["code-execution"], severityMin: "medium", rationale: "Uses eval / new Function / vm — can execute strings as code at runtime." },
+  { band: "bulk-env", label: "bulk-env-access", categories: ["environment-access"], rationale: "Reads the entire process environment in bulk; risky paired with network." },
+  { band: "clipboard", label: "clipboard-access", categories: ["data-access"], rationale: "Reads or writes the system clipboard — can expose copied secrets." },
+  { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
+  { band: "missing-metadata", label: "missing-metadata", categories: ["missing-metadata", "supply-chain-signal"], rationale: "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped." }
+];
+
+const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3 };
+
+function computeRiskBands(findings) {
+  const result = [];
+  for (const def of BAND_DEFINITIONS) {
+    const matched = findings.filter((finding) => {
+      if (!def.categories.includes(finding.category)) return false;
+      if (def.severityMin && SEVERITY_RANK[finding.severity] < SEVERITY_RANK[def.severityMin]) return false;
+      return true;
+    });
+    if (matched.length === 0) continue;
+    const severity = matched.reduce(
+      (max, f) => (SEVERITY_RANK[f.severity] > SEVERITY_RANK[max] ? f.severity : max),
+      "info"
+    );
+    const examples = matched.slice(0, 3).map((f) => f.file);
+    result.push({
+      band: def.band,
+      label: def.label,
+      severity,
+      count: matched.length,
+      examples,
+      rationale: def.rationale
+    });
+  }
+  return result.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
 }
 
 function auditMetadata(evidence, findings) {
@@ -771,6 +820,22 @@ function renderMarkdown(report) {
 
   if (report.packageName) {
     lines.push(`Package: \`${report.packageName}\``, "");
+  }
+
+  if (report.riskBands && report.riskBands.length > 0) {
+    const verb = report.verdict === "block"
+      ? "Block because"
+      : report.verdict === "review"
+        ? "Review because"
+        : "Notes";
+    lines.push(`${verb}:`);
+    for (const band of report.riskBands) {
+      const examples = band.examples && band.examples.length > 0
+        ? ` (${band.examples.slice(0, 2).map((e) => `\`${e}\``).join(", ")}${band.count > band.examples.length ? `, +${band.count - band.examples.length} more` : ""})`
+        : "";
+      lines.push(`- **${band.severity.toUpperCase()} ${band.label}** — ${band.rationale}${examples}`);
+    }
+    lines.push("");
   }
 
   lines.push("Parameter grades:");
