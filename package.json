@@ -1,24 +1,41 @@
 {
-  "name": "supply-chain-auditor",
+  "name": "agentguard",
   "version": "0.1.0",
-  "description": "Local MCP and CLI extension for triaging AI-agent extension supply-chain risk.",
+  "description": "Local CLI and MCP server that audits AI-agent extensions and npm packages for supply-chain risk. Zero-dep Node. Static scan + OSV vuln precheck + sandboxed quarantine.",
   "license": "MIT",
+  "author": "Jack Adams-Lovell",
   "type": "commonjs",
   "bin": {
-    "supply-chain-auditor": "./bin/audit.js",
-    "supply-chain-auditor-mcp": "./bin/mcp-server.js"
+    "agentguard": "./bin/audit.js",
+    "agentguard-mcp": "./bin/mcp-server.js"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build:browser": "node ./scripts/build-browser-extension.js",
     "test": "node --test",
     "audit:evidence": "node ./bin/audit.js",
     "mcp": "node ./bin/mcp-server.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adamsjack711-ux/agentguard.git"
+  },
+  "homepage": "https://github.com/adamsjack711-ux/agentguard#readme",
+  "bugs": {
+    "url": "https://github.com/adamsjack711-ux/agentguard/issues"
+  },
   "keywords": [
     "mcp",
     "security",
     "supply-chain",
-    "agent-extension"
+    "npm-audit",
+    "agent-extension",
+    "ai-safety"
   ],
   "engines": {
     "node": ">=18"

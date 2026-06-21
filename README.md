@@ -1,7 +1,16 @@
-# Supply Chain Auditor
+# agentguard
 
-Local extension for triaging whether an AI coding-agent extension, Codex plugin,
-Claude Code extension, or MCP server is safe to install from supplied evidence.
+Local CLI + MCP server for triaging whether an AI coding-agent extension, Codex
+plugin, Claude Code extension, or npm package is safe to install — from supplied
+evidence or by fetching a real npm tarball into a sandboxed quarantine.
+
+## Install
+
+```bash
+npm install -g agentguard
+# or use one-shot via npx:
+npx agentguard guard npm:some-package@1.2.3
+```
 
 It is intentionally conservative. It only reports evidence it can cite from
 metadata or source text, and it returns one of:
@@ -14,17 +23,17 @@ metadata or source text, and it returns one of:
 ## CLI
 
 ```bash
-node ./bin/audit.js --file examples/evidence.json
-node ./bin/audit.js --format json --file examples/evidence.json
+agentguard --file examples/evidence.json
+agentguard --format json --file examples/evidence.json
 ```
 
 Guard an extension before handing it to an agent:
 
 ```bash
-node ./bin/audit.js guard ./some-local-extension
-node ./bin/audit.js guard npm:some-mcp-server@1.2.3 --format json
-node ./bin/audit.js guard ./some-local-extension --promote-to ./approved/some-local-extension
-node ./bin/audit.js guard npm:is-number@7.0.0 --no-source-scan --format json
+agentguard guard ./some-local-extension
+agentguard guard npm:some-mcp-server@1.2.3 --format json
+agentguard guard ./some-local-extension --promote-to ./approved/some-local-extension
+agentguard guard npm:is-number@7.0.0 --no-source-scan --format json
 ```
 
 The guard flow stages the extension in a private quarantine directory, audits
@@ -80,11 +89,8 @@ Use the stdio server from any MCP-capable agent:
 ```json
 {
   "mcpServers": {
-    "supply-chain-auditor": {
-      "command": "node",
-      "args": [
-        "/Users/jackadams-lovell/plugins/supply-chain-auditor/bin/mcp-server.js"
-      ]
+    "agentguard": {
+      "command": "agentguard-mcp"
     }
   }
 }
@@ -112,11 +118,8 @@ optional `promoteTo`, `policy`, `force`, and `outputFormat`.
 The `browser-extension/` folder is a Chrome-compatible Manifest V3 unpacked
 extension. It runs entirely locally and requests no browser permissions.
 
-Load this folder as an unpacked extension:
-
-```text
-/Users/jackadams-lovell/plugins/supply-chain-auditor/browser-extension
-```
+Load the `browser-extension/` folder from a checkout of this repo as an
+unpacked extension.
 
 In Chrome:
 
