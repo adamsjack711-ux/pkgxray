@@ -57,19 +57,54 @@ const PERSISTENCE_REGEXES = [
 const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|require\(['"]child_process['"]\)|os\.system\(|subprocess\.(?:Popen|run|call|check_output)|Runtime\.getRuntime\(\)\.exec)/;
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
-const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.request\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http)/i;
+const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.(?:request|get|post|put|delete)\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http|httpx\.[a-z]+\s*\()/i;
 const SHELL_NETWORK_REGEX = /(?:^|[\s;&|`$(])(?:curl|wget|Invoke-WebRequest)\s/m;
 
-const URL_SHORTENER_PATTERNS = [
+// Domains that are almost never legitimate destinations from production code.
+// Three buckets: URL shorteners (data hiding), paste/webhook services
+// (drop sites), and OAST/tunneling services (Burp Collaborator-style
+// out-of-band callbacks used in dependency-confusion PoCs and credential
+// staging). A real library would not call any of these.
+const EXFIL_AND_CALLBACK_DOMAINS = [
+  // URL shorteners
   "bit.ly",
   "tinyurl.com",
   "t.co/",
   "goo.gl",
+  "is.gd",
+  "ow.ly",
+  // Paste / drop sites
   "pastebin.com",
   "hastebin",
+  "transfer.sh",
+  // Webhooks
   "webhook.site",
   "discord.com/api/webhooks",
-  "hooks.slack.com"
+  "hooks.slack.com",
+  "discordapp.com/api/webhooks",
+  // OAST / collaborator services (Burp, Caido, ProjectDiscovery)
+  "oast.live",
+  "oast.fun",
+  "oast.online",
+  "oast.pro",
+  "oast.me",
+  "oast.site",
+  "oastify.com",
+  "interact.sh",
+  "burpcollaborator.net",
+  // Pipe / request inspector services
+  "requestbin.com",
+  "requestbin.net",
+  "pipedream.net",
+  "pipedream.com",
+  "rce.ee",
+  // Tunneling / reverse proxies
+  "ngrok-free.app",
+  "ngrok.io",
+  "serveo.net",
+  "lhr.life",
+  "loca.lt",
+  "trycloudflare.com"
 ];
 
 // Directive phrases targeting an LLM / auditor. Kept narrow on purpose — generic
@@ -538,7 +573,7 @@ function inspectExecNetworkCombinations(file, content, lower, findings) {
   const hasDynamicEval = DYNAMIC_EVAL_REGEX.test(content);
   const hasNetwork = NETWORK_REGEX.test(content) || SHELL_NETWORK_REGEX.test(content);
   const hardcodedIp = findPublicIpInCode(content);
-  const shortener = URL_SHORTENER_PATTERNS.find((pattern) => lower.includes(pattern));
+  const shortener = EXFIL_AND_CALLBACK_DOMAINS.find((pattern) => lower.includes(pattern));
   const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
 
   // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP /
