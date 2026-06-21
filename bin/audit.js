@@ -10,11 +10,11 @@ function printUsage() {
   process.stderr.write(
     [
       "Usage:",
-      "  agentguard < evidence.json",
-      "  agentguard --format json < evidence.json",
-      "  agentguard --file evidence.json --format markdown",
-      "  agentguard --reason --file evidence.json",
-      "  agentguard guard <npm-package|npm:name@version|./path> [--reason] [--promote-to dir] [--no-source-scan]",
+      "  pkgxray < evidence.json",
+      "  pkgxray --format json < evidence.json",
+      "  pkgxray --file evidence.json --format markdown",
+      "  pkgxray --reason --file evidence.json",
+      "  pkgxray guard <npm-package|npm:name@version|./path> [--reason] [--promote-to dir] [--no-source-scan]",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -231,10 +231,10 @@ function renderReasoningMarkdown(reasoning) {
 
 try {
   main().catch((error) => {
-    process.stderr.write(`agentguard: ${error.message}\n`);
+    process.stderr.write(`pkgxray: ${error.message}\n`);
     process.exitCode = 1;
   });
 } catch (error) {
-  process.stderr.write(`agentguard: ${error.message}\n`);
+  process.stderr.write(`pkgxray: ${error.message}\n`);
   process.exitCode = 1;
 }

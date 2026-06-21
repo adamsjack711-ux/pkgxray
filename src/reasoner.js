@@ -5,7 +5,7 @@ const { resolveProvider, listProviders } = require("./providers");
 const DEFAULT_MAX_FILES = 200;
 const DEFAULT_MAX_FILE_BYTES = 32 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 500 * 1024;
-const TRUNCATION_NOTE = "\n\n[truncated by agentguard --reason]";
+const TRUNCATION_NOTE = "\n\n[truncated by pkgxray --reason]";
 
 const SYSTEM_PROMPT = `You are the reasoning layer of a supply-chain auditor for AI coding-agent
 extensions (Claude Code / Codex plugins, MCP servers). These run with the

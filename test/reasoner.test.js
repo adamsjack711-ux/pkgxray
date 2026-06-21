@@ -26,7 +26,7 @@ test("buildEvidencePack truncates oversized files", () => {
     { maxFileBytes: 64 }
   );
   assert.ok(pack.sourceFiles["big.js"].length <= 64);
-  assert.match(pack.sourceFiles["big.js"], /truncated by agentguard --reason/);
+  assert.match(pack.sourceFiles["big.js"], /truncated by pkgxray --reason/);
 });
 
 test("buildEvidencePack respects total byte cap", () => {

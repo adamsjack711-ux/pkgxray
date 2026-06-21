@@ -1,13 +1,13 @@
 {
-  "name": "@jackadamslovell/agentguard",
-  "version": "0.3.0",
+  "name": "pkgxray",
+  "version": "0.1.0",
   "description": "Local CLI and MCP server that audits AI-agent extensions and npm packages for supply-chain risk. Zero-dep static heuristics + sandboxed quarantine + optional multi-provider (Claude / GPT / Gemini) reasoning layer.",
   "license": "MIT",
   "author": "Jack Adams-Lovell",
   "type": "commonjs",
   "bin": {
-    "agentguard": "./bin/audit.js",
-    "agentguard-mcp": "./bin/mcp-server.js"
+    "pkgxray": "./bin/audit.js",
+    "pkgxray-mcp": "./bin/mcp-server.js"
   },
   "files": [
     "bin/",
@@ -23,11 +23,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/adamsjack711-ux/agentguard.git"
+    "url": "git+https://github.com/adamsjack711-ux/pkgxray.git"
   },
-  "homepage": "https://github.com/adamsjack711-ux/agentguard#readme",
+  "homepage": "https://github.com/adamsjack711-ux/pkgxray#readme",
   "bugs": {
-    "url": "https://github.com/adamsjack711-ux/agentguard/issues"
+    "url": "https://github.com/adamsjack711-ux/pkgxray/issues"
   },
   "keywords": [
     "mcp",

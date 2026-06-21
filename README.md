@@ -1,4 +1,4 @@
-# agentguard
+# pkgxray
 
 Local CLI + MCP server for triaging whether an AI coding-agent extension, Codex
 plugin, Claude Code extension, or npm package is safe to install — from supplied
@@ -7,9 +7,9 @@ evidence or by fetching a real npm tarball into a sandboxed quarantine.
 ## Install
 
 ```bash
-npm install -g @jackadamslovell/agentguard
+npm install -g pkgxray
 # or use one-shot via npx:
-npx @jackadamslovell/agentguard guard npm:some-package@1.2.3
+npx pkgxray guard npm:some-package@1.2.3
 ```
 
 It is intentionally conservative. It only reports evidence it can cite from
@@ -23,17 +23,17 @@ metadata or source text, and it returns one of:
 ## CLI
 
 ```bash
-agentguard --file examples/evidence.json
-agentguard --format json --file examples/evidence.json
+pkgxray --file examples/evidence.json
+pkgxray --format json --file examples/evidence.json
 ```
 
 Guard an extension before handing it to an agent:
 
 ```bash
-agentguard guard ./some-local-extension
-agentguard guard npm:some-mcp-server@1.2.3 --format json
-agentguard guard ./some-local-extension --promote-to ./approved/some-local-extension
-agentguard guard npm:is-number@7.0.0 --no-source-scan --format json
+pkgxray guard ./some-local-extension
+pkgxray guard npm:some-mcp-server@1.2.3 --format json
+pkgxray guard ./some-local-extension --promote-to ./approved/some-local-extension
+pkgxray guard npm:is-number@7.0.0 --no-source-scan --format json
 ```
 
 The guard flow stages the extension in a private quarantine directory, audits
@@ -89,8 +89,8 @@ Use the stdio server from any MCP-capable agent:
 ```json
 {
   "mcpServers": {
-    "agentguard": {
-      "command": "agentguard-mcp"
+    "pkgxray": {
+      "command": "pkgxray-mcp"
     }
   }
 }
@@ -129,18 +129,18 @@ Supports Anthropic (Claude), OpenAI (GPT), and Google (Gemini).
 # Anthropic (default)
 export ANTHROPIC_API_KEY=sk-ant-...
 npm install -g @anthropic-ai/sdk
-agentguard --reason --file evidence.json
-agentguard guard npm:some-pkg --reason --format json
+pkgxray --reason --file evidence.json
+pkgxray guard npm:some-pkg --reason --format json
 
 # OpenAI
 export OPENAI_API_KEY=sk-...
 npm install -g openai
-agentguard guard npm:some-pkg --reason --reason-provider openai
+pkgxray guard npm:some-pkg --reason --reason-provider openai
 
 # Gemini
 export GEMINI_API_KEY=...
 npm install -g @google/generative-ai
-agentguard guard npm:some-pkg --reason --reason-model gemini-2.5-pro
+pkgxray guard npm:some-pkg --reason --reason-model gemini-2.5-pro
 ```
 
 Provider is selected by `--reason-provider <anthropic|openai|gemini>` or

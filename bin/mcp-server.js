@@ -179,7 +179,7 @@ function handleRequest(request) {
         protocolVersion: params && params.protocolVersion ? params.protocolVersion : "2024-11-05",
         capabilities: { tools: {} },
         serverInfo: {
-          name: "supply-chain-auditor",
+          name: "pkgxray",
           version: "0.1.0"
         }
       }
