@@ -7,9 +7,9 @@ evidence or by fetching a real npm tarball into a sandboxed quarantine.
 ## Install
 
 ```bash
-npm install -g agentguard
+npm install -g @jackadamslovell/agentguard
 # or use one-shot via npx:
-npx agentguard guard npm:some-package@1.2.3
+npx @jackadamslovell/agentguard guard npm:some-package@1.2.3
 ```
 
 It is intentionally conservative. It only reports evidence it can cite from

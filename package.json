@@ -1,5 +1,5 @@
 {
-  "name": "agentguard",
+  "name": "@jackadamslovell/agentguard",
   "version": "0.1.0",
   "description": "Local CLI and MCP server that audits AI-agent extensions and npm packages for supply-chain risk. Zero-dep Node. Static scan + OSV vuln precheck + sandboxed quarantine.",
   "license": "MIT",
