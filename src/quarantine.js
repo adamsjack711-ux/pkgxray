@@ -8,6 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { auditEvidence } = require("./auditor");
+const { fetchRepoMetadata } = require("./github");
 
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
@@ -65,6 +66,15 @@ async function guardExtension(reference, options = {}) {
   const resolved = await stageReference(reference, stagedPath, options);
   timings.stageMs = elapsed(stageStart);
 
+  // Start the GitHub metadata fetch the moment we have npm metadata. It runs
+  // concurrently with vuln-check and tarball download so it only adds latency
+  // if it's slower than everything else combined (rare — usually <250ms).
+  const githubStart = now();
+  const githubMetadataPromise = options.githubMetadata === false
+    ? Promise.resolve(null)
+    : fetchRepoMetadata(resolved.npmMetadata && resolved.npmMetadata.repository)
+        .catch(() => null);
+
   const vulnerabilityStart = now();
   const vulnerabilities =
     options.vulnerabilityCheck === false
@@ -89,10 +99,15 @@ async function guardExtension(reference, options = {}) {
     timings.sourceCollectionMs = 0;
   }
 
+  // By now the GitHub fetch is either done or has been running concurrently
+  // with everything above; await whatever remains.
+  const githubMetadata = await githubMetadataPromise;
+  timings.githubMetadataMs = elapsed(githubStart);
+
   const evidence = {
     packageName: resolved.packageName || reference,
     npmMetadata: resolved.npmMetadata || null,
-    githubMetadata: null,
+    githubMetadata,
     webPresence: null,
     knownVulnerabilities: vulnerabilities,
     sourceFiles
@@ -107,6 +122,7 @@ async function guardExtension(reference, options = {}) {
     reference,
     resolved,
     sourceFiles,
+    githubMetadata,
     vulnerabilityPrecheck: {
       enabled: options.vulnerabilityCheck !== false,
       database: "OSV",

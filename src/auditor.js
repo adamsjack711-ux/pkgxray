@@ -239,7 +239,12 @@ const BAND_DEFINITIONS = [
   { band: "bulk-env", label: "bulk-env-access", categories: ["environment-access"], rationale: "Reads the entire process environment in bulk; risky paired with network." },
   { band: "clipboard", label: "clipboard-access", categories: ["data-access"], rationale: "Reads or writes the system clipboard — can expose copied secrets." },
   { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
-  { band: "missing-metadata", label: "missing-metadata", categories: ["missing-metadata", "supply-chain-signal"], rationale: "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped." }
+  { band: "missing-metadata", label: "missing-metadata", categories: ["missing-metadata", "supply-chain-signal", "github-fetch"], rationale: "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped." },
+  { band: "github-mismatch", label: "github-mismatch", categories: ["github-mismatch"], rationale: "package.json points at a GitHub repo that doesn't exist or doesn't match — strong typosquat / impersonation signal." },
+  { band: "github-archived", label: "github-archived", categories: ["github-archived"], rationale: "Linked repository is archived or disabled — no maintenance, security issues will not be fixed." },
+  { band: "github-young", label: "github-young", categories: ["github-young"], rationale: "Linked repository was created within the last 30 days — common slopsquat shape." },
+  { band: "github-lonely", label: "github-lonely", categories: ["github-lonely"], rationale: "0 stars + 0 forks + low watcher count on a young repo. Low community signal." },
+  { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." }
 ];
 
 const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3 };
@@ -285,8 +290,111 @@ function auditMetadata(evidence, findings) {
   }
 
   inspectMetadataObject("NPM_METADATA", evidence.npmMetadata, findings);
-  inspectMetadataObject("GITHUB_METADATA", evidence.githubMetadata, findings);
+  inspectGithubMetadata(evidence, findings);
   inspectKnownVulnerabilities(evidence.knownVulnerabilities, findings);
+}
+
+const YOUNG_REPO_DAYS = 30;
+const STALE_REPO_DAYS = 365 * 2;
+
+function daysAgo(iso) {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.floor(ms / 86400000);
+}
+
+function inspectGithubMetadata(evidence, findings) {
+  const meta = evidence.githubMetadata;
+  if (!meta || typeof meta !== "object") {
+    findings.push({
+      severity: "info",
+      category: "missing-metadata",
+      file: "GITHUB_METADATA",
+      snippet: "GITHUB_METADATA was not provided.",
+      rationale: "Supply-chain reputation and repository consistency could not be checked."
+    });
+    return;
+  }
+
+  if (meta.found === false) {
+    const where = meta.owner && meta.repo ? `${meta.owner}/${meta.repo}` : "linked URL";
+    if (meta.reason === "not-found") {
+      findings.push({
+        severity: "high",
+        category: "github-mismatch",
+        file: "GITHUB_METADATA",
+        snippet: `Repository ${where} 404s on GitHub`,
+        rationale:
+          "package.json points at a GitHub repository that does not exist. Strong typosquat / impersonation signal."
+      });
+    } else if (meta.reason === "not-github") {
+      // Not a GitHub URL at all — skip silently.
+    } else {
+      findings.push({
+        severity: "info",
+        category: "github-fetch",
+        file: "GITHUB_METADATA",
+        snippet: meta.message || "Could not reach GitHub API",
+        rationale: "Provenance metadata could not be fetched; cross-checks skipped."
+      });
+    }
+    return;
+  }
+
+  if (meta.archived) {
+    findings.push({
+      severity: "medium",
+      category: "github-archived",
+      file: "GITHUB_METADATA",
+      snippet: `${meta.full_name} is archived (read-only)`,
+      rationale: "Archived repos receive no maintenance; security issues will not be fixed."
+    });
+  }
+
+  if (meta.disabled) {
+    findings.push({
+      severity: "medium",
+      category: "github-archived",
+      file: "GITHUB_METADATA",
+      snippet: `${meta.full_name} is disabled`,
+      rationale: "Disabled repos cannot be updated; maintainer access may be revoked."
+    });
+  }
+
+  const ageDays = daysAgo(meta.created_at);
+  if (ageDays !== null && ageDays < YOUNG_REPO_DAYS) {
+    findings.push({
+      severity: "medium",
+      category: "github-young",
+      file: "GITHUB_METADATA",
+      snippet: `${meta.full_name} created ${ageDays} days ago`,
+      rationale:
+        "Brand-new repository combined with an npm package using a popular-sounding name is a classic slopsquat / impersonation shape."
+    });
+  }
+
+  const lonelySignal = (meta.stars || 0) === 0 && (meta.forks || 0) === 0 && (meta.watchers || 0) <= 1;
+  if (lonelySignal && (ageDays === null || ageDays < 90)) {
+    findings.push({
+      severity: "low",
+      category: "github-lonely",
+      file: "GITHUB_METADATA",
+      snippet: `${meta.full_name} has 0 stars, 0 forks, ${ageDays !== null ? `${ageDays} days old` : "unknown age"}`,
+      rationale:
+        "Very low community signal. Common for new tools, but compounds the slopsquat risk on similarly-named popular packages."
+    });
+  }
+
+  const pushedDaysAgo = daysAgo(meta.pushed_at);
+  if (pushedDaysAgo !== null && pushedDaysAgo > STALE_REPO_DAYS && !meta.archived) {
+    findings.push({
+      severity: "info",
+      category: "github-stale",
+      file: "GITHUB_METADATA",
+      snippet: `${meta.full_name} last push ${pushedDaysAgo} days ago`,
+      rationale: "Repo has not seen a push in over two years; consider whether it's still maintained."
+    });
+  }
 }
 
 function inspectKnownVulnerabilities(vulnerabilities, findings) {

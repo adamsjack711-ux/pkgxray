@@ -102,6 +102,11 @@ function guardToolDefinition() {
           default: true,
           description: "Set false to skip OSV vulnerability intelligence checks."
         },
+        githubMetadata: {
+          type: "boolean",
+          default: true,
+          description: "Set false to skip the GitHub provenance cross-check."
+        },
         outputFormat: {
           type: "string",
           enum: ["markdown", "json"],

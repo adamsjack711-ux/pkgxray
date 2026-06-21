@@ -49,6 +49,8 @@ function parseArgs(argv) {
       options.sourceScan = false;
     } else if (arg === "--no-vulnerability-check") {
       options.vulnerabilityCheck = false;
+    } else if (arg === "--no-github") {
+      options.githubMetadata = false;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
