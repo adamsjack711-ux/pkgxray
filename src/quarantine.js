@@ -196,6 +196,8 @@ async function resolveNpmPackage(specifier, options) {
     version: metadata.version,
     needsDownload: true,
     tarballUrl,
+    integrity: (metadata.dist && metadata.dist.integrity) || null,
+    shasum: (metadata.dist && metadata.dist.shasum) || null,
     npmMetadata: npmMetadataForEvidence(metadata)
   };
 }
@@ -205,8 +207,64 @@ async function downloadResolvedPackage(resolved, stagedPath) {
   await fsp.mkdir(path.dirname(stagedPath), { recursive: true, mode: 0o700 });
   await downloadFile(resolved.tarballUrl, archivePath);
   resolved.sha256 = await hashFile(archivePath);
+
+  try {
+    await verifyNpmTarballIntegrity(resolved, archivePath);
+  } catch (error) {
+    await fsp.rm(archivePath, { force: true });
+    throw error;
+  }
+
   await fsp.mkdir(stagedPath, { recursive: true, mode: 0o700 });
   await extractTarball(archivePath, stagedPath);
+}
+
+async function verifyNpmTarballIntegrity(resolved, archivePath) {
+  if (resolved.integrity) {
+    const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
+    const dashIndex = firstEntry.indexOf("-");
+    if (dashIndex <= 0) {
+      throw new Error(`npm tarball integrity field is malformed: ${resolved.integrity}`);
+    }
+    const algo = firstEntry.slice(0, dashIndex);
+    const expectedBase64 = firstEntry.slice(dashIndex + 1);
+    const actualBase64 = await hashFileDigest(archivePath, algo, "base64");
+    if (actualBase64 !== expectedBase64) {
+      throw new Error(
+        `npm tarball integrity mismatch: expected ${firstEntry} got ${algo}-${actualBase64}`
+      );
+    }
+    return;
+  }
+
+  if (resolved.shasum) {
+    const expectedHex = String(resolved.shasum).trim().toLowerCase();
+    const actualHex = (await hashFileDigest(archivePath, "sha1", "hex")).toLowerCase();
+    if (actualHex !== expectedHex) {
+      throw new Error(
+        `npm tarball integrity mismatch: expected sha1-${expectedHex} got sha1-${actualHex}`
+      );
+    }
+    return;
+  }
+
+  throw new Error("npm tarball has no published integrity field");
+}
+
+function hashFileDigest(filePath, algorithm, encoding) {
+  return new Promise((resolve, reject) => {
+    let hash;
+    try {
+      hash = crypto.createHash(algorithm);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    fs.createReadStream(filePath)
+      .on("data", (chunk) => hash.update(chunk))
+      .on("error", reject)
+      .on("end", () => resolve(hash.digest(encoding)));
+  });
 }
 
 function npmMetadataForEvidence(metadata) {
