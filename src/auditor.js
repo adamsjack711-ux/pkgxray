@@ -380,12 +380,16 @@ function inspectCredentialAccess(file, lower, findings) {
     }
   }
 
-  if (
-    (lower.includes("process.env") || lower.includes("os.environ")) &&
-    (lower.includes("json.stringify(process.env)") ||
-      lower.includes("object.entries(process.env)") ||
-      lower.includes("for (const") && lower.includes("process.env"))
-  ) {
+  const bulkEnvPatterns = [
+    /JSON\.stringify\(\s*process\.env/i,
+    /Object\.(?:entries|keys|values)\s*\(\s*process\.env/i,
+    /for\s*\(\s*(?:const|let|var)\s+\w+\s+(?:of|in)\s+(?:Object\.(?:keys|values|entries)\s*\(\s*)?process\.env/i,
+    /json\.dumps\(\s*(?:dict\(\s*)?os\.environ/i,
+    /dict\(\s*os\.environ/i,
+    /for\s+\w+\s+in\s+os\.environ/i
+  ];
+
+  if (bulkEnvPatterns.some((pattern) => pattern.test(file.content))) {
     findings.push({
       severity: "medium",
       category: "environment-access",
