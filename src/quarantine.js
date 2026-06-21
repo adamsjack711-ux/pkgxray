@@ -223,15 +223,18 @@ function npmMetadataForEvidence(metadata) {
 async function fetchNpmMetadata(specifier, registry) {
   const parsed = parseNpmSpecifier(specifier);
   const encodedName = encodeURIComponent(parsed.name);
-  const metadataUrl = `${registry.replace(/\/$/, "")}/${encodedName}`;
-  const packageMetadata = await fetchJson(metadataUrl);
-  const version =
-    parsed.version ||
-    (packageMetadata["dist-tags"] && packageMetadata["dist-tags"].latest);
-  if (!version || !packageMetadata.versions || !packageMetadata.versions[version]) {
-    throw new Error(`Version not found for npm package: ${specifier}`);
+  const versionSegment = parsed.version
+    ? encodeURIComponent(parsed.version)
+    : "latest";
+  const metadataUrl = `${registry.replace(/\/$/, "")}/${encodedName}/${versionSegment}`;
+  try {
+    return await fetchJson(metadataUrl);
+  } catch (error) {
+    if (error && error.statusCode === 404) {
+      throw new Error(`Version not found for npm package: ${specifier}`);
+    }
+    throw error;
   }
-  return packageMetadata.versions[version];
 }
 
 function parseNpmSpecifier(specifier) {
@@ -261,7 +264,9 @@ function fetchJson(url) {
     https
       .get(url, { headers: { "user-agent": "supply-chain-auditor/0.1.0" } }, (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`HTTP ${response.statusCode} from ${url}`));
+          const httpError = new Error(`HTTP ${response.statusCode} from ${url}`);
+          httpError.statusCode = response.statusCode;
+          reject(httpError);
           response.resume();
           return;
         }
