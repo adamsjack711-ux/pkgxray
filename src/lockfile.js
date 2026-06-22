@@ -213,19 +213,51 @@ async function auditLockfile(filePath, options = {}) {
   }
   const osvMs = Date.now() - start;
 
+  // Triage decisions can be passed in explicitly or implicitly loaded from
+  // <lockfile-dir>/.pkgxray.lock. Explicit takes precedence; pass false to
+  // disable lookup entirely (used internally to avoid recursion).
+  let triageDecisions = options.triageDecisions;
+  if (triageDecisions === undefined) {
+    try {
+      const { loadDecisionsSync, lockPathForLockfile } = require("./triage");
+      triageDecisions = loadDecisionsSync(lockPathForLockfile(filePath));
+    } catch {
+      triageDecisions = new Map();
+    }
+  } else if (triageDecisions === false || triageDecisions === null) {
+    triageDecisions = new Map();
+  }
+
   const results = [];
   for (let i = 0; i < queries.length; i += 1) {
     const dep = queries[i];
     const osv = osvResults[i] || {};
     const vulns = Array.isArray(osv.vulns) ? osv.vulns : [];
-    const decision = vulns.length > 0 ? "block" : "safe";
+    let decision = vulns.length > 0 ? "block" : "safe";
+    let triaged = false;
+    const triageKey = `${dep.name}@${dep.version}`;
+    const triageEntry = triageDecisions && triageDecisions.get
+      ? triageDecisions.get(triageKey)
+      : undefined;
+    if (triageEntry) {
+      triaged = true;
+      if (triageEntry.decision === "allow") {
+        // Allowed packages do not contribute to the block count regardless of
+        // OSV findings.
+        decision = "safe";
+      } else if (triageEntry.decision === "block") {
+        // Block stays block; if OSV said safe, still surface as block.
+        decision = "block";
+      }
+    }
     results.push({
       name: dep.name,
       version: dep.version,
       paths: dep.paths.slice(0, 3),
       decision,
       vulnerabilities: vulns.map((v) => ({ id: v.id, aliases: v.aliases || [] })),
-      deep: null
+      deep: null,
+      triaged
     });
   }
 

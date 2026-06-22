@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const { auditEvidence, renderMarkdown } = require("../src/auditor");
 const { guardExtension } = require("../src/quarantine");
 const { auditLockfile } = require("../src/lockfile");
+const { triageLockfile } = require("../src/triage");
 
 function printUsage() {
   process.stderr.write(
@@ -15,6 +16,8 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan]",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
+      "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
+      "  pkgxray triage --resume                                                  # resume interrupted triage",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -33,6 +36,17 @@ function parseArgs(argv) {
     options.command = "auditLockfile";
     options.lockfilePath = argv[1];
     argv = argv.slice(2);
+  } else if (argv[0] === "triage") {
+    options.command = "triage";
+    // Allow `pkgxray triage --resume` with no lockfile path (we resolve at
+    // run time from CWD's .pkgxray.lock if it exists; otherwise we still
+    // require a lockfile path).
+    if (argv[1] && !argv[1].startsWith("--")) {
+      options.lockfilePath = argv[1];
+      argv = argv.slice(2);
+    } else {
+      argv = argv.slice(1);
+    }
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -65,6 +79,12 @@ function parseArgs(argv) {
     } else if (arg === "--deep-all") {
       options.deep = true;
       options.deepAll = true;
+    } else if (arg === "--include-safe") {
+      options.includeSafe = true;
+    } else if (arg === "--resume") {
+      options.resume = true;
+    } else if (arg === "--auto") {
+      options.auto = argv[++i];
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -100,6 +120,27 @@ async function main() {
       process.stdout.write(`${renderGuardMarkdown(result)}\n`);
     }
     process.exitCode = result.decision === "block" ? 2 : result.decision === "review" ? 3 : 0;
+    return;
+  }
+
+  if (options.command === "triage") {
+    if (!options.lockfilePath) {
+      throw new Error("triage requires a lockfile path (package-lock.json | yarn.lock | pnpm-lock.yaml | package.json)");
+    }
+    try {
+      const result = await triageLockfile(options.lockfilePath, options);
+      // Exit 0 when triage completes (or auto-mode runs) — the user has
+      // exercised judgment, so a blocked count isn't an error here.
+      process.exitCode = 0;
+      // result intentionally not printed beyond the in-loop output.
+      void result;
+    } catch (error) {
+      if (error && error.code === "ENOTTY") {
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
     return;
   }
 
@@ -147,7 +188,8 @@ function renderLockfileMarkdown(result) {
     lines.push("Blocked packages:");
     for (const r of blocked.slice(0, 25)) {
       const vulnIds = r.vulnerabilities.map((v) => v.id).join(", ");
-      lines.push(`- **${r.name}@${r.version}** — ${vulnIds || "OSV vulnerabilities"}`);
+      const triagedTag = r.triaged ? " _(triaged)_" : "";
+      lines.push(`- **${r.name}@${r.version}**${triagedTag} — ${vulnIds || "OSV vulnerabilities"}`);
       if (r.paths.length > 0) {
         lines.push(`  pulled in by: ${r.paths[0]}`);
       }
