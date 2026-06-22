@@ -15,6 +15,28 @@ const SKIP_DIRS = new Set([
   "__pycache__"
 ]);
 
+// File extensions/patterns that don't carry attack signal — we hash neither
+// the npm copy nor the github copy, which keeps the diff fast on huge repos
+// like TypeScript (thousands of .d.ts files in lib/). Anything that's
+// minified, generated, or pure declarations falls here.
+const HASH_SKIP_PATTERNS = [
+  /\.d\.ts$/i,
+  /\.d\.cts$/i,
+  /\.d\.mts$/i,
+  /\.min\.js$/i,
+  /\.min\.mjs$/i,
+  /\.min\.cjs$/i,
+  /\.min\.css$/i,
+  /\.js\.map$/i,
+  /\.css\.map$/i,
+  /\.tsbuildinfo$/i,
+  /\.snap$/i
+];
+
+function shouldSkipHash(rel) {
+  return HASH_SKIP_PATTERNS.some((re) => re.test(rel));
+}
+
 // File patterns that are expected to differ — never used to drive findings.
 const ALWAYS_IGNORE = [
   /(?:^|\/)package\.json$/,
@@ -73,7 +95,7 @@ function isSourceFile(relPath) {
   return SOURCE_EXTENSIONS.has(ext);
 }
 
-async function hashTree(root, subdir, limits) {
+async function hashTree(root, subdir, limits, options = {}) {
   const baseDir = subdir ? path.join(root, subdir) : root;
   try {
     await fsp.access(baseDir);
@@ -81,12 +103,19 @@ async function hashTree(root, subdir, limits) {
     return null;
   }
   const result = new Map();
+  const dirs = new Set();
   const queue = [""];
   let totalBytes = 0;
   let totalFiles = 0;
   const maxFiles = limits.maxFiles || 5000;
   const maxBytes = limits.maxBytes || 50 * 1024 * 1024;
   const maxFileBytes = limits.maxFileBytes || 1024 * 1024;
+  // When `onlyHashPaths` is provided, walk the whole tree (to learn the
+  // directory set used by the parent-dir-exists check downstream) but
+  // ONLY hash files whose path appears in the set. This is what keeps the
+  // diff fast on huge repos like TypeScript where the github source tree
+  // has 10x more files than the npm tarball.
+  const onlyHashPaths = options.onlyHashPaths || null;
 
   while (queue.length > 0 && totalFiles < maxFiles && totalBytes < maxBytes) {
     const rel = queue.shift();
@@ -101,10 +130,14 @@ async function hashTree(root, subdir, limits) {
       const childRel = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
+        dirs.add(childRel);
         queue.push(childRel);
         continue;
       }
       if (!entry.isFile()) continue;
+      if (shouldSkipHash(childRel)) continue;
+      // Skip files we'll never use a hash for. Saves the stat + sha256.
+      if (onlyHashPaths && !onlyHashPaths.has(childRel)) continue;
       const childFull = path.join(baseDir, childRel);
       let stat;
       try {
@@ -117,7 +150,6 @@ async function hashTree(root, subdir, limits) {
         continue;
       }
       if (totalBytes + stat.size > maxBytes) {
-        // soft cap — record presence without hash
         result.set(childRel, { size: stat.size, sha256: "skipped:tree-budget" });
         continue;
       }
@@ -128,6 +160,7 @@ async function hashTree(root, subdir, limits) {
       if (totalFiles >= maxFiles) break;
     }
   }
+  result.__dirs = dirs;
   return result;
 }
 
@@ -145,10 +178,14 @@ function hashFile(filePath) {
 // Returns null if the comparison wasn't possible.
 async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBuildScript }) {
   const limits = { maxFiles: 5000, maxBytes: 50 * 1024 * 1024 };
-  const [npmTree, ghTree] = await Promise.all([
-    hashTree(npmStagedPath, "", limits),
-    hashTree(githubStagedPath, subdir || "", limits)
-  ]);
+  // Walk npm first to learn which paths matter; then walk github only
+  // hashing files at those exact paths. For typescript this drops the
+  // github tree walk from 10k+ files to ~30.
+  const npmTree = await hashTree(npmStagedPath, "", limits);
+  const onlyHashPaths = npmTree ? new Set(npmTree.keys()) : null;
+  const ghTree = await hashTree(githubStagedPath, subdir || "", limits, {
+    onlyHashPaths
+  });
   if (!npmTree || !ghTree) {
     return {
       compared: false,
@@ -156,17 +193,11 @@ async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBui
     };
   }
 
-  // Pre-compute the set of directories that EXIST in github. We use this to
-  // decide whether an extra file is in a "real source dir" (sibling source
-  // files exist in github) or in a path github doesn't have at all (more
-  // likely build output).
-  const ghDirs = new Set();
-  for (const ghPath of ghTree.keys()) {
-    const parts = ghPath.split("/");
-    for (let i = 1; i < parts.length; i += 1) {
-      ghDirs.add(parts.slice(0, i).join("/"));
-    }
-  }
+  // Directory set from the github walk (populated as a side-channel on the
+  // result Map). Used to decide whether an extra file is in a "real source
+  // dir" (sibling source files exist in github) or in a path github
+  // doesn't have at all (more likely build output).
+  const ghDirs = ghTree.__dirs || new Set();
 
   const extraInNpm = [];
   const mismatched = [];
