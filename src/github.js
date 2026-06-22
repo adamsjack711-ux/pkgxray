@@ -49,7 +49,9 @@ function parseGithubRepo(repository) {
     /^github:([^/]+)\/(.+)$/,
     /^(?:https?|git):\/\/github\.com\/([^/]+)\/([^/?#]+)/,
     /^git@github\.com:([^/]+)\/([^/?#]+)/,
-    /^ssh:\/\/git@github\.com\/([^/]+)\/([^/?#]+)/
+    /^ssh:\/\/git@github\.com\/([^/]+)\/([^/?#]+)/,
+    // npm shorthand: bare "owner/repo" defaults to GitHub
+    /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/
   ];
   for (const pattern of patterns) {
     const match = cleaned.match(pattern);

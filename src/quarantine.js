@@ -111,7 +111,7 @@ async function guardExtension(reference, options = {}) {
   let npmVsGithubDiff = null;
   if (
     options.githubDiff !== false &&
-    resolved.type === "npm" &&
+    (resolved.type === "npm" || resolved.type === "local") &&
     githubMetadata && githubMetadata.found &&
     vulnerabilities.length === 0 &&
     Object.keys(sourceFiles).length > 0
@@ -224,10 +224,33 @@ async function stageReference(reference, stagedPath, options) {
   const parsed = parseReference(reference);
   if (parsed.type === "local") {
     await copyLocalPath(parsed.path, stagedPath);
+    // Populate npmMetadata from the staged package.json so downstream phases
+    // (github metadata cross-check, npm-vs-github diff) can work on local
+    // packages too.
+    let npmMetadata = null;
+    let packageName = path.basename(parsed.path);
+    let version = null;
+    try {
+      const pkg = JSON.parse(await fsp.readFile(path.join(stagedPath, "package.json"), "utf8"));
+      packageName = pkg.name || packageName;
+      version = pkg.version || null;
+      if (pkg.repository) {
+        npmMetadata = {
+          name: pkg.name || packageName,
+          version: pkg.version || null,
+          repository: pkg.repository,
+          maintainers: []
+        };
+      }
+    } catch {
+      // no package.json or unparseable — fine, just no metadata
+    }
     return {
       type: "local",
       source: parsed.path,
-      packageName: path.basename(parsed.path)
+      packageName,
+      version,
+      npmMetadata
     };
   }
 

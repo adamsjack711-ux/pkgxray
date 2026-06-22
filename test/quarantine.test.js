@@ -34,7 +34,9 @@ test("guards local extension in quarantine and promotes safe packages", async ()
   const result = await guardExtension(source, {
     quarantineRoot: path.join(root, "quarantine"),
     promoteTo,
-    vulnerabilityCheck: false
+    vulnerabilityCheck: false,
+    githubMetadata: false,
+    githubDiff: false
   });
 
   assert.equal(result.decision, "allow");

@@ -156,6 +156,18 @@ async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBui
     };
   }
 
+  // Pre-compute the set of directories that EXIST in github. We use this to
+  // decide whether an extra file is in a "real source dir" (sibling source
+  // files exist in github) or in a path github doesn't have at all (more
+  // likely build output).
+  const ghDirs = new Set();
+  for (const ghPath of ghTree.keys()) {
+    const parts = ghPath.split("/");
+    for (let i = 1; i < parts.length; i += 1) {
+      ghDirs.add(parts.slice(0, i).join("/"));
+    }
+  }
+
   const extraInNpm = [];
   const mismatched = [];
   const matched = [];
@@ -164,20 +176,25 @@ async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBui
     if (isAlwaysIgnored(rel)) continue;
     const ghEntry = ghTree.get(rel);
     if (!ghEntry) {
-      // Files in the npm tarball but NOT in the github repo at the matching
-      // ref. If the package has a build script, root-level JS at non-source
-      // paths is probably bundled / generated and we can't reliably catch
-      // tampering there — demote to silent. We DO still surface extras in
-      // paths that look like source trees (`src/`, `lib/`, `tests/`,
-      // `scripts/`) since those should be 1:1 even with a build step.
+      const parentDir = rel.includes("/") ? rel.split("/").slice(0, -1).join("/") : "";
+      const parentExistsInGh = parentDir === "" || ghDirs.has(parentDir);
+      // An extra file inside a directory that exists in github is the strong
+      // ATO signal — github has the dir, the attacker just dropped one more
+      // file in it. An extra file at a path github doesn't have at all is
+      // more likely build output the repo never committed.
       const inLikelySourceDir = /^(?:src|tests?|scripts|spec)\//.test(rel);
-      const category = isBuildOutput(rel)
-        ? hasBuildScript ? "expected-build-output" : "extra-build-output"
-        : isSourceFile(rel)
-          ? hasBuildScript && !inLikelySourceDir
-            ? "expected-build-output"
-            : "extra-source"
-          : "extra-other";
+      let category;
+      if (parentExistsInGh && isSourceFile(rel)) {
+        category = "extra-source";
+      } else if (isBuildOutput(rel)) {
+        category = hasBuildScript ? "expected-build-output" : "extra-build-output";
+      } else if (isSourceFile(rel)) {
+        category = hasBuildScript && !inLikelySourceDir
+          ? "expected-build-output"
+          : "extra-source";
+      } else {
+        category = "extra-other";
+      }
       extraInNpm.push({ path: rel, category, size: npmEntry.size });
       continue;
     }
