@@ -13,6 +13,10 @@ const { diffNpmVsGithub } = require("./diff");
 
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
+const DEFAULT_TARBALL_MAX_BYTES = 256 * 1024 * 1024;
+const DEFAULT_TARBALL_MAX_ENTRIES = 5000;
+const DEFAULT_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
+const DEFAULT_DOWNLOAD_MAX_REDIRECTS = 5;
 const SKIP_DIRS = new Set([
   ".git",
   "node_modules",
@@ -388,6 +392,8 @@ async function resolveNpmPackage(specifier, options) {
     version: metadata.version,
     needsDownload: true,
     tarballUrl,
+    integrity: (metadata.dist && metadata.dist.integrity) || null,
+    shasum: (metadata.dist && metadata.dist.shasum) || null,
     npmMetadata: npmMetadataForEvidence(metadata)
   };
 }
@@ -397,8 +403,65 @@ async function downloadResolvedPackage(resolved, stagedPath) {
   await fsp.mkdir(path.dirname(stagedPath), { recursive: true, mode: 0o700 });
   await downloadFile(resolved.tarballUrl, archivePath);
   resolved.sha256 = await hashFile(archivePath);
+
+  // Verify against the npm registry's published integrity field BEFORE
+  // extracting. Delete the partial file on mismatch so we never leave a
+  // hostile tarball on disk.
+  try {
+    await verifyNpmTarballIntegrity(resolved, archivePath);
+  } catch (error) {
+    await fsp.rm(archivePath, { force: true });
+    throw error;
+  }
+
   await fsp.mkdir(stagedPath, { recursive: true, mode: 0o700 });
   await extractTarball(archivePath, stagedPath);
+}
+
+async function verifyNpmTarballIntegrity(resolved, archivePath) {
+  if (resolved.integrity) {
+    const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
+    const dashIndex = firstEntry.indexOf("-");
+    if (dashIndex <= 0) {
+      throw new Error(`npm tarball integrity field is malformed: ${resolved.integrity}`);
+    }
+    const algo = firstEntry.slice(0, dashIndex);
+    const expectedBase64 = firstEntry.slice(dashIndex + 1);
+    const actualBase64 = await hashFileDigest(archivePath, algo, "base64");
+    if (actualBase64 !== expectedBase64) {
+      throw new Error(
+        `npm tarball integrity mismatch: expected ${firstEntry} got ${algo}-${actualBase64}`
+      );
+    }
+    return;
+  }
+  if (resolved.shasum) {
+    const expectedHex = String(resolved.shasum).trim().toLowerCase();
+    const actualHex = (await hashFileDigest(archivePath, "sha1", "hex")).toLowerCase();
+    if (actualHex !== expectedHex) {
+      throw new Error(
+        `npm tarball integrity mismatch: expected sha1-${expectedHex} got sha1-${actualHex}`
+      );
+    }
+    return;
+  }
+  throw new Error("npm tarball has no published integrity field");
+}
+
+function hashFileDigest(filePath, algorithm, encoding) {
+  return new Promise((resolve, reject) => {
+    let hash;
+    try {
+      hash = crypto.createHash(algorithm);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    fs.createReadStream(filePath)
+      .on("data", (chunk) => hash.update(chunk))
+      .on("error", reject)
+      .on("end", () => resolve(hash.digest(encoding)));
+  });
 }
 
 function npmMetadataForEvidence(metadata) {
@@ -412,18 +475,24 @@ function npmMetadataForEvidence(metadata) {
   };
 }
 
+// fix-5: fetch the single version metadata endpoint instead of the full
+// packument. For popular packages (lodash, react) this is the difference
+// between a 10MB+ download and a few KB.
 async function fetchNpmMetadata(specifier, registry) {
   const parsed = parseNpmSpecifier(specifier);
   const encodedName = encodeURIComponent(parsed.name);
-  const metadataUrl = `${registry.replace(/\/$/, "")}/${encodedName}`;
-  const packageMetadata = await fetchJson(metadataUrl);
-  const version =
-    parsed.version ||
-    (packageMetadata["dist-tags"] && packageMetadata["dist-tags"].latest);
-  if (!version || !packageMetadata.versions || !packageMetadata.versions[version]) {
-    throw new Error(`Version not found for npm package: ${specifier}`);
+  const versionPath = parsed.version
+    ? encodeURIComponent(parsed.version)
+    : "latest";
+  const url = `${registry.replace(/\/$/, "")}/${encodedName}/${versionPath}`;
+  try {
+    return await fetchJson(url);
+  } catch (error) {
+    if (error && error.statusCode === 404) {
+      throw new Error(`Version not found for npm package: ${specifier}`);
+    }
+    throw error;
   }
-  return packageMetadata.versions[version];
 }
 
 function parseNpmSpecifier(specifier) {
@@ -451,9 +520,11 @@ function parseNpmSpecifier(specifier) {
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
     https
-      .get(url, { headers: { "user-agent": "supply-chain-auditor/0.1.0" } }, (response) => {
+      .get(url, { headers: { "user-agent": "pkgxray/0.9.0" } }, (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`HTTP ${response.statusCode} from ${url}`));
+          const error = new Error(`HTTP ${response.statusCode} from ${url}`);
+          error.statusCode = response.statusCode;
+          reject(error);
           response.resume();
           return;
         }
@@ -556,22 +627,70 @@ function postJson(url, payload) {
   });
 }
 
-function downloadFile(url, destination) {
+function downloadFile(url, destination, options = {}) {
+  const maxBytes = options.maxBytes || DEFAULT_DOWNLOAD_MAX_BYTES;
+  const maxRedirects = options.maxRedirects || DEFAULT_DOWNLOAD_MAX_REDIRECTS;
+  const originalUrl = url;
+  const http = require("node:http");
+
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destination, { mode: 0o600 });
-    https
-      .get(url, { headers: { "user-agent": "supply-chain-auditor/0.1.0" } }, (response) => {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`HTTP ${response.statusCode} from ${url}`));
-          response.resume();
-          return;
+    let written = 0;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      file.destroy();
+      fs.unlink(destination, () => reject(err));
+    };
+    const succeed = () => {
+      if (settled) return;
+      settled = true;
+      file.close(() => resolve());
+    };
+
+    const get = (currentUrl, hops) => {
+      if (hops > maxRedirects) {
+        return fail(new Error(`Too many redirects from ${originalUrl}`));
+      }
+      const parsed = new URL(currentUrl);
+      const client = parsed.protocol === "http:" ? http : https;
+      const request = client.get(
+        {
+          hostname: parsed.hostname,
+          port: parsed.port || (parsed.protocol === "http:" ? 80 : 443),
+          path: parsed.pathname + parsed.search,
+          headers: { "user-agent": "pkgxray/0.9.0" }
+        },
+        (response) => {
+          if (
+            [301, 302, 303, 307, 308].includes(response.statusCode) &&
+            response.headers.location
+          ) {
+            response.resume();
+            return get(new URL(response.headers.location, currentUrl).toString(), hops + 1);
+          }
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            response.resume();
+            return fail(new Error(`HTTP ${response.statusCode} from ${currentUrl}`));
+          }
+          response.on("data", (chunk) => {
+            written += chunk.length;
+            if (written > maxBytes) {
+              response.destroy();
+              return fail(
+                new Error(`Download exceeded max size of ${maxBytes} bytes from ${originalUrl}`)
+              );
+            }
+          });
+          response.pipe(file);
+          file.on("finish", succeed);
+          file.on("error", fail);
         }
-        response.pipe(file);
-        file.on("finish", () => {
-          file.close(resolve);
-        });
-      })
-      .on("error", reject);
+      );
+      request.on("error", fail);
+    };
+    get(url, 0);
   });
 }
 
@@ -586,8 +705,138 @@ async function hashFile(filePath) {
   return hash.digest("hex");
 }
 
-function extractTarball(archivePath, destination) {
-  return run("tar", ["-xzf", archivePath, "-C", destination, "--strip-components", "1"]);
+async function extractTarball(archivePath, destination, options = {}) {
+  const maxBytes = options.maxTarballBytes || DEFAULT_TARBALL_MAX_BYTES;
+  const maxEntries = options.maxTarballEntries || DEFAULT_TARBALL_MAX_ENTRIES;
+
+  const listing = await runCapture("tar", ["-tvzf", archivePath]);
+  const lines = listing.split("\n").filter((line) => line.trim().length > 0);
+
+  if (lines.length > maxEntries) {
+    throw new Error(`Tarball rejected: ${lines.length} entries exceeds limit of ${maxEntries}`);
+  }
+
+  let totalBytes = 0;
+  for (const line of lines) {
+    const entry = parseTarListingLine(line);
+    if (!entry) {
+      throw new Error(`Tarball rejected: unparseable listing line: ${line}`);
+    }
+    assertSafeTarPath(entry.path);
+    if (entry.linkTarget !== null) {
+      assertSafeSymlinkTarget(entry.path, entry.linkTarget);
+    }
+    totalBytes += entry.size;
+    if (totalBytes > maxBytes) {
+      throw new Error(`Tarball rejected: uncompressed size exceeds limit of ${maxBytes} bytes`);
+    }
+  }
+
+  await run("tar", [
+    "-xzf", archivePath,
+    "-C", destination,
+    "--strip-components", "1",
+    "--no-same-owner", "--no-same-permissions"
+  ]);
+}
+
+// tar -tvzf listing formats differ between bsdtar (macOS) and GNU tar:
+//   bsdtar: "-rw-r--r--  0 user group   1234 Jan  1  2020 path"  (8 fields before path)
+//   GNU:    "-rw-r--r-- user/group 1234 2020-01-01 12:00 path"   (5 fields before path)
+// Detect format by whether field 2 contains "/".
+function parseTarListingLine(line) {
+  const parts = line.split(/\s+/).filter((p) => p.length > 0);
+  const mode = parts[0];
+  if (!mode || mode.length === 0) return null;
+  const typeChar = mode[0];
+
+  let sizeFieldIndex;
+  let prefixFieldCount;
+  if (parts.length >= 2 && parts[1].includes("/")) {
+    sizeFieldIndex = 2;
+    prefixFieldCount = 5;
+  } else {
+    sizeFieldIndex = 4;
+    prefixFieldCount = 8;
+  }
+
+  if (parts.length < prefixFieldCount + 1) return null;
+  const size = Number.parseInt(parts[sizeFieldIndex], 10);
+  if (!Number.isFinite(size) || size < 0) return null;
+
+  // Find byte offset of the (prefixFieldCount+1)-th whitespace field.
+  let fieldsSeen = 0;
+  let i = 0;
+  while (i < line.length && fieldsSeen < prefixFieldCount) {
+    while (i < line.length && /\s/.test(line[i])) i++;
+    if (i >= line.length) return null;
+    while (i < line.length && !/\s/.test(line[i])) i++;
+    fieldsSeen++;
+  }
+  while (i < line.length && /\s/.test(line[i])) i++;
+  if (i >= line.length) return null;
+
+  const remainder = line.slice(i);
+  let entryPath = remainder;
+  let linkTarget = null;
+  const arrowIdx = remainder.indexOf(" -> ");
+  if (arrowIdx !== -1) {
+    entryPath = remainder.slice(0, arrowIdx);
+    linkTarget = remainder.slice(arrowIdx + 4);
+  } else if (typeChar === "l") {
+    return null;
+  }
+  if (entryPath.length === 0) return null;
+  return { path: entryPath, size, linkTarget, typeChar };
+}
+
+function assertSafeTarPath(entryPath) {
+  if (entryPath.startsWith("/")) {
+    throw new Error(`Tarball rejected: absolute path entry: ${entryPath}`);
+  }
+  if (/^[A-Za-z]:[\\/]/.test(entryPath)) {
+    throw new Error(`Tarball rejected: drive-letter path entry: ${entryPath}`);
+  }
+  for (const segment of entryPath.split(/[\\/]+/)) {
+    if (segment === "..") {
+      throw new Error(`Tarball rejected: parent-traversal segment in: ${entryPath}`);
+    }
+  }
+}
+
+function assertSafeSymlinkTarget(entryPath, linkTarget) {
+  if (linkTarget.length === 0) {
+    throw new Error(`Tarball rejected: empty link target for: ${entryPath}`);
+  }
+  if (linkTarget.startsWith("/")) {
+    throw new Error(`Tarball rejected: absolute link target: ${entryPath} -> ${linkTarget}`);
+  }
+  if (/^[A-Za-z]:[\\/]/.test(linkTarget)) {
+    throw new Error(`Tarball rejected: drive-letter link target: ${entryPath} -> ${linkTarget}`);
+  }
+  const normalizedPath = entryPath.replace(/\\/g, "/");
+  const normalizedTarget = linkTarget.replace(/\\/g, "/");
+  const linkDir = path.posix.dirname(normalizedPath);
+  const joined = linkDir === "." ? normalizedTarget : path.posix.join(linkDir, normalizedTarget);
+  const normalized = path.posix.normalize(joined);
+  if (normalized.startsWith("../") || normalized === "..") {
+    throw new Error(`Tarball rejected: link escapes destination: ${entryPath} -> ${linkTarget}`);
+  }
+}
+
+function runCapture(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
+    });
+  });
 }
 
 function run(command, args) {
