@@ -212,6 +212,7 @@ function auditEvidence(input) {
   const grading = gradeEvidence(findings, evidence);
   const riskBands = computeRiskBands(findings);
   return {
+    schemaVersion: 1,
     verdict,
     grade: grading.grade,
     score: grading.score,
@@ -245,6 +246,7 @@ const BAND_DEFINITIONS = [
   { band: "github-young", label: "github-young", categories: ["github-young"], rationale: "Linked repository was created within the last 30 days — common slopsquat shape." },
   { band: "github-lonely", label: "github-lonely", categories: ["github-lonely"], rationale: "0 stars + 0 forks + low watcher count on a young repo. Low community signal." },
   { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." },
+  { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. Strong account-takeover / build-tampering signal." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." }
 ];
@@ -353,7 +355,44 @@ function daysAgo(iso) {
   return Math.floor(ms / 86400000);
 }
 
+// Lonely-maintainer detection. A package with exactly ONE npm maintainer is
+// a single point of failure: if that person's account is compromised, the
+// attacker can publish anything (event-stream, ua-parser-js, ESLint config-
+// conventional, etc. were all single-maintainer at the time of attack). Only
+// flagged when the package looks established enough to be a real target.
+// Reuses already-fetched data — adds zero latency.
+function inspectMaintainerSurface(evidence, findings) {
+  const ghMeta = evidence.githubMetadata;
+  const npmMeta = evidence.npmMetadata;
+  if (!npmMeta || typeof npmMeta !== "object") return;
+  const maintainers = Array.isArray(npmMeta.maintainers) ? npmMeta.maintainers : [];
+  if (maintainers.length === 0) return;
+  if (maintainers.length > 1) return;
+
+  // Only fire when the package looks established — otherwise every brand-new
+  // tool with one author would trip this band, which is noise.
+  const stars = ghMeta && ghMeta.found ? (ghMeta.stars || 0) : null;
+  const ageDays = ghMeta && ghMeta.found ? daysAgo(ghMeta.created_at) : null;
+  const established = (stars !== null && stars >= 50) || (ageDays !== null && ageDays > 365);
+  if (!established) return;
+
+  const onlyMaintainer = maintainers[0];
+  const name = onlyMaintainer && typeof onlyMaintainer === "object"
+    ? onlyMaintainer.name || onlyMaintainer.username || "?"
+    : String(onlyMaintainer);
+
+  findings.push({
+    severity: "medium",
+    category: "lonely-maintainer",
+    file: "NPM_METADATA",
+    snippet: `Single npm maintainer: ${name}${stars !== null ? ` · ${stars} stars` : ""}${ageDays !== null ? ` · ${ageDays}d old` : ""}`,
+    rationale:
+      "Established package with exactly one publishing maintainer — single point of failure. If that account is compromised, the attacker can publish any code. (event-stream, ua-parser-js, conventional-changelog-conventionalcommits, etc. were all single-maintainer at the time of their attacks.)"
+  });
+}
+
 function inspectGithubMetadata(evidence, findings) {
+  inspectMaintainerSurface(evidence, findings);
   const meta = evidence.githubMetadata;
   if (!meta || typeof meta !== "object") {
     findings.push({

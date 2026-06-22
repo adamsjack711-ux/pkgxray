@@ -25,6 +25,15 @@ metadata or source text, and it returns one of:
 ```bash
 pkgxray --file examples/evidence.json
 pkgxray --format json --file examples/evidence.json
+
+# Audit a whole project's lockfile in one command (batch OSV query)
+pkgxray audit package-lock.json
+pkgxray audit yarn.lock
+pkgxray audit pnpm-lock.yaml
+pkgxray audit package.json
+
+# --deep runs the full static / GitHub layer on each blocked dep too
+pkgxray audit package-lock.json --deep
 ```
 
 Guard an extension before handing it to an agent:
@@ -129,6 +138,120 @@ malicious patterns that gate the verdict:
   tools and CLIs; recorded but does not gate the verdict.
 
 `.d.ts`, `.map`, `.min.js`, and `.lock` files are skipped entirely.
+
+## JSON output schema (v1)
+
+All JSON outputs carry a top-level `schemaVersion: 1` field. Within the `0.x`
+series, fields are **additive only** — new fields may appear, existing
+fields keep their type and meaning. Removals or type changes bump
+`schemaVersion`. Build downstream tooling against this guarantee.
+
+### `audit` / `--file evidence.json` shape
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "verdict": "safe" | "review" | "block",
+  "grade": "A+" | "A" | ... | "F",
+  "score": 0-100,
+  "parameters": { /* per-parameter scores */ },
+  "summary": "string",
+  "packageName": "string | null",
+  "riskBands": [
+    {
+      "band": "lifecycle-script" | "dynamic-eval" | "credential-access" | "persistence"
+            | "exfiltration" | "obfuscation" | "prompt-injection" | "lonely-maintainer"
+            | "github-mismatch" | "github-archived" | "github-young" | "github-lonely"
+            | "github-stale" | "npm-vs-github-divergence" | "npm-vs-github-clean"
+            | "known-vulnerability" | "incomplete-evidence" | "missing-metadata"
+            | "bulk-env" | "clipboard",
+      "label": "string",
+      "severity": "high" | "medium" | "low" | "info",
+      "count": number,
+      "examples": ["file/path", ...],
+      "rationale": "string"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "high" | "medium" | "low" | "info",
+      "category": "string",
+      "file": "string",
+      "snippet": "string",
+      "rationale": "string"
+    }
+  ]
+}
+```
+
+### `guard` shape
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "decision": "allow" | "review" | "block",
+  "reference": "string",
+  "resolved": {
+    "type": "npm" | "github" | "local",
+    "packageName": "string",
+    "version": "string | null",
+    "sha256": "hex (npm/github)",
+    "integrity": "sha512-... (npm)",
+    "tarballUrl": "string"
+  },
+  "githubMetadata": { /* full_name, stars, forks, created_at, ... */ } | null,
+  "npmVsGithubDiff": {
+    "compared": boolean,
+    "githubRef": "string",
+    "counts": { "matched": n, "mismatched": n, "extraSource": n, ... },
+    "suspiciousExtras": [{ "path": "string", "category": "string", "size": n }],
+    "overlapRatio": 0..1
+  } | null,
+  "vulnerabilityPrecheck": {
+    "enabled": boolean,
+    "vulnerabilityCount": n,
+    "vulnerabilities": [...]
+  },
+  "timings": { "stageMs": n, "downloadMs": n, ... },
+  "quarantinePath": "string",
+  "stagedPath": "string",
+  "promotedPath": "string | null",
+  "report": { /* see "audit" shape above */ }
+}
+```
+
+Exit codes: `0` = safe/allow, `2` = block, `3` = review.
+
+### `audit <lockfile>` shape
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "file": "string",
+  "format": "npm" | "yarn" | "pnpm" | "package-json",
+  "totalDeps": n,
+  "uniqueDeps": n,
+  "timings": { "osvMs": n, "deepMs": n, "totalMs": n },
+  "summary": { "safe": n, "reviewed": n, "blocked": n },
+  "worstDecision": "safe" | "review" | "block",
+  "results": [
+    {
+      "name": "string",
+      "version": "string",
+      "paths": ["string", ...],
+      "decision": "safe" | "review" | "block",
+      "vulnerabilities": [{ "id": "GHSA-...", "aliases": [...] }],
+      "deep": null | {
+        "verdict": "string",
+        "grade": "string",
+        "riskBands": [...]
+      }
+    }
+  ]
+}
+```
+
+Exit codes: `0` = all safe, `2` = at least one block, `3` = at least one review.
 
 ## Browser Extension
 

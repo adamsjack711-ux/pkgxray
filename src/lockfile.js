@@ -200,6 +200,8 @@ function postBatch(queries) {
 // Main audit
 // ---------------------------------------------------------------------------
 
+const DEEP_CONCURRENCY = 4;
+
 async function auditLockfile(filePath, options = {}) {
   const { format, deps } = await parseLockfile(filePath);
   const start = Date.now();
@@ -211,41 +213,93 @@ async function auditLockfile(filePath, options = {}) {
   }
   const osvMs = Date.now() - start;
 
-  // Map OSV results back to deps in the same order
   const results = [];
-  let blocked = 0;
-  let reviewed = 0;
-  let safe = 0;
-
   for (let i = 0; i < queries.length; i += 1) {
     const dep = queries[i];
     const osv = osvResults[i] || {};
     const vulns = Array.isArray(osv.vulns) ? osv.vulns : [];
     const decision = vulns.length > 0 ? "block" : "safe";
-    if (decision === "block") blocked += 1;
-    else safe += 1;
     results.push({
       name: dep.name,
       version: dep.version,
       paths: dep.paths.slice(0, 3),
       decision,
-      vulnerabilities: vulns.map((v) => ({
-        id: v.id,
-        aliases: v.aliases || []
-      }))
+      vulnerabilities: vulns.map((v) => ({ id: v.id, aliases: v.aliases || [] })),
+      deep: null
     });
   }
 
+  // --deep: for any package OSV blocked (or, configurably, every package),
+  // run full guardExtension to surface richer bands. Bounded concurrency
+  // keeps it fast on large lockfiles.
+  let deepMs = 0;
+  if (options.deep) {
+    const deepStart = Date.now();
+    const targets = options.deepAll
+      ? results
+      : results.filter((r) => r.decision === "block");
+    await runDeep(targets, options);
+    deepMs = Date.now() - deepStart;
+  }
+
+  // Re-tally after possible upgrades from deep mode (e.g. OSV missed it but
+  // static heuristics fired).
+  let blocked = 0;
+  let reviewed = 0;
+  let safe = 0;
+  for (const r of results) {
+    if (r.decision === "block") blocked += 1;
+    else if (r.decision === "review") reviewed += 1;
+    else safe += 1;
+  }
+
   return {
+    schemaVersion: 1,
     file: filePath,
     format,
     totalDeps: queries.length,
     uniqueDeps: queries.length,
-    timings: { osvMs, totalMs: Date.now() - start },
+    timings: { osvMs, deepMs, totalMs: Date.now() - start },
     summary: { safe, reviewed, blocked },
     worstDecision: blocked > 0 ? "block" : reviewed > 0 ? "review" : "safe",
     results
   };
+}
+
+async function runDeep(results, options) {
+  if (results.length === 0) return;
+  // Lazy-require to avoid a cycle (lockfile -> quarantine -> lockfile).
+  const { guardExtension } = require("./quarantine");
+  const queue = results.slice();
+  const workers = Array.from({ length: Math.min(DEEP_CONCURRENCY, queue.length) }, () => worker());
+  await Promise.all(workers);
+
+  async function worker() {
+    while (queue.length > 0) {
+      const r = queue.shift();
+      try {
+        const result = await guardExtension(`npm:${r.name}@${r.version}`, {
+          vulnerabilityCheck: false, // already done by the lockfile pass
+          githubMetadata: options.githubMetadata !== false,
+          githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
+          quarantineRoot: options.quarantineRoot
+        });
+        r.deep = {
+          verdict: result.report.verdict,
+          grade: result.report.grade,
+          riskBands: result.report.riskBands || []
+        };
+        // Upgrade the decision if deep found something worse than OSV did.
+        if (result.report.verdict === "block" && r.decision !== "block") {
+          r.decision = "block";
+        } else if (result.report.verdict === "review" && r.decision === "safe") {
+          r.decision = "review";
+        }
+      } catch (error) {
+        r.deep = { error: error.message };
+      }
+    }
+  }
 }
 
 module.exports = {

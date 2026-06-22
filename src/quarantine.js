@@ -151,6 +151,7 @@ async function guardExtension(reference, options = {}) {
   const decision = decisionForReport(report, options.policy || "safe-only");
 
   const result = {
+    schemaVersion: 1,
     decision,
     reference,
     resolved,

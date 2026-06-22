@@ -60,6 +60,11 @@ function parseArgs(argv) {
       options.githubDiff = false;
     } else if (arg === "--no-github-diff") {
       options.githubDiff = false;
+    } else if (arg === "--deep") {
+      options.deep = true;
+    } else if (arg === "--deep-all") {
+      options.deep = true;
+      options.deepAll = true;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -146,12 +151,23 @@ function renderLockfileMarkdown(result) {
       if (r.paths.length > 0) {
         lines.push(`  pulled in by: ${r.paths[0]}`);
       }
+      if (r.deep && r.deep.riskBands && r.deep.riskBands.length > 0) {
+        const bands = r.deep.riskBands
+          .filter((b) => b.severity === "high" || b.severity === "medium")
+          .map((b) => `${b.severity[0].toUpperCase()}:${b.label}`)
+          .join(", ");
+        if (bands) lines.push(`  deep scan: ${bands}`);
+      }
     }
     if (blocked.length > 25) {
       lines.push(`  ...and ${blocked.length - 25} more`);
     }
   } else {
     lines.push("No blocked packages.");
+  }
+  if (result.timings.deepMs > 0) {
+    lines.push("");
+    lines.push(`Deep-scan added ${result.timings.deepMs} ms`);
   }
   return lines.join("\n");
 }
