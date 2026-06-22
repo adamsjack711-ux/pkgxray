@@ -4,6 +4,7 @@
 const fs = require("node:fs");
 const { auditEvidence, renderMarkdown } = require("../src/auditor");
 const { guardExtension } = require("../src/quarantine");
+const { auditLockfile } = require("../src/lockfile");
 
 function printUsage() {
   process.stderr.write(
@@ -13,6 +14,7 @@ function printUsage() {
       "  pkgxray --format json < evidence.json",
       "  pkgxray --file evidence.json --format markdown",
       "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan]",
+      "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -26,6 +28,10 @@ function parseArgs(argv) {
   if (argv[0] === "guard") {
     options.command = "guard";
     options.reference = argv[1];
+    argv = argv.slice(2);
+  } else if (argv[0] === "audit") {
+    options.command = "auditLockfile";
+    options.lockfilePath = argv[1];
     argv = argv.slice(2);
   }
 
@@ -92,6 +98,20 @@ async function main() {
     return;
   }
 
+  if (options.command === "auditLockfile") {
+    if (!options.lockfilePath) {
+      throw new Error("audit requires a lockfile path (package-lock.json | yarn.lock | pnpm-lock.yaml | package.json)");
+    }
+    const result = await auditLockfile(options.lockfilePath, options);
+    if (options.format === "json") {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${renderLockfileMarkdown(result)}\n`);
+    }
+    process.exitCode = result.worstDecision === "block" ? 2 : result.worstDecision === "review" ? 3 : 0;
+    return;
+  }
+
   const raw = readInput(options.file).trim();
   if (!raw) {
     throw new Error("No evidence JSON provided");
@@ -107,6 +127,33 @@ async function main() {
   }
 
   process.exitCode = report.verdict === "block" ? 2 : report.verdict === "review" ? 3 : 0;
+}
+
+function renderLockfileMarkdown(result) {
+  const lines = [];
+  lines.push(`Lockfile: \`${result.file}\` (${result.format})`);
+  lines.push(`Total deps: ${result.totalDeps}  ·  scan time: ${result.timings.totalMs} ms`);
+  lines.push("");
+  lines.push(`Decision: **${result.worstDecision.toUpperCase()}**`);
+  lines.push(`  safe: ${result.summary.safe}  ·  review: ${result.summary.reviewed}  ·  block: ${result.summary.blocked}`);
+  lines.push("");
+  const blocked = result.results.filter((r) => r.decision === "block");
+  if (blocked.length > 0) {
+    lines.push("Blocked packages:");
+    for (const r of blocked.slice(0, 25)) {
+      const vulnIds = r.vulnerabilities.map((v) => v.id).join(", ");
+      lines.push(`- **${r.name}@${r.version}** — ${vulnIds || "OSV vulnerabilities"}`);
+      if (r.paths.length > 0) {
+        lines.push(`  pulled in by: ${r.paths[0]}`);
+      }
+    }
+    if (blocked.length > 25) {
+      lines.push(`  ...and ${blocked.length - 25} more`);
+    }
+  } else {
+    lines.push("No blocked packages.");
+  }
+  return lines.join("\n");
 }
 
 function renderGuardMarkdown(result) {
