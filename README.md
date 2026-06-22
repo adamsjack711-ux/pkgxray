@@ -272,6 +272,63 @@ In Dia, try the same flow if Dia exposes Chromium extension management. If Dia
 does not currently allow unpacked extensions, use Chrome for testing and keep the
 MCP/CLI version for agent workflows.
 
+## Self-hostable cache server
+
+Every `pkgxray guard` and `pkgxray audit --deep` run fetches GitHub repo
+metadata and (for github-archive references) repo tarballs. In CI, that
+duplicates traffic across every runner, every commit, every monorepo dep.
+Run a shared cache server on the team's private network and point CI at it
+to collapse that traffic into one fetch per (repo, ref) per TTL window.
+
+```bash
+# Start on the cache host (zero deps, just Node):
+pkgxray-cache --port 8819 --cache-dir /var/cache/pkgxray
+
+# Point clients at it (env var, no code changes):
+export PKGXRAY_CACHE_URL=http://cache.internal:8819
+pkgxray guard npm:is-number@7.0.0
+pkgxray audit package-lock.json --deep
+```
+
+Routes:
+
+- `GET /github/repos/{owner}/{repo}` — proxies `api.github.com/repos/...`
+  with a 1-hour TTL. Returns the raw GitHub JSON. Sets
+  `x-pkgxray-cache: HIT|MISS`.
+- `GET /github/tarball/{owner}/{repo}/{ref}` — proxies
+  `codeload.github.com/.../tar.gz/{ref}` with a 24-hour TTL. Streams the
+  bytes; never buffers the whole tarball in memory.
+- `GET /healthz` — `{"ok": true, "version": "..."}` for liveness probes.
+
+Behaviour:
+
+- Cache layout is `<cache-dir>/github/repos/<owner>/<repo>.json` and
+  `<cache-dir>/github/tarballs/<owner>/<repo>/<ref>.tgz`. Same on-disk
+  shape as the local `~/.cache/pkgxray/` cache.
+- Concurrent requests for the same uncached resource share a single
+  upstream fetch — N CI runners that hit a cold cache at the same instant
+  still produce exactly one upstream call.
+- A 404 from upstream is forwarded to the client and **not** persisted, so
+  a missing-then-published repo is picked up on the next request.
+- The client (`pkgxray`) automatically routes through the cache when
+  `PKGXRAY_CACHE_URL` is set; with the env var unset the default path runs
+  with zero overhead — no extra hop, no extra parsing.
+- Pass `--upstream-github-api=URL` / `--upstream-codeload=URL` to point the
+  server at an alternate upstream (useful for testing or GitHub Enterprise).
+- Set `PKGXRAY_CACHE_GITHUB_TOKEN` on the server to use a team GitHub
+  token for the upstream calls (5000 req/hr instead of 60). Per-client
+  tokens can also be forwarded via the `x-pkgxray-github-token` header.
+
+**Trust model — read this before deploying.** The cache server is a
+transparent caching proxy, not an auth boundary. It has no login, no rate
+limit, and no per-client identity. Anyone who can reach it can read every
+cached repo and tarball and trigger upstream fetches against your team
+GitHub token's rate limit. **Run it on a private network or behind a
+reverse proxy (nginx, Caddy, Cloudflare Access, your VPC's load balancer)
+that enforces your own authentication and IP allowlist.** Treat the cache
+directory like any other build artifact cache — fine to nuke at any time,
+do not put it on a public network.
+
 ## Local Development
 
 ```bash
