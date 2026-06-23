@@ -7,6 +7,7 @@ const path = require("node:path");
 const https = require("node:https");
 const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
+const cacheClient = require("./cache-client");
 
 const USER_AGENT = "pkgxray/0.6.0";
 const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "github");
@@ -117,6 +118,30 @@ function githubApiGet(urlPath, token, hops = 0) {
   });
 }
 
+function reshapeRepo(parsed, repo) {
+  return {
+    found: true,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    full_name: repo.full_name,
+    description: repo.description,
+    archived: Boolean(repo.archived),
+    disabled: Boolean(repo.disabled),
+    fork: Boolean(repo.fork),
+    stars: repo.stargazers_count || 0,
+    forks: repo.forks_count || 0,
+    open_issues: repo.open_issues_count || 0,
+    watchers: repo.watchers_count || 0,
+    created_at: repo.created_at,
+    updated_at: repo.updated_at,
+    pushed_at: repo.pushed_at,
+    default_branch: repo.default_branch,
+    html_url: repo.html_url,
+    license: repo.license && repo.license.spdx_id,
+    owner_type: repo.owner && repo.owner.type
+  };
+}
+
 async function fetchRepoMetadata(repository, options = {}) {
   const parsed = parseGithubRepo(repository);
   if (!parsed) return { found: false, reason: "not-github" };
@@ -130,28 +155,13 @@ async function fetchRepoMetadata(repository, options = {}) {
   const token = options.token === undefined ? loadToken() : options.token;
 
   try {
-    const repo = await githubApiGet(`/repos/${parsed.owner}/${parsed.repo}`, token);
-    const result = {
-      found: true,
-      owner: parsed.owner,
-      repo: parsed.repo,
-      full_name: repo.full_name,
-      description: repo.description,
-      archived: Boolean(repo.archived),
-      disabled: Boolean(repo.disabled),
-      fork: Boolean(repo.fork),
-      stars: repo.stargazers_count || 0,
-      forks: repo.forks_count || 0,
-      open_issues: repo.open_issues_count || 0,
-      watchers: repo.watchers_count || 0,
-      created_at: repo.created_at,
-      updated_at: repo.updated_at,
-      pushed_at: repo.pushed_at,
-      default_branch: repo.default_branch,
-      html_url: repo.html_url,
-      license: repo.license && repo.license.spdx_id,
-      owner_type: repo.owner && repo.owner.type
-    };
+    // Route through the team cache server when configured. Falls through to a
+    // direct GitHub call only when PKGXRAY_CACHE_URL is unset, so the default
+    // path stays at zero overhead.
+    const repo = cacheClient.isEnabled()
+      ? await cacheClient.getRepoJson(parsed.owner, parsed.repo, { token })
+      : await githubApiGet(`/repos/${parsed.owner}/${parsed.repo}`, token);
+    const result = reshapeRepo(parsed, repo);
     await writeCache(cacheKey, result);
     return result;
   } catch (error) {
@@ -372,6 +382,27 @@ async function extractTarballSubset(archivePath, destination, archivePaths) {
   }
 }
 
+// Streams a tarball from the team cache server straight to disk. Uses the
+// same write semantics (mode 0o600, unlink-on-error) as downloadCodeload so
+// downstream extraction code does not need to know which source served it.
+function downloadFromCacheServer(owner, repo, ref, destination) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destination, { mode: 0o600 });
+    let cleanedUp = false;
+    const cleanup = (err) => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      file.destroy();
+      fs.unlink(destination, () => reject(err));
+    };
+    file.on("error", cleanup);
+    cacheClient
+      .streamTarball(owner, repo, ref, file, { timeoutMs: TARBALL_TIMEOUT_MS })
+      .then(() => file.close(() => resolve()))
+      .catch(cleanup);
+  });
+}
+
 // Try refs in order until one downloads. Caches the first successful one.
 async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch) {
   await fsp.mkdir(TARBALL_CACHE_DIR, { recursive: true, mode: 0o700 });
@@ -381,6 +412,8 @@ async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch) {
     candidates.push(version);
   }
   if (defaultBranch) candidates.push(defaultBranch);
+
+  const useTeamCache = cacheClient.isEnabled();
 
   for (const ref of candidates) {
     const cachePath = tarballCachePath(owner, repo, ref);
@@ -392,9 +425,13 @@ async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch) {
     } catch {
       // not cached, fall through to download
     }
-    const url = `https://codeload.github.com/${owner}/${repo}/tar.gz/${encodeURIComponent(ref)}`;
     try {
-      await downloadCodeload(url, cachePath);
+      if (useTeamCache) {
+        await downloadFromCacheServer(owner, repo, ref, cachePath);
+      } else {
+        const url = `https://codeload.github.com/${owner}/${repo}/tar.gz/${encodeURIComponent(ref)}`;
+        await downloadCodeload(url, cachePath);
+      }
       return { ref, archivePath: cachePath, fromCache: false };
     } catch (error) {
       if (error.statusCode === 404) continue;
