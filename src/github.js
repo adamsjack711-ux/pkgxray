@@ -234,9 +234,9 @@ async function downloadCodeload(url, destination) {
   });
 }
 
-function run(command, args) {
+function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], ...options });
     let stderr = "";
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
@@ -244,6 +244,21 @@ function run(command, args) {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve();
+      else reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
+    });
+  });
+}
+
+function runCapture(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve(stdout);
       else reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
     });
   });
@@ -257,6 +272,104 @@ async function extractTarball(archivePath, destination) {
     "--strip-components", "1",
     "--no-same-owner", "--no-same-permissions"
   ]);
+}
+
+// Cap on how many paths we'll pass on the command line before falling back to
+// a `-T file` listing. macOS ARG_MAX is ~256KB; we leave a wide margin since
+// some github paths are long (TypeScript has src/compiler/transformers/...).
+const TAR_ARGV_PATH_LIMIT = 400;
+
+// List entries in the tarball without unpacking. Cheap — `tar -tzf` reads the
+// archive headers but doesn't write any files to disk.
+//
+// Returns:
+//   prefix         — the leading "github-owner-repo-sha/" segment (or null if
+//                    the archive has no common prefix — codeload always uses
+//                    one, but we tolerate odd archives).
+//   entries        — Set of every path inside the archive (prefix stripped).
+//   fileEntries    — Set of file paths inside the archive (prefix stripped,
+//                    no trailing slash).
+//   dirEntries     — Set of directory paths inside the archive (prefix
+//                    stripped, no trailing slash) — including parents of
+//                    every file even when the archive doesn't emit explicit
+//                    directory entries.
+async function listTarballEntries(archivePath) {
+  const listing = await runCapture("tar", ["-tzf", archivePath]);
+  const lines = listing.split("\n").filter((l) => l.length > 0);
+  if (lines.length === 0) {
+    return { prefix: null, entries: new Set(), fileEntries: new Set(), dirEntries: new Set() };
+  }
+
+  // GitHub codeload tarballs always wrap everything under one top-level dir
+  // like "microsoft-TypeScript-abc123def/". Use the first entry's first
+  // segment as the prefix.
+  const firstSlash = lines[0].indexOf("/");
+  const prefix = firstSlash > 0 ? lines[0].slice(0, firstSlash + 1) : null;
+
+  const entries = new Set();
+  const fileEntries = new Set();
+  const dirEntries = new Set();
+  for (const raw of lines) {
+    // Reject anything that doesn't sit under the detected prefix — defensive
+    // against odd archives mixing roots.
+    if (prefix && !raw.startsWith(prefix)) continue;
+    const stripped = prefix ? raw.slice(prefix.length) : raw;
+    if (stripped.length === 0) continue;
+    // Reject path-traversal — same checks the main extractor does.
+    if (stripped.startsWith("/") || stripped.split("/").includes("..")) continue;
+    const isDir = stripped.endsWith("/");
+    const cleanPath = isDir ? stripped.slice(0, -1) : stripped;
+    if (cleanPath.length === 0) continue;
+    entries.add(cleanPath);
+    if (isDir) {
+      dirEntries.add(cleanPath);
+    } else {
+      fileEntries.add(cleanPath);
+      // Add every parent dir of this file — some tarballs omit explicit dir
+      // entries and we still need a complete parent-dir set for the
+      // "parent-exists" check downstream.
+      const parts = cleanPath.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        dirEntries.add(parts.slice(0, i).join("/"));
+      }
+    }
+  }
+  return { prefix, entries, fileEntries, dirEntries };
+}
+
+// Extract a specific subset of files from `archivePath` into `destination`,
+// with `--strip-components 1` so the codeload prefix is removed. `archivePaths`
+// is the list of paths INSIDE the tarball (with prefix still attached).
+//
+// Falls back to `-T file` when the argv would get unwieldy.
+async function extractTarballSubset(archivePath, destination, archivePaths) {
+  await fsp.mkdir(destination, { recursive: true, mode: 0o700 });
+  if (archivePaths.length === 0) {
+    // Nothing to extract — leave destination empty. Caller still gets an
+    // empty tree which is correctly "no overlap" downstream.
+    return;
+  }
+
+  const baseArgs = [
+    "-xzf", archivePath,
+    "-C", destination,
+    "--strip-components", "1",
+    "--no-same-owner", "--no-same-permissions"
+  ];
+
+  if (archivePaths.length <= TAR_ARGV_PATH_LIMIT) {
+    return run("tar", baseArgs.concat(archivePaths));
+  }
+
+  // Larger sets: write the path list to a file and use `tar -T`. Works on
+  // both macOS bsdtar and GNU tar.
+  const listFile = path.join(destination, ".pkgxray-extract-list");
+  await fsp.writeFile(listFile, archivePaths.join("\n") + "\n", { mode: 0o600 });
+  try {
+    return await run("tar", baseArgs.concat(["-T", listFile]));
+  } finally {
+    await fsp.rm(listFile, { force: true }).catch(() => {});
+  }
 }
 
 // Try refs in order until one downloads. Caches the first successful one.
@@ -295,5 +408,7 @@ module.exports = {
   parseGithubRepo,
   fetchRepoMetadata,
   fetchRepoTarballForVersion,
-  extractTarball
+  extractTarball,
+  listTarballEntries,
+  extractTarballSubset
 };

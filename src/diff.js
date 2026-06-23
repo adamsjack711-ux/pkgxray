@@ -176,7 +176,14 @@ function hashFile(filePath) {
 
 // Compare a staged npm package against the matching GitHub repo subtree.
 // Returns null if the comparison wasn't possible.
-async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBuildScript }) {
+//
+// `prepopulatedGhDirs` (optional) — caller supplies the full directory set
+// from the github archive listing. Used when the caller did a selective
+// extract (only npm-paired files) and the on-disk github tree no longer
+// reflects the repo's full directory layout. Without this, the
+// parent-dir-exists check would misclassify every extra file as
+// "github doesn't have this dir at all".
+async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBuildScript, prepopulatedGhDirs }) {
   const limits = { maxFiles: 5000, maxBytes: 50 * 1024 * 1024 };
   // Walk npm first to learn which paths matter; then walk github only
   // hashing files at those exact paths. For typescript this drops the
@@ -198,6 +205,11 @@ async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBui
   // dir" (sibling source files exist in github) or in a path github
   // doesn't have at all (more likely build output).
   const ghDirs = ghTree.__dirs || new Set();
+  if (prepopulatedGhDirs && prepopulatedGhDirs.size > 0) {
+    // Merge — the prepopulated set comes from the tarball listing and is the
+    // source of truth when the on-disk tree is a selective extract.
+    for (const d of prepopulatedGhDirs) ghDirs.add(d);
+  }
 
   const extraInNpm = [];
   const mismatched = [];

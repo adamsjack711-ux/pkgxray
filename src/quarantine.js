@@ -8,7 +8,13 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { auditEvidence } = require("./auditor");
-const { fetchRepoMetadata, fetchRepoTarballForVersion, extractTarball: extractTarballGh } = require("./github");
+const {
+  fetchRepoMetadata,
+  fetchRepoTarballForVersion,
+  extractTarball: extractTarballGh,
+  listTarballEntries,
+  extractTarballSubset
+} = require("./github");
 const { diffNpmVsGithub } = require("./diff");
 
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
@@ -190,9 +196,6 @@ async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, wor
     return { compared: false, reason: "no-matching-ref", versionTried: version };
   }
 
-  const ghStagePath = path.join(workspace, "github-tree");
-  await extractTarballGh(tarball.archivePath, ghStagePath);
-
   // package.json may set repository.directory for monorepos — narrow the
   // comparison to that subpath if present.
   const pkgRepo = resolved.npmMetadata && resolved.npmMetadata.repository;
@@ -202,11 +205,37 @@ async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, wor
   const scripts = await readScripts(npmStagedPath);
   const hasBuildScript = Boolean(scripts.prepare || scripts.prepack || scripts.build);
 
+  const ghStagePath = path.join(workspace, "github-tree");
+
+  // Selective extract: read the npm tarball's paths up front, then ask tar to
+  // unpack ONLY those same paths from the github archive. For huge repos
+  // (TypeScript: ~100MB / 10k files) this drops extraction from ~10s to <100ms
+  // because we never write the 99% of files the diff would skip anyway.
+  //
+  // The fallback path (extract everything) only runs if the listing pass fails
+  // — e.g. malformed archive or some bsdtar quirk we haven't seen yet.
+  let selectiveExtract = null;
+  try {
+    selectiveExtract = await selectivelyExtractGithubTarball({
+      archivePath: tarball.archivePath,
+      destination: ghStagePath,
+      npmStagedPath,
+      subdir
+    });
+  } catch (error) {
+    selectiveExtract = { reason: "selective-extract-failed", message: error.message };
+  }
+
+  if (!selectiveExtract || selectiveExtract.reason) {
+    await extractTarballGh(tarball.archivePath, ghStagePath);
+  }
+
   const diff = await diffNpmVsGithub({
     npmStagedPath,
     githubStagedPath: ghStagePath,
     subdir,
-    hasBuildScript
+    hasBuildScript,
+    prepopulatedGhDirs: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.dirsRelativeToSubdir : null
   });
 
   return {
@@ -214,6 +243,103 @@ async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, wor
     githubRef: tarball.ref,
     tarballFromCache: tarball.fromCache
   };
+}
+
+// Walks the npm-staged tree, intersects with the github tarball's listing,
+// and asks tar to extract only the overlapping files. Returns the directory
+// set (relative to `subdir`) so the diff's "is this extra file inside a
+// directory github also has?" check still works.
+async function selectivelyExtractGithubTarball({ archivePath, destination, npmStagedPath, subdir }) {
+  const listing = await listTarballEntries(archivePath);
+  if (!listing.prefix) {
+    // No common prefix detected — fall back to full extract. Codeload always
+    // has one, so this is the "weird tarball" escape hatch.
+    return { reason: "no-prefix" };
+  }
+
+  const npmPaths = await collectRelativeFilePaths(npmStagedPath);
+  if (npmPaths.length === 0) {
+    return { reason: "empty-npm-tree" };
+  }
+
+  // Build the archive-internal paths to extract. With subdir, the github
+  // tarball stores files at `prefix/subdir/<npm-rel>`; without subdir, just
+  // `prefix/<npm-rel>`.
+  const subdirSlash = subdir ? `${subdir.replace(/\/+$/, "")}/` : "";
+  const archivePaths = [];
+  for (const rel of npmPaths) {
+    const inTarballRelToSubdir = subdirSlash + rel;
+    // Only extract paths the tarball actually has. Passing a missing path to
+    // bsdtar fails the whole command — GNU tar prints a warning per missing
+    // file but exits non-zero too. Filter first.
+    if (!listing.fileEntries.has(inTarballRelToSubdir)) continue;
+    archivePaths.push(listing.prefix + inTarballRelToSubdir);
+  }
+
+  // Always include the package.json at the comparison root — diff downstream
+  // reads it to detect build scripts, and the .pkgxray-extract-list lives in
+  // the same dir anyway.
+  // (Optional belt-and-braces; npm tarballs always have package.json so the
+  // overlap above already covers it. Left as a no-op note.)
+
+  await extractTarballSubset(archivePath, destination, archivePaths);
+
+  // Build the directory set in the same shape `hashTree` would have produced:
+  // paths relative to `subdir`. Strip the subdir prefix from each dir.
+  const dirsRelativeToSubdir = new Set();
+  for (const d of listing.dirEntries) {
+    if (subdirSlash) {
+      if (d === subdir) continue; // the subdir root itself maps to "" — skip
+      if (!d.startsWith(subdirSlash)) continue;
+      const rel = d.slice(subdirSlash.length);
+      if (rel.length > 0) dirsRelativeToSubdir.add(rel);
+    } else {
+      dirsRelativeToSubdir.add(d);
+    }
+  }
+
+  return {
+    dirsRelativeToSubdir,
+    extractedFileCount: archivePaths.length,
+    listingEntryCount: listing.entries.size
+  };
+}
+
+// Cheap recursive file-path walk — no stat, no hash. Mirrors hashTree's
+// SKIP_DIRS so we don't list paths that diff would later ignore.
+const DIFF_SKIP_DIRS = new Set([
+  ".git",
+  "node_modules",
+  ".github",
+  ".vscode",
+  ".idea",
+  "coverage",
+  "__pycache__"
+]);
+
+async function collectRelativeFilePaths(root) {
+  const result = [];
+  const queue = [""];
+  while (queue.length > 0) {
+    const rel = queue.shift();
+    const full = rel ? path.join(root, rel) : root;
+    let entries;
+    try {
+      entries = await fsp.readdir(full, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (DIFF_SKIP_DIRS.has(entry.name)) continue;
+        queue.push(childRel);
+      } else if (entry.isFile()) {
+        result.push(childRel);
+      }
+    }
+  }
+  return result;
 }
 
 async function readScripts(stagedPath) {
