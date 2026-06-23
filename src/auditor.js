@@ -1,5 +1,7 @@
 "use strict";
 
+const { compareProvenanceToRepository } = require("./attestation");
+
 const VERDICT_ORDER = {
   safe: 0,
   review: 1,
@@ -158,7 +160,8 @@ function normalizeEvidence(input) {
     sourceFiles: normalizeSourceFiles(
       evidence.sourceFiles || evidence.SOURCE_FILES || evidence.files || {}
     ),
-    npmVsGithubDiff: evidence.npmVsGithubDiff || null
+    npmVsGithubDiff: evidence.npmVsGithubDiff || null,
+    provenanceAttestation: evidence.provenanceAttestation || null
   };
 }
 
@@ -248,7 +251,9 @@ const BAND_DEFINITIONS = [
   { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." },
   { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. Strong account-takeover / build-tampering signal." },
-  { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." }
+  { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
+  { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "Package has a sigstore-signed SLSA provenance attestation from npm linking it to a specific GitHub Action build. Strong 'really came from where it says it did' signal." },
+  { band: "provenance-mismatch", label: "provenance-mismatch", categories: ["provenance-mismatch"], rationale: "npm attestation claims the package was built from a different GitHub repo than the one listed in package.json. Strong tampering / typosquat signal." }
 ];
 
 const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3 };
@@ -295,8 +300,59 @@ function auditMetadata(evidence, findings) {
 
   inspectMetadataObject("NPM_METADATA", evidence.npmMetadata, findings);
   inspectGithubMetadata(evidence, findings);
+  inspectProvenance(evidence, findings);
   inspectKnownVulnerabilities(evidence.knownVulnerabilities, findings);
   inspectNpmVsGithubDiff(evidence, findings);
+}
+
+function inspectProvenance(evidence, findings) {
+  const att = evidence.provenanceAttestation;
+  // Silent when no attestation — ~90% of packages don't have one, so this
+  // is not a negative signal, just an absence of a positive one.
+  if (!att || !att.attested || !att.primary) return;
+
+  const primary = att.primary;
+  const repository = primary.repository || "unknown repo";
+  const workflowPath = primary.workflowPath || "unknown workflow";
+  const ref = primary.ref ? ` @ ${primary.ref}` : "";
+  const builderId = primary.builderId || null;
+  const tlogNote = primary.hasTlogEntry
+    ? " sigstore-tlog-entry present"
+    : " no sigstore-tlog-entry (unusual)";
+
+  // Mismatch first — if package.json points at one repo and the attestation
+  // points at another, that's a HIGH-severity signal.
+  const declaredRepo = evidence.npmMetadata && evidence.npmMetadata.repository;
+  const comparison = compareProvenanceToRepository(primary, declaredRepo);
+  if (comparison === "mismatch") {
+    const declaredUrl = typeof declaredRepo === "string" ? declaredRepo : (declaredRepo && declaredRepo.url) || "?";
+    findings.push({
+      severity: "high",
+      category: "provenance-mismatch",
+      file: "ATTESTATION",
+      snippet: clip(`attestation: ${repository} vs package.json: ${declaredUrl}`),
+      rationale:
+        "npm's published attestation says this package was built from a different GitHub repository than the one named in its package.json. Could indicate a typosquat, a repo rename, or supply-chain tampering. Re-verify before installing."
+    });
+    return;
+  }
+
+  // Positive: package has provenance + (we couldn't compare OR it matches).
+  const subjectNote = Array.isArray(primary.subjects) && primary.subjects.length > 0
+    ? ` · subject: ${primary.subjects[0]}`
+    : "";
+  findings.push({
+    severity: "info",
+    category: "provenance-attested",
+    file: "ATTESTATION",
+    snippet: clip(
+      `built by ${builderId || "github-hosted runner"} from ${repository}${ref} via ${workflowPath} (SLSA ${primary.slsaVersion})${subjectNote}`
+    ),
+    rationale:
+      `Package has a sigstore-signed SLSA provenance attestation linking it to ${repository} → ${workflowPath}. ` +
+      "npm verified the sigstore signature when this attestation was published; pkgxray does not re-verify." +
+      tlogNote
+  });
 }
 
 function inspectNpmVsGithubDiff(evidence, findings) {
@@ -896,7 +952,7 @@ function gradeEvidence(findings, evidence) {
     knownVulnerabilities: scoreParameter(findings, "known-vulnerability", 0.15),
     provenance: scoreParameter(
       findings,
-      ["supply-chain-signal", "missing-package-json", "missing-metadata", "package-metadata"],
+      ["supply-chain-signal", "missing-package-json", "missing-metadata", "package-metadata", "provenance-mismatch"],
       0.1
     ),
     injectionResistance: scoreParameter(findings, "injection-attempt", 0.1),

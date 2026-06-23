@@ -16,6 +16,7 @@ const {
   extractTarballSubset
 } = require("./github");
 const { diffNpmVsGithub } = require("./diff");
+const { fetchProvenanceAttestation } = require("./attestation");
 
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
@@ -86,6 +87,28 @@ async function guardExtension(reference, options = {}) {
     : fetchRepoMetadata(resolved.npmMetadata && resolved.npmMetadata.repository)
         .catch(() => null);
 
+  // Provenance attestation — runs concurrently with OSV + GitHub metadata so
+  // it adds zero latency on the critical path. Only meaningful for npm
+  // packages (GitHub-direct and local refs have no npm attestation by
+  // definition). Cached on disk for 24h (positive and negative results).
+  // We track when the promise *resolves* (not when we eventually await it)
+  // so the timings.provenanceMs reflects the actual network/cache cost,
+  // not the wall-clock until the auditor needs the result.
+  const provenanceStart = now();
+  let provenanceResolveTime = null;
+  const provenancePromise =
+    options.provenance === false || resolved.type !== "npm" || !resolved.packageName || !resolved.version
+      ? Promise.resolve(null)
+      : fetchProvenanceAttestation(resolved.packageName, resolved.version)
+          .then((value) => {
+            provenanceResolveTime = elapsed(provenanceStart);
+            return value;
+          })
+          .catch(() => {
+            provenanceResolveTime = elapsed(provenanceStart);
+            return null;
+          });
+
   const vulnerabilityStart = now();
   const vulnerabilities =
     options.vulnerabilityCheck === false
@@ -114,6 +137,12 @@ async function guardExtension(reference, options = {}) {
   // with everything above; await whatever remains.
   const githubMetadata = await githubMetadataPromise;
   timings.githubMetadataMs = elapsed(githubStart);
+
+  // Likewise for provenance — it ran concurrently with everything above.
+  // provenanceResolveTime is set by the .then handler so it reflects the
+  // actual cost of the fetch/parse, not the wait until we awaited.
+  const provenanceAttestation = await provenancePromise;
+  timings.provenanceMs = provenanceResolveTime !== null ? provenanceResolveTime : 0;
 
   // npm vs GitHub diff (Phase 3) — only for npm packages where we have repo
   // metadata. Runs serially after we have both trees; tarballs are cached so
@@ -149,7 +178,8 @@ async function guardExtension(reference, options = {}) {
     webPresence: null,
     knownVulnerabilities: vulnerabilities,
     sourceFiles,
-    npmVsGithubDiff
+    npmVsGithubDiff,
+    provenanceAttestation
   };
   const auditStart = now();
   const report = auditEvidence(evidence);
@@ -164,6 +194,7 @@ async function guardExtension(reference, options = {}) {
     sourceFiles,
     githubMetadata,
     npmVsGithubDiff,
+    provenanceAttestation,
     vulnerabilityPrecheck: {
       enabled: options.vulnerabilityCheck !== false,
       database: "OSV",
