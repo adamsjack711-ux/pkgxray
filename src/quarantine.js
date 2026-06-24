@@ -566,10 +566,56 @@ async function resolveNpmPackage(specifier, options) {
   };
 }
 
+// Content-addressed cache for npm tarballs. The npm registry's integrity
+// field is a deterministic content hash of the .tgz bytes, so we can use it
+// as the cache filename. Subsequent runs of the same `name@version` re-use
+// the local copy and skip the 60-300ms registry download. Integrity is still
+// re-verified on every read — a corrupted / poisoned cache entry would fail
+// the check and trigger a fresh download, never get extracted.
+const NPM_TARBALL_CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "npm-tarballs");
+const NPM_TARBALL_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+function npmTarballCachePath(resolved) {
+  // Use the integrity field as the cache key when present (it's content-
+  // addressed). Fall back to shasum, then to a hash of the URL — the last
+  // case is exotic (tarballs without published integrity) and we still
+  // verify on read.
+  const integrity = resolved.integrity ? String(resolved.integrity).trim().split(/\s+/)[0] : null;
+  let key;
+  if (integrity) {
+    key = integrity.replace(/[^A-Za-z0-9._-]/g, "_");
+  } else if (resolved.shasum) {
+    key = `sha1-${String(resolved.shasum).trim().toLowerCase()}`;
+  } else {
+    key = crypto.createHash("sha256").update(String(resolved.tarballUrl)).digest("hex");
+  }
+  return path.join(NPM_TARBALL_CACHE_DIR, `${key}.tgz`);
+}
+
 async function downloadResolvedPackage(resolved, stagedPath) {
   const archivePath = `${stagedPath}.tgz`;
   await fsp.mkdir(path.dirname(stagedPath), { recursive: true, mode: 0o700 });
-  await downloadFile(resolved.tarballUrl, archivePath);
+
+  // Try the content-addressed cache first. If we have a fresh-enough copy,
+  // hard-link or copy it into the staging area; integrity is still verified
+  // below. Cache misses fall through to a fresh download.
+  const cachePath = npmTarballCachePath(resolved);
+  let servedFromCache = false;
+  try {
+    const stat = await fsp.stat(cachePath);
+    if (Date.now() - stat.mtimeMs < NPM_TARBALL_CACHE_TTL_MS) {
+      // Copy to the per-audit stage so we don't share the cached inode's
+      // mode (cache dir is 0o700, but the stage workspace owns its tree).
+      await fsp.copyFile(cachePath, archivePath);
+      servedFromCache = true;
+    }
+  } catch {
+    // No cache hit — fall through.
+  }
+
+  if (!servedFromCache) {
+    await downloadFile(resolved.tarballUrl, archivePath);
+  }
 
   // Single tarball read feeds BOTH the sha256 telemetry digest and the
   // integrity-verification digest (sha512 typically, sometimes sha1). Without
@@ -590,7 +636,33 @@ async function downloadResolvedPackage(resolved, stagedPath) {
     verifyNpmTarballIntegrity(resolved, digests);
   } catch (error) {
     await fsp.rm(archivePath, { force: true });
-    throw error;
+    // If the failure was a cache-corrupted copy, retry once via the network.
+    if (servedFromCache) {
+      await fsp.rm(cachePath, { force: true }).catch(() => {});
+      await downloadFile(resolved.tarballUrl, archivePath);
+      const fresh = await hashFileMulti(archivePath, algos);
+      try {
+        verifyNpmTarballIntegrity(resolved, fresh);
+      } catch (verifyError) {
+        await fsp.rm(archivePath, { force: true });
+        throw verifyError;
+      }
+      resolved.sha256 = fresh.sha256.toString("hex");
+    } else {
+      throw error;
+    }
+  }
+
+  // Populate the cache after a successful verify (and skip if it already
+  // came from there). Best-effort — never fail the audit because of a cache
+  // write error.
+  if (!servedFromCache) {
+    try {
+      await fsp.mkdir(NPM_TARBALL_CACHE_DIR, { recursive: true, mode: 0o700 });
+      await fsp.copyFile(archivePath, cachePath);
+    } catch {
+      // ignore — cache is opportunistic
+    }
   }
 
   await fsp.mkdir(stagedPath, { recursive: true, mode: 0o700 });
