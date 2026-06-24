@@ -273,7 +273,13 @@ async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, wor
     githubStagedPath: ghStagePath,
     subdir,
     hasBuildScript,
-    prepopulatedGhDirs: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.dirsRelativeToSubdir : null
+    prepopulatedGhDirs: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.dirsRelativeToSubdir : null,
+    // Caller has already computed the npm-vs-github path intersection during
+    // selective extract; reuse it so the npm-side hashTree only sha256s the
+    // paired files (the others can't possibly match anything in ghTree, so
+    // their hash is unused).
+    npmPairedPaths: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.pairedNpmPaths : null,
+    npmFileList: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.npmFileList : null
   });
 
   return {
@@ -305,6 +311,10 @@ async function selectivelyExtractGithubTarball({ archivePath, destination, npmSt
   // `prefix/<npm-rel>`.
   const subdirSlash = subdir ? `${subdir.replace(/\/+$/, "")}/` : "";
   const archivePaths = [];
+  // Track which npm-relative paths actually exist in the github tarball.
+  // Downstream the diff uses this as the "skip hashing npm files that aren't
+  // in github" set — for lodash that's 1000+ files we no longer SHA256.
+  const pairedNpmPaths = new Set();
   for (const rel of npmPaths) {
     const inTarballRelToSubdir = subdirSlash + rel;
     // Only extract paths the tarball actually has. Passing a missing path to
@@ -312,6 +322,7 @@ async function selectivelyExtractGithubTarball({ archivePath, destination, npmSt
     // file but exits non-zero too. Filter first.
     if (!listing.fileEntries.has(inTarballRelToSubdir)) continue;
     archivePaths.push(listing.prefix + inTarballRelToSubdir);
+    pairedNpmPaths.add(rel);
   }
 
   // Always include the package.json at the comparison root — diff downstream
@@ -338,6 +349,8 @@ async function selectivelyExtractGithubTarball({ archivePath, destination, npmSt
 
   return {
     dirsRelativeToSubdir,
+    pairedNpmPaths,
+    npmFileList: npmPaths,
     extractedFileCount: archivePaths.length,
     listingEntryCount: listing.entries.size
   };

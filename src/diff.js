@@ -216,6 +216,68 @@ function hashFile(filePath) {
   });
 }
 
+// Fast path for the npm side of the diff. Caller has already enumerated the
+// npm file list AND computed the intersection with github. Skip the readdir
+// walk and only sha256 files in the paired set — unpaired files only need
+// size (the diff loop's "extra in npm" branch never reads sha256). Saves a
+// large fraction of file reads when overlap is small (lodash: 8 of ~1000).
+async function buildNpmTreeFromList(root, fileList, pairedPaths, limits) {
+  try {
+    await fsp.access(root);
+  } catch {
+    return null;
+  }
+  const result = new Map();
+  const dirs = new Set();
+  const maxFiles = limits.maxFiles || 5000;
+  const maxBytes = limits.maxBytes || 50 * 1024 * 1024;
+  const maxFileBytes = limits.maxFileBytes || 1024 * 1024;
+  let totalBytes = 0;
+  let totalFiles = 0;
+
+  for (const childRel of fileList) {
+    if (totalFiles >= maxFiles || totalBytes >= maxBytes) break;
+    if (shouldSkipHash(childRel)) continue;
+    const childFull = path.join(root, childRel);
+    let stat;
+    try {
+      stat = await fsp.stat(childFull);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    // Track every parent dir so the diff's parent-exists check still works.
+    let slash = childRel.indexOf("/");
+    while (slash !== -1) {
+      dirs.add(childRel.slice(0, slash));
+      slash = childRel.indexOf("/", slash + 1);
+    }
+    if (stat.size > maxFileBytes) {
+      result.set(childRel, { size: stat.size, sha256: "skipped:too-large" });
+      totalFiles += 1;
+      continue;
+    }
+    if (totalBytes + stat.size > maxBytes) {
+      result.set(childRel, { size: stat.size, sha256: "skipped:tree-budget" });
+      totalFiles += 1;
+      continue;
+    }
+    if (pairedPaths.has(childRel)) {
+      // Paired with a github file — sha256 is needed for content compare.
+      const hash = await hashFile(childFull);
+      result.set(childRel, { size: stat.size, sha256: hash });
+      totalBytes += stat.size;
+    } else {
+      // Not in github — this file lands in the "extra in npm" branch where
+      // sha256 is unused. Skip the hash work.
+      result.set(childRel, { size: stat.size, sha256: "skipped:not-paired" });
+    }
+    totalFiles += 1;
+  }
+  result.__dirs = dirs;
+  return result;
+}
+
 // Compare a staged npm package against the matching GitHub repo subtree.
 // Returns null if the comparison wasn't possible.
 //
@@ -225,12 +287,31 @@ function hashFile(filePath) {
 // reflects the repo's full directory layout. Without this, the
 // parent-dir-exists check would misclassify every extra file as
 // "github doesn't have this dir at all".
-async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBuildScript, prepopulatedGhDirs }) {
+async function diffNpmVsGithub({
+  npmStagedPath,
+  githubStagedPath,
+  subdir,
+  hasBuildScript,
+  prepopulatedGhDirs,
+  npmPairedPaths,
+  npmFileList
+}) {
   const limits = { maxFiles: 5000, maxBytes: 50 * 1024 * 1024 };
   // Walk npm first to learn which paths matter; then walk github only
   // hashing files at those exact paths. For typescript this drops the
   // github tree walk from 10k+ files to ~30.
-  const npmTree = await hashTree(npmStagedPath, "", limits);
+  //
+  // When the caller has already enumerated npm paths AND computed the
+  // intersection with github's listing, we don't need to walk npm with
+  // readdir or hash every npm file. Build an npm tree from the supplied
+  // file list, stat each file for size, and ONLY sha256 the paired ones.
+  // Files outside the intersection get a placeholder hash — they will hit
+  // the "extra in npm" branch in the diff loop where size matters but
+  // sha256 is unused. For lodash this drops the npm hash work from ~1000
+  // files to ~8.
+  const npmTree = npmFileList && npmPairedPaths
+    ? await buildNpmTreeFromList(npmStagedPath, npmFileList, npmPairedPaths, limits)
+    : await hashTree(npmStagedPath, "", limits);
   const onlyHashPaths = npmTree ? new Set(npmTree.keys()) : null;
   // When the caller did a selective extract, the github tree on disk only
   // contains the npm-paired files anyway AND we already have the full dir
