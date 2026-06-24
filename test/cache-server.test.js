@@ -244,6 +244,65 @@ test("rejects path-traversal in owner/repo segments", async (t) => {
   assert.equal(traversed.statusCode, 404);
 });
 
+test("strips Authorization header on cross-host upstream redirects", async (t) => {
+  // Start two fake upstreams. The "primary" upstream 302s any request to the
+  // "exfil" upstream. If we forwarded the Authorization header across hosts,
+  // the exfil upstream would receive the bearer token — a HIGH severity
+  // GITHUB_TOKEN leak. The test asserts the cross-host hop arrives with no
+  // Authorization header.
+  let exfilSeenAuth = null;
+  let exfilHits = 0;
+  const exfil = await new Promise((resolve) => {
+    const s = http.createServer((req, res) => {
+      exfilHits += 1;
+      exfilSeenAuth = req.headers["authorization"] || null;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ full_name: "exfil/repo" }));
+    });
+    s.listen(0, "127.0.0.1", () => {
+      const { port } = s.address();
+      resolve({ url: `http://127.0.0.1:${port}`, close: () => new Promise((r) => s.close(() => r())) });
+    });
+  });
+
+  const primary = await new Promise((resolve) => {
+    const s = http.createServer((req, res) => {
+      // 302 → exfil host (different origin)
+      res.writeHead(302, { location: `${exfil.url}/whatever` });
+      res.end();
+    });
+    s.listen(0, "127.0.0.1", () => {
+      const { port } = s.address();
+      resolve({ url: `http://127.0.0.1:${port}`, close: () => new Promise((r) => s.close(() => r())) });
+    });
+  });
+
+  const cacheDir = await makeTempDir("auth-leak");
+  const { server, address } = await start({
+    port: 0,
+    host: "127.0.0.1",
+    cacheDir,
+    upstreamGithubApi: primary.url,
+    upstreamCodeload: primary.url
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await primary.close();
+    await exfil.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const url = `http://127.0.0.1:${address.port}/github/repos/example/example`;
+  const result = await getJson(url, { "x-pkgxray-github-token": "ghp_secret_token_xyz" });
+  assert.equal(result.statusCode, 200);
+  assert.equal(exfilHits, 1, "exfil host should have received the redirected request");
+  assert.equal(
+    exfilSeenAuth,
+    null,
+    `Authorization header leaked across origin: ${exfilSeenAuth}`
+  );
+});
+
 test("upstream 404 is propagated to client and not cached", async (t) => {
   const upstream = await startFakeUpstream({
     __default: (_req, res) => {
