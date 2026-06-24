@@ -14,6 +14,13 @@ const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "github");
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FETCH_TIMEOUT_MS = 3000;
 
+// Module-local keep-alive agent for api.github.com + codeload.github.com.
+// In lockfile-mode + --deep we hit api.github.com many times in a row for
+// repo metadata; the first call pays the TLS handshake, subsequent ones
+// reuse the socket. Single-package guard runs see one or two API calls so
+// the agent mostly pays off in the lockfile path.
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
+
 async function readCache(key) {
   try {
     const file = path.join(CACHE_DIR, `${encodeURIComponent(key)}.json`);
@@ -81,7 +88,7 @@ function githubApiGet(urlPath, token, hops = 0) {
     };
     if (token) headers.authorization = `Bearer ${token}`;
     const request = https.get(
-      { hostname: "api.github.com", path: urlPath, headers, timeout: FETCH_TIMEOUT_MS },
+      { hostname: "api.github.com", path: urlPath, headers, timeout: FETCH_TIMEOUT_MS, agent: HTTPS_AGENT },
       (response) => {
         // Follow GitHub's 301 redirects (repo transferred / renamed)
         if ([301, 302, 307, 308].includes(response.statusCode) && response.headers.location) {
@@ -209,7 +216,8 @@ async function downloadCodeload(url, destination) {
           hostname: parsed.hostname,
           path: parsed.pathname + parsed.search,
           headers: { "user-agent": USER_AGENT },
-          timeout: TARBALL_TIMEOUT_MS
+          timeout: TARBALL_TIMEOUT_MS,
+          agent: HTTPS_AGENT
         },
         (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {

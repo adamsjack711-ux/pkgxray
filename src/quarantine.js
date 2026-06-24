@@ -18,6 +18,13 @@ const {
 const { diffNpmVsGithub } = require("./diff");
 const { fetchProvenanceAttestation } = require("./attestation");
 
+// Shared keep-alive HTTPS agent. Three of the four network layers (npm
+// metadata, npm tarball download, npm provenance) all hit registry.npmjs.org
+// inside a single audit. Without keep-alive each call pays a fresh TLS
+// handshake (~50-100ms). With keep-alive the second + third calls reuse
+// the first call's socket. Default maxSockets=10 is plenty.
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
+
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
 const DEFAULT_TARBALL_MAX_BYTES = 256 * 1024 * 1024;
@@ -716,7 +723,7 @@ function parseNpmSpecifier(specifier) {
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
     https
-      .get(url, { headers: { "user-agent": "pkgxray/0.9.0" } }, (response) => {
+      .get(url, { headers: { "user-agent": "pkgxray/0.9.0" }, agent: HTTPS_AGENT }, (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
           const error = new Error(`HTTP ${response.statusCode} from ${url}`);
           error.statusCode = response.statusCode;
@@ -795,7 +802,8 @@ function postJson(url, payload) {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body),
           "user-agent": "supply-chain-auditor/0.1.0"
-        }
+        },
+        agent: HTTPS_AGENT
       },
       (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -856,7 +864,11 @@ function downloadFile(url, destination, options = {}) {
           hostname: parsed.hostname,
           port: parsed.port || (parsed.protocol === "http:" ? 80 : 443),
           path: parsed.pathname + parsed.search,
-          headers: { "user-agent": "pkgxray/0.9.0" }
+          headers: { "user-agent": "pkgxray/0.9.0" },
+          // Re-use the shared agent when downloading from https hosts so the
+          // npm metadata fetch and the tarball download share a TCP+TLS
+          // session. Plain http stays on the default agent.
+          agent: parsed.protocol === "https:" ? HTTPS_AGENT : undefined
         },
         (response) => {
           if (

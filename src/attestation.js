@@ -33,6 +33,11 @@ const FETCH_TIMEOUT_MS = 4000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // attestations are JSON, ~10-50KB each
 const REGISTRY_BASE = "https://registry.npmjs.org/-/npm/v1/attestations";
 
+// Module-local keep-alive agent so the provenance fetch can re-use a socket
+// across the same audit (e.g. lockfile mode → batch attestation fetches) or
+// across back-to-back runs in the same process.
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
+
 // Predicate types we recognise. SLSA v1 is what npm currently emits (2024+);
 // v0.2 is the older format that some packages still have on disk from
 // earlier releases. We accept either.
@@ -76,7 +81,8 @@ function fetchJson(url) {
           "user-agent": USER_AGENT,
           accept: "application/json"
         },
-        timeout: FETCH_TIMEOUT_MS
+        timeout: FETCH_TIMEOUT_MS,
+        agent: HTTPS_AGENT
       },
       (response) => {
         if (response.statusCode === 404) {

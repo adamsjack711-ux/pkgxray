@@ -145,6 +145,10 @@ function add(deps, name, version, paths) {
 
 const https = require("node:https");
 
+// Lockfiles >1000 deps fan out into multiple OSV chunks; keep-alive lets the
+// second + third chunks reuse the first chunk's TLS session.
+const OSV_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
+
 function batchOsvQuery(deps) {
   const queries = Array.from(deps.values()).map((d) => ({
     package: { name: d.name, ecosystem: "npm" },
@@ -170,7 +174,8 @@ function postBatch(queries) {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body),
           "user-agent": "pkgxray/0.9.0"
-        }
+        },
+        agent: OSV_AGENT
       },
       (res) => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
