@@ -659,12 +659,16 @@ function auditFiles(files, findings) {
     if (shouldSkipFile(file.path)) continue;
     const content = file.content || "";
     const lower = content.toLowerCase();
+    // Pre-compute bulk-env detection once per file — both
+    // inspectCredentialAccess and inspectExecNetworkCombinations need it,
+    // and the regex set used to run twice over the same content.
+    const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
 
     inspectInjectionAttempt(file, lower, findings);
     inspectObfuscation(file, content, lower, findings);
-    inspectCredentialAccess(file, content, lower, findings);
+    inspectCredentialAccess(file, content, lower, findings, hasBulkEnv);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
     inspectCapabilities(file, content, findings);
   }
 }
@@ -691,6 +695,9 @@ function inspectInjectionAttempt(file, lower, findings) {
 
 const OBFUSCATION_EXEC_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|child_process|spawn\s*\(|atob\s*\(|String\.fromCharCode\s*\()/;
 const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
+// Hoisted out of the inner loop — the literal regex was being recompiled on
+// every base64-blob match in every file.
+const DATA_URI_REGEX = /data:[\w/+.-]+;base64,$/;
 
 function inspectObfuscation(file, content, lower, findings) {
   // Require base64 + execution primitive in close proximity (within ~600
@@ -701,7 +708,7 @@ function inspectObfuscation(file, content, lower, findings) {
     const blob = match[1];
     const blobIndex = match.index + match[0].indexOf(blob);
     const prefix = content.slice(Math.max(0, blobIndex - 32), blobIndex);
-    if (/data:[\w/+.-]+;base64,$/.test(prefix)) continue; // data URI
+    if (DATA_URI_REGEX.test(prefix)) continue; // data URI
     const windowStart = Math.max(0, blobIndex - 600);
     const windowEnd = Math.min(content.length, blobIndex + blob.length + 600);
     const window = content.slice(windowStart, windowEnd);
@@ -750,7 +757,7 @@ const BULK_ENV_REGEXES = [
   /for\s+\w+\s+in\s+os\.environ\b/i
 ];
 
-function inspectCredentialAccess(file, content, lower, findings) {
+function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv) {
   for (const target of SUSPICIOUS_READ_TARGETS) {
     const match = target.re.exec(content);
     if (!match) continue;
@@ -766,7 +773,7 @@ function inspectCredentialAccess(file, content, lower, findings) {
     return;
   }
 
-  if (BULK_ENV_REGEXES.some((re) => re.test(content))) {
+  if (hasBulkEnv) {
     findings.push({
       severity: "medium",
       category: "environment-access",
@@ -795,14 +802,19 @@ function inspectPersistence(file, content, lower, findings) {
   }
 }
 
+// Hoisted out of findPublicIpInCode so the literal regexes aren't recompiled
+// every time the auditor inspects a file.
+const PUBLIC_URL_IP_REGEX = /\bhttps?:\/\/((?:\d{1,3}\.){3}\d{1,3})(?::\d+)?\b/;
+const QUOTED_IP_REGEX = /["'`]((?:\d{1,3}\.){3}\d{1,3})["'`]/g;
+
 function findPublicIpInCode(content) {
   // (a) full URL form: http://1.2.3.4 or https://1.2.3.4
-  const urlIp = content.match(/\bhttps?:\/\/((?:\d{1,3}\.){3}\d{1,3})(?::\d+)?\b/);
+  const urlIp = content.match(PUBLIC_URL_IP_REGEX);
   if (urlIp && !isPrivateIp(urlIp[1])) return urlIp[0];
   // (b) quoted-string IP literals (hostname / host fields, sockets, etc.)
-  const re = /["'`]((?:\d{1,3}\.){3}\d{1,3})["'`]/g;
+  QUOTED_IP_REGEX.lastIndex = 0;
   let m;
-  while ((m = re.exec(content)) !== null) {
+  while ((m = QUOTED_IP_REGEX.exec(content)) !== null) {
     if (!isPrivateIp(m[1])) return m[0];
   }
   return null;
@@ -821,13 +833,12 @@ function isPrivateIp(ip) {
   return false;
 }
 
-function inspectExecNetworkCombinations(file, content, lower, findings) {
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv) {
   const hasExec = EXEC_REGEX.test(content);
   const hasDynamicEval = DYNAMIC_EVAL_REGEX.test(content);
   const hasNetwork = NETWORK_REGEX.test(content) || SHELL_NETWORK_REGEX.test(content);
   const hardcodedIp = findPublicIpInCode(content);
   const shortener = EXFIL_AND_CALLBACK_DOMAINS.find((pattern) => lower.includes(pattern));
-  const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
 
   // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP /
   // shortener target.
