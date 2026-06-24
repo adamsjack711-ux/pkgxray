@@ -170,8 +170,25 @@ function upstreamGetJson(urlString, headers, hops = 0) {
       (response) => {
         if ([301, 302, 307, 308].includes(response.statusCode) && response.headers.location) {
           response.resume();
-          const next = new URL(response.headers.location, url).toString();
-          return upstreamGetJson(next, headers, hops + 1).then(resolve, reject);
+          const next = new URL(response.headers.location, url);
+          // SECURITY: never forward the Authorization (or token-bearing) header
+          // across an origin change. A misconfigured / hostile upstream that
+          // 302s api.github.com → attacker.example.com would otherwise leak
+          // the GitHub bearer token in the rerequest. Same-origin redirects
+          // (apex → www, path rewrites) keep the token so private repos still
+          // work behind well-behaved CDNs.
+          let nextHeaders = headers;
+          if (next.host !== url.host) {
+            nextHeaders = {};
+            for (const [key, value] of Object.entries(headers)) {
+              const lower = key.toLowerCase();
+              if (lower === "authorization") continue;
+              if (lower === "cookie") continue;
+              if (lower === "proxy-authorization") continue;
+              nextHeaders[key] = value;
+            }
+          }
+          return upstreamGetJson(next.toString(), nextHeaders, hops + 1).then(resolve, reject);
         }
         let body = "";
         response.setEncoding("utf8");

@@ -362,6 +362,12 @@ async function collectRelativeFilePaths(root) {
     }
     for (const entry of entries) {
       const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      // SECURITY: skip symlinks and other non-regular entries. These would
+      // otherwise be passed to `tar` as paths to extract from the GitHub
+      // archive — if the github tarball happened to contain a matching
+      // symlink at that path, extracting it would seed the staged tree with
+      // an attacker-pointed link the diff would then read through.
+      if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
         if (DIFF_SKIP_DIRS.has(entry.name)) continue;
         queue.push(childRel);
@@ -373,9 +379,24 @@ async function collectRelativeFilePaths(root) {
   return result;
 }
 
+// Read a file ONLY if it's a regular file at the time of read. Refuses to
+// follow symlinks (defends against the staged tree containing a
+// `package.json` that's actually a link to `~/.aws/credentials` etc.). The
+// lstat is racy in theory, but combined with the symlink-rejecting cp in
+// copyLocalPath it gives us defence in depth at every read site.
+async function safeReadFile(filePath) {
+  const stat = await fsp.lstat(filePath);
+  if (!stat.isFile()) {
+    const err = new Error(`refusing to read non-regular file: ${filePath}`);
+    err.code = "ENOTREG";
+    throw err;
+  }
+  return fsp.readFile(filePath, "utf8");
+}
+
 async function readScripts(stagedPath) {
   try {
-    const pkg = JSON.parse(await fsp.readFile(path.join(stagedPath, "package.json"), "utf8"));
+    const pkg = JSON.parse(await safeReadFile(path.join(stagedPath, "package.json")));
     return pkg.scripts || {};
   } catch {
     return {};
@@ -393,7 +414,7 @@ async function stageReference(reference, stagedPath, options) {
     let packageName = path.basename(parsed.path);
     let version = null;
     try {
-      const pkg = JSON.parse(await fsp.readFile(path.join(stagedPath, "package.json"), "utf8"));
+      const pkg = JSON.parse(await safeReadFile(path.join(stagedPath, "package.json")));
       packageName = pkg.name || packageName;
       version = pkg.version || null;
       if (pkg.repository) {
@@ -527,12 +548,31 @@ async function copyLocalPath(sourcePath, stagedPath) {
     throw new Error("Local extension reference must be a directory");
   }
 
+  // SECURITY: refuse to copy symlinks (and other non-regular entries) into
+  // the quarantine. With `dereference: false`, `fsp.cp` preserves the link
+  // and any subsequent `fsp.readFile(stagedPath/<link>)` would then read the
+  // attacker-chosen target — a file-read primitive (e.g. `package.json` →
+  // `~/.aws/credentials`). The same filter blocks block-device / FIFO / etc.
+  // entries that would crash the stat pass downstream.
+  //
+  // Use the SOURCE path with `lstat` (NOT stat) so symlinks themselves are
+  // identified, regardless of where they point.
   await fsp.cp(sourcePath, stagedPath, {
     recursive: true,
     dereference: false,
-    filter: (source) => {
+    filter: async (source) => {
       const base = path.basename(source);
-      return !SKIP_DIRS.has(base);
+      if (SKIP_DIRS.has(base)) return false;
+      try {
+        const entryStat = await fsp.lstat(source);
+        if (!entryStat.isDirectory() && !entryStat.isFile()) {
+          // Skip symlinks, block devices, FIFOs, sockets, etc.
+          return false;
+        }
+      } catch {
+        return false;
+      }
+      return true;
     }
   });
 }
@@ -723,7 +763,7 @@ async function precheckVulnerabilities(resolved, stagedPath) {
 async function readPackageIdentity(stagedPath) {
   try {
     const packageJson = JSON.parse(
-      await fsp.readFile(path.join(stagedPath, "package.json"), "utf8")
+      await safeReadFile(path.join(stagedPath, "package.json"))
     );
     return {
       name: packageJson.name,
@@ -1030,6 +1070,16 @@ async function collectSourceFiles(root, options = {}) {
       const fullPath = path.join(current, entry.name);
       const relativePath = path.relative(root, fullPath);
 
+      // SECURITY: explicitly reject symlinks and other non-regular entries.
+      // Even though copyLocalPath now filters them at staging time, this
+      // defends against a malicious tar that managed to slip a symlink past
+      // the tarball listing parser, and keeps the invariant local to the
+      // reader. `fsp.readFile` would follow a symlink and exfiltrate the
+      // target into the JSON report otherwise.
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
+
       if (entry.isDirectory()) {
         if (!SKIP_DIRS.has(entry.name)) {
           queue.push(fullPath);
@@ -1041,7 +1091,10 @@ async function collectSourceFiles(root, options = {}) {
         continue;
       }
 
-      const stat = await fsp.stat(fullPath);
+      // Use lstat (not stat) so a sneakily-replaced symlink between readdir
+      // and the read is still recognised — the stat would otherwise follow.
+      const stat = await fsp.lstat(fullPath);
+      if (!stat.isFile()) continue;
       if (stat.size > maxFileBytes) {
         sourceFiles[relativePath] = `[omitted: file exceeds ${maxFileBytes} bytes]`;
         continue;

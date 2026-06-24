@@ -175,9 +175,24 @@ async function main() {
   process.exitCode = report.verdict === "block" ? 2 : report.verdict === "review" ? 3 : 0;
 }
 
+// SECURITY: attacker-controlled strings (package names from a hostile
+// lockfile, OSV vulnerability summaries, deep-scan band labels, reference
+// strings the user passed in) reach this renderer's stdout. Without
+// scrubbing, a name like "foo\x1b[2K\x1b[Aevil" rewrites the previous line
+// of output. Strip every C0 control (0x00-0x1f), DEL (0x7f), and the C1
+// range (0x80-0x9f) — leaving newlines/tabs alone breaks lockfile names
+// across rows so we drop those too. U+FFFD as the placeholder.
+function sanitizeForTerminal(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(
+    /[\x00-\x1f\x7f-\x9f]/g,
+    "�"
+  );
+}
+
 function renderLockfileMarkdown(result) {
   const lines = [];
-  lines.push(`Lockfile: \`${result.file}\` (${result.format})`);
+  lines.push(`Lockfile: \`${sanitizeForTerminal(result.file)}\` (${result.format})`);
   lines.push(`Total deps: ${result.totalDeps}  ·  scan time: ${result.timings.totalMs} ms`);
   lines.push("");
   lines.push(`Decision: **${result.worstDecision.toUpperCase()}**`);
@@ -187,16 +202,18 @@ function renderLockfileMarkdown(result) {
   if (blocked.length > 0) {
     lines.push("Blocked packages:");
     for (const r of blocked.slice(0, 25)) {
-      const vulnIds = r.vulnerabilities.map((v) => v.id).join(", ");
+      const vulnIds = r.vulnerabilities.map((v) => sanitizeForTerminal(v.id)).join(", ");
       const triagedTag = r.triaged ? " _(triaged)_" : "";
-      lines.push(`- **${r.name}@${r.version}**${triagedTag} — ${vulnIds || "OSV vulnerabilities"}`);
+      const name = sanitizeForTerminal(r.name);
+      const version = sanitizeForTerminal(r.version);
+      lines.push(`- **${name}@${version}**${triagedTag} — ${vulnIds || "OSV vulnerabilities"}`);
       if (r.paths.length > 0) {
-        lines.push(`  pulled in by: ${r.paths[0]}`);
+        lines.push(`  pulled in by: ${sanitizeForTerminal(r.paths[0])}`);
       }
       if (r.deep && r.deep.riskBands && r.deep.riskBands.length > 0) {
         const bands = r.deep.riskBands
           .filter((b) => b.severity === "high" || b.severity === "medium")
-          .map((b) => `${b.severity[0].toUpperCase()}:${b.label}`)
+          .map((b) => `${sanitizeForTerminal(b.severity)[0].toUpperCase()}:${sanitizeForTerminal(b.label)}`)
           .join(", ");
         if (bands) lines.push(`  deep scan: ${bands}`);
       }
@@ -217,13 +234,13 @@ function renderLockfileMarkdown(result) {
 function renderGuardMarkdown(result) {
   const lines = [
     `Decision: **${result.decision.toUpperCase()}**`,
-    `Reference: \`${result.reference}\``,
-    `Quarantine: \`${result.quarantinePath}\``,
+    `Reference: \`${sanitizeForTerminal(result.reference)}\``,
+    `Quarantine: \`${sanitizeForTerminal(result.quarantinePath)}\``,
     ""
   ];
 
   if (result.promotedPath) {
-    lines.push(`Promoted to: \`${result.promotedPath}\``, "");
+    lines.push(`Promoted to: \`${sanitizeForTerminal(result.promotedPath)}\``, "");
   }
 
   lines.push(renderMarkdown(result.report));
