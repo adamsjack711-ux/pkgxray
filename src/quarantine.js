@@ -357,9 +357,12 @@ const DIFF_SKIP_DIRS = new Set([
 
 async function collectRelativeFilePaths(root) {
   const result = [];
+  // Index cursor instead of Array#shift (O(n) per call) — matters on
+  // wide trees like typescript where the queue can hold thousands of dirs.
   const queue = [""];
-  while (queue.length > 0) {
-    const rel = queue.shift();
+  let cursor = 0;
+  while (cursor < queue.length) {
+    const rel = queue[cursor++];
     const full = rel ? path.join(root, rel) : root;
     let entries;
     try {
@@ -1060,10 +1063,14 @@ async function collectSourceFiles(root, options = {}) {
   const maxFiles = options.maxFiles || DEFAULT_MAX_FILES;
   const maxFileBytes = options.maxFileBytes || DEFAULT_MAX_FILE_BYTES;
   const sourceFiles = {};
+  // Index cursor + manual counter so we don't pay O(n) per iteration on
+  // both queue.shift() and Object.keys(sourceFiles).length.
   const queue = [root];
+  let cursor = 0;
+  let fileCount = 0;
 
-  while (queue.length && Object.keys(sourceFiles).length < maxFiles) {
-    const current = queue.shift();
+  while (cursor < queue.length && fileCount < maxFiles) {
+    const current = queue[cursor++];
     const entries = await fsp.readdir(current, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
@@ -1083,11 +1090,14 @@ async function collectSourceFiles(root, options = {}) {
       const stat = await fsp.stat(fullPath);
       if (stat.size > maxFileBytes) {
         sourceFiles[relativePath] = `[omitted: file exceeds ${maxFileBytes} bytes]`;
+        fileCount += 1;
+        if (fileCount >= maxFiles) break;
         continue;
       }
 
       sourceFiles[relativePath] = await fsp.readFile(fullPath, "utf8");
-      if (Object.keys(sourceFiles).length >= maxFiles) {
+      fileCount += 1;
+      if (fileCount >= maxFiles) {
         break;
       }
     }
