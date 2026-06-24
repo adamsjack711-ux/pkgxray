@@ -18,6 +18,13 @@ const {
 const { diffNpmVsGithub } = require("./diff");
 const { fetchProvenanceAttestation } = require("./attestation");
 
+// Shared keep-alive HTTPS agent. Three of the four network layers (npm
+// metadata, npm tarball download, npm provenance) all hit registry.npmjs.org
+// inside a single audit. Without keep-alive each call pays a fresh TLS
+// handshake (~50-100ms). With keep-alive the second + third calls reuse
+// the first call's socket. Default maxSockets=10 is plenty.
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
+
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
 const DEFAULT_TARBALL_MAX_BYTES = 256 * 1024 * 1024;
@@ -266,7 +273,13 @@ async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, wor
     githubStagedPath: ghStagePath,
     subdir,
     hasBuildScript,
-    prepopulatedGhDirs: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.dirsRelativeToSubdir : null
+    prepopulatedGhDirs: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.dirsRelativeToSubdir : null,
+    // Caller has already computed the npm-vs-github path intersection during
+    // selective extract; reuse it so the npm-side hashTree only sha256s the
+    // paired files (the others can't possibly match anything in ghTree, so
+    // their hash is unused).
+    npmPairedPaths: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.pairedNpmPaths : null,
+    npmFileList: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.npmFileList : null
   });
 
   return {
@@ -298,6 +311,10 @@ async function selectivelyExtractGithubTarball({ archivePath, destination, npmSt
   // `prefix/<npm-rel>`.
   const subdirSlash = subdir ? `${subdir.replace(/\/+$/, "")}/` : "";
   const archivePaths = [];
+  // Track which npm-relative paths actually exist in the github tarball.
+  // Downstream the diff uses this as the "skip hashing npm files that aren't
+  // in github" set — for lodash that's 1000+ files we no longer SHA256.
+  const pairedNpmPaths = new Set();
   for (const rel of npmPaths) {
     const inTarballRelToSubdir = subdirSlash + rel;
     // Only extract paths the tarball actually has. Passing a missing path to
@@ -305,6 +322,7 @@ async function selectivelyExtractGithubTarball({ archivePath, destination, npmSt
     // file but exits non-zero too. Filter first.
     if (!listing.fileEntries.has(inTarballRelToSubdir)) continue;
     archivePaths.push(listing.prefix + inTarballRelToSubdir);
+    pairedNpmPaths.add(rel);
   }
 
   // Always include the package.json at the comparison root — diff downstream
@@ -331,6 +349,8 @@ async function selectivelyExtractGithubTarball({ archivePath, destination, npmSt
 
   return {
     dirsRelativeToSubdir,
+    pairedNpmPaths,
+    npmFileList: npmPaths,
     extractedFileCount: archivePaths.length,
     listingEntryCount: listing.entries.size
   };
@@ -350,9 +370,12 @@ const DIFF_SKIP_DIRS = new Set([
 
 async function collectRelativeFilePaths(root) {
   const result = [];
+  // Index cursor instead of Array#shift (O(n) per call) — matters on
+  // wide trees like typescript where the queue can hold thousands of dirs.
   const queue = [""];
-  while (queue.length > 0) {
-    const rel = queue.shift();
+  let cursor = 0;
+  while (cursor < queue.length) {
+    const rel = queue[cursor++];
     const full = rel ? path.join(root, rel) : root;
     let entries;
     try {
@@ -596,27 +619,120 @@ async function resolveNpmPackage(specifier, options) {
   };
 }
 
+// Content-addressed cache for npm tarballs. The npm registry's integrity
+// field is a deterministic content hash of the .tgz bytes, so we can use it
+// as the cache filename. Subsequent runs of the same `name@version` re-use
+// the local copy and skip the 60-300ms registry download. Integrity is still
+// re-verified on every read — a corrupted / poisoned cache entry would fail
+// the check and trigger a fresh download, never get extracted.
+const NPM_TARBALL_CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "npm-tarballs");
+const NPM_TARBALL_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+function npmTarballCachePath(resolved) {
+  // Use the integrity field as the cache key when present (it's content-
+  // addressed). Fall back to shasum, then to a hash of the URL — the last
+  // case is exotic (tarballs without published integrity) and we still
+  // verify on read.
+  const integrity = resolved.integrity ? String(resolved.integrity).trim().split(/\s+/)[0] : null;
+  let key;
+  if (integrity) {
+    key = integrity.replace(/[^A-Za-z0-9._-]/g, "_");
+  } else if (resolved.shasum) {
+    key = `sha1-${String(resolved.shasum).trim().toLowerCase()}`;
+  } else {
+    key = crypto.createHash("sha256").update(String(resolved.tarballUrl)).digest("hex");
+  }
+  return path.join(NPM_TARBALL_CACHE_DIR, `${key}.tgz`);
+}
+
 async function downloadResolvedPackage(resolved, stagedPath) {
   const archivePath = `${stagedPath}.tgz`;
   await fsp.mkdir(path.dirname(stagedPath), { recursive: true, mode: 0o700 });
-  await downloadFile(resolved.tarballUrl, archivePath);
-  resolved.sha256 = await hashFile(archivePath);
+
+  // Try the content-addressed cache first. If we have a fresh-enough copy,
+  // hard-link or copy it into the staging area; integrity is still verified
+  // below. Cache misses fall through to a fresh download.
+  const cachePath = npmTarballCachePath(resolved);
+  let servedFromCache = false;
+  try {
+    const stat = await fsp.stat(cachePath);
+    if (Date.now() - stat.mtimeMs < NPM_TARBALL_CACHE_TTL_MS) {
+      // Copy to the per-audit stage so we don't share the cached inode's
+      // mode (cache dir is 0o700, but the stage workspace owns its tree).
+      await fsp.copyFile(cachePath, archivePath);
+      servedFromCache = true;
+    }
+  } catch {
+    // No cache hit — fall through.
+  }
+
+  if (!servedFromCache) {
+    await downloadFile(resolved.tarballUrl, archivePath);
+  }
+
+  // Single tarball read feeds BOTH the sha256 telemetry digest and the
+  // integrity-verification digest (sha512 typically, sometimes sha1). Without
+  // this we read the file twice — once for sha256, once for integrity — which
+  // for a 30MB lodash tarball is ~100ms wasted per audit.
+  const algos = ["sha256"];
+  const integrityAlgo = pickIntegrityAlgo(resolved);
+  if (integrityAlgo && integrityAlgo !== "sha256") {
+    algos.push(integrityAlgo);
+  }
+  const digests = await hashFileMulti(archivePath, algos);
+  resolved.sha256 = digests.sha256.toString("hex");
 
   // Verify against the npm registry's published integrity field BEFORE
   // extracting. Delete the partial file on mismatch so we never leave a
   // hostile tarball on disk.
   try {
-    await verifyNpmTarballIntegrity(resolved, archivePath);
+    verifyNpmTarballIntegrity(resolved, digests);
   } catch (error) {
     await fsp.rm(archivePath, { force: true });
-    throw error;
+    // If the failure was a cache-corrupted copy, retry once via the network.
+    if (servedFromCache) {
+      await fsp.rm(cachePath, { force: true }).catch(() => {});
+      await downloadFile(resolved.tarballUrl, archivePath);
+      const fresh = await hashFileMulti(archivePath, algos);
+      try {
+        verifyNpmTarballIntegrity(resolved, fresh);
+      } catch (verifyError) {
+        await fsp.rm(archivePath, { force: true });
+        throw verifyError;
+      }
+      resolved.sha256 = fresh.sha256.toString("hex");
+    } else {
+      throw error;
+    }
+  }
+
+  // Populate the cache after a successful verify (and skip if it already
+  // came from there). Best-effort — never fail the audit because of a cache
+  // write error.
+  if (!servedFromCache) {
+    try {
+      await fsp.mkdir(NPM_TARBALL_CACHE_DIR, { recursive: true, mode: 0o700 });
+      await fsp.copyFile(archivePath, cachePath);
+    } catch {
+      // ignore — cache is opportunistic
+    }
   }
 
   await fsp.mkdir(stagedPath, { recursive: true, mode: 0o700 });
   await extractTarball(archivePath, stagedPath);
 }
 
-async function verifyNpmTarballIntegrity(resolved, archivePath) {
+function pickIntegrityAlgo(resolved) {
+  if (resolved.integrity) {
+    const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
+    const dashIndex = firstEntry.indexOf("-");
+    if (dashIndex > 0) return firstEntry.slice(0, dashIndex);
+  }
+  if (resolved.shasum) return "sha1";
+  return null;
+}
+
+function verifyNpmTarballIntegrity(resolved, digests) {
   if (resolved.integrity) {
     const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
     const dashIndex = firstEntry.indexOf("-");
@@ -625,7 +741,13 @@ async function verifyNpmTarballIntegrity(resolved, archivePath) {
     }
     const algo = firstEntry.slice(0, dashIndex);
     const expectedBase64 = firstEntry.slice(dashIndex + 1);
-    const actualBase64 = await hashFileDigest(archivePath, algo, "base64");
+    const buffer = digests[algo];
+    if (!buffer) {
+      // Shouldn't happen — pickIntegrityAlgo would have included it. Fall back
+      // to recomputing rather than failing the audit.
+      throw new Error(`internal: missing digest for algorithm ${algo}`);
+    }
+    const actualBase64 = buffer.toString("base64");
     if (actualBase64 !== expectedBase64) {
       throw new Error(
         `npm tarball integrity mismatch: expected ${firstEntry} got ${algo}-${actualBase64}`
@@ -635,7 +757,11 @@ async function verifyNpmTarballIntegrity(resolved, archivePath) {
   }
   if (resolved.shasum) {
     const expectedHex = String(resolved.shasum).trim().toLowerCase();
-    const actualHex = (await hashFileDigest(archivePath, "sha1", "hex")).toLowerCase();
+    const buffer = digests.sha1;
+    if (!buffer) {
+      throw new Error("internal: missing sha1 digest for shasum check");
+    }
+    const actualHex = buffer.toString("hex").toLowerCase();
     if (actualHex !== expectedHex) {
       throw new Error(
         `npm tarball integrity mismatch: expected sha1-${expectedHex} got sha1-${actualHex}`
@@ -646,19 +772,26 @@ async function verifyNpmTarballIntegrity(resolved, archivePath) {
   throw new Error("npm tarball has no published integrity field");
 }
 
-function hashFileDigest(filePath, algorithm, encoding) {
+// Stream the file ONCE through every requested hash. Returns a map of
+// algorithm → Buffer digest (caller chooses the output encoding).
+function hashFileMulti(filePath, algorithms) {
   return new Promise((resolve, reject) => {
-    let hash;
+    let hashes;
     try {
-      hash = crypto.createHash(algorithm);
+      hashes = algorithms.map((a) => ({ algo: a, hash: crypto.createHash(a) }));
     } catch (error) {
-      reject(error);
-      return;
+      return reject(error);
     }
     fs.createReadStream(filePath)
-      .on("data", (chunk) => hash.update(chunk))
+      .on("data", (chunk) => {
+        for (const h of hashes) h.hash.update(chunk);
+      })
       .on("error", reject)
-      .on("end", () => resolve(hash.digest(encoding)));
+      .on("end", () => {
+        const out = {};
+        for (const h of hashes) out[h.algo] = h.hash.digest();
+        resolve(out);
+      });
   });
 }
 
@@ -718,7 +851,7 @@ function parseNpmSpecifier(specifier) {
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
     https
-      .get(url, { headers: { "user-agent": "pkgxray/0.9.0" } }, (response) => {
+      .get(url, { headers: { "user-agent": "pkgxray/0.9.0" }, agent: HTTPS_AGENT }, (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
           const error = new Error(`HTTP ${response.statusCode} from ${url}`);
           error.statusCode = response.statusCode;
@@ -797,7 +930,8 @@ function postJson(url, payload) {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body),
           "user-agent": "supply-chain-auditor/0.1.0"
-        }
+        },
+        agent: HTTPS_AGENT
       },
       (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -858,7 +992,11 @@ function downloadFile(url, destination, options = {}) {
           hostname: parsed.hostname,
           port: parsed.port || (parsed.protocol === "http:" ? 80 : 443),
           path: parsed.pathname + parsed.search,
-          headers: { "user-agent": "pkgxray/0.9.0" }
+          headers: { "user-agent": "pkgxray/0.9.0" },
+          // Re-use the shared agent when downloading from https hosts so the
+          // npm metadata fetch and the tarball download share a TCP+TLS
+          // session. Plain http stays on the default agent.
+          agent: parsed.protocol === "https:" ? HTTPS_AGENT : undefined
         },
         (response) => {
           if (
@@ -890,17 +1028,6 @@ function downloadFile(url, destination, options = {}) {
     };
     get(url, 0);
   });
-}
-
-async function hashFile(filePath) {
-  const hash = crypto.createHash("sha256");
-  await new Promise((resolve, reject) => {
-    fs.createReadStream(filePath)
-      .on("data", (chunk) => hash.update(chunk))
-      .on("error", reject)
-      .on("end", resolve);
-  });
-  return hash.digest("hex");
 }
 
 async function extractTarball(archivePath, destination, options = {}) {
@@ -1061,10 +1188,14 @@ async function collectSourceFiles(root, options = {}) {
   const maxFiles = options.maxFiles || DEFAULT_MAX_FILES;
   const maxFileBytes = options.maxFileBytes || DEFAULT_MAX_FILE_BYTES;
   const sourceFiles = {};
+  // Index cursor + manual counter so we don't pay O(n) per iteration on
+  // both queue.shift() and Object.keys(sourceFiles).length.
   const queue = [root];
+  let cursor = 0;
+  let fileCount = 0;
 
-  while (queue.length && Object.keys(sourceFiles).length < maxFiles) {
-    const current = queue.shift();
+  while (cursor < queue.length && fileCount < maxFiles) {
+    const current = queue[cursor++];
     const entries = await fsp.readdir(current, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
@@ -1097,11 +1228,14 @@ async function collectSourceFiles(root, options = {}) {
       if (!stat.isFile()) continue;
       if (stat.size > maxFileBytes) {
         sourceFiles[relativePath] = `[omitted: file exceeds ${maxFileBytes} bytes]`;
+        fileCount += 1;
+        if (fileCount >= maxFiles) break;
         continue;
       }
 
       sourceFiles[relativePath] = await fsp.readFile(fullPath, "utf8");
-      if (Object.keys(sourceFiles).length >= maxFiles) {
+      fileCount += 1;
+      if (fileCount >= maxFiles) {
         break;
       }
     }

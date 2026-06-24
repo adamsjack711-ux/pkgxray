@@ -14,6 +14,13 @@ const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "github");
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FETCH_TIMEOUT_MS = 3000;
 
+// Module-local keep-alive agent for api.github.com + codeload.github.com.
+// In lockfile-mode + --deep we hit api.github.com many times in a row for
+// repo metadata; the first call pays the TLS handshake, subsequent ones
+// reuse the socket. Single-package guard runs see one or two API calls so
+// the agent mostly pays off in the lockfile path.
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
+
 async function readCache(key) {
   try {
     const file = path.join(CACHE_DIR, `${encodeURIComponent(key)}.json`);
@@ -81,7 +88,7 @@ function githubApiGet(urlPath, token, hops = 0) {
     };
     if (token) headers.authorization = `Bearer ${token}`;
     const request = https.get(
-      { hostname: "api.github.com", path: urlPath, headers, timeout: FETCH_TIMEOUT_MS },
+      { hostname: "api.github.com", path: urlPath, headers, timeout: FETCH_TIMEOUT_MS, agent: HTTPS_AGENT },
       (response) => {
         // Follow GitHub's 301 redirects (repo transferred / renamed)
         if ([301, 302, 307, 308].includes(response.statusCode) && response.headers.location) {
@@ -209,7 +216,8 @@ async function downloadCodeload(url, destination) {
           hostname: parsed.hostname,
           path: parsed.pathname + parsed.search,
           headers: { "user-agent": USER_AGENT },
-          timeout: TARBALL_TIMEOUT_MS
+          timeout: TARBALL_TIMEOUT_MS,
+          agent: HTTPS_AGENT
         },
         (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
@@ -305,46 +313,95 @@ const TAR_ARGV_PATH_LIMIT = 400;
 //                    directory entries.
 async function listTarballEntries(archivePath) {
   const listing = await runCapture("tar", ["-tzf", archivePath]);
-  const lines = listing.split("\n").filter((l) => l.length > 0);
-  if (lines.length === 0) {
+  if (listing.length === 0) {
     return { prefix: null, entries: new Set(), fileEntries: new Set(), dirEntries: new Set() };
   }
 
-  // GitHub codeload tarballs always wrap everything under one top-level dir
-  // like "microsoft-TypeScript-abc123def/". Use the first entry's first
-  // segment as the prefix.
-  const firstSlash = lines[0].indexOf("/");
-  const prefix = firstSlash > 0 ? lines[0].slice(0, firstSlash + 1) : null;
+  // Detect the codeload-style top-level prefix from the first non-empty line.
+  // Avoids materialising the whole `lines` array up front.
+  const firstNl = listing.indexOf("\n");
+  const firstLine = firstNl === -1 ? listing : listing.slice(0, firstNl);
+  const firstSlash = firstLine.indexOf("/");
+  const prefix = firstSlash > 0 ? firstLine.slice(0, firstSlash + 1) : null;
+  const prefixLen = prefix ? prefix.length : 0;
 
   const entries = new Set();
   const fileEntries = new Set();
   const dirEntries = new Set();
-  for (const raw of lines) {
+
+  // Scan the listing string in place. For typescript this is ~10k lines —
+  // skipping the intermediate split() saves a 10k-entry array allocation
+  // and matching GC pressure.
+  let i = 0;
+  const len = listing.length;
+  while (i < len) {
+    const nl = listing.indexOf("\n", i);
+    const lineEnd = nl === -1 ? len : nl;
+    if (lineEnd === i) {
+      i = lineEnd + 1;
+      continue;
+    }
     // Reject anything that doesn't sit under the detected prefix — defensive
     // against odd archives mixing roots.
-    if (prefix && !raw.startsWith(prefix)) continue;
-    const stripped = prefix ? raw.slice(prefix.length) : raw;
-    if (stripped.length === 0) continue;
+    if (prefix && (listing.charCodeAt(i) !== prefix.charCodeAt(0) || !listing.startsWith(prefix, i))) {
+      i = lineEnd + 1;
+      continue;
+    }
+    const strippedStart = i + prefixLen;
+    if (strippedStart >= lineEnd) {
+      i = lineEnd + 1;
+      continue;
+    }
     // Reject path-traversal — same checks the main extractor does.
-    if (stripped.startsWith("/") || stripped.split("/").includes("..")) continue;
-    const isDir = stripped.endsWith("/");
-    const cleanPath = isDir ? stripped.slice(0, -1) : stripped;
-    if (cleanPath.length === 0) continue;
+    if (listing.charCodeAt(strippedStart) === 0x2f /* "/" */) {
+      i = lineEnd + 1;
+      continue;
+    }
+    // Check for "/.." or "../" segments without splitting the string.
+    if (hasParentSegment(listing, strippedStart, lineEnd)) {
+      i = lineEnd + 1;
+      continue;
+    }
+    const isDir = listing.charCodeAt(lineEnd - 1) === 0x2f /* "/" */;
+    const cleanEnd = isDir ? lineEnd - 1 : lineEnd;
+    if (cleanEnd <= strippedStart) {
+      i = lineEnd + 1;
+      continue;
+    }
+    const cleanPath = listing.slice(strippedStart, cleanEnd);
     entries.add(cleanPath);
     if (isDir) {
       dirEntries.add(cleanPath);
     } else {
       fileEntries.add(cleanPath);
-      // Add every parent dir of this file — some tarballs omit explicit dir
-      // entries and we still need a complete parent-dir set for the
-      // "parent-exists" check downstream.
-      const parts = cleanPath.split("/");
-      for (let i = 1; i < parts.length; i++) {
-        dirEntries.add(parts.slice(0, i).join("/"));
+      // Add every parent dir of this file without split/slice/join. Walk
+      // forward through the path and emit each prefix ending at a "/".
+      let slash = cleanPath.indexOf("/");
+      while (slash !== -1) {
+        dirEntries.add(cleanPath.slice(0, slash));
+        slash = cleanPath.indexOf("/", slash + 1);
       }
     }
+    i = lineEnd + 1;
   }
   return { prefix, entries, fileEntries, dirEntries };
+}
+
+// Returns true if any segment between `start` and `end` (within `s`) is "..".
+function hasParentSegment(s, start, end) {
+  let segStart = start;
+  for (let j = start; j < end; j++) {
+    if (s.charCodeAt(j) === 0x2f /* "/" */) {
+      if (j - segStart === 2 && s.charCodeAt(segStart) === 0x2e && s.charCodeAt(segStart + 1) === 0x2e) {
+        return true;
+      }
+      segStart = j + 1;
+    }
+  }
+  if (end - segStart === 2 && s.charCodeAt(segStart) === 0x2e && s.charCodeAt(segStart + 1) === 0x2e) {
+    return true;
+  }
+  return false;
 }
 
 // Extract a specific subset of files from `archivePath` into `destination`,
