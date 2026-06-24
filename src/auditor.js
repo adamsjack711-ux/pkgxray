@@ -1072,8 +1072,25 @@ function compareFindings(a, b) {
   return `${a.file}:${a.category}`.localeCompare(`${b.file}:${b.category}`);
 }
 
+// Strip control bytes that could hijack a TTY when finding snippets are
+// rendered to a user's terminal — most importantly ESC (0x1b, the lead byte
+// of ANSI escape sequences) and the other C0 controls. A malicious package
+// can stuff `\x1b[2J\x1b[H` into a README or source file; without this scrub
+// the snippet would clear the screen / move the cursor / rewrite earlier
+// output when the verdict is rendered as markdown to stdout.
+//
+// Replacement character is U+FFFD so the user can still see "something was
+// here" without that something being interpreted by the terminal.
+function stripControlBytes(value) {
+  // Allow tab (0x09) and newline (0x0a); collapsed to a space by clip()'s
+  // whitespace pass anyway. Strip everything else in 0x00-0x1f, plus DEL
+  // (0x7f) and the C1 control range (0x80-0x9f).
+  return String(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "�");
+}
+
 function clip(value, maxLength = 180) {
-  const compact = String(value).replace(/\s+/g, " ").trim();
+  const stripped = stripControlBytes(value);
+  const compact = stripped.replace(/\s+/g, " ").trim();
   if (compact.length <= maxLength) {
     return compact;
   }

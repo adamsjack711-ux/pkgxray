@@ -199,6 +199,59 @@ test("triage --auto allow writes allow decisions", async () => {
 // Interactive: keypress driven
 // ---------------------------------------------------------------------------
 
+test("strips C0/C1 control bytes from attacker-controlled package names before rendering", async () => {
+  // A hostile lockfile entry whose name and version embed ANSI escape codes
+  // (clear-screen, cursor-up) could rewrite the prompt the user sees before
+  // they press a/b. The triage renderer must scrub control bytes before they
+  // reach the TTY. We feed the input synchronously via the fake stdin and
+  // inspect the captured stdout for any surviving ESC/C0 bytes.
+  const dir = await tmpDir();
+  // npm/pnpm/yarn parsers wouldn't normally emit a name with literal escape
+  // bytes, but we hand-build a package-lock.json (the npm parser accepts
+  // arbitrary "name" fields) to simulate the hostile case.
+  const evilName = "evil\x1b[2J\x1b[Hpkg";
+  const evilVersion = "1.0.0\x07\x08";
+  const lockfilePath = path.join(dir, "package-lock.json");
+  await fs.writeFile(lockfilePath, JSON.stringify({
+    name: "demo",
+    lockfileVersion: 3,
+    packages: {
+      "": { name: "demo", version: "1.0.0" },
+      [`node_modules/${evilName}`]: { name: evilName, version: evilVersion }
+    }
+  }));
+
+  const fakeStdin = makeFakeStdin();
+  const fakeStdout = makeFakeStdout();
+  feedKeys(fakeStdin, ["a"]);
+
+  await triageLockfile(lockfilePath, {
+    stdin: fakeStdin,
+    stdout: fakeStdout,
+    stderr: makeFakeStdout(),
+    isTTY: true,
+    vulnerabilityCheck: false,
+    includeSafe: true
+  });
+
+  // The renderer is permitted to emit its OWN ANSI sequences (BOLD, colors,
+  // CLEAR_LINE). Scan only for control bytes inside places where the
+  // attacker-controlled name/version were rendered. Cheap proxy: confirm
+  // the raw evilName/evilVersion bytes never appear in stdout.
+  assert.ok(
+    !fakeStdout.text.includes("\x1b[2J"),
+    "clear-screen sequence from attacker-controlled name reached TTY"
+  );
+  assert.ok(
+    !fakeStdout.text.includes("\x1b[H"),
+    "cursor-home sequence from attacker-controlled name reached TTY"
+  );
+  assert.ok(
+    !fakeStdout.text.includes("\x07"),
+    "bell byte from attacker-controlled version reached TTY"
+  );
+});
+
 test("interactive triage records keypresses to .pkgxray.lock", async () => {
   const dir = await tmpDir();
   // The audit step needs at least one package classified as block/review so

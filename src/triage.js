@@ -107,6 +107,25 @@ const GREEN = `${ESC}32m`;
 const CYAN = `${ESC}36m`;
 const CLEAR_LINE = `${ESC}2K\r`;
 
+// SECURITY: every string in `result` (name, version, paths, vulnerability id
+// & summary, deep-scan band labels) originates from an attacker-controlled
+// lockfile or OSV response. Without scrubbing, a crafted package name like
+// `"foo\x1b[2K\x1b[Aevil"` could rewrite an earlier line on the TTY — e.g.
+// make the prompt say "block?" while the recorded decision is "allow".
+//
+// Strip every C0 control byte (0x00-0x1f), DEL (0x7f), and the C1 range
+// (0x80-0x9f). Replacement is U+FFFD so the user still sees a placeholder
+// where something used to be. The intentional ANSI sequences emitted by the
+// renderer (BOLD, RED, etc.) are written as template-literal constants, not
+// through this scrubber, so colours still work.
+function sanitizeForTerminal(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(
+    /[\x00-\x1f\x7f-\x9f]/g,
+    "�"
+  );
+}
+
 function colorForDecision(decision) {
   if (decision === "block") return RED;
   if (decision === "review") return YELLOW;
@@ -115,23 +134,25 @@ function colorForDecision(decision) {
 
 function renderPackage(result, index, total) {
   const lines = [];
+  const name = sanitizeForTerminal(result.name);
+  const version = sanitizeForTerminal(result.version);
   const tag = `${colorForDecision(result.decision)}${result.decision.toUpperCase()}${RESET}`;
-  const header = `${BOLD}[${index + 1}/${total}] ${result.name}@${result.version}${RESET}  (${tag})`;
+  const header = `${BOLD}[${index + 1}/${total}] ${name}@${version}${RESET}  (${tag})`;
   lines.push(header);
   if (Array.isArray(result.paths) && result.paths.length > 0) {
-    lines.push(`  pulled in by: ${result.paths[0]}`);
+    lines.push(`  pulled in by: ${sanitizeForTerminal(result.paths[0])}`);
   }
   if (Array.isArray(result.vulnerabilities) && result.vulnerabilities.length > 0) {
     lines.push(`  vulnerabilities:`);
     for (const v of result.vulnerabilities) {
-      const summary = v.summary ? ` — ${v.summary}` : "";
-      lines.push(`    ${CYAN}${v.id}${RESET}${summary}`);
+      const summary = v.summary ? ` — ${sanitizeForTerminal(v.summary)}` : "";
+      lines.push(`    ${CYAN}${sanitizeForTerminal(v.id)}${RESET}${summary}`);
     }
   }
   if (result.deep && Array.isArray(result.deep.riskBands) && result.deep.riskBands.length > 0) {
     const bands = result.deep.riskBands
       .filter((b) => b.severity === "high" || b.severity === "medium")
-      .map((b) => `${b.severity.toUpperCase()} ${b.label}`);
+      .map((b) => `${sanitizeForTerminal(b.severity).toUpperCase()} ${sanitizeForTerminal(b.label)}`);
     if (bands.length > 0) {
       lines.push(`  risk bands (from deep scan): ${bands.join(", ")}`);
     }
