@@ -104,9 +104,6 @@ async function hashTree(root, subdir, limits, options = {}) {
   }
   const result = new Map();
   const dirs = new Set();
-  const queue = [""];
-  let totalBytes = 0;
-  let totalFiles = 0;
   const maxFiles = limits.maxFiles || 5000;
   const maxBytes = limits.maxBytes || 50 * 1024 * 1024;
   const maxFileBytes = limits.maxFileBytes || 1024 * 1024;
@@ -117,8 +114,53 @@ async function hashTree(root, subdir, limits, options = {}) {
   // has 10x more files than the npm tarball.
   const onlyHashPaths = options.onlyHashPaths || null;
 
-  while (queue.length > 0 && totalFiles < maxFiles && totalBytes < maxBytes) {
-    const rel = queue.shift();
+  // Fast path: caller supplied both the exact paths to hash AND the directory
+  // set is supplied separately (via `prepopulatedGhDirs` downstream). In that
+  // case we skip the readdir walk entirely and stat+hash only the listed
+  // files. For typescript this drops the github walk from ~10k readdir calls
+  // (full repo layout) to ~30 file opens.
+  if (onlyHashPaths && options.skipDirWalk) {
+    let totalBytes = 0;
+    let totalFiles = 0;
+    for (const childRel of onlyHashPaths) {
+      if (totalFiles >= maxFiles || totalBytes >= maxBytes) break;
+      if (shouldSkipHash(childRel)) continue;
+      const childFull = path.join(baseDir, childRel);
+      let stat;
+      try {
+        stat = await fsp.stat(childFull);
+      } catch {
+        // File not present in the (selectively-extracted) tree — that's
+        // fine, the diff loop treats absent ghTree entries as "extra in npm".
+        continue;
+      }
+      if (!stat.isFile()) continue;
+      if (stat.size > maxFileBytes) {
+        result.set(childRel, { size: stat.size, sha256: "skipped:too-large" });
+        continue;
+      }
+      if (totalBytes + stat.size > maxBytes) {
+        result.set(childRel, { size: stat.size, sha256: "skipped:tree-budget" });
+        continue;
+      }
+      const hash = await hashFile(childFull);
+      result.set(childRel, { size: stat.size, sha256: hash });
+      totalBytes += stat.size;
+      totalFiles += 1;
+    }
+    result.__dirs = dirs;
+    return result;
+  }
+
+  // Use an index-based cursor instead of queue.shift() — Array#shift is O(n)
+  // which becomes painful on deep trees (eslint, typescript) where the queue
+  // can hold thousands of dirs.
+  const queue = [""];
+  let cursor = 0;
+  let totalBytes = 0;
+  let totalFiles = 0;
+  while (cursor < queue.length && totalFiles < maxFiles && totalBytes < maxBytes) {
+    const rel = queue[cursor++];
     const full = path.join(baseDir, rel);
     let entries;
     try {
@@ -190,8 +232,14 @@ async function diffNpmVsGithub({ npmStagedPath, githubStagedPath, subdir, hasBui
   // github tree walk from 10k+ files to ~30.
   const npmTree = await hashTree(npmStagedPath, "", limits);
   const onlyHashPaths = npmTree ? new Set(npmTree.keys()) : null;
+  // When the caller did a selective extract, the github tree on disk only
+  // contains the npm-paired files anyway AND we already have the full dir
+  // set in `prepopulatedGhDirs`. Skip the readdir walk entirely — directly
+  // stat + hash the listed paths. Massive win on huge repos.
+  const skipDirWalk = Boolean(prepopulatedGhDirs && prepopulatedGhDirs.size > 0);
   const ghTree = await hashTree(githubStagedPath, subdir || "", limits, {
-    onlyHashPaths
+    onlyHashPaths,
+    skipDirWalk
   });
   if (!npmTree || !ghTree) {
     return {
