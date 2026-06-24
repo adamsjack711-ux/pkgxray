@@ -560,13 +560,24 @@ async function downloadResolvedPackage(resolved, stagedPath) {
   const archivePath = `${stagedPath}.tgz`;
   await fsp.mkdir(path.dirname(stagedPath), { recursive: true, mode: 0o700 });
   await downloadFile(resolved.tarballUrl, archivePath);
-  resolved.sha256 = await hashFile(archivePath);
+
+  // Single tarball read feeds BOTH the sha256 telemetry digest and the
+  // integrity-verification digest (sha512 typically, sometimes sha1). Without
+  // this we read the file twice — once for sha256, once for integrity — which
+  // for a 30MB lodash tarball is ~100ms wasted per audit.
+  const algos = ["sha256"];
+  const integrityAlgo = pickIntegrityAlgo(resolved);
+  if (integrityAlgo && integrityAlgo !== "sha256") {
+    algos.push(integrityAlgo);
+  }
+  const digests = await hashFileMulti(archivePath, algos);
+  resolved.sha256 = digests.sha256.toString("hex");
 
   // Verify against the npm registry's published integrity field BEFORE
   // extracting. Delete the partial file on mismatch so we never leave a
   // hostile tarball on disk.
   try {
-    await verifyNpmTarballIntegrity(resolved, archivePath);
+    verifyNpmTarballIntegrity(resolved, digests);
   } catch (error) {
     await fsp.rm(archivePath, { force: true });
     throw error;
@@ -576,7 +587,17 @@ async function downloadResolvedPackage(resolved, stagedPath) {
   await extractTarball(archivePath, stagedPath);
 }
 
-async function verifyNpmTarballIntegrity(resolved, archivePath) {
+function pickIntegrityAlgo(resolved) {
+  if (resolved.integrity) {
+    const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
+    const dashIndex = firstEntry.indexOf("-");
+    if (dashIndex > 0) return firstEntry.slice(0, dashIndex);
+  }
+  if (resolved.shasum) return "sha1";
+  return null;
+}
+
+function verifyNpmTarballIntegrity(resolved, digests) {
   if (resolved.integrity) {
     const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
     const dashIndex = firstEntry.indexOf("-");
@@ -585,7 +606,13 @@ async function verifyNpmTarballIntegrity(resolved, archivePath) {
     }
     const algo = firstEntry.slice(0, dashIndex);
     const expectedBase64 = firstEntry.slice(dashIndex + 1);
-    const actualBase64 = await hashFileDigest(archivePath, algo, "base64");
+    const buffer = digests[algo];
+    if (!buffer) {
+      // Shouldn't happen — pickIntegrityAlgo would have included it. Fall back
+      // to recomputing rather than failing the audit.
+      throw new Error(`internal: missing digest for algorithm ${algo}`);
+    }
+    const actualBase64 = buffer.toString("base64");
     if (actualBase64 !== expectedBase64) {
       throw new Error(
         `npm tarball integrity mismatch: expected ${firstEntry} got ${algo}-${actualBase64}`
@@ -595,7 +622,11 @@ async function verifyNpmTarballIntegrity(resolved, archivePath) {
   }
   if (resolved.shasum) {
     const expectedHex = String(resolved.shasum).trim().toLowerCase();
-    const actualHex = (await hashFileDigest(archivePath, "sha1", "hex")).toLowerCase();
+    const buffer = digests.sha1;
+    if (!buffer) {
+      throw new Error("internal: missing sha1 digest for shasum check");
+    }
+    const actualHex = buffer.toString("hex").toLowerCase();
     if (actualHex !== expectedHex) {
       throw new Error(
         `npm tarball integrity mismatch: expected sha1-${expectedHex} got sha1-${actualHex}`
@@ -606,19 +637,26 @@ async function verifyNpmTarballIntegrity(resolved, archivePath) {
   throw new Error("npm tarball has no published integrity field");
 }
 
-function hashFileDigest(filePath, algorithm, encoding) {
+// Stream the file ONCE through every requested hash. Returns a map of
+// algorithm → Buffer digest (caller chooses the output encoding).
+function hashFileMulti(filePath, algorithms) {
   return new Promise((resolve, reject) => {
-    let hash;
+    let hashes;
     try {
-      hash = crypto.createHash(algorithm);
+      hashes = algorithms.map((a) => ({ algo: a, hash: crypto.createHash(a) }));
     } catch (error) {
-      reject(error);
-      return;
+      return reject(error);
     }
     fs.createReadStream(filePath)
-      .on("data", (chunk) => hash.update(chunk))
+      .on("data", (chunk) => {
+        for (const h of hashes) h.hash.update(chunk);
+      })
       .on("error", reject)
-      .on("end", () => resolve(hash.digest(encoding)));
+      .on("end", () => {
+        const out = {};
+        for (const h of hashes) out[h.algo] = h.hash.digest();
+        resolve(out);
+      });
   });
 }
 
@@ -850,17 +888,6 @@ function downloadFile(url, destination, options = {}) {
     };
     get(url, 0);
   });
-}
-
-async function hashFile(filePath) {
-  const hash = crypto.createHash("sha256");
-  await new Promise((resolve, reject) => {
-    fs.createReadStream(filePath)
-      .on("data", (chunk) => hash.update(chunk))
-      .on("error", reject)
-      .on("end", resolve);
-  });
-  return hash.digest("hex");
 }
 
 async function extractTarball(archivePath, destination, options = {}) {
