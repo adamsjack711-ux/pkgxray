@@ -5,10 +5,12 @@ const fs = require("node:fs");
 const { auditEvidence, renderMarkdown } = require("../src/auditor");
 const { guardExtension } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
+const { triageLockfile } = require("../src/triage");
 
 const AUDIT_TOOL_NAME = "audit_agent_extension_supply_chain";
 const GUARD_TOOL_NAME = "guard_agent_extension_install";
 const LOCKFILE_AUDIT_TOOL_NAME = "audit_lockfile_supply_chain";
+const LOCKFILE_TRIAGE_TOOL_NAME = "triage_lockfile_supply_chain";
 
 const SERVER_VERSION = "0.12.0";
 
@@ -188,18 +190,57 @@ function lockfileAuditToolDefinition() {
   };
 }
 
+function lockfileTriageToolDefinition() {
+  return {
+    name: LOCKFILE_TRIAGE_TOOL_NAME,
+    description:
+      "Non-interactive triage of a lockfile — auto-mark every flagged dep as allow or block, persisted to a sibling .pkgxray.lock next to the lockfile. Subsequent audit_lockfile_supply_chain runs respect those decisions. Required for MCP because interactive TTY input is not available; choose mode='block' to record current OSV findings as suppressions or mode='allow' to accept them.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        lockfilePath: {
+          type: "string",
+          description:
+            "Absolute or relative path to a package-lock.json, npm-shrinkwrap.json, yarn.lock, pnpm-lock.yaml, or package.json. Must exist."
+        },
+        auto: {
+          type: "string",
+          enum: ["allow", "block"],
+          description:
+            "Required. Decision to apply to every package in the worklist. 'block' records each flagged dep as blocked (preserves OSV findings as documented suppressions); 'allow' accepts every dep and silences it on subsequent audits."
+        },
+        includeSafe: {
+          type: "boolean",
+          default: false,
+          description:
+            "If true, every dep (including OSV-safe ones) enters the worklist. Default false — only block/review deps are decided."
+        },
+        outputFormat: {
+          type: "string",
+          enum: ["markdown", "json"],
+          default: "markdown"
+        }
+      },
+      required: ["lockfilePath", "auto"]
+    }
+  };
+}
+
 function listTools() {
   return [
     auditToolDefinition(),
     guardToolDefinition(),
-    lockfileAuditToolDefinition()
+    lockfileAuditToolDefinition(),
+    lockfileTriageToolDefinition()
   ];
 }
 
 const TOOL_NAMES = new Set([
   AUDIT_TOOL_NAME,
   GUARD_TOOL_NAME,
-  LOCKFILE_AUDIT_TOOL_NAME
+  LOCKFILE_AUDIT_TOOL_NAME,
+  LOCKFILE_TRIAGE_TOOL_NAME
 ]);
 
 function handleRequest(request) {
@@ -288,6 +329,48 @@ function handleRequest(request) {
       });
     }
 
+    if (name === LOCKFILE_TRIAGE_TOOL_NAME) {
+      const validationError = validateLockfilePath(args.lockfilePath);
+      if (validationError) return invalidParams(id, validationError);
+      if (args.auto !== "allow" && args.auto !== "block") {
+        return invalidParams(id, "auto must be \"allow\" or \"block\"");
+      }
+      // MCP has no TTY — we have to force non-interactive mode. The triage
+      // runner inspects `auto` first, so the fake streams below are only used
+      // for the summary line.
+      const stdoutBuf = [];
+      const fakeStdout = {
+        isTTY: false,
+        write(chunk) {
+          stdoutBuf.push(String(chunk));
+          return true;
+        }
+      };
+      const fakeStderr = {
+        isTTY: false,
+        write() { return true; }
+      };
+      return triageLockfile(args.lockfilePath, {
+        ...args,
+        stdout: fakeStdout,
+        stderr: fakeStderr,
+        isTTY: true // skip the !isTTY refusal — auto mode runs without input
+      }).then((result) => {
+        const text =
+          args.outputFormat === "json"
+            ? JSON.stringify(result, null, 2)
+            : renderTriageMarkdown(result, args, stdoutBuf.join(""));
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: textContent(text),
+            structuredContent: result
+          }
+        };
+      });
+    }
+
     // audit_agent_extension_supply_chain
     const report = auditEvidence(args);
     const text =
@@ -355,6 +438,21 @@ function renderGuardMarkdown(result) {
   }
 
   lines.push(renderMarkdown(result.report));
+  return lines.join("\n");
+}
+
+function renderTriageMarkdown(result, args, captured) {
+  const lines = [
+    `Triage mode: **auto-${args.auto}**`,
+    `Lockfile: \`${sanitizeForTerminal(args.lockfilePath)}\``,
+    `Decisions written to: \`${sanitizeForTerminal(result.lockPath)}\``,
+    "",
+    `Allowed: ${result.counts.allowed}  ·  Blocked: ${result.counts.blocked}  ·  Skipped: ${result.counts.skipped}`,
+    `Total decisions on disk: ${result.decisions.length}`
+  ];
+  if (captured) {
+    lines.push("", captured.trim());
+  }
   return lines.join("\n");
 }
 

@@ -114,16 +114,19 @@ test("MCP initialize reports server version 0.12.0", async () => {
 // tools/list returns the lockfile audit tool with the correct schema
 // ---------------------------------------------------------------------------
 
-test("MCP tools/list exposes audit_lockfile_supply_chain", async () => {
+test("MCP tools/list exposes all 4 tools", async () => {
   const server = startServer();
   try {
     await server.call("initialize", { protocolVersion: "2024-11-05" });
     const res = await server.call("tools/list", {});
     const tools = res.result.tools;
     const names = tools.map((t) => t.name).sort();
-    assert.ok(names.includes("audit_lockfile_supply_chain"));
-    assert.ok(names.includes("audit_agent_extension_supply_chain"));
-    assert.ok(names.includes("guard_agent_extension_install"));
+    assert.deepEqual(names, [
+      "audit_agent_extension_supply_chain",
+      "audit_lockfile_supply_chain",
+      "guard_agent_extension_install",
+      "triage_lockfile_supply_chain"
+    ]);
 
     for (const t of tools) {
       assert.equal(typeof t.description, "string");
@@ -150,6 +153,11 @@ test("MCP tools/list exposes audit_lockfile_supply_chain", async () => {
       guardTool.inputSchema.properties.deep,
       "deep must appear in guard tool schema"
     );
+
+    // triage tool requires both lockfilePath and auto with strict enum.
+    const triageTool = tools.find((t) => t.name === "triage_lockfile_supply_chain");
+    assert.deepEqual(triageTool.inputSchema.required.sort(), ["auto", "lockfilePath"]);
+    assert.deepEqual(triageTool.inputSchema.properties.auto.enum, ["allow", "block"]);
   } finally {
     await server.stop();
   }
@@ -206,6 +214,64 @@ test("MCP returns invalid-params error for missing lockfilePath", async () => {
     assert.ok(res.error, `expected error, got ${JSON.stringify(res)}`);
     assert.equal(res.error.code, -32602);
     assert.match(res.error.message, /lockfilePath/);
+  } finally {
+    await server.stop();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// triage_lockfile_supply_chain auto:"block" writes a .pkgxray.lock
+// ---------------------------------------------------------------------------
+
+test("MCP triage_lockfile_supply_chain writes .pkgxray.lock with auto:\"block\"", async () => {
+  const dir = await tmpDir();
+  const lockfilePath = await writeLockfile(dir, [
+    { name: "lodash", version: "4.17.21" },
+    { name: "react", version: "19.0.0" }
+  ]);
+
+  const server = startServer();
+  try {
+    await server.call("initialize", { protocolVersion: "2024-11-05" });
+    const res = await server.call("tools/call", {
+      name: "triage_lockfile_supply_chain",
+      arguments: {
+        lockfilePath,
+        auto: "block",
+        includeSafe: true, // every dep enters the worklist when OSV is off
+        outputFormat: "json",
+        vulnerabilityCheck: false
+      }
+    });
+
+    assert.ok(res.result, `expected result, got ${JSON.stringify(res)}`);
+    const structured = res.result.structuredContent;
+    assert.equal(structured.counts.blocked, 2);
+    assert.equal(structured.counts.allowed, 0);
+
+    const saved = JSON.parse(await fs.readFile(path.join(dir, ".pkgxray.lock"), "utf8"));
+    assert.equal(saved.schemaVersion, 1);
+    assert.equal(saved.decisions.length, 2);
+    assert.ok(saved.decisions.every((d) => d.decision === "block"));
+  } finally {
+    await server.stop();
+  }
+});
+
+test("MCP returns invalid-params error for triage without auto", async () => {
+  const dir = await tmpDir();
+  const lockfilePath = await writeLockfile(dir, [{ name: "lodash", version: "4.17.21" }]);
+
+  const server = startServer();
+  try {
+    await server.call("initialize", { protocolVersion: "2024-11-05" });
+    const res = await server.call("tools/call", {
+      name: "triage_lockfile_supply_chain",
+      arguments: { lockfilePath, outputFormat: "json" }
+    });
+    assert.ok(res.error, `expected error, got ${JSON.stringify(res)}`);
+    assert.equal(res.error.code, -32602);
+    assert.match(res.error.message, /auto/);
   } finally {
     await server.stop();
   }
