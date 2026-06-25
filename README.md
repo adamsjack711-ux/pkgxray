@@ -105,22 +105,58 @@ Use the stdio server from any MCP-capable agent:
 }
 ```
 
-The server exposes two tools:
+The server exposes four tools:
 
 - `audit_agent_extension_supply_chain` — static heuristics on supplied evidence
 - `guard_agent_extension_install` — stage, vuln-check, audit a real package
+- `audit_lockfile_supply_chain` — batch OSV scan every dep in a lockfile
+- `triage_lockfile_supply_chain` — non-interactive triage: auto-mark every
+  flagged dep as `allow` or `block` into a sibling `.pkgxray.lock`
 
-Tool arguments:
+`audit_agent_extension_supply_chain` arguments:
 
 - `packageName`: optional package or extension name
 - `npmMetadata`: optional npm metadata object or text
 - `githubMetadata`: optional GitHub metadata object or text
 - `webPresence`: optional web presence object or text
+- `knownVulnerabilities`: optional array of OSV-shaped vulnerability records
+- `provenanceAttestation`: optional npm SLSA attestation object — when
+  supplied the auditor cross-checks the attested source repo against the
+  declared `package.json` repository
+- `npmVsGithubDiff`: optional pre-computed npm-vs-github file diff
 - `sourceFiles`: required map of file path to source text, or array of file objects
 - `outputFormat`: `markdown` or `json`
 
-`guard_agent_extension_install` accepts `reference`, optional `quarantineRoot`,
-optional `promoteTo`, `policy`, `force`, and `outputFormat`.
+`guard_agent_extension_install` arguments:
+
+- `reference`: required, npm package, `npm:name@version`, `file:path`, or
+  local directory path
+- `quarantineRoot`, `promoteTo`, `policy` (`safe-only` | `allow-review`),
+  `force`, `sourceScan`, `vulnerabilityCheck`, `githubMetadata`,
+  `githubDiff`, `deep`, `outputFormat`
+
+The guard pipeline automatically fetches the package's npm provenance
+attestation (when one exists) and runs the cross-check; no separate flag is
+required.
+
+`audit_lockfile_supply_chain` arguments:
+
+- `lockfilePath`: required, path to `package-lock.json`, `npm-shrinkwrap.json`,
+  `yarn.lock`, `pnpm-lock.yaml`, or `package.json`
+- `deep`: run the full guard pipeline on every OSV-blocked dep
+- `deepAll`: run the deep pipeline on every dep (slow)
+- `vulnerabilityCheck`: set false to skip the OSV query
+- `outputFormat`: `markdown` or `json`
+
+`triage_lockfile_supply_chain` arguments:
+
+- `lockfilePath`: required, same formats as above
+- `auto`: required, `"allow"` or `"block"` — MCP has no TTY so the
+  interactive walkthrough cannot be driven by hand. Use `block` to record
+  current OSV findings as documented suppressions, `allow` to accept them.
+- `includeSafe`: if true, every dep enters the worklist; default false
+  (only block/review deps are decided)
+- `outputFormat`: `markdown` or `json`
 
 ## Static heuristics — calibration
 
