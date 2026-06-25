@@ -1125,17 +1125,30 @@ function snippetForPatterns(content, patterns) {
   return clip(content);
 }
 
+// SECURITY: every interpolated value in renderMarkdown's output ends up
+// in either a CLI terminal or an MCP `text content` block (which an MCP
+// host typically pipes to a terminal too). Anything that came from the
+// caller — packageName, finding.file, band.examples paths — must have C0
+// and C1 control bytes scrubbed first, or a malicious package can stuff
+// `\x1b[2K\x1b[A` into a name and rewrite the previous line of output.
+// `finding.snippet` is already scrubbed by `clip()` upstream; the OTHER
+// fields used to slip through untouched.
+function safe(value) {
+  if (value === null || value === undefined) return "";
+  return stripControlBytes(value);
+}
+
 function renderMarkdown(report) {
   const lines = [
     `Verdict: **${report.verdict.toUpperCase()}**`,
     `Grade: **${report.grade}** (${report.score}/100)`,
     "",
-    report.summary,
+    safe(report.summary),
     ""
   ];
 
   if (report.packageName) {
-    lines.push(`Package: \`${report.packageName}\``, "");
+    lines.push(`Package: \`${safe(report.packageName)}\``, "");
   }
 
   if (report.riskBands && report.riskBands.length > 0) {
@@ -1147,9 +1160,9 @@ function renderMarkdown(report) {
     lines.push(`${verb}:`);
     for (const band of report.riskBands) {
       const examples = band.examples && band.examples.length > 0
-        ? ` (${band.examples.slice(0, 2).map((e) => `\`${e}\``).join(", ")}${band.count > band.examples.length ? `, +${band.count - band.examples.length} more` : ""})`
+        ? ` (${band.examples.slice(0, 2).map((e) => `\`${safe(e)}\``).join(", ")}${band.count > band.examples.length ? `, +${band.count - band.examples.length} more` : ""})`
         : "";
-      lines.push(`- **${band.severity.toUpperCase()} ${band.label}** — ${band.rationale}${examples}`);
+      lines.push(`- **${band.severity.toUpperCase()} ${safe(band.label)}** — ${safe(band.rationale)}${examples}`);
     }
     lines.push("");
   }
@@ -1172,9 +1185,9 @@ function renderMarkdown(report) {
   lines.push("Findings:");
   for (const finding of report.findings) {
     lines.push(
-      `- **${finding.severity.toUpperCase()} - ${finding.category}** in \`${finding.file}\`: ${finding.rationale}`
+      `- **${finding.severity.toUpperCase()} - ${safe(finding.category)}** in \`${safe(finding.file)}\`: ${safe(finding.rationale)}`
     );
-    lines.push(`  Evidence: \`${finding.snippet}\``);
+    lines.push(`  Evidence: \`${safe(finding.snippet)}\``);
   }
 
   return lines.join("\n");

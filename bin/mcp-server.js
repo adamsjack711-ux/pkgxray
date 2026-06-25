@@ -14,7 +14,14 @@ const LOCKFILE_TRIAGE_TOOL_NAME = "triage_lockfile_supply_chain";
 
 const SERVER_VERSION = "0.12.0";
 
+// SECURITY: cap the inbound stdin buffer so a hostile caller can't OOM us
+// by sending gigabytes of payload with no newline. 4 MiB is comfortably
+// larger than any realistic JSON-RPC frame.
+const MAX_BUFFER_BYTES = 4 * 1024 * 1024;
 let buffer = "";
+let bufferOverflowed = false;
+
+const HOME_DIR = require("node:os").homedir();
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -243,6 +250,100 @@ const TOOL_NAMES = new Set([
   LOCKFILE_TRIAGE_TOOL_NAME
 ]);
 
+// SECURITY: a reference is "local" when it lets the resolver walk the
+// filesystem instead of fetching from a registry. Mirrors parseReference
+// in src/quarantine.js. Blocked by default over MCP because an LLM-driven
+// host could otherwise use guard as a remote-file-read primitive.
+function isLocalReference(reference) {
+  if (typeof reference !== "string") return false;
+  if (reference.startsWith("file:")) return true;
+  if (reference.startsWith("./") || reference.startsWith("../") || reference === "." || reference === "..") return true;
+  if (reference.startsWith("/")) return true;
+  if (reference.startsWith("~/") || reference === "~") return true;
+  return false;
+}
+
+// SECURITY: error messages from auditor / quarantine paths can include
+// absolute filesystem paths. The MCP reply goes back to a possibly-hostile
+// caller (an LLM whose context an attacker influenced). Strip absolute paths
+// and the homedir before they leave so error messages can't be used to map
+// the box.
+function sanitizeErrorMessage(message) {
+  if (typeof message !== "string") return "internal error";
+  let out = message;
+  if (HOME_DIR && HOME_DIR.length > 0) {
+    out = out.split(HOME_DIR).join("~");
+  }
+  // OS temp prefix (macOS: /private/var/folders/...; linux: /tmp/...).
+  out = out.replace(/\/(?:private\/)?(?:var|tmp)\/[^\s'"`)]+/g, "<path>");
+  // Remaining absolute-looking tokens — keep the basename for context.
+  out = out.replace(/(?:^|\s)\/(?:[^\s/]+\/)+([^\s/'"`)]+)/g, " <path>/$1");
+  return out;
+}
+
+// SECURITY: validate tool-call arguments before passing them through.
+// `inputSchema` is descriptive; this is the actual enforcement layer.
+function validateToolCall(toolName, args) {
+  if (args === null || typeof args !== "object" || Array.isArray(args)) {
+    return "arguments must be an object";
+  }
+  if (toolName === GUARD_TOOL_NAME) {
+    if (typeof args.reference !== "string" || args.reference.length === 0) {
+      return "reference must be a non-empty string";
+    }
+    if (args.reference.includes("\0")) {
+      return "reference must not contain a NUL byte";
+    }
+    if (isLocalReference(args.reference) && args.allowLocalReferences !== true) {
+      return "local-path references are disabled over MCP — set allowLocalReferences:true to opt in (intended for trusted CLI bridges only)";
+    }
+    for (const k of ["quarantineRoot", "promoteTo"]) {
+      if (args[k] !== undefined && (typeof args[k] !== "string" || args[k].includes("\0"))) {
+        return `${k} must be a string without a NUL byte`;
+      }
+    }
+    for (const k of ["sourceScan", "vulnerabilityCheck", "githubMetadata", "githubDiff", "force", "deep", "allowLocalReferences"]) {
+      if (args[k] !== undefined && typeof args[k] !== "boolean") {
+        return `${k} must be a boolean`;
+      }
+    }
+    if (args.policy !== undefined && args.policy !== "safe-only" && args.policy !== "allow-review") {
+      return "policy must be 'safe-only' or 'allow-review'";
+    }
+  } else if (toolName === AUDIT_TOOL_NAME) {
+    if (args.sourceFiles === undefined || args.sourceFiles === null) {
+      return "sourceFiles is required";
+    }
+    if (typeof args.sourceFiles !== "object") {
+      return "sourceFiles must be an object map or an array";
+    }
+    if (args.packageName !== undefined && typeof args.packageName !== "string") {
+      return "packageName must be a string";
+    }
+  } else if (toolName === LOCKFILE_AUDIT_TOOL_NAME || toolName === LOCKFILE_TRIAGE_TOOL_NAME) {
+    if (typeof args.lockfilePath !== "string" || args.lockfilePath.length === 0) {
+      return "lockfilePath must be a non-empty string";
+    }
+    if (args.lockfilePath.includes("\0")) {
+      return "lockfilePath must not contain a NUL byte";
+    }
+    if (toolName === LOCKFILE_TRIAGE_TOOL_NAME) {
+      if (args.auto !== "allow" && args.auto !== "block") {
+        return "auto must be 'allow' or 'block' (MCP transport has no TTY for interactive mode)";
+      }
+    }
+    for (const k of ["deep", "deepAll", "vulnerabilityCheck", "includeSafe"]) {
+      if (args[k] !== undefined && typeof args[k] !== "boolean") {
+        return `${k} must be a boolean`;
+      }
+    }
+  }
+  if (args.outputFormat !== undefined && args.outputFormat !== "markdown" && args.outputFormat !== "json") {
+    return "outputFormat must be 'markdown' or 'json'";
+  }
+  return null;
+}
+
 function handleRequest(request) {
   const { id, method, params } = request;
 
@@ -290,10 +391,12 @@ function handleRequest(request) {
 
     const args = (params && params.arguments) || {};
 
+    const validationError = validateToolCall(name, args);
+    if (validationError) {
+      return invalidParams(id, validationError);
+    }
+
     if (name === GUARD_TOOL_NAME) {
-      if (typeof args.reference !== "string" || args.reference.length === 0) {
-        return invalidParams(id, "reference must be a non-empty string");
-      }
       return guardExtension(args.reference, args).then((guardResult) => {
         const text =
           args.outputFormat === "json"
@@ -311,8 +414,8 @@ function handleRequest(request) {
     }
 
     if (name === LOCKFILE_AUDIT_TOOL_NAME) {
-      const validationError = validateLockfilePath(args.lockfilePath);
-      if (validationError) return invalidParams(id, validationError);
+      const fileError = validateLockfileExists(args.lockfilePath);
+      if (fileError) return invalidParams(id, fileError);
       return auditLockfile(args.lockfilePath, args).then((result) => {
         const text =
           args.outputFormat === "json"
@@ -330,11 +433,8 @@ function handleRequest(request) {
     }
 
     if (name === LOCKFILE_TRIAGE_TOOL_NAME) {
-      const validationError = validateLockfilePath(args.lockfilePath);
-      if (validationError) return invalidParams(id, validationError);
-      if (args.auto !== "allow" && args.auto !== "block") {
-        return invalidParams(id, "auto must be \"allow\" or \"block\"");
-      }
+      const fileError = validateLockfileExists(args.lockfilePath);
+      if (fileError) return invalidParams(id, fileError);
       // MCP has no TTY — we have to force non-interactive mode. The triage
       // runner inspects `auto` first, so the fake streams below are only used
       // for the summary line.
@@ -402,17 +502,17 @@ function handleRequest(request) {
   };
 }
 
-function validateLockfilePath(lockfilePath) {
-  if (typeof lockfilePath !== "string" || lockfilePath.length === 0) {
-    return "lockfilePath must be a non-empty string";
-  }
+// Filesystem existence check — runs AFTER validateToolCall has checked the
+// shape. We don't include the path in the error message so the caller can't
+// use error replies as a fs-probe oracle.
+function validateLockfileExists(lockfilePath) {
   try {
     const stat = fs.statSync(lockfilePath);
     if (!stat.isFile()) {
-      return `lockfilePath is not a regular file: ${lockfilePath}`;
+      return "lockfilePath is not a regular file";
     }
   } catch (error) {
-    return `lockfilePath does not exist or is not readable: ${lockfilePath}`;
+    return "lockfilePath does not exist or is not readable";
   }
   return null;
 }
@@ -456,6 +556,15 @@ function renderTriageMarkdown(result, args, captured) {
   return lines.join("\n");
 }
 
+// SECURITY: pull id out of a request even when the caller sent something
+// that isn't an object — JSON-RPC says invalid-request id is `null`.
+function requestId(request) {
+  if (request && typeof request === "object" && !Array.isArray(request)) {
+    return request.id != null ? request.id : null;
+  }
+  return null;
+}
+
 function processLine(line) {
   if (!line.trim()) {
     return;
@@ -472,14 +581,26 @@ function processLine(line) {
     return;
   }
 
+  // SECURITY: a bare JSON value (null, number, string, array) is valid
+  // JSON but NOT a JSON-RPC request. Reject as -32600 instead of letting
+  // `handleRequest` destructure it and crash the server.
+  if (!request || typeof request !== "object" || Array.isArray(request)) {
+    send({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32600, message: "Invalid Request: expected JSON-RPC object" }
+    });
+    return;
+  }
+
   try {
     const response = handleRequest(request);
     if (response && typeof response.then === "function") {
       response.then(send).catch((error) => {
         send({
           jsonrpc: "2.0",
-          id: request.id || null,
-          error: { code: -32603, message: error.message }
+          id: requestId(request),
+          error: { code: -32603, message: sanitizeErrorMessage(error.message) }
         });
       });
       return;
@@ -490,15 +611,40 @@ function processLine(line) {
   } catch (error) {
     send({
       jsonrpc: "2.0",
-      id: request.id || null,
-      error: { code: -32603, message: error.message }
+      id: requestId(request),
+      error: { code: -32603, message: sanitizeErrorMessage(error.message) }
     });
   }
 }
 
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
+  // SECURITY: drop bytes once the buffer is past the cap, but keep reading
+  // so the stream drains normally. Emit ONE parse-error reply per overflow
+  // event and then reset on the next newline.
+  if (bufferOverflowed) {
+    const nl = chunk.indexOf("\n");
+    if (nl === -1) return;
+    buffer = "";
+    bufferOverflowed = false;
+    const tail = chunk.slice(nl + 1);
+    if (tail.length === 0) return;
+    chunk = tail;
+  }
   buffer += chunk;
+  if (buffer.length > MAX_BUFFER_BYTES) {
+    bufferOverflowed = true;
+    buffer = "";
+    send({
+      jsonrpc: "2.0",
+      id: null,
+      error: {
+        code: -32700,
+        message: `Parse error: JSON-RPC frame exceeded ${MAX_BUFFER_BYTES} bytes without a newline`
+      }
+    });
+    return;
+  }
   let newlineIndex = buffer.indexOf("\n");
   while (newlineIndex !== -1) {
     const line = buffer.slice(0, newlineIndex);
@@ -509,6 +655,10 @@ process.stdin.on("data", (chunk) => {
 });
 
 process.stdin.on("end", () => {
+  if (bufferOverflowed) {
+    buffer = "";
+    return;
+  }
   if (buffer.trim()) {
     processLine(buffer);
   }
