@@ -32,15 +32,19 @@ Concrete supply-chain risks pkgxray surfaces before code reaches your machine:
   keychains, browser stores, wallets, and bulk `process.env` harvesting.
 - **Exfiltration shapes** — env/file reads in the same file as outbound
   network, hardcoded IPs, webhooks, paste sites, shorteners,
-  download-then-execute.
+  download-then-execute, plus **split token-exfil spread across separate files**
+  and **stage-2 loaders that `eval` an opaque data blob**.
 - **Persistence** — writes to shell rc files, cron, launch agents, systemd,
   registry run keys.
 - **Obfuscation + execution** — packed/encoded blobs with `eval`,
   `new Function`, `vm`, `atob` + exec.
 - **Prompt injection** — instructions hidden in READMEs/docs/metadata aimed at
   steering an AI agent (treated as untrusted evidence, never followed).
-- **npm-vs-GitHub tampering** — diffs the published tarball against the tagged
-  GitHub source and flags files that exist only in the npm artifact.
+- **npm-vs-GitHub divergence** — diffs the published tarball against the tagged
+  GitHub source and flags files that exist only in (or differ from) the npm
+  artifact. A **review** signal, not an auto-block: it can't tell a normal
+  build/transpile/minify step from tampering, so it flags for a human instead of
+  crying wolf on every package that ships compiled output.
 - **Provenance** — verifies npm's sigstore/SLSA attestation links the package
   to its claimed source repo.
 
@@ -122,19 +126,42 @@ Tools exposed:
   flagged dep as `allow`/`block` into a sibling `.pkgxray.lock` (`lockfilePath`
   and `auto` required; optional `includeSafe`, `outputFormat`)
 
-## Static heuristics
+## Static heuristics & severity policy
 
-Calibrated to keep legitimate packages out of `block`:
+Tuned so legitimate packages stay out of `block` while real attacks still land
+there. Validated against the 47 most-installed npm packages: **0 false blocks**.
 
-- **block** (HIGH) — prompt-injection text in docs, credential reads near a
-  filesystem-read primitive, persistence writes (shell rc / cron /
-  launchagents), dynamic exec + hardcoded IP/shortener/webhook, bulk
-  `process.env` harvest in the same file as outbound network.
-- **review** (MEDIUM) — install/postinstall/prepare scripts, dynamic
-  eval/`new Function`/vm, clipboard access, missing package.json or entrypoint.
+- **block** (HIGH) — prompt-injection text in docs; credential reads near a
+  filesystem-read primitive; persistence writes (shell rc / cron / launchagents);
+  execution or outbound network plus a hardcoded public IP / shortener / webhook;
+  bulk `process.env` harvest in the same file as outbound network; a **stage-2
+  loader** that reads an opaque data blob (`.dat` / `.bin` / `.txt` / `.enc` …)
+  and `eval`s it; **split token-exfil** where the env harvest and a known
+  exfil/callback domain live in different files.
+- **review** (MEDIUM) — install/postinstall/prepare scripts; dynamic
+  eval / `new Function` / vm; clipboard access; a lone reference to a
+  high-confidence exfil/callback domain; **npm-vs-GitHub divergence**; missing
+  package.json or entrypoint.
 - **info** — child_process/fetch/network in isolation. Recorded, does not gate.
 
-`.d.ts`, `.map`, `.min.js`, and `.lock` files are skipped.
+### Designed to avoid false positives
+
+- **Documentation is not scanned as code.** README / markdown / `.rst` / `.txt`
+  run only the prompt-injection check — Node never executes them, so an
+  illustrative `process.env` + `fetch` example in a README isn't read as exfil.
+- **Test / fixture / example / benchmark files downgrade to review.** Hardcoded
+  IPs and `eval` in non-runtime files are normal. Two things stay HIGH: the
+  env-harvest + network exfil shape, and any file a **lifecycle script actually
+  runs** (so a payload wired through `postinstall` can't hide under `examples/`).
+- **URL shorteners are dual-use.** `bit.ly` / `tinyurl` / … count only when
+  co-located with a capability; paste / webhook / OAST / tunnel domains flag on
+  their own.
+- **Divergence is a review signal, not a block.** It can't distinguish a build
+  step from tampering on its own; the file *contents* are still scanned by the
+  code parameters above.
+
+`.d.ts`, `.map`, `.min.js`, and `.lock` files are skipped. Tarballs up to 20,000
+entries / 256 MB uncompressed are scanned.
 
 ## JSON output
 
