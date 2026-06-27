@@ -21,6 +21,33 @@ metadata or source text. Every verdict is one of:
 - `block` — high-severity indicators (prompt injection, credential access,
   persistence, obfuscation + execution, likely exfiltration)
 
+## What it catches
+
+Concrete supply-chain risks pkgxray surfaces before code reaches your machine:
+
+- **Known CVEs (OSV)** — queries OSV for the exact `name@version` and blocks
+  *before downloading the tarball*. `pkgxray guard npm:axios@1.7.7` returns
+  **BLOCK** on 20+ published advisories without ever fetching the code.
+- **Credential & secret access** — reads of `.ssh`, `.aws`, `.npmrc`, `.env`,
+  keychains, browser stores, wallets, and bulk `process.env` harvesting.
+- **Exfiltration shapes** — env/file reads in the same file as outbound
+  network, hardcoded IPs, webhooks, paste sites, shorteners,
+  download-then-execute.
+- **Persistence** — writes to shell rc files, cron, launch agents, systemd,
+  registry run keys.
+- **Obfuscation + execution** — packed/encoded blobs with `eval`,
+  `new Function`, `vm`, `atob` + exec.
+- **Prompt injection** — instructions hidden in READMEs/docs/metadata aimed at
+  steering an AI agent (treated as untrusted evidence, never followed).
+- **npm-vs-GitHub tampering** — diffs the published tarball against the tagged
+  GitHub source and flags files that exist only in the npm artifact.
+- **Provenance** — verifies npm's sigstore/SLSA attestation links the package
+  to its claimed source repo.
+
+Because it stages packages in a sandboxed quarantine and never runs install
+scripts or package code, you get this triage in ~1 s/package with no execution
+risk.
+
 ## CLI
 
 ```bash
@@ -129,20 +156,29 @@ Exit codes: `0` = safe/allow, `2` = block, `3` = review.
 
 ## Performance
 
-pkgxray is built to be cheap enough to run on every install. Measured on an
-Apple M1 (Node 26), single package:
+pkgxray is cheap enough to run on every install. Measured on an Apple M1
+(Node 26), cold cache, one `guard` run per package:
+
+| Package | Weekly downloads | `guard` time |
+|---|--:|--:|
+| `is-number@7.0.0` | ~170M | ~1.3 s |
+| `express@4.21.0` | ~110M | ~1.4 s |
+| `commander@12.1.0` | ~444M | ~1.5 s |
+| `chalk@5.3.0` | ~451M | ~1.5 s |
+
+Other paths:
 
 | Operation | Time |
 |---|---|
-| Static audit of supplied evidence (no network) | ~140 ms end-to-end (~25 ms scan) |
-| `guard` a fresh npm package, cold cache | ~1.1 s |
-| `guard` same package, warm cache | ~0.85 s (≈25% faster) |
+| Static audit of supplied evidence (`--file`, no network) | ~140 ms (~25 ms scan) |
+| `guard` repeat run, warm cache | ≈25% faster than cold |
+| `guard` a known-vulnerable package | blocks at the OSV precheck, *before* download |
 
-Almost all of `guard`'s time is network round-trips (npm registry, OSV, GitHub
-metadata, provenance) — the local analysis itself is ~25 ms. Point CI at a
-shared [cache server](#self-hostable-cache-server) to collapse the repeated
-GitHub fetches across runners. Numbers vary with network and machine; treat
-them as ballpark.
+Almost all of `guard`'s wall-clock is network round-trips (npm registry, OSV,
+GitHub metadata, provenance) — the local static analysis itself is ~25 ms.
+Point CI at a shared [cache server](#self-hostable-cache-server) to collapse the
+repeated GitHub fetches across runners. Numbers vary with network and machine;
+treat them as ballpark.
 
 ## Browser Extension
 
