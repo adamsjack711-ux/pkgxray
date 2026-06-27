@@ -250,7 +250,7 @@ const BAND_DEFINITIONS = [
   { band: "github-lonely", label: "github-lonely", categories: ["github-lonely"], rationale: "0 stars + 0 forks + low watcher count on a young repo. Low community signal." },
   { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." },
   { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
-  { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. Strong account-takeover / build-tampering signal." },
+  { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
   { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "Package has a sigstore-signed SLSA provenance attestation from npm linking it to a specific GitHub Action build. Strong 'really came from where it says it did' signal." },
   { band: "provenance-mismatch", label: "provenance-mismatch", categories: ["provenance-mismatch"], rationale: "npm attestation claims the package was built from a different GitHub repo than the one listed in package.json. Strong tampering / typosquat signal." }
@@ -369,12 +369,12 @@ function inspectNpmVsGithubDiff(evidence, findings) {
       .slice(0, 5)
       .map((f) => f.path);
     findings.push({
-      severity: "high",
+      severity: "medium",
       category: "npm-vs-github-divergence",
       file: "NPM_VS_GITHUB",
       snippet: `npm tarball contains ${c.extraSource} source file(s) not in the linked GitHub repo @${diff.githubRef}: ${examples.join(", ")}`,
       rationale:
-        "Source files present in the published tarball but absent from the matching GitHub ref. Classic account-takeover / build-server-compromise signal."
+        "Source files present in the published tarball but absent from the matching GitHub ref. Could be account-takeover / build-server compromise, but also fires on the many legitimate packages that build/transpile/bundle before publishing — the diff alone can't tell built from tampered. Flagged for review, not auto-blocked; file contents are still scanned by the code parameters."
     });
   }
   if (c.mismatchedSource > 0) {
@@ -383,12 +383,12 @@ function inspectNpmVsGithubDiff(evidence, findings) {
       .slice(0, 5)
       .map((f) => f.path);
     findings.push({
-      severity: "high",
+      severity: "medium",
       category: "npm-vs-github-divergence",
       file: "NPM_VS_GITHUB",
       snippet: `${c.mismatchedSource} source file(s) differ between npm tarball and GitHub repo @${diff.githubRef}: ${examples.join(", ")}`,
       rationale:
-        "Source files with the same path but different SHA256 in the published tarball vs the linked GitHub repo at the matching ref. Strong tampering signal."
+        "Source files with the same path but different SHA256 in the published tarball vs the linked GitHub repo at the matching ref. Possible tampering, but minify/transpile/build steps routinely change file contents at publish time, so this fires on many legitimate packages — the diff alone can't tell built from tampered. Flagged for review, not auto-blocked; file contents are still scanned by the code parameters."
     });
   }
   if (c.extraSource === 0 && c.mismatchedSource === 0 && (c.matched > 0 || c.npmFiles > 0)) {

