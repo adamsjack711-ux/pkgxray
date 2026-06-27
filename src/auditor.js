@@ -147,6 +147,21 @@ function isDocumentationFile(path) {
   return DOCUMENTATION_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+// Test suites, fixtures, example snippets, and benchmarks routinely contain the
+// exact shapes our heuristics hunt for — hardcoded IPs (proxy/socket tests),
+// eval (parser tests), bulk env reads (config tests) — but they are NOT in the
+// package's runtime path: they aren't loaded by main/exports and don't run on
+// install. A behavioral HIGH from one of these shouldn't hard-BLOCK an
+// otherwise-clean package; it's downgraded to MEDIUM so the signal survives for
+// human review without crying wolf on every well-tested library.
+const TEST_DIR_REGEX =
+  /(?:^|[\\/])(?:tests?|__tests__|__mocks__|spec|specs|fixtures?|examples?|benchmarks?|bench)(?:[\\/])/i;
+const TEST_FILE_NAME_REGEX = /\.(?:test|spec|bench)\.[cm]?[jt]sx?$/i;
+
+function isTestOrFixtureFile(path) {
+  return TEST_DIR_REGEX.test(path) || TEST_FILE_NAME_REGEX.test(path);
+}
+
 function normalizeEvidence(input) {
   const evidence = input || {};
   return {
@@ -654,22 +669,58 @@ function inspectPackageJson(path, json, findings) {
   }
 }
 
+// Behavioral file findings that should never hard-block when they originate
+// from a non-runtime file (test fixture / example / benchmark). Kept HIGH for
+// real source files; downgraded to MEDIUM in test paths below.
+const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
+  "network-exfil-or-loader",
+  "obfuscation",
+  "credential-access",
+  "persistence"
+]);
+
 function auditFiles(files, findings) {
   for (const file of files) {
     if (shouldSkipFile(file.path)) continue;
     const content = file.content || "";
     const lower = content.toLowerCase();
+
+    // Documentation (README / markdown / rst / txt) is data, not executable
+    // code — Node never runs it. Applying the code-malware heuristics to it
+    // produces false positives (a README's illustrative `process.env` + fetch
+    // example reads as token exfil; axios/dotenv tripped exactly this). The
+    // only meaningful doc check is prompt-injection. A payload smuggled in a
+    // doc would have to be eval'd by a *code* file, which is where it's caught.
+    if (isDocumentationFile(file.path)) {
+      inspectInjectionAttempt(file, lower, findings);
+      continue;
+    }
+
     // Pre-compute bulk-env detection once per file — both
     // inspectCredentialAccess and inspectExecNetworkCombinations need it,
     // and the regex set used to run twice over the same content.
     const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
 
-    inspectInjectionAttempt(file, lower, findings);
     inspectObfuscation(file, content, lower, findings);
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv);
     inspectPersistence(file, content, lower, findings);
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
     inspectCapabilities(file, content, findings);
+  }
+
+  // Downgrade behavioral HIGH findings that come from non-runtime test/fixture/
+  // example files (see isTestOrFixtureFile). They stay visible as MEDIUM (review)
+  // rather than auto-blocking a well-tested package on its own test fixtures.
+  for (const finding of findings) {
+    if (
+      finding.severity === "high" &&
+      DOWNGRADE_IN_TEST_CATEGORIES.has(finding.category) &&
+      isTestOrFixtureFile(finding.file)
+    ) {
+      finding.severity = "medium";
+      finding.rationale +=
+        " (Located in a test/fixture/example file — not in the package's runtime path, so downgraded to review.)";
+    }
   }
 }
 

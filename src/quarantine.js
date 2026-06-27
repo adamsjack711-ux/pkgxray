@@ -28,7 +28,12 @@ const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_FILES = 600;
 const DEFAULT_TARBALL_MAX_BYTES = 256 * 1024 * 1024;
-const DEFAULT_TARBALL_MAX_ENTRIES = 5000;
+// The 256 MB uncompressed byte cap above is the real zip-bomb defense; this
+// entry count is a secondary work bound. 5000 was too low — legitimately large
+// packages (next ~8k entries, date-fns ~5.1k, many monorepo bundles) tripped it
+// and couldn't be scanned at all. 20000 covers them while still rejecting the
+// pathological millions-of-tiny-files case.
+const DEFAULT_TARBALL_MAX_ENTRIES = 20000;
 const DEFAULT_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
 const DEFAULT_DOWNLOAD_MAX_REDIRECTS = 5;
 const SKIP_DIRS = new Set([
