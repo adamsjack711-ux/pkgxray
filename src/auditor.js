@@ -66,14 +66,25 @@ const SHELL_NETWORK_REGEX = /(?:^|[\s;&|`$(])(?:curl|wget|Invoke-WebRequest)\s/m
 // (drop sites), and OAST/tunneling services (Burp Collaborator-style
 // out-of-band callbacks used in dependency-confusion PoCs and credential
 // staging). A real library would not call any of these.
-const EXFIL_AND_CALLBACK_DOMAINS = [
-  // URL shorteners
+// URL shorteners are DUAL-USE: malware uses them to hide redirect targets, but
+// legit packages also use them for doc/error links (immer ships a bit.ly error
+// link). They contribute to the same-file exec/network HIGH below, but are NOT
+// enough on their own to flag a package — kept out of the high-confidence list.
+const URL_SHORTENERS = [
   "bit.ly",
   "tinyurl.com",
   "t.co/",
   "goo.gl",
   "is.gd",
-  "ow.ly",
+  "ow.ly"
+];
+
+// Domains that have essentially NO legitimate reason to appear in a published
+// package: paste/drop sites, webhook catchers, OAST/collaborator services,
+// request inspectors, and ad-hoc tunnels. A bare reference to one of these in
+// shipped code is suspicious by itself, so these drive the lone-domain MEDIUM
+// and the cross-file split-exfil HIGH.
+const HIGH_CONFIDENCE_EXFIL_DOMAINS = [
   // Paste / drop sites
   "pastebin.com",
   "hastebin",
@@ -107,6 +118,10 @@ const EXFIL_AND_CALLBACK_DOMAINS = [
   "loca.lt",
   "trycloudflare.com"
 ];
+
+// Full list still used by the same-file exec/network HIGH (where co-location
+// with a capability is the discriminator, so shorteners are fair game).
+const EXFIL_AND_CALLBACK_DOMAINS = [...URL_SHORTENERS, ...HIGH_CONFIDENCE_EXFIL_DOMAINS];
 
 // Directive phrases targeting an LLM / auditor. Kept narrow on purpose — generic
 // phrases like "do not report" appear in legitimate SECURITY.md / disclosure text.
@@ -686,6 +701,12 @@ function auditFiles(files, findings) {
   // must never get the test-file downgrade or the doc skip below.
   const runtimePaths = collectLifecycleReferencedPaths(files);
 
+  // Package-level signals for cross-file correlation (gap: a payload split so
+  // env-harvest lives in one file and the exfil destination in another, dodging
+  // the same-file co-location checks).
+  const envHarvestFiles = [];
+  const exfilDomainFiles = [];
+
   for (const file of files) {
     if (shouldSkipFile(file.path)) continue;
     const content = file.content || "";
@@ -708,6 +729,9 @@ function auditFiles(files, findings) {
     // inspectCredentialAccess and inspectExecNetworkCombinations need it,
     // and the regex set used to run twice over the same content.
     const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
+    if (hasBulkEnv) envHarvestFiles.push(file.path);
+    const domain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find((pattern) => lower.includes(pattern));
+    if (domain) exfilDomainFiles.push({ path: file.path, domain });
 
     inspectInjectionAttempt(file, lower, findings);
     inspectObfuscation(file, content, lower, findings);
@@ -716,6 +740,8 @@ function auditFiles(files, findings) {
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
     inspectCapabilities(file, content, findings);
   }
+
+  inspectCrossFileExfil(envHarvestFiles, exfilDomainFiles, findings);
 
   // Downgrade behavioral HIGH findings that come from non-runtime test/fixture/
   // example files (see isTestOrFixtureFile). They stay visible as MEDIUM (review)
@@ -738,6 +764,29 @@ function auditFiles(files, findings) {
 
   // keepHighInTests is an internal routing flag — don't leak it into the report.
   for (const finding of findings) delete finding.keepHighInTests;
+}
+
+// Cross-file split-exfil: bulk environment harvest in one file plus a known
+// exfil/callback domain anywhere in the package (in a DIFFERENT file) is the
+// same token-exfil attack as the same-file HIGH, just spread across modules to
+// dodge co-location. Anchored on the curated domain list (webhook.site, ngrok,
+// oast.*, pastebin …) which legit packages essentially never embed, so this is
+// a high-confidence HIGH rather than the FP-prone "env + any network" shape.
+function inspectCrossFileExfil(envHarvestFiles, exfilDomainFiles, findings) {
+  if (envHarvestFiles.length === 0 || exfilDomainFiles.length === 0) return;
+  const harvestSet = new Set(envHarvestFiles);
+  // Only the cross-file case — same-file env+domain is already caught HIGH.
+  const crossFile = exfilDomainFiles.find((d) => !harvestSet.has(d.path));
+  if (!crossFile) return;
+  findings.push({
+    severity: "high",
+    category: "network-exfil-or-loader",
+    file: envHarvestFiles[0],
+    keepHighInTests: true,
+    snippet: clip(`${envHarvestFiles[0]} harvests env; ${crossFile.path} references ${crossFile.domain}`),
+    rationale:
+      "Bulk environment harvest and a known exfil/callback domain appear in the same package across different files — split token-exfil that evades same-file detection."
+  });
 }
 
 function normalizeRelPath(path) {
@@ -925,6 +974,15 @@ function isPrivateIp(ip) {
   return false;
 }
 
+// A read of a NON-code data file whose bytes are then handed to eval is the
+// classic "stage-2 loader" shape: the payload hides in a .dat/.bin/.txt blob
+// (or a doc file we deliberately don't scan) and a tiny code file decodes+runs
+// it. Template engines legitimately `new Function` over .html/.ejs/.hbs, so
+// those extensions are excluded; the listed extensions have no legitimate
+// reason to be eval'd.
+const READ_DATA_BLOB_REGEX =
+  /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:txt|text|dat|data|bin|b64|base64|enc|payload|blob|md|markdown)["'`]/i;
+
 function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv) {
   const hasExec = EXEC_REGEX.test(content);
   const hasDynamicEval = DYNAMIC_EVAL_REGEX.test(content);
@@ -946,6 +1004,22 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
     return;
   }
 
+  // HIGH: stage-2 loader — dynamic eval in a file that also reads an opaque data
+  // blob (.dat/.bin/.txt/.enc/.md ...). Closes the "payload hidden in a non-code
+  // file, eval'd by a code file" gap left by not scanning data/doc files.
+  if (hasDynamicEval && READ_DATA_BLOB_REGEX.test(content)) {
+    findings.push({
+      severity: "high",
+      category: "network-exfil-or-loader",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: snippetForPatterns(content, ["eval(", "new Function", "readFileSync", "readFile"]),
+      rationale:
+        "Reads a non-code data file and feeds it to eval / new Function — classic stage-2 loader that hides its payload in a blob the static scanner would otherwise treat as inert data."
+    });
+    return;
+  }
+
   // HIGH: bulk env-var harvest in the same file as outbound network. This shape
   // (read the whole environment, send it somewhere) is essentially never a
   // legitimate test fixture, so it stays HIGH even in test/ paths — flagged
@@ -961,6 +1035,24 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
         "Bulk environment harvest appears in the same file as outbound network calls — classic token-exfil shape."
     });
     return;
+  }
+
+  // MEDIUM: a high-confidence exfil/callback/tunneling domain is referenced but
+  // not co-located with a capability in THIS file (that case is HIGH above). The
+  // network call may live in another module — still worth review since these
+  // domains (webhook.site, pastebin, ngrok, oast.*, burpcollaborator …) have
+  // essentially no legitimate reason to appear in a published package. URL
+  // shorteners are excluded here: they're dual-use (legit doc/error links).
+  const callbackDomain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find((p) => lower.includes(p));
+  if (callbackDomain) {
+    findings.push({
+      severity: "medium",
+      category: "network-exfil-or-loader",
+      file: file.path,
+      snippet: clip(callbackDomain),
+      rationale:
+        "References a known paste / webhook / tunneling / OAST / request-inspector domain. Legitimate packages essentially never embed these; the matching network call may be in another file."
+    });
   }
 
   // MEDIUM: dynamic eval is unusual enough to warrant review even in isolation.

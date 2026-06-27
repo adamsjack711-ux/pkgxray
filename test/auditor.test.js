@@ -235,6 +235,99 @@ test("exfil-shaped code in runtime source still blocks", () => {
   );
 });
 
+// Gap 2 — stage-2 loader: read an opaque data blob and eval it. The payload
+// hides in a .dat the scanner treats as inert; the code file that runs it must
+// still BLOCK.
+test("reading a data blob and eval'ing it blocks (stage-2 loader)", () => {
+  const report = auditEvidence({
+    packageName: "loader-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "loader-pkg", repository: "https://github.com/example/x" }),
+      "index.js": "const code = require('fs').readFileSync(__dirname + '/payload.dat', 'utf8');\neval(code);"
+    }
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some((f) => f.category === "network-exfil-or-loader" && f.severity === "high"),
+    "eval-of-data-blob must produce a HIGH loader finding"
+  );
+});
+
+// FP guard for gap 2: template engines legitimately `new Function` over an
+// .html/.ejs template read from disk. Those extensions are excluded, so this is
+// NOT a loader HIGH (at most a review for the dynamic eval).
+test("template engine compiling an .html read is not a loader block", () => {
+  const report = auditEvidence({
+    packageName: "tpl-engine",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "tpl-engine", repository: "https://github.com/example/x" }),
+      "index.js":
+        "const tpl = require('fs').readFileSync('view.html', 'utf8');\nconst render = new Function('data', 'return `' + tpl + '`');"
+    }
+  });
+
+  assert.notEqual(report.verdict, "block");
+  assert.ok(
+    !report.findings.some((f) => f.category === "network-exfil-or-loader" && f.severity === "high"),
+    "compiling a real template must not be a HIGH loader"
+  );
+});
+
+// Gap 1 — split token-exfil across files: env harvest in one file, the exfil
+// domain (no network co-located, so it doesn't self-flag) in another.
+test("env harvest + exfil domain in different files blocks (cross-file)", () => {
+  const report = auditEvidence({
+    packageName: "split-exfil",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "split-exfil", repository: "https://github.com/example/x" }),
+      "lib/collect.js": "module.exports = JSON.stringify(process.env);",
+      "lib/target.js": "module.exports = 'https://webhook.site/deadbeef';"
+    }
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some(
+      (f) => f.category === "network-exfil-or-loader" && f.severity === "high" && /across different files/i.test(f.rationale)
+    ),
+    "cross-file harvest + exfil domain must produce the split-exfil HIGH"
+  );
+});
+
+// FP guard for gap 1: a URL shortener in a doc/error link is dual-use and must
+// not flag on its own (immer ships a bit.ly error link).
+test("a bit.ly doc link alone does not flag", () => {
+  const report = auditEvidence({
+    packageName: "shortlink-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "shortlink-pkg", repository: "https://github.com/example/x" }),
+      "index.js": "function err(n){ throw new Error('Full error at https://bit.ly/3cXEKWf #' + n); }\nmodule.exports = err;"
+    }
+  });
+
+  assert.equal(report.verdict, "safe");
+  assert.ok(
+    !report.findings.some((f) => f.category === "network-exfil-or-loader"),
+    "a dual-use shortener in an error link must not produce an exfil finding"
+  );
+});
+
+// FP guard for gap 1: harvesting env and making a NORMAL network call (no
+// suspicious domain) is review-level at most, never a cross-file block.
+test("env access plus benign network in different files does not block", () => {
+  const report = auditEvidence({
+    packageName: "benign-envnet",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "benign-envnet", repository: "https://github.com/example/x" }),
+      "lib/config.js": "module.exports = JSON.stringify(process.env);",
+      "lib/client.js": "fetch('https://api.example.com/v1/data');"
+    }
+  });
+
+  assert.notEqual(report.verdict, "block");
+});
+
 // Hardening: the env-harvest+network exfil shape is never a legit test fixture,
 // so it stays HIGH/BLOCK even when it lives under test/ (keepHighInTests).
 test("bulk-env exfil in a test file still blocks (not downgraded)", () => {
