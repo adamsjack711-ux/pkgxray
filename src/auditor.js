@@ -680,10 +680,17 @@ const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
 ]);
 
 function auditFiles(files, findings) {
+  // Any file a lifecycle script actually runs is RUNTIME, not a test fixture —
+  // even if it sits under test/ or examples/. An attacker could hide a payload
+  // in `examples/x.js` and wire `postinstall: node examples/x.js`; that file
+  // must never get the test-file downgrade or the doc skip below.
+  const runtimePaths = collectLifecycleReferencedPaths(files);
+
   for (const file of files) {
     if (shouldSkipFile(file.path)) continue;
     const content = file.content || "";
     const lower = content.toLowerCase();
+    const isRuntimeReferenced = runtimePaths.has(normalizeRelPath(file.path));
 
     // Documentation (README / markdown / rst / txt) is data, not executable
     // code — Node never runs it. Applying the code-malware heuristics to it
@@ -691,7 +698,8 @@ function auditFiles(files, findings) {
     // example reads as token exfil; axios/dotenv tripped exactly this). The
     // only meaningful doc check is prompt-injection. A payload smuggled in a
     // doc would have to be eval'd by a *code* file, which is where it's caught.
-    if (isDocumentationFile(file.path)) {
+    // Exception: if a lifecycle script runs this file, it is NOT inert — scan it.
+    if (isDocumentationFile(file.path) && !isRuntimeReferenced) {
       inspectInjectionAttempt(file, lower, findings);
       continue;
     }
@@ -701,6 +709,7 @@ function auditFiles(files, findings) {
     // and the regex set used to run twice over the same content.
     const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
 
+    inspectInjectionAttempt(file, lower, findings);
     inspectObfuscation(file, content, lower, findings);
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv);
     inspectPersistence(file, content, lower, findings);
@@ -711,17 +720,49 @@ function auditFiles(files, findings) {
   // Downgrade behavioral HIGH findings that come from non-runtime test/fixture/
   // example files (see isTestOrFixtureFile). They stay visible as MEDIUM (review)
   // rather than auto-blocking a well-tested package on its own test fixtures.
+  // NOT downgraded: findings flagged keepHighInTests (env-harvest exfil — never
+  // a legit fixture) and files a lifecycle script actually executes.
   for (const finding of findings) {
     if (
       finding.severity === "high" &&
+      !finding.keepHighInTests &&
       DOWNGRADE_IN_TEST_CATEGORIES.has(finding.category) &&
-      isTestOrFixtureFile(finding.file)
+      isTestOrFixtureFile(finding.file) &&
+      !runtimePaths.has(normalizeRelPath(finding.file))
     ) {
       finding.severity = "medium";
       finding.rationale +=
         " (Located in a test/fixture/example file — not in the package's runtime path, so downgraded to review.)";
     }
   }
+
+  // keepHighInTests is an internal routing flag — don't leak it into the report.
+  for (const finding of findings) delete finding.keepHighInTests;
+}
+
+function normalizeRelPath(path) {
+  return String(path).replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
+}
+
+// Extract the local files referenced by package.json lifecycle/run scripts so
+// they can be treated as runtime even when they live in a test/example dir.
+const SCRIPT_PATH_TOKEN_REGEX = /(?:^|[\s'"=(])((?:\.\/)?[\w./-]+\.(?:js|cjs|mjs|ts|cts|mts|sh|py))\b/g;
+
+function collectLifecycleReferencedPaths(files) {
+  const paths = new Set();
+  const pkg = findPackageJson(files);
+  if (!pkg || !pkg.json || typeof pkg.json.scripts !== "object" || !pkg.json.scripts) {
+    return paths;
+  }
+  for (const command of Object.values(pkg.json.scripts)) {
+    if (typeof command !== "string") continue;
+    let m;
+    SCRIPT_PATH_TOKEN_REGEX.lastIndex = 0;
+    while ((m = SCRIPT_PATH_TOKEN_REGEX.exec(command)) !== null) {
+      paths.add(normalizeRelPath(m[1]));
+    }
+  }
+  return paths;
 }
 
 function inspectInjectionAttempt(file, lower, findings) {
@@ -905,12 +946,16 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
     return;
   }
 
-  // HIGH: bulk env-var harvest in the same file as outbound network.
+  // HIGH: bulk env-var harvest in the same file as outbound network. This shape
+  // (read the whole environment, send it somewhere) is essentially never a
+  // legitimate test fixture, so it stays HIGH even in test/ paths — flagged
+  // keepHighInTests so the test-file downgrade below skips it.
   if (hasNetwork && hasBulkEnv) {
     findings.push({
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
+      keepHighInTests: true,
       snippet: snippetForPatterns(content, ["process.env", "os.environ", "fetch(", "http"]),
       rationale:
         "Bulk environment harvest appears in the same file as outbound network calls — classic token-exfil shape."

