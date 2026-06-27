@@ -127,6 +127,23 @@ Run any command with `--format json` to see the full shape. Top-level fields:
 
 Exit codes: `0` = safe/allow, `2` = block, `3` = review.
 
+## Performance
+
+pkgxray is built to be cheap enough to run on every install. Measured on an
+Apple M1 (Node 26), single package:
+
+| Operation | Time |
+|---|---|
+| Static audit of supplied evidence (no network) | ~140 ms end-to-end (~25 ms scan) |
+| `guard` a fresh npm package, cold cache | ~1.1 s |
+| `guard` same package, warm cache | ~0.85 s (≈25% faster) |
+
+Almost all of `guard`'s time is network round-trips (npm registry, OSV, GitHub
+metadata, provenance) — the local analysis itself is ~25 ms. Point CI at a
+shared [cache server](#self-hostable-cache-server) to collapse the repeated
+GitHub fetches across runners. Numbers vary with network and machine; treat
+them as ballpark.
+
 ## Browser Extension
 
 `browser-extension/` is a Chrome-compatible Manifest V3 unpacked extension. It
