@@ -446,6 +446,40 @@ async function diffNpmVsGithub({
     };
   }
 
+  // Third skip case: almost nothing in the npm tarball corroborates the github
+  // tree (<=1 matched file) yet there's substantial divergence, and the extra
+  // files are build-output-shaped (cjs/, umd/, dist/, *.min.js). That's a
+  // package that bundles/flattens before publish — react ships built cjs/umd
+  // plus tiny root re-export shims, while the repo keeps real source under
+  // packages/*/src. With no matching baseline the diff can't tell "built" from
+  // "tampered", so firing HIGH here false-positives on legit popular packages
+  // (react, and most build-step libraries whose published tree barely overlaps
+  // the repo). The static auditor still scans every shipped file regardless, so
+  // skipping only drops the unreliable tampering signal, not code inspection.
+  if (
+    matched.length <= 1 &&
+    extraBuild.length >= 1 &&
+    extraBuild.length >= extraSource.length &&
+    mismatched.length + extraBuild.length >= 3
+  ) {
+    return {
+      compared: false,
+      reason: "tree-built-before-publish",
+      hasBuildScript,
+      subdir: subdir || null,
+      overlapRatio: Number(overlapRatio.toFixed(2)),
+      counts: {
+        npmFiles: npmTree.size,
+        ghFiles: ghTree.size,
+        matched: matched.length,
+        mismatched: mismatched.length,
+        extraInNpm: extraInNpm.length
+      },
+      note:
+        "Almost no npm files match the GitHub tree and the extra files are build output — the package is bundled/flattened before publish (e.g. cjs/umd builds with root re-export shims). Diff can't distinguish built from tampered; skipping. File contents are still scanned by the static auditor."
+    };
+  }
+
   return {
     compared: true,
     hasBuildScript,
