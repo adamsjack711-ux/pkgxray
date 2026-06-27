@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "supply-chain-auditor": {
+    "pkgxray": {
       "command": "node",
       "args": [
         "./bin/mcp-server.js"

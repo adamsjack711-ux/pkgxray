@@ -1,9 +1,9 @@
 {
-  "name": "supply-chain-auditor",
-  "version": "0.1.0",
+  "name": "pkgxray",
+  "version": "0.13.0",
   "description": "Local MCP and CLI extension for triaging AI-agent extension supply-chain risk.",
   "author": {
-    "name": "Local developer"
+    "name": "Jack Adams-Lovell"
   },
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
@@ -11,7 +11,7 @@
     "displayName": "Supply Chain Auditor",
     "shortDescription": "Audit agent extensions before install.",
     "longDescription": "Supply Chain Auditor provides a local CLI, MCP server, and Codex skill for conservative security triage of AI coding-agent extensions, Codex plugins, Claude Code extensions, and MCP servers.",
-    "developerName": "Local developer",
+    "developerName": "Jack Adams-Lovell",
     "category": "Security",
     "capabilities": [
       "MCP",

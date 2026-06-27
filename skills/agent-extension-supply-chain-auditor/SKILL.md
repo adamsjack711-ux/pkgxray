@@ -46,5 +46,5 @@ Verdict:
 For structured local analysis, prefer the MCP/CLI implementation in this plugin:
 
 ```bash
-node /Users/jackadams-lovell/plugins/supply-chain-auditor/bin/audit.js --file evidence.json
+pkgxray --file evidence.json
 ```
