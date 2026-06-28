@@ -132,16 +132,24 @@ Tuned so legitimate packages stay out of `block` while real attacks still land
 there. Validated against the 47 most-installed npm packages: **0 false blocks**.
 
 - **block** (HIGH) — prompt-injection text in docs; credential reads near a
-  filesystem-read primitive; persistence writes (shell rc / cron / launchagents);
+  filesystem-read primitive (including paths **assembled from split string
+  fragments** — `".s"+"sh"`, `[".s","sh"][0]+…` — which a light de-obfuscation
+  pass folds before matching); persistence writes (shell rc / cron / launchagents);
   execution or outbound network plus a hardcoded public IP / shortener / webhook;
-  bulk `process.env` harvest in the same file as outbound network; a **stage-2
-  loader** that reads an opaque data blob (`.dat` / `.bin` / `.txt` / `.enc` …)
-  and `eval`s it; **split token-exfil** where the env harvest and a known
-  exfil/callback domain live in different files.
+  bulk `process.env` harvest in the same file as outbound network (network sinks
+  now include `sendBeacon` / `EventSource` / `dns.*` / `dgram` / remote
+  `import()` / image-beacon); a **dynamic `require`/`import`** of a computed name
+  co-located with a bulk-env harvest; a **stage-2 loader** that reads an opaque
+  data blob (`.dat` / `.bin` / `.txt` / `.enc` …) and `eval`s it; **split
+  token-exfil** where the env harvest and a known exfil/callback domain live in
+  different files.
 - **review** (MEDIUM) — install/postinstall/prepare scripts; dynamic
-  eval / `new Function` / vm; clipboard access; a lone reference to a
-  high-confidence exfil/callback domain; **npm-vs-GitHub divergence**; missing
-  package.json or entrypoint.
+  eval / `new Function` / vm; a **dynamic `require`/`import`** by computed name on
+  its own; **bulk `process.env` harvest** on its own (serialization, iteration,
+  or whole-env clone via `{...process.env}` / `Object.assign`); a sensitive path
+  or domain **assembled from split fragments**; clipboard access; a lone reference
+  to a high-confidence exfil/callback domain; **npm-vs-GitHub divergence**;
+  missing package.json or entrypoint.
 - **info** — child_process/fetch/network in isolation. Recorded, does not gate.
 
 ### Designed to avoid false positives
