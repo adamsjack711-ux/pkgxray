@@ -268,6 +268,7 @@ const BAND_DEFINITIONS = [
   { band: "exfiltration", label: "network-exfiltration", categories: ["network-exfil-or-loader"], rationale: "Code reaches a hardcoded public IP / shortener / webhook from a file that also has exec or net capability." },
   { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
   { band: "hidden-unicode", label: "hidden-unicode", categories: ["hidden-unicode"], rationale: "Bidi-override / zero-width Unicode in source — code can read differently than it executes (Trojan Source)." },
+  { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
   { band: "known-vulnerability", label: "known-vulnerability", categories: ["known-vulnerability"], rationale: "OSV reports this package/version as affected by a published vulnerability." },
   { band: "lifecycle-script", label: "lifecycle-script", categories: ["install-hook"], rationale: "Runs a script at install time with the installing user's privileges." },
   { band: "dynamic-eval", label: "dynamic-eval", categories: ["code-execution"], severityMin: "medium", rationale: "Uses eval / new Function / vm — can execute strings as code at runtime." },
@@ -740,6 +741,7 @@ function auditFiles(files, findings) {
     inspectPersistence(file, content, lower, findings);
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
     inspectHiddenUnicode(file, content, findings);
+    inspectLogicBomb(file, content, findings);
     inspectCapabilities(file, content, findings);
   }
 
@@ -1134,6 +1136,73 @@ function inspectHiddenUnicode(file, content, findings) {
   }
 }
 
+// --- Logic bombs / protestware (#9) ----------------------------------------
+// Destructive behavior gated on geography / locale / timezone is the node-ipc
+// "peacenotwar" shape: check the victim's region, then wipe or corrupt files.
+// We require BOTH a forceful destructive filesystem op AND a geo/locale/timezone
+// gate within a small window. The gate is deliberately NOT plain dates (those
+// co-occur benignly with cleanup code) and the action is deliberately NOT plain
+// network (region-aware fetch/analytics is common) — only the high-harm,
+// low-FP combination is flagged, and only at review.
+// Destructive on their own — shell wipes, rimraf, rmtree, recursive dir removal.
+const SIMPLE_DESTRUCTIVE_REGEXES = [
+  /\brm\s+-[a-z]*r[a-z]*f/i,
+  /\brm\s+-[a-z]*f[a-z]*r/i,
+  /\brimraf\b/,
+  /\bshutil\.rmtree\s*\(/,
+  /\b(?:rmdir|del)\s+\/s\b/i,
+  /\bformat\s+[a-z]:/i
+];
+// fs.rm / fs.rmdir (sync or async, however the module is referenced) is only
+// dir-destructive with recursive:true — checked in a small window after the call.
+const RM_CALL_REGEX = /\.rm(?:dir)?(?:Sync)?\s*\(/g;
+const RECURSIVE_FLAG_REGEX = /recursive\s*:\s*true/;
+// High-signal region/locale gates only. Broad timezone/date APIs
+// (getTimezoneOffset, Intl.DateTimeFormat, resolvedOptions().timeZone) are
+// deliberately excluded: they co-occur benignly with cleanup code (a recursive
+// rm of a temp dir next to timezone logging is normal). What stays is an
+// explicit geo lookup, a LANG/LC_ env read, or a region/timezone value compared
+// against a string literal — rare next to a forceful delete.
+const LOGIC_BOMB_GATE_REGEXES = [
+  /\bgeoip\b/i,
+  /\bgeo\.(?:country|countryCode)\b/i,
+  /process\.env\.(?:LANG|LANGUAGE|LC_[A-Z]+)\b/,
+  /\b(?:countryCode|country_name|country|timezone|locale|lang)\s*(?:===?|!==?)\s*['"]/i
+];
+const LOGIC_BOMB_WINDOW = 600;
+
+function inspectLogicBomb(file, content, findings) {
+  const indices = [];
+  for (const re of SIMPLE_DESTRUCTIVE_REGEXES) {
+    const m = re.exec(content);
+    if (m) indices.push(m.index);
+  }
+  RM_CALL_REGEX.lastIndex = 0;
+  let rm;
+  while ((rm = RM_CALL_REGEX.exec(content)) !== null) {
+    if (RECURSIVE_FLAG_REGEX.test(content.slice(rm.index, rm.index + 200))) {
+      indices.push(rm.index);
+    }
+  }
+  for (const index of indices) {
+    const window = content.slice(
+      Math.max(0, index - LOGIC_BOMB_WINDOW),
+      Math.min(content.length, index + LOGIC_BOMB_WINDOW)
+    );
+    if (LOGIC_BOMB_GATE_REGEXES.some((gate) => gate.test(window))) {
+      findings.push({
+        severity: "medium",
+        category: "logic-bomb",
+        file: file.path,
+        snippet: clipAround(content, index),
+        rationale:
+          "A forceful destructive filesystem operation is gated on geography / locale / timezone — the geo/locale-gated logic-bomb shape (node-ipc / protestware). Flagged for review."
+      });
+      return;
+    }
+  }
+}
+
 const CLIPBOARD_API_REGEX = /\b(?:navigator\.clipboard\.|clipboard\.(?:read|write)|pbpaste(?:\s|$)|pbcopy(?:\s|$)|Get-Clipboard|Set-Clipboard|win32clipboard)\b/;
 
 function inspectCapabilities(file, content, findings) {
@@ -1181,7 +1250,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, "install-hook", 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "logic-bomb"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "environment-access", "data-access"],

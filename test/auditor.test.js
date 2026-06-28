@@ -440,3 +440,41 @@ test("hidden-unicode: leading BOM and emoji ZWJ sequences stay safe", () => {
   assert.equal(report.verdict, "safe");
   assert.ok(!report.findings.some((f) => f.category === "hidden-unicode"));
 });
+
+// #9 — logic bomb / protestware: a forceful destructive fs op gated on geo.
+test("logic-bomb: geo-gated recursive wipe is review", () => {
+  const report = auditEvidence(require("./fixtures/hardening/logic-bomb.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "logic-bomb" && f.severity === "medium"),
+    "geo-gated destructive op must raise a logic-bomb finding"
+  );
+});
+
+// #9 FP guard: benign build cleanup (rimraf dist, timestamp logging) with no
+// geo/locale gate must NOT flag.
+test("logic-bomb: benign build cleanup with no geo gate stays safe", () => {
+  const report = auditEvidence({
+    packageName: "build-clean",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "build-clean", repository: "https://github.com/example/x" }),
+      "build.js": "const rimraf = require('rimraf');\nrimraf.sync('dist');\nconsole.log('built at', new Date());"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "logic-bomb"));
+});
+
+// #9 FP guard: recursive temp cleanup next to timezone logging is normal —
+// broad timezone APIs are not treated as a gate.
+test("logic-bomb: recursive cleanup + timezone logging stays safe", () => {
+  const report = auditEvidence({
+    packageName: "tz-clean",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "tz-clean", repository: "https://github.com/example/x" }),
+      "clean.js": "const fs = require('fs');\nfs.rmSync('tmp', { recursive: true });\nconst tz = Intl.DateTimeFormat().resolvedOptions().timeZone;\nconsole.log(tz);"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "logic-bomb"));
+});

