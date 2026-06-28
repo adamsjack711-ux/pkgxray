@@ -515,3 +515,229 @@ test("remote-code-load: normal fetch + JSON parse stays safe", () => {
   assert.equal(report.verdict, "safe");
   assert.ok(!report.findings.some((f) => f.category === "remote-code-load"));
 });
+
+// ---------------------------------------------------------------------------
+// Evasion-hardening regressions (red-team pass). Each loads a fixture under
+// test/fixtures/evasion/ that defeated a behavioral HIGH before the fix.
+// ---------------------------------------------------------------------------
+
+// F3 — network-sink coverage. navigator.sendBeacon (and other non-fetch exfil
+// channels) were missing from NETWORK_REGEX, so the bulk-env + network HIGH
+// never fired. Paired with a whole-env harvest it must now BLOCK.
+test("F3: sendBeacon + bulk-env harvest blocks (network-sink coverage)", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f3-sendbeacon.json"));
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some(
+      (f) => f.category === "network-exfil-or-loader" && f.severity === "high"
+    ),
+    "sendBeacon must count as a network sink for the env-harvest HIGH"
+  );
+});
+
+// FP guard for F3: a lone beacon/SSE sink with NO bulk-env harvest is just
+// INFO network activity — it must not escalate to a block on its own.
+test("F3: sendBeacon alone stays info-level, not a block", () => {
+  const report = auditEvidence({
+    packageName: "beacon-only",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "beacon-only",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "navigator.sendBeacon('https://analytics.example/collect', payload);"
+    }
+  });
+  assert.notEqual(report.verdict, "block");
+  assert.ok(
+    !report.findings.some((f) => f.severity === "high"),
+    "a lone beacon must not produce any HIGH finding"
+  );
+  assert.ok(
+    report.findings.some((f) => f.category === "network-access"),
+    "but the network activity should still be recorded as INFO"
+  );
+});
+
+// F2 — dynamic require/import hides the network primitive. `require(<var>)`
+// means NETWORK_REGEX can't see the sink. Co-located with a bulk-env harvest
+// it must BLOCK.
+test("F2: dynamic require + bulk-env harvest blocks", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f2-dynamic-require.json"));
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some(
+      (f) => f.category === "network-exfil-or-loader" && f.severity === "high"
+    ),
+    "dynamic require + bulk env must escalate to a HIGH exfil finding"
+  );
+});
+
+// FP guard for F2: a plugin loader that does dynamic require with NO bulk-env
+// harvest is review-level (a human should glance at it), never a block.
+test("F2: dynamic require alone is review, not a block", () => {
+  const report = auditEvidence({
+    packageName: "plugin-loader",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "plugin-loader",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "function load(name){ return require(name); }\nmodule.exports = load;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "dynamic-require" && f.severity === "medium"),
+    "the lone dynamic require should be a medium dynamic-require signal"
+  );
+  assert.ok(!report.findings.some((f) => f.severity === "high"), "but never a HIGH/block");
+});
+
+// FP guard for F2: ordinary literal require()/import() must not trip the
+// dynamic-require signal at all.
+test("F2: static literal require/import does not trip dynamic-require", () => {
+  const report = auditEvidence({
+    packageName: "static-requires",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "static-requires",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const fs = require('fs');\nconst local = require('./local');\nmodule.exports = local;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "dynamic-require"));
+});
+
+// F4 — bulk env harvest via spread / Object.assign. `{...process.env}` and
+// `Object.assign(target, process.env)` clone the whole environment but slipped
+// past BULK_ENV_REGEXES. They are now a review-level signal on their own.
+test("F4: whole-env spread {...process.env} alone is review", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f4-bulk-env.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "environment-access" && f.severity === "medium"),
+    "the spread harvest should raise a medium environment-access signal"
+  );
+});
+
+test("F4: Object.assign(target, process.env) alone is review", () => {
+  const report = auditEvidence({
+    packageName: "assign-env",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "assign-env",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const all = Object.assign({}, process.env);\nmodule.exports = all;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "environment-access"));
+});
+
+// FP guard for F4: an env CLONE must NOT escalate to a block just because the
+// file also makes a (benign) network call — `{...process.env}` is the idiomatic
+// way to pass the inherited env to a spawned child (esbuild's installer does
+// exactly this while downloading its binary). Clone shapes are review-only.
+test("F4: env clone + benign network is review, not block", () => {
+  const report = auditEvidence({
+    packageName: "spawn-with-env",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "spawn-with-env",
+        repository: "https://github.com/example/x"
+      }),
+      "install.js":
+        "const https = require('https');\nhttps.get('https://example.com/bin', () => {});\nconst env = { ...process.env, FORCE_COLOR: '1' };\nrequire('child_process').spawn('bin', [], { env });"
+    }
+  });
+  assert.notEqual(report.verdict, "block");
+});
+
+// FP guard for F4: a single specific env-var read stays benign (not a bulk
+// harvest, not review).
+test("F4: single env-var read stays benign", () => {
+  const report = auditEvidence({
+    packageName: "single-env",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "single-env",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const port = process.env.PORT || 3000;\nmodule.exports = port;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "environment-access"));
+});
+
+// F1 — credential read + network sink defeated by string-splitting. The .ssh
+// path is assembled from an array of fragments and `https` from "ht"+"tps".
+// A light de-obfuscation pass (fold literal concat, resolve const string-array
+// indexing) must surface the credential read and BLOCK.
+test("F1: split-string SSH credential read blocks after de-obfuscation", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f1-ssh-exfil.json"));
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some((f) => f.category === "credential-access" && f.severity === "high"),
+    "the assembled .ssh/id_rsa read must produce a HIGH credential-access finding"
+  );
+});
+
+// F1: a sensitive token assembled from fragments with NO nearby sink is still
+// review-worthy (string-splitting around a credential path is itself a signal).
+test("F1: assembled sensitive token alone is review (obfuscated-token)", () => {
+  const report = auditEvidence({
+    packageName: "split-token",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "split-token",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const p = '.npm' + 'rc';\nmodule.exports = p;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "obfuscated-token" && f.severity === "medium"));
+});
+
+// FP guard for F1: ordinary, non-sensitive string concatenation must NOT
+// trip anything — the normalizer only matters when it surfaces a sensitive
+// token / sink.
+test("F1: benign string concatenation stays safe", () => {
+  const report = auditEvidence({
+    packageName: "benign-concat",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "benign-concat",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const greeting = 'hello ' + 'world';\nconst url = 'https://' + 'example.com/docs';\nmodule.exports = { greeting, url };"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+});
+
+// F1 perf guard: the de-obfuscation pass must not blow up scan time. A large
+// file with thousands of concatenations, plus an over-the-cap file that bails,
+// must audit well within a sane budget.
+test("F1: de-obfuscation pass stays within a sane time budget", () => {
+  const bigConcat =
+    "const s = " + Array.from({ length: 8000 }, (_, i) => `'x${i % 10}'`).join(" + ") + ";\nmodule.exports = s;";
+  const overCap = "/* " + "A".repeat(150000) + " */\nmodule.exports = 1;";
+  const evidence = {
+    packageName: "perf-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "perf-pkg", repository: "https://github.com/example/x" }),
+      "big.js": bigConcat,
+      "huge.js": overCap
+    }
+  };
+  const start = Date.now();
+  auditEvidence(evidence);
+  const elapsed = Date.now() - start;
+  assert.ok(elapsed < 2000, `audit took ${elapsed}ms, expected < 2000ms`);
+});

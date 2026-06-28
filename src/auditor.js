@@ -56,10 +56,26 @@ const PERSISTENCE_REGEXES = [
 ];
 
 const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|require\(['"]child_process['"]\)|os\.system\(|subprocess\.(?:Popen|run|call|check_output)|Runtime\.getRuntime\(\)\.exec)/;
+
+// require()/import() called with a NON-string-literal argument (a variable or
+// expression). This is the building block of "hide the sink behind a dynamic
+// require": `const m = "ht"+"tps"; require(m).request(...)`. The negative
+// lookahead skips ordinary `require("fs")` / `import("./x")` literal loads; the
+// `_` boundary on \b keeps `__webpack_require__(id)` and friends from matching.
+const DYNAMIC_REQUIRE_REGEX = /\b(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/;
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
-const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.(?:request|get|post|put|delete)\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http|httpx\.[a-z]+\s*\()/i;
+const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.(?:request|get|post|put|delete)\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http|httpx\.[a-z]+\s*\(|sendBeacon\s*\(|EventSource\s*\(|dgram\.createSocket\s*\(|dns\.(?:lookup|resolve|resolve4|resolveTxt)\s*\()/i;
 const SHELL_NETWORK_REGEX = /(?:^|[\s;&|`$(])(?:curl|wget|Invoke-WebRequest)\s/m;
+
+// Exfil sinks that need more than a single keyword to be a network signal
+// (and would false-positive as bare keywords): a dynamic `import()` of a
+// remote URL, and the `new Image(); img.src = <url>` GET-beacon pattern. Both
+// are OR'd into the network check below; like every other network primitive
+// they're INFO on their own and only escalate when co-located with a bulk-env
+// harvest, a hardcoded IP, or an exfil domain.
+const IMPORT_REMOTE_REGEX = /\bimport\s*\(\s*['"`]https?:\/\//i;
+const IMAGE_BEACON_REGEX = /new\s+Image\s*\([^)]{0,40}\)[\s\S]{0,120}?\.src\s*=/i;
 
 // Domains that are almost never legitimate destinations from production code.
 // Three buckets: URL shorteners (data hiding), paste/webhook services
@@ -267,12 +283,14 @@ const BAND_DEFINITIONS = [
   { band: "persistence", label: "persistence", categories: ["persistence"], rationale: "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run key." },
   { band: "exfiltration", label: "network-exfiltration", categories: ["network-exfil-or-loader"], rationale: "Code reaches a hardcoded public IP / shortener / webhook from a file that also has exec or net capability." },
   { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
+  { band: "obfuscated-token", label: "obfuscated-token", categories: ["obfuscated-token"], rationale: "A sensitive path/domain is assembled from split string fragments and only appears after de-obfuscation — an evasion shape." },
   { band: "hidden-unicode", label: "hidden-unicode", categories: ["hidden-unicode"], rationale: "Bidi-override / zero-width Unicode in source — code can read differently than it executes (Trojan Source)." },
   { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
   { band: "remote-code-load", label: "remote-code-load", categories: ["remote-code-load"], rationale: "Network content fed straight to an interpreter (curl | sh, eval over a fetched body) — download-then-execute." },
   { band: "known-vulnerability", label: "known-vulnerability", categories: ["known-vulnerability"], rationale: "OSV reports this package/version as affected by a published vulnerability." },
   { band: "lifecycle-script", label: "lifecycle-script", categories: ["install-hook"], rationale: "Runs a script at install time with the installing user's privileges." },
   { band: "dynamic-eval", label: "dynamic-eval", categories: ["code-execution"], severityMin: "medium", rationale: "Uses eval / new Function / vm — can execute strings as code at runtime." },
+  { band: "dynamic-require", label: "dynamic-require", categories: ["dynamic-require"], rationale: "Loads a module by a computed (non-literal) name — can hide a network / exec sink from static analysis." },
   { band: "bulk-env", label: "bulk-env-access", categories: ["environment-access"], rationale: "Reads the entire process environment in bulk; risky paired with network." },
   { band: "clipboard", label: "clipboard-access", categories: ["data-access"], rationale: "Reads or writes the system clipboard — can expose copied secrets." },
   { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
@@ -732,15 +750,24 @@ function auditFiles(files, findings) {
     // inspectCredentialAccess and inspectExecNetworkCombinations need it,
     // and the regex set used to run twice over the same content.
     const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
+    const hasBulkEnvClone = BULK_ENV_CLONE_REGEXES.some((re) => re.test(content));
     if (hasBulkEnv) envHarvestFiles.push(file.path);
-    const domain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find((pattern) => lower.includes(pattern));
+    // De-obfuscate once per file; the credential / network / domain checks run
+    // against both the original and the normalized text (F1).
+    const { normalized, changed: normChanged } = normalizeForDetection(content);
+    const nlower = normChanged ? normalized.toLowerCase() : lower;
+    const domain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find(
+      (pattern) => lower.includes(pattern) || nlower.includes(pattern)
+    );
     if (domain) exfilDomainFiles.push({ path: file.path, domain });
 
     inspectInjectionAttempt(file, lower, findings);
     inspectObfuscation(file, content, lower, findings);
-    inspectCredentialAccess(file, content, lower, findings, hasBulkEnv);
+    inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged);
+    inspectDynamicRequire(file, content, findings, hasBulkEnv);
+    inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
     inspectHiddenUnicode(file, content, findings);
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
@@ -895,6 +922,10 @@ function looksLikeCredentialRead(content, lower, targetIndex) {
   return false;
 }
 
+// Whole-environment SERIALIZATION / iteration. These are the exfil-shaped
+// reads (turn the entire env into a string / iterate every key), so they are
+// HIGH-eligible: they drive the env+network HIGH and the dynamic-require
+// escalation when co-located with a sink.
 const BULK_ENV_REGEXES = [
   /JSON\.stringify\s*\(\s*process\.env\b/i,
   /Object\.(?:entries|keys|values)\s*\(\s*process\.env\b/i,
@@ -904,20 +935,157 @@ const BULK_ENV_REGEXES = [
   /for\s+\w+\s+in\s+os\.environ\b/i
 ];
 
-function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv) {
+// Whole-environment CLONE via spread / Object.assign — `{...process.env}`,
+// `Object.assign(target, process.env)`, `{**os.environ}`. This shape harvests
+// the entire environment too, but it is ALSO the idiomatic way to hand the
+// inherited env to a spawned child process (esbuild's installer,
+// cross-spawn-style tooling), so it is FP-prone. It is review-ONLY: it raises
+// the standalone bulk-env medium but does NOT feed the env+network HIGH or the
+// dynamic-require escalation. A genuinely malicious clone that also reaches an
+// exfil domain / hardcoded IP is still caught HIGH by those domain/IP rules.
+const BULK_ENV_CLONE_REGEXES = [
+  /\{\s*\.\.\.\s*process\.env\b/,
+  /Object\.assign\s*\([^)]*,\s*process\.env\b/,
+  /\{\s*\*\*\s*os\.environ\b/
+];
+
+// --- Deobfuscation / normalization (F1) -----------------------------------
+// SUSPICIOUS_READ_TARGETS and NETWORK_REGEX only match literal substrings, so
+// `".s"+"sh"` or `[".s","sh","id_r","sa"][0]+...` defeats them. A light
+// normalization pass folds two common, statically-resolvable obfuscations —
+// adjacent string-literal concatenation and integer indexing into a const
+// array of string literals — then the existing regexes run against the
+// normalized text as well as the original. This is NOT a JS parser: it bails
+// on large inputs and caps the work so a minified/huge bundle can't blow up
+// scan time.
+const NORMALIZE_MAX_INPUT = 100000;
+const MAX_ARRAY_ELEMENTS = 64;
+const MAX_FOLD_PASSES = 40;
+const STRING_LITERAL_RE = /^(['"`])((?:\\.|(?!\1)[^\\\r\n])*)\1$/;
+const ADJACENT_CONCAT_RE = /(['"`])([^'"`\\\r\n]*)\1\s*\+\s*(['"`])([^'"`\\\r\n]*)\3/g;
+const STRING_ARRAY_DECL_RE = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\[([^[\]]*)\]/g;
+
+function resolveStringArrays(text) {
+  const arrays = [];
+  let m;
+  STRING_ARRAY_DECL_RE.lastIndex = 0;
+  while ((m = STRING_ARRAY_DECL_RE.exec(text)) !== null) {
+    const inner = m[2].trim();
+    if (!inner) continue;
+    const parts = inner.split(",").map((s) => s.trim());
+    if (parts.length === 0 || parts.length > MAX_ARRAY_ELEMENTS) continue;
+    const values = [];
+    let ok = true;
+    for (const part of parts) {
+      const lit = part.match(STRING_LITERAL_RE);
+      if (!lit) { ok = false; break; }
+      values.push(lit[2]);
+    }
+    if (ok) arrays.push({ name: m[1], values });
+  }
+  let out = text;
+  for (const { name, values } of arrays) {
+    const accessRe = new RegExp("\\b" + name + "\\s*\\[\\s*(\\d+)\\s*\\]", "g");
+    out = out.replace(accessRe, (full, idx) => {
+      const i = Number(idx);
+      return i >= 0 && i < values.length ? '"' + values[i] + '"' : full;
+    });
+  }
+  return out;
+}
+
+function foldConcats(text) {
+  let out = text;
+  for (let pass = 0; pass < MAX_FOLD_PASSES; pass += 1) {
+    ADJACENT_CONCAT_RE.lastIndex = 0;
+    const next = out.replace(ADJACENT_CONCAT_RE, (full, q1, s1, q2, s2) => q1 + s1 + s2 + q1);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function normalizeForDetection(content) {
+  if (!content || content.length > NORMALIZE_MAX_INPUT) {
+    return { normalized: content || "", changed: false };
+  }
+  const out = foldConcats(resolveStringArrays(content));
+  return { normalized: out, changed: out !== content };
+}
+
+// Sensitive tokens whose presence ONLY in the normalized text (i.e. they were
+// split across fragments in the original) is itself suspicious — string-
+// splitting around a credential path or exfil domain is an evasion shape.
+// `.env` is deliberately excluded: too short/common to split-detect safely.
+const ASSEMBLY_SENSITIVE_TOKENS = [
+  ".ssh",
+  "id_rsa",
+  "id_dsa",
+  "id_ecdsa",
+  "id_ed25519",
+  ".aws/credentials",
+  ".npmrc",
+  ...HIGH_CONFIDENCE_EXFIL_DOMAINS
+];
+
+// Flag a sensitive path/domain that is assembled from split fragments and only
+// becomes visible after normalization. Review-level, and suppressed when a
+// stronger credential/exfil HIGH already covers this file (so the deliberately
+// split F1 SSH read reports once, as the HIGH, not twice).
+function inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged) {
+  if (!normChanged) return;
+  const alreadyHigh = findings.some(
+    (f) =>
+      f.file === file.path &&
+      (f.category === "credential-access" || f.category === "network-exfil-or-loader")
+  );
+  if (alreadyHigh) return;
+  const nlower = normalized.toLowerCase();
+  for (const token of ASSEMBLY_SENSITIVE_TOKENS) {
+    if (nlower.includes(token) && !lower.includes(token)) {
+      const index = nlower.indexOf(token);
+      findings.push({
+        severity: "medium",
+        category: "obfuscated-token",
+        file: file.path,
+        snippet: clipAround(normalized, index),
+        rationale:
+          `A sensitive token (${token}) is assembled from split string fragments and only appears after de-obfuscation. String-splitting around a credential path or exfil domain is an evasion shape and warrants review.`
+      });
+      return;
+    }
+  }
+}
+
+function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
   for (const target of SUSPICIOUS_READ_TARGETS) {
     const match = target.re.exec(content);
-    if (!match) continue;
-    if (!looksLikeCredentialRead(content, lower, match.index)) continue;
-    findings.push({
-      severity: "high",
-      category: "credential-access",
-      file: file.path,
-      snippet: clipAround(file.content, match.index),
-      rationale:
-        `Reads or references ${target.label} near a filesystem read primitive.`
-    });
-    return;
+    if (match && looksLikeCredentialRead(content, lower, match.index)) {
+      findings.push({
+        severity: "high",
+        category: "credential-access",
+        file: file.path,
+        snippet: clipAround(file.content, match.index),
+        rationale:
+          `Reads or references ${target.label} near a filesystem read primitive.`
+      });
+      return;
+    }
+    // Same target, but only after folding split-string obfuscation.
+    if (normChanged) {
+      const nmatch = target.re.exec(normalized);
+      if (nmatch && looksLikeCredentialRead(normalized, normalized.toLowerCase(), nmatch.index)) {
+        findings.push({
+          severity: "high",
+          category: "credential-access",
+          file: file.path,
+          snippet: clipAround(normalized, nmatch.index),
+          rationale:
+            `Reads or references ${target.label} near a filesystem read primitive — the path was assembled from split string fragments to evade static detection.`
+        });
+        return;
+      }
+    }
   }
 
   if (hasBulkEnv) {
@@ -989,12 +1157,22 @@ function isPrivateIp(ip) {
 const READ_DATA_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:txt|text|dat|data|bin|b64|base64|enc|payload|blob|md|markdown)["'`]/i;
 
-function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv) {
-  const hasExec = EXEC_REGEX.test(content);
-  const hasDynamicEval = DYNAMIC_EVAL_REGEX.test(content);
-  const hasNetwork = NETWORK_REGEX.test(content) || SHELL_NETWORK_REGEX.test(content);
-  const hardcodedIp = findPublicIpInCode(content);
-  const shortener = EXFIL_AND_CALLBACK_DOMAINS.find((pattern) => lower.includes(pattern));
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
+  // Scan the de-obfuscated text alongside the original so split-string sinks
+  // (`require("ht"+"tps")`, a domain spelled in fragments) count too.
+  const nlower = normChanged ? normalized.toLowerCase() : lower;
+  const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
+  const hasExec = testBoth(EXEC_REGEX);
+  const hasDynamicEval = testBoth(DYNAMIC_EVAL_REGEX);
+  const hasNetwork =
+    testBoth(NETWORK_REGEX) ||
+    SHELL_NETWORK_REGEX.test(content) ||
+    testBoth(IMPORT_REMOTE_REGEX) ||
+    testBoth(IMAGE_BEACON_REGEX);
+  const hardcodedIp = findPublicIpInCode(content) || (normChanged ? findPublicIpInCode(normalized) : null);
+  const shortener = EXFIL_AND_CALLBACK_DOMAINS.find(
+    (pattern) => lower.includes(pattern) || nlower.includes(pattern)
+  );
 
   // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP /
   // shortener target.
@@ -1049,7 +1227,7 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // domains (webhook.site, pastebin, ngrok, oast.*, burpcollaborator …) have
   // essentially no legitimate reason to appear in a published package. URL
   // shorteners are excluded here: they're dual-use (legit doc/error links).
-  const callbackDomain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find((p) => lower.includes(p));
+  const callbackDomain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find((p) => lower.includes(p) || nlower.includes(p));
   if (callbackDomain) {
     findings.push({
       severity: "medium",
@@ -1253,6 +1431,38 @@ function inspectCapabilities(file, content, findings) {
   }
 }
 
+// Dynamic require/import hides the network/exec primitive: when the loaded
+// module name is computed, NETWORK_REGEX/EXEC_REGEX can't see what it resolves
+// to. On its own this is review-level (legit plugin loaders do it too). Paired
+// with a bulk environment harvest in the SAME file it mirrors the env+network
+// HIGH — a strong proxy for a hidden exfil/exec sink — so it escalates.
+function inspectDynamicRequire(file, content, findings, hasBulkEnv) {
+  const match = DYNAMIC_REQUIRE_REGEX.exec(content);
+  if (!match) return;
+
+  if (hasBulkEnv) {
+    findings.push({
+      severity: "high",
+      category: "network-exfil-or-loader",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(file.content, match.index),
+      rationale:
+        "Loads a module by a computed (non-literal) name in the same file as a bulk environment harvest. The network/exec sink is hidden behind the dynamic require, evading static network detection — the classic shape of token exfil."
+    });
+    return;
+  }
+
+  findings.push({
+    severity: "medium",
+    category: "dynamic-require",
+    file: file.path,
+    snippet: clipAround(file.content, match.index),
+    rationale:
+      "Loads a module by a computed (non-literal) name. Legitimate in some plugin loaders, but also a common way to hide a network/exec primitive from static analysis — flagged for review."
+  });
+}
+
 function hasWriteVerb(lower) {
   return [
     "writefile",
@@ -1286,7 +1496,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, "install-hook", 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "logic-bomb", "remote-code-load"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "environment-access", "data-access"],
@@ -1298,7 +1508,7 @@ function gradeEvidence(findings, evidence) {
       0.15
     ),
     persistence: scoreParameter(findings, "persistence", 0.1),
-    obfuscation: scoreParameter(findings, ["obfuscation", "hidden-unicode"], 0.1),
+    obfuscation: scoreParameter(findings, ["obfuscation", "obfuscated-token", "hidden-unicode"], 0.1),
     knownVulnerabilities: scoreParameter(findings, "known-vulnerability", 0.15),
     provenance: scoreParameter(
       findings,

