@@ -399,3 +399,44 @@ test("real malicious code still blocks even when divergence is present", () => {
 
   assert.equal(report.verdict, "block");
 });
+
+// ---------------------------------------------------------------------------
+// Tier-A detection hardening (Trojan Source, logic bombs, remote code load).
+// ---------------------------------------------------------------------------
+
+// #8 — Trojan Source: a bidi-override control reorders how code reads vs. runs.
+test("hidden-unicode: bidi-override control in source is review", () => {
+  const report = auditEvidence(require("./fixtures/hardening/bidi-trojan.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "hidden-unicode" && f.severity === "medium"),
+    "a bidi control character must raise a hidden-unicode finding"
+  );
+});
+
+// #8 — a zero-width character hidden inside an identifier is review.
+test("hidden-unicode: zero-width char inside an identifier is review", () => {
+  const report = auditEvidence({
+    packageName: "zw-id",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "zw-id", repository: "https://github.com/example/x" }),
+      "index.js": "const pass​word = getSecret();\nmodule.exports = pass​word;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "hidden-unicode"));
+});
+
+// #8 FP guard: a leading BOM and emoji ZWJ sequences (zero-width joiner between
+// non-ASCII codepoints) are benign and must NOT flag.
+test("hidden-unicode: leading BOM and emoji ZWJ sequences stay safe", () => {
+  const report = auditEvidence({
+    packageName: "emoji-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "emoji-pkg", repository: "https://github.com/example/x" }),
+      "index.js": "﻿const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';\nmodule.exports = family;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "hidden-unicode"));
+});

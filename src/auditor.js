@@ -267,6 +267,7 @@ const BAND_DEFINITIONS = [
   { band: "persistence", label: "persistence", categories: ["persistence"], rationale: "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run key." },
   { band: "exfiltration", label: "network-exfiltration", categories: ["network-exfil-or-loader"], rationale: "Code reaches a hardcoded public IP / shortener / webhook from a file that also has exec or net capability." },
   { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
+  { band: "hidden-unicode", label: "hidden-unicode", categories: ["hidden-unicode"], rationale: "Bidi-override / zero-width Unicode in source — code can read differently than it executes (Trojan Source)." },
   { band: "known-vulnerability", label: "known-vulnerability", categories: ["known-vulnerability"], rationale: "OSV reports this package/version as affected by a published vulnerability." },
   { band: "lifecycle-script", label: "lifecycle-script", categories: ["install-hook"], rationale: "Runs a script at install time with the installing user's privileges." },
   { band: "dynamic-eval", label: "dynamic-eval", categories: ["code-execution"], severityMin: "medium", rationale: "Uses eval / new Function / vm — can execute strings as code at runtime." },
@@ -738,6 +739,7 @@ function auditFiles(files, findings) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv);
     inspectPersistence(file, content, lower, findings);
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
+    inspectHiddenUnicode(file, content, findings);
     inspectCapabilities(file, content, findings);
   }
 
@@ -1088,6 +1090,50 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   }
 }
 
+// --- Trojan Source: bidi / invisible-character tricks (#8) ------------------
+// Unicode bidirectional-override and isolate controls can reorder how source
+// reads versus how it executes (CVE-2021-42574). Zero-width characters hidden
+// inside identifiers/keywords make code read differently than it runs. Both
+// have essentially no legitimate place in source CODE, so they are a review
+// signal. Tuned to avoid the two benign cases: a leading BOM, and ZWJ/ZWNJ
+// used between non-ASCII characters (emoji sequences, some scripts) — we only
+// flag a zero-width that sits adjacent to an ASCII identifier character.
+const BIDI_CONTROL_REGEX = /[‪-‮⁦-⁩]/;
+const ZERO_WIDTH_CHARS = "\\u200B-\\u200D\\u2060\\uFEFF";
+const ZERO_WIDTH_IN_CODE_REGEX = new RegExp(
+  `[A-Za-z0-9_$][${ZERO_WIDTH_CHARS}]|[${ZERO_WIDTH_CHARS}][A-Za-z0-9_$]`
+);
+
+function inspectHiddenUnicode(file, content, findings) {
+  // Ignore a single leading BOM — it's a benign encoding marker, not a trick.
+  const body = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+
+  const bidi = BIDI_CONTROL_REGEX.exec(body);
+  if (bidi) {
+    findings.push({
+      severity: "medium",
+      category: "hidden-unicode",
+      file: file.path,
+      snippet: clip(`bidi control U+${body.charCodeAt(bidi.index).toString(16).toUpperCase().padStart(4, "0")} at offset ${bidi.index}`),
+      rationale:
+        "Source contains a Unicode bidirectional-override/isolate control character. These reorder how code reads versus how it executes (Trojan Source, CVE-2021-42574) and have no legitimate use in source code."
+    });
+    return;
+  }
+
+  const zw = ZERO_WIDTH_IN_CODE_REGEX.exec(body);
+  if (zw) {
+    findings.push({
+      severity: "medium",
+      category: "hidden-unicode",
+      file: file.path,
+      snippet: clip(`zero-width character adjacent to code identifier at offset ${zw.index}`),
+      rationale:
+        "Source hides a zero-width / invisible Unicode character inside an identifier or keyword — code can read differently than it executes. No legitimate reason to embed these in code."
+    });
+  }
+}
+
 const CLIPBOARD_API_REGEX = /\b(?:navigator\.clipboard\.|clipboard\.(?:read|write)|pbpaste(?:\s|$)|pbcopy(?:\s|$)|Get-Clipboard|Set-Clipboard|win32clipboard)\b/;
 
 function inspectCapabilities(file, content, findings) {
@@ -1147,7 +1193,7 @@ function gradeEvidence(findings, evidence) {
       0.15
     ),
     persistence: scoreParameter(findings, "persistence", 0.1),
-    obfuscation: scoreParameter(findings, "obfuscation", 0.1),
+    obfuscation: scoreParameter(findings, ["obfuscation", "hidden-unicode"], 0.1),
     knownVulnerabilities: scoreParameter(findings, "known-vulnerability", 0.15),
     provenance: scoreParameter(
       findings,
