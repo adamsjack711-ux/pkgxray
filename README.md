@@ -43,8 +43,11 @@ sigstore/SLSA provenance, npm↔GitHub artifact divergence, registry metadata.
 
 **Static code analysis** — credential/secret access (`.ssh`, `.aws`, `.npmrc`,
 `.env`, keychains, wallets), persistence writes (shell rc, cron, launch agents),
-obfuscation + execution (`eval`/`vm`/split-string paths), Trojan Source
-(bidi/zero-width Unicode), prompt injection in docs/metadata.
+obfuscation + execution (a packed blob decoded into `eval`/`new Function`/`vm`,
+split-string paths), Trojan Source (bidi/zero-width Unicode), and **tiered
+prompt-injection** detection in docs *and code comments* — reworded steering,
+chat/role scaffolding (`<|im_start|>`, `<<SYS>>`, `[INST]`), and identity
+reassignment, not just verbatim phrases.
 
 **Behavioral correlation** — cross-file exfiltration, stage-2 loaders, download→
 execute (`curl | sh`), `process.env` harvesting near a network sink.
@@ -98,7 +101,12 @@ runtime/install-time sandboxing when that risk matters.
 packages with **0 false blocks**. READMEs run only the prompt-injection check
 (never read as code); test/fixture/example files downgrade to `review`;
 npm↔GitHub divergence is `review`, not auto-block (can't tell a build step from
-tampering); URL shorteners count only when co-located with a capability.
+tampering); URL shorteners count only when co-located with a capability. And
+**minification is not obfuscation** — `eval`/`new Function` on a *string
+literal* (a bundler's `eval-source-map` module wrapper, a `new Function("return
+this")` globalThis probe) is recorded as info, not flagged; only `eval` on a
+*computed* argument (`eval(atob(blob))`) gates. That keeps heavily-bundled
+frontend packages out of the review pile.
 
 ---
 
@@ -153,22 +161,28 @@ a lockfile), `triage_lockfile_supply_chain` (record each flagged dep as
 <details>
 <summary><b>Severity policy</b> (what lands in block / review / info)</summary>
 
-- **block** (HIGH) — prompt-injection text in docs; credential reads near a
-  filesystem-read primitive (including paths assembled from split fragments —
-  `".s"+"sh"` — folded by a light de-obfuscation pass); persistence writes;
-  execution/outbound-network plus a hardcoded public IP / shortener / webhook;
-  bulk `process.env` harvest in the same file as outbound network (sinks include
-  `sendBeacon` / `EventSource` / `dns.*` / `dgram` / remote `import()`); a
-  dynamic `require`/`import` of a computed name co-located with an env harvest; a
-  stage-2 loader that reads an opaque blob and `eval`s it; split token-exfil
-  across separate files.
-- **review** (MEDIUM) — install/postinstall scripts; dynamic eval / `new
-  Function` / vm; a lone dynamic `require`/`import` by computed name; a lone bulk
+- **block** (HIGH) — verdict-forcing / rule-overriding prompt-injection text (in
+  docs *or* a code comment); credential reads near a filesystem-read primitive
+  (including paths assembled from split fragments — `".s"+"sh"` — folded by a
+  light de-obfuscation pass); persistence writes; execution/outbound-network plus
+  a hardcoded public IP / shortener / webhook; bulk `process.env` harvest in the
+  same file as outbound network (sinks include `sendBeacon` / `EventSource` /
+  `dns.*` / `dgram` / remote `import()`); a dynamic `require`/`import` of a
+  computed name co-located with an env harvest; a stage-2 loader that reads an
+  opaque blob and `eval`s it; a large encoded blob decoded into a **computed-arg**
+  `eval` / `new Function` / `child_process`; split token-exfil across files.
+- **review** (MEDIUM) — install/postinstall scripts; `eval` / `new Function` /
+  vm on a **computed** argument; weaker prompt-injection (reworded steering,
+  chat/role scaffolding like `<|im_start|>` / `<<SYS>>` / `[INST]`, identity
+  reassignment); a lone dynamic `require`/`import` by computed name; a lone bulk
   `process.env` harvest; a path/domain assembled from split fragments; Trojan
   Source Unicode; a geo/locale-gated destructive op; download-then-execute;
   clipboard access; a lone exfil/callback domain; npm↔GitHub divergence; missing
   package.json or entrypoint.
-- **info** — child_process/fetch/network in isolation. Recorded, does not gate.
+- **info** — child_process/fetch/network in isolation; `eval` / `new Function` on
+  a **string literal** (bundler `eval-source-map` wrapper, feature-detection
+  probe — the executed text is in the artifact and scanned as code). Recorded,
+  does not gate.
 
 `.d.ts`, `.map`, `.min.js`, `.lock` files are skipped. Tarballs up to 20,000
 entries / 256 MB uncompressed are scanned.
