@@ -56,6 +56,13 @@ const PERSISTENCE_REGEXES = [
 ];
 
 const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|require\(['"]child_process['"]\)|os\.system\(|subprocess\.(?:Popen|run|call|check_output)|Runtime\.getRuntime\(\)\.exec)/;
+
+// require()/import() called with a NON-string-literal argument (a variable or
+// expression). This is the building block of "hide the sink behind a dynamic
+// require": `const m = "ht"+"tps"; require(m).request(...)`. The negative
+// lookahead skips ordinary `require("fs")` / `import("./x")` literal loads; the
+// `_` boundary on \b keeps `__webpack_require__(id)` and friends from matching.
+const DYNAMIC_REQUIRE_REGEX = /\b(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/;
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
 const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.(?:request|get|post|put|delete)\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http|httpx\.[a-z]+\s*\(|sendBeacon\s*\(|EventSource\s*\(|dgram\.createSocket\s*\(|dns\.(?:lookup|resolve|resolve4|resolveTxt)\s*\()/i;
@@ -279,6 +286,7 @@ const BAND_DEFINITIONS = [
   { band: "known-vulnerability", label: "known-vulnerability", categories: ["known-vulnerability"], rationale: "OSV reports this package/version as affected by a published vulnerability." },
   { band: "lifecycle-script", label: "lifecycle-script", categories: ["install-hook"], rationale: "Runs a script at install time with the installing user's privileges." },
   { band: "dynamic-eval", label: "dynamic-eval", categories: ["code-execution"], severityMin: "medium", rationale: "Uses eval / new Function / vm — can execute strings as code at runtime." },
+  { band: "dynamic-require", label: "dynamic-require", categories: ["dynamic-require"], rationale: "Loads a module by a computed (non-literal) name — can hide a network / exec sink from static analysis." },
   { band: "bulk-env", label: "bulk-env-access", categories: ["environment-access"], rationale: "Reads the entire process environment in bulk; risky paired with network." },
   { band: "clipboard", label: "clipboard-access", categories: ["data-access"], rationale: "Reads or writes the system clipboard — can expose copied secrets." },
   { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
@@ -747,6 +755,7 @@ function auditFiles(files, findings) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv);
     inspectPersistence(file, content, lower, findings);
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
+    inspectDynamicRequire(file, content, findings, hasBulkEnv);
     inspectCapabilities(file, content, findings);
   }
 
@@ -1115,6 +1124,38 @@ function inspectCapabilities(file, content, findings) {
   }
 }
 
+// Dynamic require/import hides the network/exec primitive: when the loaded
+// module name is computed, NETWORK_REGEX/EXEC_REGEX can't see what it resolves
+// to. On its own this is review-level (legit plugin loaders do it too). Paired
+// with a bulk environment harvest in the SAME file it mirrors the env+network
+// HIGH — a strong proxy for a hidden exfil/exec sink — so it escalates.
+function inspectDynamicRequire(file, content, findings, hasBulkEnv) {
+  const match = DYNAMIC_REQUIRE_REGEX.exec(content);
+  if (!match) return;
+
+  if (hasBulkEnv) {
+    findings.push({
+      severity: "high",
+      category: "network-exfil-or-loader",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(file.content, match.index),
+      rationale:
+        "Loads a module by a computed (non-literal) name in the same file as a bulk environment harvest. The network/exec sink is hidden behind the dynamic require, evading static network detection — the classic shape of token exfil."
+    });
+    return;
+  }
+
+  findings.push({
+    severity: "medium",
+    category: "dynamic-require",
+    file: file.path,
+    snippet: clipAround(file.content, match.index),
+    rationale:
+      "Loads a module by a computed (non-literal) name. Legitimate in some plugin loaders, but also a common way to hide a network/exec primitive from static analysis — flagged for review."
+  });
+}
+
 function hasWriteVerb(lower) {
   return [
     "writefile",
@@ -1148,7 +1189,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, "install-hook", 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "environment-access", "data-access"],

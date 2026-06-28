@@ -442,3 +442,55 @@ test("F3: sendBeacon alone stays info-level, not a block", () => {
     "but the network activity should still be recorded as INFO"
   );
 });
+
+// F2 — dynamic require/import hides the network primitive. `require(<var>)`
+// means NETWORK_REGEX can't see the sink. Co-located with a bulk-env harvest
+// it must BLOCK.
+test("F2: dynamic require + bulk-env harvest blocks", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f2-dynamic-require.json"));
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some(
+      (f) => f.category === "network-exfil-or-loader" && f.severity === "high"
+    ),
+    "dynamic require + bulk env must escalate to a HIGH exfil finding"
+  );
+});
+
+// FP guard for F2: a plugin loader that does dynamic require with NO bulk-env
+// harvest is review-level (a human should glance at it), never a block.
+test("F2: dynamic require alone is review, not a block", () => {
+  const report = auditEvidence({
+    packageName: "plugin-loader",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "plugin-loader",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "function load(name){ return require(name); }\nmodule.exports = load;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "dynamic-require" && f.severity === "medium"),
+    "the lone dynamic require should be a medium dynamic-require signal"
+  );
+  assert.ok(!report.findings.some((f) => f.severity === "high"), "but never a HIGH/block");
+});
+
+// FP guard for F2: ordinary literal require()/import() must not trip the
+// dynamic-require signal at all.
+test("F2: static literal require/import does not trip dynamic-require", () => {
+  const report = auditEvidence({
+    packageName: "static-requires",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "static-requires",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const fs = require('fs');\nconst local = require('./local');\nmodule.exports = local;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "dynamic-require"));
+});
