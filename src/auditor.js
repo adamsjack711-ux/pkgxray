@@ -58,8 +58,17 @@ const PERSISTENCE_REGEXES = [
 const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|require\(['"]child_process['"]\)|os\.system\(|subprocess\.(?:Popen|run|call|check_output)|Runtime\.getRuntime\(\)\.exec)/;
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
-const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.(?:request|get|post|put|delete)\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http|httpx\.[a-z]+\s*\()/i;
+const NETWORK_REGEX = /\b(?:fetch\s*\(|axios\.[a-z]+\s*\(|got\s*\(|node-fetch|undici|https?\.(?:request|get|post|put|delete)\s*\(|XMLHttpRequest|new\s+WebSocket|requests\.[a-z]+\s*\(|urllib(?:\.request)?|net\/http|httpx\.[a-z]+\s*\(|sendBeacon\s*\(|EventSource\s*\(|dgram\.createSocket\s*\(|dns\.(?:lookup|resolve|resolve4|resolveTxt)\s*\()/i;
 const SHELL_NETWORK_REGEX = /(?:^|[\s;&|`$(])(?:curl|wget|Invoke-WebRequest)\s/m;
+
+// Exfil sinks that need more than a single keyword to be a network signal
+// (and would false-positive as bare keywords): a dynamic `import()` of a
+// remote URL, and the `new Image(); img.src = <url>` GET-beacon pattern. Both
+// are OR'd into the network check below; like every other network primitive
+// they're INFO on their own and only escalate when co-located with a bulk-env
+// harvest, a hardcoded IP, or an exfil domain.
+const IMPORT_REMOTE_REGEX = /\bimport\s*\(\s*['"`]https?:\/\//i;
+const IMAGE_BEACON_REGEX = /new\s+Image\s*\([^)]{0,40}\)[\s\S]{0,120}?\.src\s*=/i;
 
 // Domains that are almost never legitimate destinations from production code.
 // Three buckets: URL shorteners (data hiding), paste/webhook services
@@ -986,7 +995,11 @@ const READ_DATA_BLOB_REGEX =
 function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv) {
   const hasExec = EXEC_REGEX.test(content);
   const hasDynamicEval = DYNAMIC_EVAL_REGEX.test(content);
-  const hasNetwork = NETWORK_REGEX.test(content) || SHELL_NETWORK_REGEX.test(content);
+  const hasNetwork =
+    NETWORK_REGEX.test(content) ||
+    SHELL_NETWORK_REGEX.test(content) ||
+    IMPORT_REMOTE_REGEX.test(content) ||
+    IMAGE_BEACON_REGEX.test(content);
   const hardcodedIp = findPublicIpInCode(content);
   const shortener = EXFIL_AND_CALLBACK_DOMAINS.find((pattern) => lower.includes(pattern));
 

@@ -399,3 +399,46 @@ test("real malicious code still blocks even when divergence is present", () => {
 
   assert.equal(report.verdict, "block");
 });
+
+// ---------------------------------------------------------------------------
+// Evasion-hardening regressions (red-team pass). Each loads a fixture under
+// test/fixtures/evasion/ that defeated a behavioral HIGH before the fix.
+// ---------------------------------------------------------------------------
+
+// F3 — network-sink coverage. navigator.sendBeacon (and other non-fetch exfil
+// channels) were missing from NETWORK_REGEX, so the bulk-env + network HIGH
+// never fired. Paired with a whole-env harvest it must now BLOCK.
+test("F3: sendBeacon + bulk-env harvest blocks (network-sink coverage)", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f3-sendbeacon.json"));
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some(
+      (f) => f.category === "network-exfil-or-loader" && f.severity === "high"
+    ),
+    "sendBeacon must count as a network sink for the env-harvest HIGH"
+  );
+});
+
+// FP guard for F3: a lone beacon/SSE sink with NO bulk-env harvest is just
+// INFO network activity — it must not escalate to a block on its own.
+test("F3: sendBeacon alone stays info-level, not a block", () => {
+  const report = auditEvidence({
+    packageName: "beacon-only",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "beacon-only",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "navigator.sendBeacon('https://analytics.example/collect', payload);"
+    }
+  });
+  assert.notEqual(report.verdict, "block");
+  assert.ok(
+    !report.findings.some((f) => f.severity === "high"),
+    "a lone beacon must not produce any HIGH finding"
+  );
+  assert.ok(
+    report.findings.some((f) => f.category === "network-access"),
+    "but the network activity should still be recorded as INFO"
+  );
+});
