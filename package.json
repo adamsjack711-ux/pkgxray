@@ -1,6 +1,6 @@
 {
   "name": "pkgxray",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Zero-dep local CLI and MCP server that scans npm packages for supply-chain risk. OSV vuln pre-check, sandboxed quarantine, tarball-integrity verification, calibrated static heuristics, GitHub provenance cross-check.",
   "license": "MIT",
   "author": "Jack Adams-Lovell",
