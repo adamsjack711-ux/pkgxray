@@ -45,9 +45,10 @@ sigstore/SLSA provenance, npm↔GitHub artifact divergence, registry metadata.
 `.env`, keychains, wallets), persistence writes (shell rc, cron, launch agents),
 obfuscation + execution (a packed blob decoded into `eval`/`new Function`/`vm`,
 split-string paths), Trojan Source (bidi/zero-width Unicode), and **tiered
-prompt-injection** detection in docs *and code comments* — reworded steering,
-chat/role scaffolding (`<|im_start|>`, `<<SYS>>`, `[INST]`), and identity
-reassignment, not just verbatim phrases.
+prompt-injection** detection in docs, *code comments*, and *`package.json`
+metadata* (`description`/`keywords`/`author`) — reworded steering, chat/role
+scaffolding (`<|im_start|>`, `<<SYS>>`, `[INST]`), and identity reassignment, not
+just verbatim phrases.
 
 **Concealment & encoding** — injection is unsolvable by matching the attacker's
 *wording* (paraphrase defeats it), but it has to be *delivered*, and the
