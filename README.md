@@ -140,8 +140,11 @@ there. Validated against the 47 most-installed npm packages: **0 false blocks**.
   exfil/callback domain live in different files.
 - **review** (MEDIUM) — install/postinstall/prepare scripts; dynamic
   eval / `new Function` / vm; clipboard access; a lone reference to a
-  high-confidence exfil/callback domain; **npm-vs-GitHub divergence**; missing
-  package.json or entrypoint.
+  high-confidence exfil/callback domain; **Trojan Source** bidi-override /
+  zero-width Unicode in code; a **geo/locale-gated destructive op**
+  (logic-bomb / protestware shape); **download-then-execute** (network content
+  fed straight to an interpreter — `curl | sh`, `eval` over a fetched body);
+  **npm-vs-GitHub divergence**; missing package.json or entrypoint.
 - **info** — child_process/fetch/network in isolation. Recorded, does not gate.
 
 ### Designed to avoid false positives
@@ -162,6 +165,17 @@ there. Validated against the 47 most-installed npm packages: **0 false blocks**.
 
 `.d.ts`, `.map`, `.min.js`, and `.lock` files are skipped. Tarballs up to 20,000
 entries / 256 MB uncompressed are scanned.
+
+### Known blind spot: post-install network execution
+
+pkgxray is a static scanner — it reasons about the bytes that ship in the
+tarball. A package that downloads and runs its real payload *after* install
+(`curl | sh`, `eval` over a fetched body, a child process pulling a second
+stage) can ship a clean tree. pkgxray flags the **capability** when its shape is
+unambiguous (the `remote-code-load` review signal), but it cannot see code that
+isn't in the artifact. Treat post-install network execution as outside the
+guarantee of any tarball scan, and pair pkgxray with runtime/install-time
+sandboxing when that risk matters.
 
 ## JSON output
 

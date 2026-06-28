@@ -269,6 +269,7 @@ const BAND_DEFINITIONS = [
   { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
   { band: "hidden-unicode", label: "hidden-unicode", categories: ["hidden-unicode"], rationale: "Bidi-override / zero-width Unicode in source — code can read differently than it executes (Trojan Source)." },
   { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
+  { band: "remote-code-load", label: "remote-code-load", categories: ["remote-code-load"], rationale: "Network content fed straight to an interpreter (curl | sh, eval over a fetched body) — download-then-execute." },
   { band: "known-vulnerability", label: "known-vulnerability", categories: ["known-vulnerability"], rationale: "OSV reports this package/version as affected by a published vulnerability." },
   { band: "lifecycle-script", label: "lifecycle-script", categories: ["install-hook"], rationale: "Runs a script at install time with the installing user's privileges." },
   { band: "dynamic-eval", label: "dynamic-eval", categories: ["code-execution"], severityMin: "medium", rationale: "Uses eval / new Function / vm — can execute strings as code at runtime." },
@@ -742,6 +743,7 @@ function auditFiles(files, findings) {
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
     inspectHiddenUnicode(file, content, findings);
     inspectLogicBomb(file, content, findings);
+    inspectRemoteCodeLoad(file, content, findings);
     inspectCapabilities(file, content, findings);
   }
 
@@ -1203,6 +1205,40 @@ function inspectLogicBomb(file, content, findings) {
   }
 }
 
+// --- Runtime-fetched payloads (#5) -----------------------------------------
+// A clean tarball that downloads and runs code after install is the inherent
+// blind spot of any static scanner — you can't see what isn't shipped. What we
+// CAN flag is the capability when its shape is unambiguous: a network read fed
+// straight into an interpreter. These shapes are essentially never benign, so
+// they're a review signal. (Post-install network execution generally is out of
+// scope for static analysis — see README.)
+const REMOTE_CODE_LOAD_REGEXES = [
+  // curl/wget piped into a shell or interpreter
+  /(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[a-z]*sh|node|python[0-9.]*|ruby|perl)\b/i,
+  // eval / new Function / vm over a freshly fetched body
+  /(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(\s*(?:await\s+)?(?:fetch|got|axios|node-fetch|https?\.get)\b/i,
+  // promise chain handing the response straight to eval
+  /\.then\s*\(\s*eval\s*\)/,
+  /\.then\s*\(\s*\w+\s*=>\s*eval\s*\(/
+];
+
+function inspectRemoteCodeLoad(file, content, findings) {
+  for (const re of REMOTE_CODE_LOAD_REGEXES) {
+    const match = re.exec(content);
+    if (match) {
+      findings.push({
+        severity: "medium",
+        category: "remote-code-load",
+        file: file.path,
+        snippet: clipAround(content, match.index),
+        rationale:
+          "Downloads content from the network and feeds it straight to an interpreter (curl | sh, eval/Function/vm over a fetched body). Download-then-execute fetches the real payload at runtime, where a static scan can't see it — flagged for review."
+      });
+      return;
+    }
+  }
+}
+
 const CLIPBOARD_API_REGEX = /\b(?:navigator\.clipboard\.|clipboard\.(?:read|write)|pbpaste(?:\s|$)|pbcopy(?:\s|$)|Get-Clipboard|Set-Clipboard|win32clipboard)\b/;
 
 function inspectCapabilities(file, content, findings) {
@@ -1250,7 +1286,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, "install-hook", 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "logic-bomb"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "logic-bomb", "remote-code-load"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "environment-access", "data-access"],
