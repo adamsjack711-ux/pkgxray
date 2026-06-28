@@ -49,6 +49,15 @@ prompt-injection** detection in docs *and code comments* — reworded steering,
 chat/role scaffolding (`<|im_start|>`, `<<SYS>>`, `[INST]`), and identity
 reassignment, not just verbatim phrases.
 
+**Concealment & encoding** — injection is unsolvable by matching the attacker's
+*wording* (paraphrase defeats it), but it has to be *delivered*, and the
+delivery tells are high-signal and low-FP. pkgxray detects instructions
+**smuggled in invisible characters** (the Unicode tag block — "ASCII smuggling")
+and **base64-encoded prompts** hidden in docs/comments that a human can't read
+but an agent decodes. It detects the envelope, not the message — so it
+generalizes past rewording. (Emoji subdivision flags and benign/binary base64
+are excluded.) See [solving prompt injection](#on-prompt-injection).
+
 **Behavioral correlation** — cross-file exfiltration, stage-2 loaders, download→
 execute (`curl | sh`), `process.env` harvesting near a network sink.
 
@@ -107,6 +116,28 @@ literal* (a bundler's `eval-source-map` module wrapper, a `new Function("return
 this")` globalThis probe) is recorded as info, not flagged; only `eval` on a
 *computed* argument (`eval(atob(blob))`) gates. That keeps heavily-bundled
 frontend packages out of the review pile.
+
+### On prompt injection
+
+Prompt injection isn't "solved" by a scanner, and pkgxray doesn't claim to. The
+durable defense is *architectural*, and pkgxray's design reflects three honest
+layers:
+
+1. **pkgxray is injection-proof by construction.** Its verdict is computed by
+   deterministic heuristics, not by an LLM reading the package — so injected text
+   *cannot steer a pkgxray verdict*. There is no model in the decision path to
+   hijack.
+2. **Detection targets the delivery, not the wording.** Matching an attacker's
+   phrasing is a treadmill (paraphrase wins). Matching *how injection is
+   delivered* — concealed in invisible characters, base64-encoded, hidden in a
+   code comment — generalizes past rewording and has near-zero false positives,
+   because legitimate package text doesn't smuggle. The tiered phrase matcher
+   catches the rest and routes uncertainty to `review`, never a false `block`.
+3. **The real fix lives in the consuming agent.** An agent is only harmed by
+   injection if it can also act (install, exfiltrate) on what it read — the
+   "lethal trifecta." pkgxray's job is to **quarantine and label** the untrusted
+   package so the agent's *capability controls*, the actual security boundary,
+   can do theirs. pkgxray reduces exposure; it does not replace least-privilege.
 
 ---
 
@@ -170,13 +201,18 @@ a lockfile), `triage_lockfile_supply_chain` (record each flagged dep as
   `dns.*` / `dgram` / remote `import()`); a dynamic `require`/`import` of a
   computed name co-located with an env harvest; a stage-2 loader that reads an
   opaque blob and `eval`s it; a large encoded blob decoded into a **computed-arg**
-  `eval` / `new Function` / `child_process`; split token-exfil across files.
+  `eval` / `new Function` / `child_process`; split token-exfil across files;
+  **concealed/encoded injection** — instructions smuggled in invisible Unicode
+  tag characters, or a base64 blob in docs/comments, that decode to a
+  verdict-forcing prompt.
 - **review** (MEDIUM) — install/postinstall scripts; `eval` / `new Function` /
   vm on a **computed** argument; weaker prompt-injection (reworded steering,
   chat/role scaffolding like `<|im_start|>` / `<<SYS>>` / `[INST]`, identity
   reassignment); a lone dynamic `require`/`import` by computed name; a lone bulk
   `process.env` harvest; a path/domain assembled from split fragments; Trojan
-  Source Unicode; a geo/locale-gated destructive op; download-then-execute;
+  Source Unicode; **invisible Unicode tag characters** (text-smuggling channel)
+  even when they don't decode to a known prompt; a geo/locale-gated destructive
+  op; download-then-execute;
   clipboard access; a lone exfil/callback domain; npm↔GitHub divergence; missing
   package.json or entrypoint.
 - **info** — child_process/fetch/network in isolation; `eval` / `new Function` on

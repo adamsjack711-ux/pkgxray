@@ -887,6 +887,7 @@ function auditFiles(files, findings) {
     // Exception: if a lifecycle script runs this file, it is NOT inert — scan it.
     if (isDocumentationFile(file.path) && !isRuntimeReferenced) {
       inspectInjectionAttempt(file, lower, findings);
+      inspectConcealedInjection(file, true, findings);
       continue;
     }
 
@@ -906,6 +907,7 @@ function auditFiles(files, findings) {
     if (domain) exfilDomainFiles.push({ path: file.path, domain });
 
     inspectInjectionAttempt(file, lower, findings);
+    inspectConcealedInjection(file, false, findings);
     inspectObfuscation(file, content, lower, findings);
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
@@ -1561,6 +1563,98 @@ function inspectHiddenUnicode(file, content, findings) {
       rationale:
         "Source hides a zero-width / invisible Unicode character inside an identifier or keyword — code can read differently than it executes. No legitimate reason to embed these in code."
     });
+  }
+}
+
+// --- Concealment & encoding layer ------------------------------------------
+// Prompt injection is unsolvable by matching the attacker's WORDING (paraphrase
+// defeats it). But injection has to be DELIVERED, and the delivery mechanisms
+// are high-signal and low-FP because legitimate package text never uses them:
+// instructions smuggled in invisible characters, or encoded so a human reading
+// the package can't see them while an agent still decodes them. This layer
+// detects the envelope, not the message — so it generalizes past paraphrase.
+//
+// (1) Unicode Tag block (U+E0000–U+E007F): invisible characters that can carry a
+// full hidden ASCII message ("ASCII smuggling"). inspectHiddenUnicode covers
+// bidi + zero-width; the tag block is the dominant TEXT-smuggling vector and is
+// otherwise uncovered. The one legitimate use is emoji subdivision flags
+// (🏴 + tags + cancel — England/Scotland/Wales), which we strip first so they
+// don't false-positive.
+const EMOJI_TAG_FLAG_RE = /\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F}/gu;
+const TAG_CHAR_RE = /[\u{E0000}-\u{E007F}]/u;
+
+function decodeTagChars(text) {
+  let out = "";
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0xe0020 && cp <= 0xe007e) out += String.fromCharCode(cp - 0xe0000);
+  }
+  return out;
+}
+
+// (2) base64 that decodes to instruction-shaped text. Random base64 (images,
+// hashes, keys) won't decode to readable words or will contain replacement
+// characters, so the word-shape + no-U+FFFD filter keeps the FP rate low.
+const BASE64_DOC_RUN_RE = /[A-Za-z0-9+/]{24,}={0,2}/g;
+const TWO_WORDS_RE = /[A-Za-z]{3,}[^A-Za-z]+[A-Za-z]{3,}/;
+const MAX_BASE64_DECODES = 50;
+
+function decodeBase64Texts(text) {
+  const out = [];
+  let m;
+  let n = 0;
+  BASE64_DOC_RUN_RE.lastIndex = 0;
+  while ((m = BASE64_DOC_RUN_RE.exec(text)) !== null && n < MAX_BASE64_DECODES) {
+    n++;
+    let decoded;
+    try {
+      decoded = Buffer.from(m[0], "base64").toString("utf8");
+    } catch {
+      continue;
+    }
+    if (decoded.includes("�")) continue; // binary / not real UTF-8 text
+    if (TWO_WORDS_RE.test(decoded)) out.push({ text: decoded, index: m.index });
+  }
+  return out;
+}
+
+function inspectConcealedInjection(file, isDoc, findings) {
+  const content = file.content || "";
+
+  // (1) Invisible Unicode tag-block smuggling — any file.
+  const withoutFlags = content.replace(EMOJI_TAG_FLAG_RE, "");
+  if (TAG_CHAR_RE.test(withoutFlags)) {
+    const smuggled = decodeTagChars(withoutFlags);
+    const inj = smuggled ? matchInjection(smuggled, smuggled.toLowerCase()) : null;
+    findings.push({
+      severity: inj && inj.severity === "high" ? "high" : "medium",
+      category: "injection-attempt",
+      file: file.path,
+      snippet: clip(smuggled ? `hidden text: ${smuggled}` : "invisible Unicode tag-block characters"),
+      rationale: smuggled
+        ? `Invisible Unicode tag-block characters smuggle hidden text into the file (decodes to: "${clip(smuggled)}")${inj ? ", which reads as an instruction aimed at an AI agent" : ""}. Concealed text has no legitimate place in package source.`
+        : "Invisible Unicode tag-block characters are present — a text-smuggling channel hidden from human readers."
+    });
+  }
+
+  // (2) Encoded instruction payloads — docs in full, code only in comments (a
+  // base64 image in a JS string isn't read by an agent; a base64 blob in a
+  // README or a comment that decodes to a prompt is the vector).
+  const haystack = isDoc ? content : extractComments(file);
+  if (haystack) {
+    for (const decoded of decodeBase64Texts(haystack)) {
+      const inj = matchInjection(decoded.text, decoded.text.toLowerCase());
+      if (inj) {
+        findings.push({
+          severity: inj.severity === "high" ? "high" : "medium",
+          category: "injection-attempt",
+          file: file.path,
+          snippet: clip(`decoded: ${decoded.text}`),
+          rationale: `A base64 blob ${isDoc ? "in the docs" : "in a code comment"} decodes to text that reads as an injected instruction ("${clip(decoded.text)}"). Encoding the prompt hides it from a human reading the package while an agent can still decode and act on it.`
+        });
+        break;
+      }
+    }
   }
 }
 
