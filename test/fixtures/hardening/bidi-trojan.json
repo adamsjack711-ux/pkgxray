@@ -1,0 +1,7 @@
+{
+  "packageName": "bidi-trojan",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"bidi-trojan\",\"repository\":\"https://github.com/x/y\"}",
+    "index.js": "const isAdmin=false;\n// ‮ trojan-source reorders this comment/code\nif(isAdmin){grantAccess();}\n"
+  }
+}

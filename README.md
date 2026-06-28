@@ -147,9 +147,12 @@ there. Validated against the 47 most-installed npm packages: **0 false blocks**.
   eval / `new Function` / vm; a **dynamic `require`/`import`** by computed name on
   its own; **bulk `process.env` harvest** on its own (serialization, iteration,
   or whole-env clone via `{...process.env}` / `Object.assign`); a sensitive path
-  or domain **assembled from split fragments**; clipboard access; a lone reference
-  to a high-confidence exfil/callback domain; **npm-vs-GitHub divergence**;
-  missing package.json or entrypoint.
+  or domain **assembled from split fragments**; **Trojan Source** bidi-override /
+  zero-width Unicode in code; a **geo/locale-gated destructive op** (logic-bomb /
+  protestware shape); **download-then-execute** (network content fed straight to
+  an interpreter — `curl | sh`, `eval` over a fetched body); clipboard access; a
+  lone reference to a high-confidence exfil/callback domain; **npm-vs-GitHub
+  divergence**; missing package.json or entrypoint.
 - **info** — child_process/fetch/network in isolation. Recorded, does not gate.
 
 ### Designed to avoid false positives
@@ -170,6 +173,17 @@ there. Validated against the 47 most-installed npm packages: **0 false blocks**.
 
 `.d.ts`, `.map`, `.min.js`, and `.lock` files are skipped. Tarballs up to 20,000
 entries / 256 MB uncompressed are scanned.
+
+### Known blind spot: post-install network execution
+
+pkgxray is a static scanner — it reasons about the bytes that ship in the
+tarball. A package that downloads and runs its real payload *after* install
+(`curl | sh`, `eval` over a fetched body, a child process pulling a second
+stage) can ship a clean tree. pkgxray flags the **capability** when its shape is
+unambiguous (the `remote-code-load` review signal), but it cannot see code that
+isn't in the artifact. Treat post-install network execution as outside the
+guarantee of any tarball scan, and pair pkgxray with runtime/install-time
+sandboxing when that risk matters.
 
 ## JSON output
 

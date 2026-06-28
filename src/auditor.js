@@ -284,6 +284,9 @@ const BAND_DEFINITIONS = [
   { band: "exfiltration", label: "network-exfiltration", categories: ["network-exfil-or-loader"], rationale: "Code reaches a hardcoded public IP / shortener / webhook from a file that also has exec or net capability." },
   { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
   { band: "obfuscated-token", label: "obfuscated-token", categories: ["obfuscated-token"], rationale: "A sensitive path/domain is assembled from split string fragments and only appears after de-obfuscation — an evasion shape." },
+  { band: "hidden-unicode", label: "hidden-unicode", categories: ["hidden-unicode"], rationale: "Bidi-override / zero-width Unicode in source — code can read differently than it executes (Trojan Source)." },
+  { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
+  { band: "remote-code-load", label: "remote-code-load", categories: ["remote-code-load"], rationale: "Network content fed straight to an interpreter (curl | sh, eval over a fetched body) — download-then-execute." },
   { band: "known-vulnerability", label: "known-vulnerability", categories: ["known-vulnerability"], rationale: "OSV reports this package/version as affected by a published vulnerability." },
   { band: "lifecycle-script", label: "lifecycle-script", categories: ["install-hook"], rationale: "Runs a script at install time with the installing user's privileges." },
   { band: "dynamic-eval", label: "dynamic-eval", categories: ["code-execution"], severityMin: "medium", rationale: "Uses eval / new Function / vm — can execute strings as code at runtime." },
@@ -765,6 +768,9 @@ function auditFiles(files, findings) {
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged);
     inspectDynamicRequire(file, content, findings, hasBulkEnv);
     inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
+    inspectHiddenUnicode(file, content, findings);
+    inspectLogicBomb(file, content, findings);
+    inspectRemoteCodeLoad(file, content, findings);
     inspectCapabilities(file, content, findings);
   }
 
@@ -1266,6 +1272,151 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   }
 }
 
+// --- Trojan Source: bidi / invisible-character tricks (#8) ------------------
+// Unicode bidirectional-override and isolate controls can reorder how source
+// reads versus how it executes (CVE-2021-42574). Zero-width characters hidden
+// inside identifiers/keywords make code read differently than it runs. Both
+// have essentially no legitimate place in source CODE, so they are a review
+// signal. Tuned to avoid the two benign cases: a leading BOM, and ZWJ/ZWNJ
+// used between non-ASCII characters (emoji sequences, some scripts) — we only
+// flag a zero-width that sits adjacent to an ASCII identifier character.
+const BIDI_CONTROL_REGEX = /[‪-‮⁦-⁩]/;
+const ZERO_WIDTH_CHARS = "\\u200B-\\u200D\\u2060\\uFEFF";
+const ZERO_WIDTH_IN_CODE_REGEX = new RegExp(
+  `[A-Za-z0-9_$][${ZERO_WIDTH_CHARS}]|[${ZERO_WIDTH_CHARS}][A-Za-z0-9_$]`
+);
+
+function inspectHiddenUnicode(file, content, findings) {
+  // Ignore a single leading BOM — it's a benign encoding marker, not a trick.
+  const body = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+
+  const bidi = BIDI_CONTROL_REGEX.exec(body);
+  if (bidi) {
+    findings.push({
+      severity: "medium",
+      category: "hidden-unicode",
+      file: file.path,
+      snippet: clip(`bidi control U+${body.charCodeAt(bidi.index).toString(16).toUpperCase().padStart(4, "0")} at offset ${bidi.index}`),
+      rationale:
+        "Source contains a Unicode bidirectional-override/isolate control character. These reorder how code reads versus how it executes (Trojan Source, CVE-2021-42574) and have no legitimate use in source code."
+    });
+    return;
+  }
+
+  const zw = ZERO_WIDTH_IN_CODE_REGEX.exec(body);
+  if (zw) {
+    findings.push({
+      severity: "medium",
+      category: "hidden-unicode",
+      file: file.path,
+      snippet: clip(`zero-width character adjacent to code identifier at offset ${zw.index}`),
+      rationale:
+        "Source hides a zero-width / invisible Unicode character inside an identifier or keyword — code can read differently than it executes. No legitimate reason to embed these in code."
+    });
+  }
+}
+
+// --- Logic bombs / protestware (#9) ----------------------------------------
+// Destructive behavior gated on geography / locale / timezone is the node-ipc
+// "peacenotwar" shape: check the victim's region, then wipe or corrupt files.
+// We require BOTH a forceful destructive filesystem op AND a geo/locale/timezone
+// gate within a small window. The gate is deliberately NOT plain dates (those
+// co-occur benignly with cleanup code) and the action is deliberately NOT plain
+// network (region-aware fetch/analytics is common) — only the high-harm,
+// low-FP combination is flagged, and only at review.
+// Destructive on their own — shell wipes, rimraf, rmtree, recursive dir removal.
+const SIMPLE_DESTRUCTIVE_REGEXES = [
+  /\brm\s+-[a-z]*r[a-z]*f/i,
+  /\brm\s+-[a-z]*f[a-z]*r/i,
+  /\brimraf\b/,
+  /\bshutil\.rmtree\s*\(/,
+  /\b(?:rmdir|del)\s+\/s\b/i,
+  /\bformat\s+[a-z]:/i
+];
+// fs.rm / fs.rmdir (sync or async, however the module is referenced) is only
+// dir-destructive with recursive:true — checked in a small window after the call.
+const RM_CALL_REGEX = /\.rm(?:dir)?(?:Sync)?\s*\(/g;
+const RECURSIVE_FLAG_REGEX = /recursive\s*:\s*true/;
+// High-signal region/locale gates only. Broad timezone/date APIs
+// (getTimezoneOffset, Intl.DateTimeFormat, resolvedOptions().timeZone) are
+// deliberately excluded: they co-occur benignly with cleanup code (a recursive
+// rm of a temp dir next to timezone logging is normal). What stays is an
+// explicit geo lookup, a LANG/LC_ env read, or a region/timezone value compared
+// against a string literal — rare next to a forceful delete.
+const LOGIC_BOMB_GATE_REGEXES = [
+  /\bgeoip\b/i,
+  /\bgeo\.(?:country|countryCode)\b/i,
+  /process\.env\.(?:LANG|LANGUAGE|LC_[A-Z]+)\b/,
+  /\b(?:countryCode|country_name|country|timezone|locale|lang)\s*(?:===?|!==?)\s*['"]/i
+];
+const LOGIC_BOMB_WINDOW = 600;
+
+function inspectLogicBomb(file, content, findings) {
+  const indices = [];
+  for (const re of SIMPLE_DESTRUCTIVE_REGEXES) {
+    const m = re.exec(content);
+    if (m) indices.push(m.index);
+  }
+  RM_CALL_REGEX.lastIndex = 0;
+  let rm;
+  while ((rm = RM_CALL_REGEX.exec(content)) !== null) {
+    if (RECURSIVE_FLAG_REGEX.test(content.slice(rm.index, rm.index + 200))) {
+      indices.push(rm.index);
+    }
+  }
+  for (const index of indices) {
+    const window = content.slice(
+      Math.max(0, index - LOGIC_BOMB_WINDOW),
+      Math.min(content.length, index + LOGIC_BOMB_WINDOW)
+    );
+    if (LOGIC_BOMB_GATE_REGEXES.some((gate) => gate.test(window))) {
+      findings.push({
+        severity: "medium",
+        category: "logic-bomb",
+        file: file.path,
+        snippet: clipAround(content, index),
+        rationale:
+          "A forceful destructive filesystem operation is gated on geography / locale / timezone — the geo/locale-gated logic-bomb shape (node-ipc / protestware). Flagged for review."
+      });
+      return;
+    }
+  }
+}
+
+// --- Runtime-fetched payloads (#5) -----------------------------------------
+// A clean tarball that downloads and runs code after install is the inherent
+// blind spot of any static scanner — you can't see what isn't shipped. What we
+// CAN flag is the capability when its shape is unambiguous: a network read fed
+// straight into an interpreter. These shapes are essentially never benign, so
+// they're a review signal. (Post-install network execution generally is out of
+// scope for static analysis — see README.)
+const REMOTE_CODE_LOAD_REGEXES = [
+  // curl/wget piped into a shell or interpreter
+  /(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[a-z]*sh|node|python[0-9.]*|ruby|perl)\b/i,
+  // eval / new Function / vm over a freshly fetched body
+  /(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(\s*(?:await\s+)?(?:fetch|got|axios|node-fetch|https?\.get)\b/i,
+  // promise chain handing the response straight to eval
+  /\.then\s*\(\s*eval\s*\)/,
+  /\.then\s*\(\s*\w+\s*=>\s*eval\s*\(/
+];
+
+function inspectRemoteCodeLoad(file, content, findings) {
+  for (const re of REMOTE_CODE_LOAD_REGEXES) {
+    const match = re.exec(content);
+    if (match) {
+      findings.push({
+        severity: "medium",
+        category: "remote-code-load",
+        file: file.path,
+        snippet: clipAround(content, match.index),
+        rationale:
+          "Downloads content from the network and feeds it straight to an interpreter (curl | sh, eval/Function/vm over a fetched body). Download-then-execute fetches the real payload at runtime, where a static scan can't see it — flagged for review."
+      });
+      return;
+    }
+  }
+}
+
 const CLIPBOARD_API_REGEX = /\b(?:navigator\.clipboard\.|clipboard\.(?:read|write)|pbpaste(?:\s|$)|pbcopy(?:\s|$)|Get-Clipboard|Set-Clipboard|win32clipboard)\b/;
 
 function inspectCapabilities(file, content, findings) {
@@ -1345,7 +1496,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, "install-hook", 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "environment-access", "data-access"],
@@ -1357,7 +1508,7 @@ function gradeEvidence(findings, evidence) {
       0.15
     ),
     persistence: scoreParameter(findings, "persistence", 0.1),
-    obfuscation: scoreParameter(findings, ["obfuscation", "obfuscated-token"], 0.1),
+    obfuscation: scoreParameter(findings, ["obfuscation", "obfuscated-token", "hidden-unicode"], 0.1),
     knownVulnerabilities: scoreParameter(findings, "known-vulnerability", 0.15),
     provenance: scoreParameter(
       findings,

