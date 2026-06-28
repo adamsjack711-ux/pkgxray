@@ -557,3 +557,71 @@ test("F4: single env-var read stays benign", () => {
   assert.equal(report.verdict, "safe");
   assert.ok(!report.findings.some((f) => f.category === "environment-access"));
 });
+
+// F1 — credential read + network sink defeated by string-splitting. The .ssh
+// path is assembled from an array of fragments and `https` from "ht"+"tps".
+// A light de-obfuscation pass (fold literal concat, resolve const string-array
+// indexing) must surface the credential read and BLOCK.
+test("F1: split-string SSH credential read blocks after de-obfuscation", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f1-ssh-exfil.json"));
+  assert.equal(report.verdict, "block");
+  assert.ok(
+    report.findings.some((f) => f.category === "credential-access" && f.severity === "high"),
+    "the assembled .ssh/id_rsa read must produce a HIGH credential-access finding"
+  );
+});
+
+// F1: a sensitive token assembled from fragments with NO nearby sink is still
+// review-worthy (string-splitting around a credential path is itself a signal).
+test("F1: assembled sensitive token alone is review (obfuscated-token)", () => {
+  const report = auditEvidence({
+    packageName: "split-token",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "split-token",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const p = '.npm' + 'rc';\nmodule.exports = p;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "obfuscated-token" && f.severity === "medium"));
+});
+
+// FP guard for F1: ordinary, non-sensitive string concatenation must NOT
+// trip anything — the normalizer only matters when it surfaces a sensitive
+// token / sink.
+test("F1: benign string concatenation stays safe", () => {
+  const report = auditEvidence({
+    packageName: "benign-concat",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "benign-concat",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const greeting = 'hello ' + 'world';\nconst url = 'https://' + 'example.com/docs';\nmodule.exports = { greeting, url };"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+});
+
+// F1 perf guard: the de-obfuscation pass must not blow up scan time. A large
+// file with thousands of concatenations, plus an over-the-cap file that bails,
+// must audit well within a sane budget.
+test("F1: de-obfuscation pass stays within a sane time budget", () => {
+  const bigConcat =
+    "const s = " + Array.from({ length: 8000 }, (_, i) => `'x${i % 10}'`).join(" + ") + ";\nmodule.exports = s;";
+  const overCap = "/* " + "A".repeat(150000) + " */\nmodule.exports = 1;";
+  const evidence = {
+    packageName: "perf-pkg",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "perf-pkg", repository: "https://github.com/example/x" }),
+      "big.js": bigConcat,
+      "huge.js": overCap
+    }
+  };
+  const start = Date.now();
+  auditEvidence(evidence);
+  const elapsed = Date.now() - start;
+  assert.ok(elapsed < 2000, `audit took ${elapsed}ms, expected < 2000ms`);
+});
