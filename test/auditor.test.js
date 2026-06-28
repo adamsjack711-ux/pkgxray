@@ -494,3 +494,66 @@ test("F2: static literal require/import does not trip dynamic-require", () => {
   assert.equal(report.verdict, "safe");
   assert.ok(!report.findings.some((f) => f.category === "dynamic-require"));
 });
+
+// F4 — bulk env harvest via spread / Object.assign. `{...process.env}` and
+// `Object.assign(target, process.env)` clone the whole environment but slipped
+// past BULK_ENV_REGEXES. They are now a review-level signal on their own.
+test("F4: whole-env spread {...process.env} alone is review", () => {
+  const report = auditEvidence(require("./fixtures/evasion/f4-bulk-env.json"));
+  assert.equal(report.verdict, "review");
+  assert.ok(
+    report.findings.some((f) => f.category === "environment-access" && f.severity === "medium"),
+    "the spread harvest should raise a medium environment-access signal"
+  );
+});
+
+test("F4: Object.assign(target, process.env) alone is review", () => {
+  const report = auditEvidence({
+    packageName: "assign-env",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "assign-env",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const all = Object.assign({}, process.env);\nmodule.exports = all;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some((f) => f.category === "environment-access"));
+});
+
+// FP guard for F4: an env CLONE must NOT escalate to a block just because the
+// file also makes a (benign) network call — `{...process.env}` is the idiomatic
+// way to pass the inherited env to a spawned child (esbuild's installer does
+// exactly this while downloading its binary). Clone shapes are review-only.
+test("F4: env clone + benign network is review, not block", () => {
+  const report = auditEvidence({
+    packageName: "spawn-with-env",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "spawn-with-env",
+        repository: "https://github.com/example/x"
+      }),
+      "install.js":
+        "const https = require('https');\nhttps.get('https://example.com/bin', () => {});\nconst env = { ...process.env, FORCE_COLOR: '1' };\nrequire('child_process').spawn('bin', [], { env });"
+    }
+  });
+  assert.notEqual(report.verdict, "block");
+});
+
+// FP guard for F4: a single specific env-var read stays benign (not a bulk
+// harvest, not review).
+test("F4: single env-var read stays benign", () => {
+  const report = auditEvidence({
+    packageName: "single-env",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "single-env",
+        repository: "https://github.com/example/x"
+      }),
+      "index.js": "const port = process.env.PORT || 3000;\nmodule.exports = port;"
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(!report.findings.some((f) => f.category === "environment-access"));
+});

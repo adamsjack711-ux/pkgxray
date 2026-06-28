@@ -746,13 +746,14 @@ function auditFiles(files, findings) {
     // inspectCredentialAccess and inspectExecNetworkCombinations need it,
     // and the regex set used to run twice over the same content.
     const hasBulkEnv = BULK_ENV_REGEXES.some((re) => re.test(content));
+    const hasBulkEnvClone = BULK_ENV_CLONE_REGEXES.some((re) => re.test(content));
     if (hasBulkEnv) envHarvestFiles.push(file.path);
     const domain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find((pattern) => lower.includes(pattern));
     if (domain) exfilDomainFiles.push({ path: file.path, domain });
 
     inspectInjectionAttempt(file, lower, findings);
     inspectObfuscation(file, content, lower, findings);
-    inspectCredentialAccess(file, content, lower, findings, hasBulkEnv);
+    inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone);
     inspectPersistence(file, content, lower, findings);
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv);
     inspectDynamicRequire(file, content, findings, hasBulkEnv);
@@ -907,6 +908,10 @@ function looksLikeCredentialRead(content, lower, targetIndex) {
   return false;
 }
 
+// Whole-environment SERIALIZATION / iteration. These are the exfil-shaped
+// reads (turn the entire env into a string / iterate every key), so they are
+// HIGH-eligible: they drive the env+network HIGH and the dynamic-require
+// escalation when co-located with a sink.
 const BULK_ENV_REGEXES = [
   /JSON\.stringify\s*\(\s*process\.env\b/i,
   /Object\.(?:entries|keys|values)\s*\(\s*process\.env\b/i,
@@ -914,6 +919,20 @@ const BULK_ENV_REGEXES = [
   /json\.dumps\s*\(\s*(?:dict\s*\(\s*)?os\.environ\b/i,
   /dict\s*\(\s*os\.environ\b/i,
   /for\s+\w+\s+in\s+os\.environ\b/i
+];
+
+// Whole-environment CLONE via spread / Object.assign — `{...process.env}`,
+// `Object.assign(target, process.env)`, `{**os.environ}`. This shape harvests
+// the entire environment too, but it is ALSO the idiomatic way to hand the
+// inherited env to a spawned child process (esbuild's installer,
+// cross-spawn-style tooling), so it is FP-prone. It is review-ONLY: it raises
+// the standalone bulk-env medium but does NOT feed the env+network HIGH or the
+// dynamic-require escalation. A genuinely malicious clone that also reaches an
+// exfil domain / hardcoded IP is still caught HIGH by those domain/IP rules.
+const BULK_ENV_CLONE_REGEXES = [
+  /\{\s*\.\.\.\s*process\.env\b/,
+  /Object\.assign\s*\([^)]*,\s*process\.env\b/,
+  /\{\s*\*\*\s*os\.environ\b/
 ];
 
 function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv) {

