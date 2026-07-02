@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "pre_run_command": [{ "command": "/absolute/path/to/pkgxray-guard cascade-pre-run-command" }],
+    "post_write_code": [{ "command": "/absolute/path/to/pkgxray-guard cascade-post-write-code" }]
+  }
+}

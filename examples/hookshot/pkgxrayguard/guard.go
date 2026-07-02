@@ -37,7 +37,21 @@ type Guard struct {
 	CacheURL  string        // PKGXRAY_CACHE_URL forwarded to the CLI so registry/GitHub fetches collapse across runs (optional)
 }
 
-// pkgxray guard --format json output (subset we consume).
+// guardJSON is the subset of `pkgxray guard <ref> --format json` output this
+// hook consumes — the CLI contract it depends on:
+//
+//   - top-level `decision`: "allow" | "review" | "block"
+//   - process exit code 2=block, 3=review, 0=safe (the fallback when the JSON
+//     can't be parsed)
+//   - `report.summary` and `report.findings[].{severity,category,rationale,file}`
+//     (`file` drives the location shown in a deny/ask message)
+//
+// This shape is stable as of pkgxray >= 0.15.0. The hook degrades safely against
+// drift: a missing `file` just omits the path, and if `decision` is absent it
+// falls back to the exit code — so an older or erroring pkgxray fails toward
+// UNKNOWN (denied under strict/balanced), never a false allow. pkgxray has no
+// `--version` flag today, so there is no runtime version probe; keep the CLI
+// current. See the README "Requirements" section.
 type guardJSON struct {
 	Decision string `json:"decision"` // allow | review | block
 	Report   struct {
