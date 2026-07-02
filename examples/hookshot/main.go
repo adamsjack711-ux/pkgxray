@@ -53,14 +53,15 @@ func main() {
 		if cfg.disabled || !cfg.auditLockfiles || !isDependencyManifest(ctx.FilePath) {
 			return hookshot.FileEditOK()
 		}
-		return auditManifest(cfg, ctx.FilePath)
+		return auditManifestEdit(cfg, ctx.FilePath, toFileEdits(ctx.Edits))
 	})
 
 	hookshot.RunCommand()
 }
 
 type config struct {
-	guard          pkgxrayguard.Guard
+	guard          pkgxrayguard.Guard   // raw guard (used for lockfile audits)
+	checker        pkgxrayguard.Checker // session-memoized wrapper for install checks
 	policy         pkgxrayguard.Policy
 	disabled       bool
 	auditLockfiles bool
@@ -75,8 +76,17 @@ func loadConfig() config {
 	if raw := strings.TrimSpace(os.Getenv("PKGXRAY_GUARD_ARGS")); raw != "" {
 		extra = strings.Fields(raw)
 	}
+	guard := pkgxrayguard.Guard{
+		Bin:       bin,
+		Timeout:   60 * time.Second,
+		ExtraArgs: extra,
+		CacheURL:  strings.TrimSpace(os.Getenv("PKGXRAY_CACHE_URL")),
+	}
 	return config{
-		guard:          pkgxrayguard.Guard{Bin: bin, Timeout: 60 * time.Second, ExtraArgs: extra},
+		guard: guard,
+		// One memo per process = one agent session; repeat installs of the same
+		// ref@version reuse the first verdict instead of re-scanning.
+		checker:        pkgxrayguard.NewMemoGuard(guard),
 		policy:         pkgxrayguard.ParsePolicy(os.Getenv("PKGXRAY_HOOK_POLICY")),
 		disabled:       os.Getenv("PKGXRAY_HOOK_DISABLE") == "1",
 		auditLockfiles: os.Getenv("PKGXRAY_HOOK_AUDIT_LOCKFILES") == "1",
@@ -89,11 +99,10 @@ func decideInstalls(cfg config, specs []pkgxrayguard.InstallSpec) hookshot.Execu
 	ctx := context.Background()
 	results := make([]pkgxrayguard.Result, 0, len(specs))
 	for _, spec := range specs {
-		results = append(results, cfg.guard.Check(ctx, spec))
+		results = append(results, cfg.checker.Check(ctx, spec))
 	}
 
-	worst := pkgxrayguard.Worst(results)
-	switch pkgxrayguard.Decide(cfg.policy, worst) {
+	switch pkgxrayguard.DecideAll(cfg.policy, results) {
 	case pkgxrayguard.Deny:
 		return hookshot.DenyExecution(denyMessage(results))
 	case pkgxrayguard.Ask:
@@ -139,12 +148,81 @@ func joinRefs(specs []pkgxrayguard.InstallSpec) string {
 	return strings.Join(refs, ", ")
 }
 
-// auditManifest runs `pkgxray audit <lockfile>` and reports the verdict back to
-// the agent. Post-edit hooks can't undo the write, so a BLOCK becomes agent
-// feedback (FileEditBlock, honored by Claude); anything else is added context.
-func auditManifest(cfg config, filePath string) hookshot.FileEditDecision {
-	bin := cfg.guard.Bin
-	out, code := runCLI(bin, "audit", filePath)
+// toFileEdits converts hookshot's edit hunks into the guard package's stdlib-only
+// mirror type so the diff logic stays importable without the hookshot module.
+func toFileEdits(edits []hookshot.FileEdit) []pkgxrayguard.FileEdit {
+	out := make([]pkgxrayguard.FileEdit, len(edits))
+	for i, e := range edits {
+		out[i] = pkgxrayguard.FileEdit{OldString: e.OldString, NewString: e.NewString}
+	}
+	return out
+}
+
+// auditManifestEdit reacts to a dependency-manifest edit. For package.json it
+// diffs the edit hunks and deep-guards only the newly added/changed deps
+// (reusing the session memo), so an edit doesn't re-triage the whole tree — and
+// so a bare formatting/script change triages nothing. When no added dep can be
+// extracted it falls back to a full-file audit, so it is never less safe than a
+// blanket audit. Lockfiles always take the full-file `pkgxray audit` path, which
+// honors the sibling .pkgxray.lock allow/block memory.
+func auditManifestEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdit) hookshot.FileEditDecision {
+	if filepath.Base(filePath) == "package.json" {
+		if specs := pkgxrayguard.ManifestAddedSpecs(edits); len(specs) > 0 {
+			return decideManifestSpecs(cfg, filePath, specs)
+		}
+		// No dependency add/change detected — but fall through to a full audit
+		// rather than skipping, so an unusually-formatted addition can't slip by.
+	}
+	return auditManifestFile(cfg, filePath)
+}
+
+// decideManifestSpecs guards the added deps and maps the worst decision onto a
+// file-edit outcome. A post-edit hook can't undo the write, so a Deny becomes
+// FileEditBlock (honored by Claude) and an Ask becomes added context.
+func decideManifestSpecs(cfg config, filePath string, specs []pkgxrayguard.InstallSpec) hookshot.FileEditDecision {
+	ctx := context.Background()
+	results := make([]pkgxrayguard.Result, 0, len(specs))
+	for _, spec := range specs {
+		results = append(results, cfg.checker.Check(ctx, spec))
+	}
+	base := filepath.Base(filePath)
+	switch pkgxrayguard.DecideAll(cfg.policy, results) {
+	case pkgxrayguard.Deny:
+		return hookshot.FileEditBlock("pkgxray flagged a dependency added to " + base + ":" + evidenceLines(results))
+	case pkgxrayguard.Ask:
+		return hookshot.FileEditAddContext("pkgxray: review recommended for a dependency added to " + base + ":" + evidenceLines(results))
+	default:
+		return hookshot.FileEditOK()
+	}
+}
+
+// evidenceLines renders the non-safe results as indented bullet lines, reusing
+// the same ref → verdict → findings shape as the install-command deny message.
+func evidenceLines(results []pkgxrayguard.Result) string {
+	var b strings.Builder
+	for _, r := range results {
+		switch r.Verdict {
+		case pkgxrayguard.Block, pkgxrayguard.Review, pkgxrayguard.Unknown:
+			b.WriteString("\n  • ")
+			b.WriteString(r.Spec.Ref)
+			b.WriteString(" → ")
+			b.WriteString(string(r.Verdict))
+			if r.Summary != "" {
+				b.WriteString(" (" + r.Summary + ")")
+			}
+			for _, reason := range r.Reasons {
+				b.WriteString("\n      - ")
+				b.WriteString(reason)
+			}
+		}
+	}
+	return b.String()
+}
+
+// auditManifestFile runs `pkgxray audit <file>` on the whole manifest and reports
+// the verdict back to the agent.
+func auditManifestFile(cfg config, filePath string) hookshot.FileEditDecision {
+	out, code := runCLI(cfg.guard.Bin, "audit", filePath)
 	summary := firstLine(out)
 	switch code {
 	case 2:

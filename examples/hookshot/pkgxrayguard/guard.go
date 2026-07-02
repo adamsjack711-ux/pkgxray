@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ type Guard struct {
 	Bin       string        // pkgxray executable (default "pkgxray")
 	Timeout   time.Duration // per-package timeout (default 60s)
 	ExtraArgs []string      // extra guard flags, e.g. ["--no-github-diff"]
+	CacheURL  string        // PKGXRAY_CACHE_URL forwarded to the CLI so registry/GitHub fetches collapse across runs (optional)
 }
 
 // pkgxray guard --format json output (subset we consume).
@@ -44,6 +46,7 @@ type guardJSON struct {
 			Severity  string `json:"severity"`
 			Category  string `json:"category"`
 			Rationale string `json:"rationale"`
+			File      string `json:"file"`
 		} `json:"findings"`
 	} `json:"report"`
 }
@@ -54,6 +57,17 @@ type guardJSON struct {
 // the correct direction. Any execution error yields Verdict=Unknown with Err
 // set, leaving the fail-open/closed choice to the policy layer.
 func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
+	// A git/tarball/HTTP URL can't be resolved by pre-install registry triage —
+	// pkgxray has no registry ref to fetch. Surface it as review-worthy rather
+	// than shelling out (which would just error) or silently allowing it.
+	if spec.Kind == KindVCS {
+		return Result{
+			Spec:    spec,
+			Verdict: Review,
+			Summary: "unvettable git/URL install spec — pkgxray cannot triage an arbitrary VCS or remote tarball; review the source manually",
+		}
+	}
+
 	bin := g.Bin
 	if bin == "" {
 		bin = "pkgxray"
@@ -67,6 +81,13 @@ func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
 
 	args := append([]string{"guard", spec.Ref, "--format", "json"}, g.ExtraArgs...)
 	cmd := exec.CommandContext(cctx, bin, args...)
+	// pkgxray reads PKGXRAY_CACHE_URL from its environment (github.js routes
+	// upstream fetches through the cache server). A child inherits our env, but
+	// forward it explicitly so it still reaches the CLI if the host ever
+	// sanitizes the hook's child environment.
+	if g.CacheURL != "" {
+		cmd.Env = append(os.Environ(), "PKGXRAY_CACHE_URL="+g.CacheURL)
+	}
 	stdout, runErr := cmd.Output()
 
 	exitCode := 0
@@ -131,7 +152,11 @@ func topReasons(p guardJSON) []string {
 		if reason == "" {
 			reason = f.Category
 		}
-		reasons = append(reasons, "["+f.Category+"] "+clip(reason, 160))
+		line := "[" + f.Category + "] " + clip(reason, 160)
+		if f.File != "" {
+			line += " (" + clip(f.File, 80) + ")"
+		}
+		reasons = append(reasons, line)
 		if len(reasons) == 3 {
 			break
 		}

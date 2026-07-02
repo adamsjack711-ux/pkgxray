@@ -31,11 +31,22 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
   - `npm|pnpm|yarn|bun install|i|add <pkg…>` (incl. `yarn global add`)
   - `npx` / `bunx` / `pnpm dlx` / `bun x` runners
   - `claude mcp add <name> -- <launcher>` (audits the launcher's package)
-  - Local paths (`./x`, `file:`), VCS URLs, and bare `npm ci`/`npm install`
-    are skipped — registry triage doesn't apply to them.
+  - Git / tarball / HTTP URL specs (`git+https://…`, `git@…`, `https://…​.tgz`)
+    can't be resolved by registry triage, so they're surfaced as **review-worthy**
+    (never silently allowed).
+  - Local paths (`./x`, `file:`, `link:`, `workspace:`) and bare `npm ci` /
+    `npm install` are skipped — that code is already local/visible, or there's
+    no per-package ref to triage.
 - **`OnAfterFileEdit`** *(opt-in)* — when the agent edits `package.json` or a
-  lockfile, runs `pkgxray audit` on it and feeds the verdict back as agent
-  context (or a block on Claude for a `BLOCK`).
+  lockfile, checks it and feeds the verdict back as agent context (or a block on
+  Claude for a `BLOCK`). It diffs the edit hunks so it doesn't re-triage the
+  whole tree every time:
+  - `package.json` — deep-guards **only the newly added/changed deps** (reusing
+    the session cache); a formatting/script-only edit triages nothing. Falls
+    back to a full-file audit if no added dep can be extracted, so it's never
+    less safe than a blanket scan.
+  - lockfiles — full-file `pkgxray audit`, which honors the sibling
+    `.pkgxray.lock` allow/block memory so already-approved deps don't re-prompt.
 
 The worst verdict across a multi-package command wins.
 
@@ -71,6 +82,13 @@ All via environment variables (the hook reads them at startup):
 | `PKGXRAY_HOOK_DISABLE` | — | `1` bypasses all checks (fail-open kill switch). |
 | `PKGXRAY_HOOK_AUDIT_LOCKFILES` | — | `1` enables the `OnAfterFileEdit` lockfile audit. |
 | `PKGXRAY_GUARD_ARGS` | — | Extra flags passed to `pkgxray guard`, e.g. `--no-github-diff`. |
+| `PKGXRAY_CACHE_URL` | — | Forwarded to pkgxray so registry/GitHub fetches route through a shared cache server across runs. |
+
+The hook memoizes verdicts per exact `ref@version` for the lifetime of its
+process (one agent session): re-installing the same package reuses the first
+verdict instead of re-scanning (~1.3–1.5s cold each). An `UNKNOWN`/errored
+result is never cached, so a transient failure can't pin a wrong answer; a
+different version is always re-scanned.
 
 ### Policies
 
@@ -80,6 +98,13 @@ All via environment variables (the hook reads them at startup):
 | `REVIEW` | deny | **ask** | allow |
 | `UNKNOWN` (pkgxray failed to run) | deny | deny | allow |
 | `SAFE`   | allow | allow | allow |
+
+**Execute-immediately fail-mode.** `npx` / `bunx` / `pnpm dlx` / `bun x` run
+package code the instant it resolves, with no persistent install to inspect
+afterwards. So even under `permissive`, an immediate-exec spec whose verdict is
+`UNKNOWN` (pkgxray errored) or `REVIEW` (e.g. an unvettable VCS/URL) is escalated
+to **ask** rather than allowed — it never fails open. A *persistent* install
+(`npm i …`) still follows the table above.
 
 `balanced` never fails open on a broken pkgxray: if the CLI is missing or
 errors, the verdict is `UNKNOWN` and the install is denied. On OpenAI Codex,

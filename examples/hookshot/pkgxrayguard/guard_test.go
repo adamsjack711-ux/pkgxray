@@ -34,6 +34,55 @@ func TestDecide(t *testing.T) {
 	}
 }
 
+func TestDecideResultImmediateFailMode(t *testing.T) {
+	immediate := InstallSpec{Ref: "npm:x", Immediate: true}
+	persistent := InstallSpec{Ref: "npm:x", Immediate: false}
+	cases := []struct {
+		name   string
+		policy Policy
+		result Result
+		want   Action
+	}{
+		// Permissive would normally allow Unknown/Review — but not for an
+		// execute-immediately spec, which must at least ask.
+		{"permissive immediate unknown → ask", Permissive, Result{Spec: immediate, Verdict: Unknown}, Ask},
+		{"permissive immediate review → ask", Permissive, Result{Spec: immediate, Verdict: Review}, Ask},
+		{"permissive persistent unknown → allow", Permissive, Result{Spec: persistent, Verdict: Unknown}, Allow},
+		{"permissive persistent review → allow", Permissive, Result{Spec: persistent, Verdict: Review}, Allow},
+		{"permissive immediate safe → allow", Permissive, Result{Spec: immediate, Verdict: Safe}, Allow},
+		// Balanced already denies Unknown / asks on Review; the hardening is a no-op there.
+		{"balanced immediate unknown → deny", Balanced, Result{Spec: immediate, Verdict: Unknown}, Deny},
+		{"balanced immediate review → ask", Balanced, Result{Spec: immediate, Verdict: Review}, Ask},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := DecideResult(tc.policy, tc.result); got != tc.want {
+				t.Errorf("DecideResult(%s) = %s, want %s", tc.policy, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDecideAllStrongestWins(t *testing.T) {
+	results := []Result{
+		{Spec: InstallSpec{Ref: "npm:a"}, Verdict: Safe},
+		{Spec: InstallSpec{Ref: "npm:b"}, Verdict: Review}, // balanced → ask
+		{Spec: InstallSpec{Ref: "npm:c"}, Verdict: Block},  // → deny (strongest)
+	}
+	if got := DecideAll(Balanced, results); got != Deny {
+		t.Fatalf("DecideAll = %s, want deny", got)
+	}
+	// Worst raw verdict is Review, but an immediate-exec Unknown forces Ask
+	// under permissive even though a persistent Unknown would allow.
+	mixed := []Result{
+		{Spec: InstallSpec{Ref: "npm:a"}, Verdict: Safe},
+		{Spec: InstallSpec{Ref: "npm:b", Immediate: true}, Verdict: Unknown},
+	}
+	if got := DecideAll(Permissive, mixed); got != Ask {
+		t.Fatalf("DecideAll = %s, want ask", got)
+	}
+}
+
 func TestParsePolicyDefault(t *testing.T) {
 	if ParsePolicy("nonsense") != Balanced {
 		t.Fatal("unknown policy should default to Balanced")
@@ -90,14 +139,14 @@ func itoa(n int) string {
 
 func TestCheckBlock(t *testing.T) {
 	out := `{"decision":"block","report":{"summary":"1 high-severity finding","findings":[` +
-		`{"severity":"high","category":"credential-access","rationale":"reads ~/.aws/credentials near a network sink"},` +
+		`{"severity":"high","category":"credential-access","rationale":"reads ~/.aws/credentials near a network sink","file":"lib/.telemetry.js"},` +
 		`{"severity":"info","category":"noise","rationale":"ignore me"}]}}`
 	g := Guard{Bin: fakePkgxray(t, out, 2)}
 	res := g.Check(context.Background(), InstallSpec{Ref: "npm:evil"})
 	if res.Verdict != Block {
 		t.Fatalf("verdict = %s, want block", res.Verdict)
 	}
-	if len(res.Reasons) != 1 || res.Reasons[0] != "[credential-access] reads ~/.aws/credentials near a network sink" {
+	if len(res.Reasons) != 1 || res.Reasons[0] != "[credential-access] reads ~/.aws/credentials near a network sink (lib/.telemetry.js)" {
 		t.Fatalf("reasons = %v", res.Reasons)
 	}
 	if res.Summary != "1 high-severity finding" {
@@ -127,5 +176,21 @@ func TestCheckMissingBinary(t *testing.T) {
 	res := g.Check(context.Background(), InstallSpec{Ref: "npm:x"})
 	if res.Verdict != Unknown || res.Err == nil {
 		t.Fatalf("verdict = %s err = %v, want unknown + error", res.Verdict, res.Err)
+	}
+}
+
+func TestCheckVCSSpecIsReviewWithoutRunning(t *testing.T) {
+	// A VCS spec must be reviewed without ever invoking the binary — point Bin
+	// at a script that would (wrongly) report "allow" if it were called.
+	g := Guard{Bin: fakePkgxray(t, `{"decision":"allow","report":{"summary":"","findings":[]}}`, 0)}
+	res := g.Check(context.Background(), InstallSpec{Ref: "git+https://github.com/x/y.git", Kind: KindVCS})
+	if res.Verdict != Review {
+		t.Fatalf("verdict = %s, want review", res.Verdict)
+	}
+	if res.Err != nil {
+		t.Fatalf("unexpected err = %v", res.Err)
+	}
+	if res.Summary == "" {
+		t.Fatal("expected an explanatory summary for the unvettable spec")
 	}
 }
