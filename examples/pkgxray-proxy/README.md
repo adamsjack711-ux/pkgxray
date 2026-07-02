@@ -96,6 +96,7 @@ Point `PKGXRAY_PROXY_CONFIG` at a JSON file for the file layer.
 | `allowlist` | `PKGXRAY_PROXY_ALLOWLIST` | `[]` | Comma-separated in env. `name` or `name@version`. |
 | `denylist` | `PKGXRAY_PROXY_DENYLIST` | `[]` | Comma-separated in env. `name` or `name@version`. |
 | `verdictStorePath` | `PKGXRAY_PROXY_VERDICT_STORE` | `~/.pkgxray-proxy/verdicts.json` | File-backed cache. |
+| `verdictTtlMs` | `PKGXRAY_PROXY_VERDICT_TTL_MS` | `86400000` (24h) | A cached verdict older than this is re-scanned on the next request. `0` = always re-scan. |
 | `cacheUrl` | `PKGXRAY_CACHE_URL` | — | Forwarded to the CLI's env; a shared pkgxray cache server collapses repeated fetches. |
 | `logDecisions` | `PKGXRAY_PROXY_LOG_DECISIONS` | `true` | Structured JSON decision logs to stdout. |
 
@@ -108,6 +109,33 @@ Point `PKGXRAY_PROXY_CONFIG` at a JSON file for the file layer.
 - `fail-closed` — **block** (`403`). Safer default.
 - `fail-open` — serve with `x-pkgxray-verdict: scan-error`. Keeps CI moving at
   the cost of an unscanned package.
+
+`verdictTtlMs` — how long a cached verdict stays trusted before it's re-scanned.
+Without a TTL the proxy would serve a cached `allow` forever, even after new
+intelligence flags the package (a maintainer takeover of an already-cached
+version). On the next request for a stale entry the proxy re-scans (lazy
+refresh); if the verdict regressed (`allow → review/block`) the store is updated
+and the transition is logged (`{event:"verdict-transition", from, to, reason}`),
+so subsequent requests are gated correctly. A **failed** re-scan never overwrites
+a good stored verdict — the last good verdict is served (consistent with the
+store's "only cache allow/block/review" rule).
+
+### Force a refresh — `POST /-/pkgxray/recheck`
+
+After a big advisory drop you don't have to wait for the TTL. An admin `POST` to
+`/-/pkgxray/recheck` re-scans **every** cached `name@version` and updates the
+store in place, returning a JSON summary:
+
+```bash
+curl -X POST http://127.0.0.1:4873/-/pkgxray/recheck
+# { "ok": true, "total": 128, "changed": [ { "name": "x", "version": "1.2.3",
+#   "from": "allow", "to": "block" } ], "unchanged": 126, "errors": [] }
+```
+
+`GET` on that path is `405` (POST-only, so a crawler can't trigger a full
+re-scan). A verdict that regresses on refresh flips subsequent decisions to
+`block`/`review`; a re-scan that errors is reported under `errors` and leaves the
+prior good verdict untouched.
 
 ### Example config file
 
