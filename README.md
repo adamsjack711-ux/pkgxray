@@ -158,6 +158,10 @@ pkgxray audit package-lock.json --deep    # full static/GitHub layer on each blo
 
 # Audit supplied evidence directly
 pkgxray --file examples/evidence.json --format json
+
+# Re-check already-installed deps against *current* intelligence (monitoring)
+pkgxray recheck package-lock.json                 # diff verdicts vs. stored baseline
+pkgxray recheck package-lock.json --format json   # machine-readable, for CI cron
 ```
 
 The guard flow stages the extension in a private quarantine, audits the staged
@@ -169,6 +173,68 @@ into quarantine and run the static audit.
 Decisions: `allow` (promotion ok), `review` (inspect quarantine first), `block`
 (do not install). Only `safe` promotes by default; `--policy allow-review` also
 promotes review-grade. Exit codes: `0` safe/allow, `2` block, `3` review.
+
+---
+
+## Monitoring: `pkgxray recheck`
+
+`guard` and `audit` give a point-in-time verdict *at install*. `recheck` answers
+the follow-up they can't: **has anything I already depend on become unsafe since
+I installed it?** — the maintainer-takeover / trojaned-update case.
+
+It walks a lockfile, re-runs the guard evaluation (OSV / provenance / divergence)
+for each pinned `name@version`, and diffs the fresh verdict against the baseline
+stored in `.pkgxray.lock` (written by `triage`/`guard`). It reports a **diff, not
+a full report**:
+
+- **regressed** — verdict got worse since `checkedAt` (`allow/safe → review/block`).
+  The actionable signal: you may already be exposed.
+- **improved** — verdict got better (informational).
+- **unchanged** — hidden unless `--verbose`.
+- **no-baseline** / **unknown** — never-vetted, or the recheck itself errored (its
+  stored verdict is left untouched — never a false allow).
+
+```bash
+pkgxray recheck package-lock.json              # human diff
+pkgxray recheck package-lock.json --verbose    # also list unchanged deps
+pkgxray recheck package-lock.json --no-write    # don't update stored baselines
+pkgxray recheck package-lock.json --format json # machine-readable diff
+```
+
+**Exit codes** key off the worst *regression*, so CI cron jobs consume `recheck`
+exactly as they do `guard`: `0` nothing regressed, `2` a dep regressed to
+**block**, `3` a dep regressed to **review**. A dep that was `block` at install
+and is *still* `block` is **not a new regression** and does not fail the run.
+Available newer-version updates never affect the exit code on their own (see
+version drift below) unless you pass `--fail-on-available-updates`.
+
+Set `PKGXRAY_CACHE_URL` so a large tree shares `guard`'s warm cache instead of
+re-fetching everything cold.
+
+### Scheduled CI job (GitHub Actions)
+
+Run `recheck` against the committed lockfile on a schedule; the job fails the
+moment a dependency you already ship regresses:
+
+```yaml
+# .github/workflows/pkgxray-recheck.yml
+name: pkgxray recheck
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily 06:00 UTC
+  workflow_dispatch:
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npx pkgxray recheck package-lock.json --format json
+        # exit 2 (regressed→block) or 3 (regressed→review) fails the build;
+        # commit the updated .pkgxray.lock back if you want the baseline to move.
+```
 
 ---
 
