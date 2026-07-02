@@ -59,3 +59,26 @@ jobs:
           if [ -n "${unformatted}" ]; then
             echo "gofmt needed on:"; echo "${unformatted}"; exit 1
           fi
+
+  # Guard against the two copies of the hook drifting (this repo's
+  # examples/hookshot is the source of truth; hookshot's examples/pkgxray-guard
+  # is the published mirror). Fails the build if *.go or configs/ differ.
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the hook copy hasn't drifted from the hookshot mirror
+        run: |
+          # Compare against the published copy in hookshot. Until the upstream PR
+          # that adds examples/pkgxray-guard lands, that dir won't exist — skip
+          # rather than fail (the check self-activates once it's upstream).
+          git clone --depth 1 https://github.com/CorridorSecurity/hookshot.git /tmp/hookshot
+          if [ ! -d /tmp/hookshot/examples/pkgxray-guard ]; then
+            echo "::notice::hookshot upstream has no examples/pkgxray-guard yet — skipping drift check."
+            exit 0
+          fi
+          chmod +x examples/hookshot/sync-to-hookshot.sh
+          PKGXRAY_HOOK_DIR="$GITHUB_WORKSPACE/examples/hookshot" \
+          HOOKSHOT_GUARD_DIR=/tmp/hookshot/examples/pkgxray-guard \
+            examples/hookshot/sync-to-hookshot.sh --check
