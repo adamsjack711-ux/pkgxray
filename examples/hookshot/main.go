@@ -60,7 +60,8 @@ func main() {
 }
 
 type config struct {
-	guard          pkgxrayguard.Guard
+	guard          pkgxrayguard.Guard   // raw guard (used for lockfile audits)
+	checker        pkgxrayguard.Checker // session-memoized wrapper for install checks
 	policy         pkgxrayguard.Policy
 	disabled       bool
 	auditLockfiles bool
@@ -75,8 +76,17 @@ func loadConfig() config {
 	if raw := strings.TrimSpace(os.Getenv("PKGXRAY_GUARD_ARGS")); raw != "" {
 		extra = strings.Fields(raw)
 	}
+	guard := pkgxrayguard.Guard{
+		Bin:       bin,
+		Timeout:   60 * time.Second,
+		ExtraArgs: extra,
+		CacheURL:  strings.TrimSpace(os.Getenv("PKGXRAY_CACHE_URL")),
+	}
 	return config{
-		guard:          pkgxrayguard.Guard{Bin: bin, Timeout: 60 * time.Second, ExtraArgs: extra},
+		guard: guard,
+		// One memo per process = one agent session; repeat installs of the same
+		// ref@version reuse the first verdict instead of re-scanning.
+		checker:        pkgxrayguard.NewMemoGuard(guard),
 		policy:         pkgxrayguard.ParsePolicy(os.Getenv("PKGXRAY_HOOK_POLICY")),
 		disabled:       os.Getenv("PKGXRAY_HOOK_DISABLE") == "1",
 		auditLockfiles: os.Getenv("PKGXRAY_HOOK_AUDIT_LOCKFILES") == "1",
@@ -89,7 +99,7 @@ func decideInstalls(cfg config, specs []pkgxrayguard.InstallSpec) hookshot.Execu
 	ctx := context.Background()
 	results := make([]pkgxrayguard.Result, 0, len(specs))
 	for _, spec := range specs {
-		results = append(results, cfg.guard.Check(ctx, spec))
+		results = append(results, cfg.checker.Check(ctx, spec))
 	}
 
 	switch pkgxrayguard.DecideAll(cfg.policy, results) {

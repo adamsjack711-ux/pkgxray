@@ -75,6 +75,13 @@ All via environment variables (the hook reads them at startup):
 | `PKGXRAY_HOOK_DISABLE` | — | `1` bypasses all checks (fail-open kill switch). |
 | `PKGXRAY_HOOK_AUDIT_LOCKFILES` | — | `1` enables the `OnAfterFileEdit` lockfile audit. |
 | `PKGXRAY_GUARD_ARGS` | — | Extra flags passed to `pkgxray guard`, e.g. `--no-github-diff`. |
+| `PKGXRAY_CACHE_URL` | — | Forwarded to pkgxray so registry/GitHub fetches route through a shared cache server across runs. |
+
+The hook memoizes verdicts per exact `ref@version` for the lifetime of its
+process (one agent session): re-installing the same package reuses the first
+verdict instead of re-scanning (~1.3–1.5s cold each). An `UNKNOWN`/errored
+result is never cached, so a transient failure can't pin a wrong answer; a
+different version is always re-scanned.
 
 ### Policies
 

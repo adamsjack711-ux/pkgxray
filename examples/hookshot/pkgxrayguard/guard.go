@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ type Guard struct {
 	Bin       string        // pkgxray executable (default "pkgxray")
 	Timeout   time.Duration // per-package timeout (default 60s)
 	ExtraArgs []string      // extra guard flags, e.g. ["--no-github-diff"]
+	CacheURL  string        // PKGXRAY_CACHE_URL forwarded to the CLI so registry/GitHub fetches collapse across runs (optional)
 }
 
 // pkgxray guard --format json output (subset we consume).
@@ -79,6 +81,13 @@ func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
 
 	args := append([]string{"guard", spec.Ref, "--format", "json"}, g.ExtraArgs...)
 	cmd := exec.CommandContext(cctx, bin, args...)
+	// pkgxray reads PKGXRAY_CACHE_URL from its environment (github.js routes
+	// upstream fetches through the cache server). A child inherits our env, but
+	// forward it explicitly so it still reaches the CLI if the host ever
+	// sanitizes the hook's child environment.
+	if g.CacheURL != "" {
+		cmd.Env = append(os.Environ(), "PKGXRAY_CACHE_URL="+g.CacheURL)
+	}
 	stdout, runErr := cmd.Output()
 
 	exitCode := 0
