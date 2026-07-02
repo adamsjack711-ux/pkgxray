@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "/absolute/path/to/pkgxray-guard droid-pre-tool-use" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Write|Edit", "hooks": [{ "type": "command", "command": "/absolute/path/to/pkgxray-guard droid-after-file-edit" }] }
+    ]
+  }
+}

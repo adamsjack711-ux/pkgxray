@@ -50,6 +50,22 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
 
 The worst verdict across a multi-package command wins.
 
+## Requirements
+
+The hook shells out to the **pkgxray CLI** and depends on this contract:
+
+- `pkgxray guard <ref> --format json` emitting a top-level `decision`
+  (`allow`/`review`/`block`) and, for finding locations,
+  `report.findings[].file`;
+- exit codes `2`=block, `3`=review, `0`=safe (used as the fallback when the JSON
+  can't be parsed).
+
+This is stable as of **pkgxray ≥ 0.15.0** — keep the CLI reasonably current.
+pkgxray has no `--version` flag today, so the hook can't probe the version at
+runtime; instead it **degrades safely**: a missing `file` just omits the path,
+and a missing/old/erroring pkgxray yields `UNKNOWN`, which is denied under
+`strict`/`balanced` (never a false allow). Set `PKGXRAY_HOOK_POLICY` accordingly.
+
 ## Install
 
 ```bash
@@ -121,8 +137,15 @@ examples/pkgxray-guard/
 │   ├── parse.go         shell command → []InstallSpec
 │   ├── guard.go         run `pkgxray guard`, map verdict + reasons
 │   ├── policy.go        verdict × policy → allow/ask/deny
+│   ├── cache.go         per-session verdict memo (keyed by ref@version)
+│   ├── manifest.go      diff a package.json edit → added/changed deps
 │   └── *_test.go        table tests + fake-pkgxray exec tests (offline)
 └── configs/             ready-to-edit hook configs per agent
+    ├── claude-settings.json   Claude Code   (~/.claude/settings.json)
+    ├── cursor-hooks.json      Cursor        (.cursor/hooks.json)
+    ├── codex-hooks.json       OpenAI Codex  (~/.codex/hooks.json)
+    ├── droid-settings.json    Factory Droid (~/.factory/settings.json)
+    └── cascade-hooks.json     Windsurf Cascade (~/.codeium/windsurf/hooks.json)
 ```
 
 The `pkgxrayguard` package has no third-party dependencies, so
