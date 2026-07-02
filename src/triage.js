@@ -11,38 +11,80 @@ const { auditLockfile } = require("./lockfile");
 // {
 //   "schemaVersion": 1,
 //   "decisions": [
-//     { name, version, decision: "allow"|"block", reason, decided_at }
+//     { name, version, decision: "allow"|"block", reason, decided_at,
+//       verdict?: "safe"|"review"|"block", checkedAt?: ISO }
 //   ]
 // }
+//
+// `decision`/`decided_at` record the *human* triage choice. `verdict`/`checkedAt`
+// (added for the recheck monitoring tier) record the last *computed* guard
+// verdict and when it was computed — the baseline drift is measured against.
+// Both are additive and optional; a legacy record without them still loads.
+// Unlike `decided_at`, a missing `checkedAt` is NEVER back-filled to "now" — a
+// verdict with no known compute time is treated as unknown/stale, so a stale
+// allow is not trusted forever (see `isStale`).
+//
 // Decisions are sorted alphabetically by "name@version" on write for
 // deterministic diffs.
 // ---------------------------------------------------------------------------
 
 const LOCK_FILENAME = ".pkgxray.lock";
+// Additive fields (verdict/checkedAt) do not warrant a schema bump — every
+// reader tolerates their absence and existing records stay valid.
 const SCHEMA_VERSION = 1;
+const VALID_VERDICTS = new Set(["safe", "review", "block"]);
 
 function lockPathForLockfile(lockfilePath) {
   return path.join(path.dirname(path.resolve(lockfilePath)), LOCK_FILENAME);
 }
 
+// Normalize one raw record from disk into the in-memory shape. Shared by the
+// async and sync loaders so they can never drift. Returns null for records
+// that fail the minimal validity bar (bad name/version/decision).
+function normalizeRecord(d) {
+  if (!d || typeof d.name !== "string" || typeof d.version !== "string") return null;
+  if (d.decision !== "allow" && d.decision !== "block") return null;
+  return {
+    name: d.name,
+    version: d.version,
+    decision: d.decision,
+    reason: typeof d.reason === "string" ? d.reason : "",
+    decided_at: typeof d.decided_at === "string" ? d.decided_at : new Date().toISOString(),
+    // Computed-verdict baseline — optional. Missing verdict => null (unknown).
+    verdict: VALID_VERDICTS.has(d.verdict) ? d.verdict : null,
+    // Missing checkedAt is preserved as null (NOT fabricated) so `isStale`
+    // can report an unknown-age verdict as stale.
+    checkedAt: typeof d.checkedAt === "string" ? d.checkedAt : null
+  };
+}
+
+// A stored verdict is stale when we cannot vouch for its freshness: no
+// checkedAt at all (unknown age), or an age beyond `ttlMs` when a TTL is given.
+// Missing checkedAt always wins => stale. Used by recheck (T2) and the proxy's
+// TTL-based refresh.
+function isStale(record, ttlMs) {
+  if (!record || typeof record.checkedAt !== "string") return true;
+  const checked = Date.parse(record.checkedAt);
+  if (Number.isNaN(checked)) return true;
+  if (ttlMs === undefined || ttlMs === null) return false;
+  return Date.now() - checked > ttlMs;
+}
+
+function decisionsFromJson(json) {
+  const decisions = Array.isArray(json.decisions) ? json.decisions : [];
+  const map = new Map();
+  for (const d of decisions) {
+    const record = normalizeRecord(d);
+    if (!record) continue;
+    map.set(`${record.name}@${record.version}`, record);
+  }
+  return map;
+}
+
 async function loadDecisions(lockPath) {
   try {
     const text = await fsp.readFile(lockPath, "utf8");
-    const json = JSON.parse(text);
-    const decisions = Array.isArray(json.decisions) ? json.decisions : [];
-    const map = new Map();
-    for (const d of decisions) {
-      if (!d || typeof d.name !== "string" || typeof d.version !== "string") continue;
-      if (d.decision !== "allow" && d.decision !== "block") continue;
-      map.set(`${d.name}@${d.version}`, {
-        name: d.name,
-        version: d.version,
-        decision: d.decision,
-        reason: typeof d.reason === "string" ? d.reason : "",
-        decided_at: typeof d.decided_at === "string" ? d.decided_at : new Date().toISOString()
-      });
-    }
-    return map;
+    return decisionsFromJson(JSON.parse(text));
   } catch (error) {
     if (error.code === "ENOENT") return new Map();
     throw error;
@@ -52,21 +94,7 @@ async function loadDecisions(lockPath) {
 function loadDecisionsSync(lockPath) {
   try {
     const text = fs.readFileSync(lockPath, "utf8");
-    const json = JSON.parse(text);
-    const decisions = Array.isArray(json.decisions) ? json.decisions : [];
-    const map = new Map();
-    for (const d of decisions) {
-      if (!d || typeof d.name !== "string" || typeof d.version !== "string") continue;
-      if (d.decision !== "allow" && d.decision !== "block") continue;
-      map.set(`${d.name}@${d.version}`, {
-        name: d.name,
-        version: d.version,
-        decision: d.decision,
-        reason: typeof d.reason === "string" ? d.reason : "",
-        decided_at: typeof d.decided_at === "string" ? d.decided_at : new Date().toISOString()
-      });
-    }
-    return map;
+    return decisionsFromJson(JSON.parse(text));
   } catch (error) {
     if (error.code === "ENOENT") return new Map();
     throw error;
@@ -82,13 +110,20 @@ async function saveDecisions(lockPath, decisionsMap) {
   });
   const payload = {
     schemaVersion: SCHEMA_VERSION,
-    decisions: entries.map((d) => ({
-      name: d.name,
-      version: d.version,
-      decision: d.decision,
-      reason: d.reason || "",
-      decided_at: d.decided_at
-    }))
+    decisions: entries.map((d) => {
+      const record = {
+        name: d.name,
+        version: d.version,
+        decision: d.decision,
+        reason: d.reason || "",
+        decided_at: d.decided_at
+      };
+      // Only serialize the computed-verdict baseline when present so legacy
+      // records (and human-only decisions) don't sprout null fields.
+      if (VALID_VERDICTS.has(d.verdict)) record.verdict = d.verdict;
+      if (typeof d.checkedAt === "string") record.checkedAt = d.checkedAt;
+      return record;
+    })
   };
   await fsp.writeFile(lockPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
@@ -344,23 +379,31 @@ async function triageLockfile(lockfilePath, options = {}) {
         const lower = ch.toLowerCase();
         if (lower === "a") {
           stdout.write("a\n");
+          const now = new Date().toISOString();
           decisions.set(`${r.name}@${r.version}`, {
             name: r.name,
             version: r.version,
             decision: "allow",
             reason: "",
-            decided_at: new Date().toISOString()
+            decided_at: now,
+            // r.decision is the freshly computed verdict for this dep — record
+            // it as the drift baseline so `recheck` can detect later regressions.
+            verdict: r.decision,
+            checkedAt: now
           });
           allowed += 1;
           done = true;
         } else if (lower === "b") {
           stdout.write("b\n");
+          const now = new Date().toISOString();
           decisions.set(`${r.name}@${r.version}`, {
             name: r.name,
             version: r.version,
             decision: "block",
             reason: defaultBlockReason(r),
-            decided_at: new Date().toISOString()
+            decided_at: now,
+            verdict: r.decision,
+            checkedAt: now
           });
           blocked += 1;
           done = true;
@@ -428,13 +471,16 @@ async function runAuto(worklist, decisions, lockPath, mode, { stdout }) {
   let blocked = 0;
   for (const r of worklist) {
     const key = `${r.name}@${r.version}`;
+    const now = new Date().toISOString();
     if (mode === "allow") {
       decisions.set(key, {
         name: r.name,
         version: r.version,
         decision: "allow",
         reason: "auto-allowed",
-        decided_at: new Date().toISOString()
+        decided_at: now,
+        verdict: r.decision,
+        checkedAt: now
       });
       allowed += 1;
     } else {
@@ -443,7 +489,9 @@ async function runAuto(worklist, decisions, lockPath, mode, { stdout }) {
         version: r.version,
         decision: "block",
         reason: defaultBlockReason(r) || "auto-blocked",
-        decided_at: new Date().toISOString()
+        decided_at: now,
+        verdict: r.decision,
+        checkedAt: now
       });
       blocked += 1;
     }
@@ -463,6 +511,8 @@ module.exports = {
   loadDecisions,
   loadDecisionsSync,
   saveDecisions,
+  normalizeRecord,
+  isStale,
   lockPathForLockfile,
   LOCK_FILENAME,
   SCHEMA_VERSION
