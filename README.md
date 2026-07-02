@@ -188,6 +188,17 @@ a lockfile), `triage_lockfile_supply_chain` (record each flagged dep as
 
 ---
 
+## Integrations
+
+**hookshot** — a [hookshot](https://github.com/CorridorSecurity/hookshot) hook
+binary that guards installs across Claude Code, Cursor, Windsurf Cascade, Factory
+Droid, and OpenAI Codex: it intercepts an agent's shell command, runs
+`pkgxray guard` on every package about to be installed, and denies on a `BLOCK`
+verdict with pkgxray's cited evidence returned to the agent. See
+[`examples/hookshot/`](examples/hookshot/).
+
+---
+
 ## Reference
 
 <details>
