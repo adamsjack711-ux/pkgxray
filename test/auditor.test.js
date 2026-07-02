@@ -1044,3 +1044,129 @@ test("comment extraction: a URL scheme in a string is not treated as a comment",
   });
   assert.equal(benign.verdict, "safe");
 });
+
+test("obfuscation: Buffer.from base64 decode feeding execSync blocks", () => {
+  // Node's standard base64 decoder (not the browser `atob`) feeding a dynamic
+  // executor is the real download/decode-then-run shape. No inline blob, so
+  // this exercises the decoder check rather than the blob-proximity rule.
+  const report = auditEvidence({
+    sourceFiles: {
+      "loader.js":
+        'const payload = process.argv[2];\n' +
+        'const code = Buffer.from(payload, "base64").toString("utf8");\n' +
+        'require("child_process").execSync(code);\n'
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "obfuscation" && f.severity === "high"),
+    "expected a high obfuscation finding for Buffer.from(base64) -> execSync"
+  );
+});
+
+test("obfuscation: Buffer.from with a non-base64 encoding does not fire", () => {
+  // `Buffer.from(x, "hex")` next to exec is not the decode-then-execute shape.
+  const report = auditEvidence({
+    sourceFiles: {
+      "ok.js":
+        'const id = Buffer.from(req.id, "hex").toString();\n' +
+        'require("child_process").execSync("echo " + id);\n'
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "Buffer.from(hex) should not be treated as a base64 decoder"
+  );
+});
+
+test("credential-access: hex-escaped .ssh/id_rsa path is decoded and blocks", () => {
+  // "\x2e\x73\x73\x68" is ".ssh" and "\x69\x64\x5f\x72\x73\x61" is "id_rsa".
+  // The literal-substring regexes can't see through the escapes; the
+  // normalization pass decodes them before the rules run.
+  const report = auditEvidence({
+    sourceFiles: {
+      "steal.js":
+        'const fs = require("fs");\n' +
+        'const home = require("os").homedir();\n' +
+        'fs.readFileSync(home + "/\\x2e\\x73\\x73\\x68/\\x69\\x64\\x5f\\x72\\x73\\x61");\n'
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "credential-access" && f.severity === "high"),
+    "expected a high credential-access finding for the hex-escaped ssh key path"
+  );
+});
+
+test("credential-access: benign unicode escapes do not false-positive", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "i18n",
+        repository: "https://github.com/example/i18n"
+      }),
+      "i18n.js": 'module.exports = { greeting: "\\u0048\\u0065\\u006c\\u006c\\u006f world" };'
+    }
+  });
+  assert.equal(report.verdict, "safe");
+  assert.ok(
+    !report.findings.some(
+      (f) => f.category === "credential-access" || f.category === "obfuscated-token"
+    )
+  );
+});
+
+// Tier-A static string obfuscations of a credential path — each encodes
+// ".ssh/id_rsa" a different way that the literal-substring rules can't see,
+// and the normalization pass decodes before the rules run.
+const SAFE_PKG_JSON = JSON.stringify({ name: "p", repository: "https://github.com/x/y" });
+const FS_READ_PREFIX =
+  'const fs = require("fs");\nconst home = require("os").homedir();\n';
+
+function credentialFindings(jsSource) {
+  const report = auditEvidence({
+    sourceFiles: { "package.json": SAFE_PKG_JSON, "a.js": FS_READ_PREFIX + jsSource }
+  });
+  return report.findings.filter(
+    (f) => f.category === "credential-access" || f.category === "obfuscated-token"
+  );
+}
+
+test("credential-access: octal-escaped ssh key path is decoded and blocks", () => {
+  // \56\163\163\150 = ".ssh", \151\144\137\162\163\141 = "id_rsa"
+  const hits = credentialFindings(
+    'fs.readFileSync(home + "/\\56\\163\\163\\150/\\151\\144\\137\\162\\163\\141");'
+  );
+  assert.ok(hits.some((f) => f.severity === "high"), "expected high credential-access for octal-escaped path");
+});
+
+test("credential-access: String.fromCharCode path is decoded and blocks", () => {
+  const codes = ".ssh/id_rsa".split("").map((c) => c.charCodeAt(0)).join(",");
+  const hits = credentialFindings(`fs.readFileSync(home + String.fromCharCode(${codes}));`);
+  assert.ok(hits.some((f) => f.severity === "high"), "expected high credential-access for fromCharCode path");
+});
+
+test("credential-access: fromCodePoint with hex args is decoded and blocks", () => {
+  const hits = credentialFindings(
+    "fs.readFileSync(home + String.fromCodePoint(0x2e,0x73,0x73,0x68,0x2f,0x69,0x64,0x5f,0x72,0x73,0x61));"
+  );
+  assert.ok(hits.some((f) => f.severity === "high"), "expected high credential-access for fromCodePoint hex path");
+});
+
+test("credential-access: percent-encoded path via decodeURIComponent blocks", () => {
+  const hits = credentialFindings('fs.readFileSync(home + decodeURIComponent("%2essh/id_rsa"));');
+  assert.ok(hits.some((f) => f.severity === "high"), "expected high credential-access for %XX path");
+});
+
+test("credential-access: %uXXXX path via unescape blocks", () => {
+  const hits = credentialFindings('fs.readFileSync(home + unescape("%u002e%u0073%u0073%u0068/id_rsa"));');
+  assert.ok(hits.some((f) => f.severity === "high"), "expected high credential-access for %uXXXX path");
+});
+
+test("Tier-A decoders do not false-positive on benign code", () => {
+  // Regex backreference, runtime-valued fromCharCode, a benign URL decode, and
+  // plaintext charcodes that spell something harmless — none should produce a
+  // credential / obfuscated-token finding.
+  assert.equal(credentialFindings("const re = /(\\w)\\1/g; module.exports = re;").length, 0);
+  assert.equal(credentialFindings("module.exports = String.fromCharCode(x, y, z);").length, 0);
+  assert.equal(credentialFindings('module.exports = decodeURIComponent("%20hello%20world");').length, 0);
+  assert.equal(credentialFindings("module.exports = String.fromCharCode(72,101,108,108,111);").length, 0);
+});

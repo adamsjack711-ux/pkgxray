@@ -1135,6 +1135,10 @@ function inspectInjectionAttempt(file, lower, findings) {
 // malware shape is a blob that gets decoded AND executed, which we require via
 // findDynamicEval (computed-arg eval/Function/vm) or child_process exec below.
 const OBFUSCATION_CHILD_PROC_REGEX = /\b(?:child_process|spawn\s*\(|execSync\b)/;
+// Node's standard base64 decoder: `Buffer.from(<arg>, "base64")`. The bounded
+// `[\s\S]{0,200}?` tolerates a non-trivial first argument (variable, nested
+// call) without letting a runaway match span an entire minified line.
+const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([\s\S]{0,200}?['"]base64['"]/i;
 const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
 // Hoisted out of the inner loop — the literal regex was being recompiled on
 // every base64-blob match in every file.
@@ -1166,14 +1170,17 @@ function inspectObfuscation(file, content, lower, findings) {
     }
   }
 
-  // Decode-then-execute: a decoder (atob) feeding a genuinely dynamic executor.
+  // Decode-then-execute: a decoder feeding a genuinely dynamic executor.
+  // Covers both the browser API (`atob`) and Node's standard base64 decoder
+  // (`Buffer.from(x, "base64")`) — the latter is what real Node malware uses.
   // findDynamicEval ignores `eval("literal")`, so this won't trip on bundlers.
-  if (lower.includes("atob(") && (findDynamicEval(content) !== -1 || lower.includes("execsync"))) {
+  const hasDecoder = lower.includes("atob(") || NODE_BASE64_DECODE_REGEX.test(content);
+  if (hasDecoder && (findDynamicEval(content) !== -1 || lower.includes("execsync"))) {
     findings.push({
       severity: "high",
       category: "obfuscation",
       file: file.path,
-      snippet: snippetForPatterns(file.content, ["atob(", "eval(", "execSync"]),
+      snippet: snippetForPatterns(file.content, ["atob(", "Buffer.from(", "eval(", "execSync"]),
       rationale: "Decoded data appears to feed dynamic execution."
     });
   }
@@ -1274,11 +1281,107 @@ function foldConcats(text) {
   return out;
 }
 
+// Hex / Unicode / octal string escapes resolve statically, so
+// `"\x2e\x73\x73\x68"`, `".ssh"`, or `"\56\163\163\150"` (all ".ssh")
+// slip a credential path or exfil domain past the literal-substring regexes.
+// Decode them before the array/concat folding so a split-then-escaped target
+// still reassembles. Invalid code points are left verbatim.
+const HEX_ESCAPE_RE = /\\x([0-9A-Fa-f]{2})/g;
+const UNICODE_CP_ESCAPE_RE = /\\u\{([0-9A-Fa-f]{1,6})\}/g;
+const UNICODE_ESCAPE_RE = /\\u([0-9A-Fa-f]{4})/g;
+// Octal escapes are 2–3 digits (`\56`, `\163`, max `\377`). We deliberately
+// DON'T decode single-digit `\1`..`\7` — those are overwhelmingly regex
+// backreferences, not obfuscated path bytes, and a real split path uses the
+// 2–3 digit form anyway. The 3-digit alternative is anchored at `[0-3]` so the
+// value can't exceed 0o377 (255).
+const OCTAL_ESCAPE_RE = /\\([0-3][0-7]{2}|[0-7]{2})/g;
+
+function fromCodePointSafe(full, hex) {
+  const cp = parseInt(hex, 16);
+  if (cp > 0x10ffff) return full;
+  try {
+    return String.fromCodePoint(cp);
+  } catch {
+    return full;
+  }
+}
+
+function fromOctalSafe(full, oct) {
+  const cp = parseInt(oct, 8);
+  if (!Number.isFinite(cp) || cp > 0xff) return full;
+  return String.fromCharCode(cp);
+}
+
+function decodeStringEscapes(text) {
+  // Quick reject unless there's a backslash escape we actually handle.
+  if (!/\\[xu0-7]/.test(text)) return text;
+  return text
+    .replace(HEX_ESCAPE_RE, fromCodePointSafe)
+    .replace(UNICODE_CP_ESCAPE_RE, fromCodePointSafe)
+    .replace(UNICODE_ESCAPE_RE, fromCodePointSafe)
+    .replace(OCTAL_ESCAPE_RE, fromOctalSafe);
+}
+
+// `String.fromCharCode(46,115,115,104)` / `fromCodePoint(0x2e, ...)` built from
+// integer literals is a static charcode-array obfuscation. Fold it to the
+// equivalent quoted string literal so the path/domain regexes (which need a
+// quote/slash boundary) match and the concat folder can join it to neighbours.
+// Bailing on any non-integer arg keeps `fromCharCode(x)` (a runtime value)
+// untouched.
+const FROM_CHARCODE_RE = /\b(?:String\s*\.\s*)?from(?:CharCode|CodePoint)\s*\(([^)]{0,2000})\)/g;
+const INT_LITERAL_RE = /^(?:0[xX][0-9A-Fa-f]+|\d+)$/;
+const MAX_CHARCODE_ARGS = 256;
+
+function resolveFromCharCode(text) {
+  if (text.indexOf("harCode") === -1 && text.indexOf("odePoint") === -1) return text;
+  return text.replace(FROM_CHARCODE_RE, (full, argString) => {
+    const parts = argString.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+    if (parts.length === 0 || parts.length > MAX_CHARCODE_ARGS) return full;
+    let out = "";
+    for (const part of parts) {
+      if (!INT_LITERAL_RE.test(part)) return full;
+      const cp = /^0[xX]/.test(part) ? parseInt(part, 16) : parseInt(part, 10);
+      if (!Number.isFinite(cp) || cp < 0 || cp > 0x10ffff) return full;
+      try {
+        out += String.fromCodePoint(cp);
+      } catch {
+        return full;
+      }
+    }
+    return wrapAsLiteral(out);
+  });
+}
+
+// `decodeURIComponent("%2essh")` / `unescape("%2E%73%73%68")` over a STRING
+// LITERAL is a static percent-encoding obfuscation. Scoped to the decode call
+// (not every `%XX` in the file) to keep benign URLs untouched.
+const PERCENT_DECODE_CALL_RE =
+  /\b(?:decodeURIComponent|decodeURI|unescape)\s*\(\s*(['"])((?:\\.|(?!\1).)*?)\1\s*\)/g;
+
+function resolvePercentDecodes(text) {
+  if (text.indexOf("decodeURI") === -1 && text.indexOf("unescape") === -1) return text;
+  return text.replace(PERCENT_DECODE_CALL_RE, (full, _quote, body) => {
+    const decoded = body
+      .replace(/%u([0-9A-Fa-f]{4})/g, (m, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/%([0-9A-Fa-f]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+    if (decoded === body) return full; // nothing percent-encoded — leave as-is
+    return wrapAsLiteral(decoded);
+  });
+}
+
+// Re-emit decoded text as a double-quoted literal so the credential/domain
+// regexes see their required quote boundary. Escaping is best-effort — this
+// feeds the detector, not a JS parser.
+function wrapAsLiteral(text) {
+  return '"' + text.replace(/[\\"]/g, "\\$&").replace(/[\r\n]/g, " ") + '"';
+}
+
 function normalizeForDetection(content) {
   if (!content || content.length > NORMALIZE_MAX_INPUT) {
     return { normalized: content || "", changed: false };
   }
-  const out = foldConcats(resolveStringArrays(content));
+  const decoded = resolvePercentDecodes(resolveFromCharCode(decodeStringEscapes(content)));
+  const out = foldConcats(resolveStringArrays(decoded));
   return { normalized: out, changed: out !== content };
 }
 
