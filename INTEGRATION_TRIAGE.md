@@ -56,3 +56,14 @@ Much of the prompt's assumed surface already shipped. The honest remaining work:
 
 Out of scope (issue, not PR): post-install / runtime-fetched payloads — pkgxray's
 stated blind spot; the fix is install-time sandboxing in the agent, not this gate.
+
+## T5 — out-of-band recheck (verdict drift on installed deps)
+
+| question | finding |
+|---|---|
+| does hookshot expose a non-`OnBeforeExecution` entry for a periodic/manual run? | **No.** `main()` registers event hooks and calls `hookshot.RunCommand()`; the framework dispatches only `OnBeforeExecution` / `OnAfterFileEdit`. There is no cron/manual hook type. |
+| resolution | Expose `recheck` as a **plain subcommand of the hook binary** (`pkgxray-guard recheck [lockfile]`), intercepted in `main()` before `RunCommand()`, so a cron/CI step invokes it directly. Documented in the README "Out-of-band recheck" section. |
+| reuse | `pkgxrayguard/recheck.go` shells `pkgxray recheck … --format json` and maps the engine diff onto the existing `Verdict` + `DecideAll` worst-fold. Regressions fold like flagged installs; version drift is informational (out of the fold/exit). Fail-mode via the existing policy layer: engine-unreachable → `Unknown` → deny under strict/balanced, allow only under permissive. `PKGXRAY_CACHE_URL` forwarded. Bounded concurrency stays in the engine's single recheck call. |
+
+PR: `feat(hook): add out-of-band recheck for verdict drift on installed deps`
+(hookshot fork `pkgxray-guard/recheck`; mirrored here as source of truth).
