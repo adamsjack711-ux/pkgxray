@@ -139,14 +139,14 @@ func itoa(n int) string {
 
 func TestCheckBlock(t *testing.T) {
 	out := `{"decision":"block","report":{"summary":"1 high-severity finding","findings":[` +
-		`{"severity":"high","category":"credential-access","rationale":"reads ~/.aws/credentials near a network sink"},` +
+		`{"severity":"high","category":"credential-access","rationale":"reads ~/.aws/credentials near a network sink","file":"lib/.telemetry.js"},` +
 		`{"severity":"info","category":"noise","rationale":"ignore me"}]}}`
 	g := Guard{Bin: fakePkgxray(t, out, 2)}
 	res := g.Check(context.Background(), InstallSpec{Ref: "npm:evil"})
 	if res.Verdict != Block {
 		t.Fatalf("verdict = %s, want block", res.Verdict)
 	}
-	if len(res.Reasons) != 1 || res.Reasons[0] != "[credential-access] reads ~/.aws/credentials near a network sink" {
+	if len(res.Reasons) != 1 || res.Reasons[0] != "[credential-access] reads ~/.aws/credentials near a network sink (lib/.telemetry.js)" {
 		t.Fatalf("reasons = %v", res.Reasons)
 	}
 	if res.Summary != "1 high-severity finding" {

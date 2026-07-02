@@ -44,6 +44,7 @@ type guardJSON struct {
 			Severity  string `json:"severity"`
 			Category  string `json:"category"`
 			Rationale string `json:"rationale"`
+			File      string `json:"file"`
 		} `json:"findings"`
 	} `json:"report"`
 }
@@ -142,7 +143,11 @@ func topReasons(p guardJSON) []string {
 		if reason == "" {
 			reason = f.Category
 		}
-		reasons = append(reasons, "["+f.Category+"] "+clip(reason, 160))
+		line := "[" + f.Category + "] " + clip(reason, 160)
+		if f.File != "" {
+			line += " (" + clip(f.File, 80) + ")"
+		}
+		reasons = append(reasons, line)
 		if len(reasons) == 3 {
 			break
 		}
