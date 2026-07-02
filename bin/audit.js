@@ -6,6 +6,7 @@ const { auditEvidence, renderMarkdown } = require("../src/auditor");
 const { guardExtension } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
 const { triageLockfile } = require("../src/triage");
+const { recheckLockfile, renderRecheckText, recheckJson } = require("../src/recheck");
 
 function printUsage() {
   process.stderr.write(
@@ -18,6 +19,7 @@ function printUsage() {
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
       "  pkgxray triage --resume                                                  # resume interrupted triage",
+      "  pkgxray recheck <lockfile> [--verbose] [--no-write]                      # re-evaluate pinned deps; diff verdict vs. stored baseline",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -34,6 +36,10 @@ function parseArgs(argv) {
     argv = argv.slice(2);
   } else if (argv[0] === "audit") {
     options.command = "auditLockfile";
+    options.lockfilePath = argv[1];
+    argv = argv.slice(2);
+  } else if (argv[0] === "recheck") {
+    options.command = "recheck";
     options.lockfilePath = argv[1];
     argv = argv.slice(2);
   } else if (argv[0] === "triage") {
@@ -85,6 +91,10 @@ function parseArgs(argv) {
       options.resume = true;
     } else if (arg === "--auto") {
       options.auto = argv[++i];
+    } else if (arg === "--verbose") {
+      options.verbose = true;
+    } else if (arg === "--no-write") {
+      options.write = false;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -143,6 +153,22 @@ async function main() {
       }
       throw error;
     }
+    return;
+  }
+
+  if (options.command === "recheck") {
+    if (!options.lockfilePath) {
+      throw new Error("recheck requires a lockfile path (package-lock.json | yarn.lock | pnpm-lock.yaml | package.json)");
+    }
+    const result = await recheckLockfile(options.lockfilePath, options);
+    if (options.format === "json") {
+      process.stdout.write(`${JSON.stringify(recheckJson(result), null, 2)}\n`);
+    } else {
+      process.stdout.write(`${renderRecheckText(result, { verbose: options.verbose })}\n`);
+    }
+    // Exit code reflects the worst *regression*, never the worst absolute
+    // verdict — a still-block dep that was already block is not a new exposure.
+    process.exitCode = result.exitCode;
     return;
   }
 
