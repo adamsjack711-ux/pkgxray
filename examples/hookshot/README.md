@@ -38,8 +38,15 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
     `npm install` are skipped — that code is already local/visible, or there's
     no per-package ref to triage.
 - **`OnAfterFileEdit`** *(opt-in)* — when the agent edits `package.json` or a
-  lockfile, runs `pkgxray audit` on it and feeds the verdict back as agent
-  context (or a block on Claude for a `BLOCK`).
+  lockfile, checks it and feeds the verdict back as agent context (or a block on
+  Claude for a `BLOCK`). It diffs the edit hunks so it doesn't re-triage the
+  whole tree every time:
+  - `package.json` — deep-guards **only the newly added/changed deps** (reusing
+    the session cache); a formatting/script-only edit triages nothing. Falls
+    back to a full-file audit if no added dep can be extracted, so it's never
+    less safe than a blanket scan.
+  - lockfiles — full-file `pkgxray audit`, which honors the sibling
+    `.pkgxray.lock` allow/block memory so already-approved deps don't re-prompt.
 
 The worst verdict across a multi-package command wins.
 
