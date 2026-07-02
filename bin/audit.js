@@ -20,6 +20,7 @@ function printUsage() {
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
       "  pkgxray triage --resume                                                  # resume interrupted triage",
       "  pkgxray recheck <lockfile> [--verbose] [--no-write]                      # re-evaluate pinned deps; diff verdict vs. stored baseline",
+      "                     [--no-version-drift] [--fail-on-available-updates]     #   + pre-vet newer versions (informational unless --fail-on-...)",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -95,6 +96,10 @@ function parseArgs(argv) {
       options.verbose = true;
     } else if (arg === "--no-write") {
       options.write = false;
+    } else if (arg === "--no-version-drift") {
+      options.versionDrift = false;
+    } else if (arg === "--fail-on-available-updates") {
+      options.failOnAvailableUpdates = true;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
