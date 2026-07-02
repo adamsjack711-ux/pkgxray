@@ -1,0 +1,46 @@
+name: pkgxray test
+
+# Runs the zero-dep Node test suite (`node --test`) on every push / PR that
+# touches the engine, CLI, or tests. This is the unit-test gate the repo was
+# missing — the other workflows only fire on lockfile or hookshot-example
+# changes, so pure src/ + test/ PRs had no CI.
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "bin/**"
+      - "test/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/pkgxray-test.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "bin/**"
+      - "test/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/pkgxray-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # Zero runtime dependencies — nothing to install. The suite is Node
+      # built-ins only (node --test), so this is just the test run.
+      - name: Run tests
+        run: node --test
