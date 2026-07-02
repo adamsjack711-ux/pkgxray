@@ -11,12 +11,24 @@ import (
 	"strings"
 )
 
+// SpecKind distinguishes a registry package (pkgxray can triage it) from an
+// unvettable remote spec (an arbitrary git/tarball/HTTP URL, which pre-install
+// registry triage cannot resolve).
+type SpecKind string
+
+const (
+	KindRegistry SpecKind = "registry"
+	KindVCS      SpecKind = "vcs" // git+/git@/tarball/HTTP URL — unvettable, review-worthy
+)
+
 // InstallSpec is a single package an agent is about to install/run, expressed
 // as a pkgxray reference.
 type InstallSpec struct {
-	Ref     string // pkgxray reference, e.g. "npm:express@4.18.0"
-	Manager string // "npm" | "pnpm" | "yarn" | "bun" | "npx"
-	Raw     string // the original token, for messages
+	Ref       string   // pkgxray reference, e.g. "npm:express@4.18.0" (or the raw URL for a VCS spec)
+	Manager   string   // "npm" | "pnpm" | "yarn" | "bun" | "npx"
+	Raw       string   // the original token, for messages
+	Kind      SpecKind // registry | vcs
+	Immediate bool     // true for npx/bunx/pnpm-dlx/bun x — runs package code without a persistent install
 }
 
 // ParseInstalls extracts the packages a shell command would fetch from a
@@ -105,10 +117,14 @@ func parseInstaller(bin string, args []string) []InstallSpec {
 
 	var specs []InstallSpec
 	for _, tok := range args[1:] {
-		if isFlag(tok) || !isRegistrySpec(tok) {
+		if isFlag(tok) {
 			continue
 		}
-		specs = append(specs, InstallSpec{Ref: toRef(tok), Manager: manager, Raw: tok})
+		kind, ok := classifySpec(tok)
+		if !ok {
+			continue
+		}
+		specs = append(specs, InstallSpec{Ref: toRef(tok, kind), Manager: manager, Raw: tok, Kind: kind})
 	}
 	return specs
 }
@@ -142,34 +158,43 @@ func parseRunner(bin string, args []string) []InstallSpec {
 }
 
 func runnerSpec(tok string) []InstallSpec {
-	if !isRegistrySpec(tok) {
+	kind, ok := classifySpec(tok)
+	if !ok {
 		return nil
 	}
-	return []InstallSpec{{Ref: toRef(tok), Manager: "npx", Raw: tok}}
+	// npx/bunx/pnpm-dlx execute the fetched package immediately.
+	return []InstallSpec{{Ref: toRef(tok, kind), Manager: "npx", Raw: tok, Kind: kind, Immediate: true}}
 }
 
-// isRegistrySpec reports whether a token is a registry package (not a local
-// path, a VCS/HTTP URL, or a bare "." / "..").
-func isRegistrySpec(tok string) bool {
+// classifySpec buckets an install token. Local paths and workspace/link specs
+// point at already-visible code (nothing to gate) and are skipped. Git/tarball/
+// HTTP URLs can't be resolved by pre-install registry triage, so they surface
+// as an unvettable KindVCS spec (review-worthy) rather than being silently
+// allowed. Everything else is a registry package.
+func classifySpec(tok string) (SpecKind, bool) {
 	if tok == "" || tok == "." || tok == ".." {
-		return false
+		return "", false
 	}
 	if strings.HasPrefix(tok, "./") || strings.HasPrefix(tok, "../") || strings.HasPrefix(tok, "/") || strings.HasPrefix(tok, "~") {
-		return false
+		return "", false
 	}
 	if strings.HasPrefix(tok, "file:") || strings.HasPrefix(tok, "link:") || strings.HasPrefix(tok, "workspace:") {
-		return false
+		return "", false
 	}
 	if strings.Contains(tok, "://") || strings.HasPrefix(tok, "git+") || strings.HasPrefix(tok, "git@") {
-		return false
+		return KindVCS, true
 	}
-	return true
+	return KindRegistry, true
 }
 
-// toRef normalizes a package token into a pkgxray reference. Already-qualified
+// toRef normalizes a package token into a pkgxray reference. A VCS/URL spec is
+// carried verbatim (there is no registry ref to build). Already-qualified
 // references (npm:, github:) pass through; everything else is treated as an npm
 // package name (optionally with an @version or scope).
-func toRef(tok string) string {
+func toRef(tok string, kind SpecKind) string {
+	if kind == KindVCS {
+		return tok
+	}
 	if strings.HasPrefix(tok, "npm:") || strings.HasPrefix(tok, "github:") {
 		return tok
 	}

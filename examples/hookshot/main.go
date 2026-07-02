@@ -92,8 +92,7 @@ func decideInstalls(cfg config, specs []pkgxrayguard.InstallSpec) hookshot.Execu
 		results = append(results, cfg.guard.Check(ctx, spec))
 	}
 
-	worst := pkgxrayguard.Worst(results)
-	switch pkgxrayguard.Decide(cfg.policy, worst) {
+	switch pkgxrayguard.DecideAll(cfg.policy, results) {
 	case pkgxrayguard.Deny:
 		return hookshot.DenyExecution(denyMessage(results))
 	case pkgxrayguard.Ask:

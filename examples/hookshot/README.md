@@ -31,8 +31,12 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
   - `npm|pnpm|yarn|bun install|i|add <pkg…>` (incl. `yarn global add`)
   - `npx` / `bunx` / `pnpm dlx` / `bun x` runners
   - `claude mcp add <name> -- <launcher>` (audits the launcher's package)
-  - Local paths (`./x`, `file:`), VCS URLs, and bare `npm ci`/`npm install`
-    are skipped — registry triage doesn't apply to them.
+  - Git / tarball / HTTP URL specs (`git+https://…`, `git@…`, `https://…​.tgz`)
+    can't be resolved by registry triage, so they're surfaced as **review-worthy**
+    (never silently allowed).
+  - Local paths (`./x`, `file:`, `link:`, `workspace:`) and bare `npm ci` /
+    `npm install` are skipped — that code is already local/visible, or there's
+    no per-package ref to triage.
 - **`OnAfterFileEdit`** *(opt-in)* — when the agent edits `package.json` or a
   lockfile, runs `pkgxray audit` on it and feeds the verdict back as agent
   context (or a block on Claude for a `BLOCK`).
@@ -80,6 +84,13 @@ All via environment variables (the hook reads them at startup):
 | `REVIEW` | deny | **ask** | allow |
 | `UNKNOWN` (pkgxray failed to run) | deny | deny | allow |
 | `SAFE`   | allow | allow | allow |
+
+**Execute-immediately fail-mode.** `npx` / `bunx` / `pnpm dlx` / `bun x` run
+package code the instant it resolves, with no persistent install to inspect
+afterwards. So even under `permissive`, an immediate-exec spec whose verdict is
+`UNKNOWN` (pkgxray errored) or `REVIEW` (e.g. an unvettable VCS/URL) is escalated
+to **ask** rather than allowed — it never fails open. A *persistent* install
+(`npm i …`) still follows the table above.
 
 `balanced` never fails open on a broken pkgxray: if the CLI is missing or
 errors, the verdict is `UNKNOWN` and the install is denied. On OpenAI Codex,

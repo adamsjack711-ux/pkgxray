@@ -36,6 +36,43 @@ func ParsePolicy(s string) Policy {
 	}
 }
 
+// DecideResult maps one audited result to an action. It applies the base
+// policy, then hardens the fail-mode for execute-immediately specs (npx/bunx/
+// pnpm-dlx): those run package code the instant they resolve, with no
+// persistent install to inspect afterwards. When we hold no real verdict for
+// such a spec — pkgxray errored (Unknown) or the spec is an unvettable VCS/URL
+// (Review) — never fail open. Ask at minimum, even under Permissive.
+func DecideResult(p Policy, r Result) Action {
+	base := Decide(p, r.Verdict)
+	if r.Spec.Immediate && base == Allow && (r.Verdict == Unknown || r.Verdict == Review) {
+		return Ask
+	}
+	return base
+}
+
+// DecideAll folds per-package results into one command decision: the strongest
+// action wins (Deny > Ask > Allow).
+func DecideAll(p Policy, results []Result) Action {
+	strongest := Allow
+	for _, r := range results {
+		if actionRank(DecideResult(p, r)) > actionRank(strongest) {
+			strongest = DecideResult(p, r)
+		}
+	}
+	return strongest
+}
+
+func actionRank(a Action) int {
+	switch a {
+	case Deny:
+		return 2
+	case Ask:
+		return 1
+	default: // Allow
+		return 0
+	}
+}
+
 // Decide maps a verdict to an action under the given policy.
 func Decide(p Policy, v Verdict) Action {
 	switch v {

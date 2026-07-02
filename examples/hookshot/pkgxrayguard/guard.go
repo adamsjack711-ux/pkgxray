@@ -54,6 +54,17 @@ type guardJSON struct {
 // the correct direction. Any execution error yields Verdict=Unknown with Err
 // set, leaving the fail-open/closed choice to the policy layer.
 func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
+	// A git/tarball/HTTP URL can't be resolved by pre-install registry triage —
+	// pkgxray has no registry ref to fetch. Surface it as review-worthy rather
+	// than shelling out (which would just error) or silently allowing it.
+	if spec.Kind == KindVCS {
+		return Result{
+			Spec:    spec,
+			Verdict: Review,
+			Summary: "unvettable git/URL install spec — pkgxray cannot triage an arbitrary VCS or remote tarball; review the source manually",
+		}
+	}
+
 	bin := g.Bin
 	if bin == "" {
 		bin = "pkgxray"
