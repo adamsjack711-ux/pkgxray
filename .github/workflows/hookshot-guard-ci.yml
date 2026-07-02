@@ -39,7 +39,11 @@ jobs:
       # needs the whole module graph to load even a single subpackage.
       - name: Resolve the real hookshot module
         run: |
+          # Drop both the in-fork `replace` and the placeholder `v0.0.0`
+          # require (valid only under that replace); then pull the real module.
+          # Without droprequire, `go get @latest` fails reading the bogus v0.0.0.
           go mod edit -dropreplace github.com/CorridorSecurity/hookshot
+          go mod edit -droprequire github.com/CorridorSecurity/hookshot
           go get github.com/CorridorSecurity/hookshot@latest
           go mod tidy
 
