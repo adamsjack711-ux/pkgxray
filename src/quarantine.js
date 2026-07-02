@@ -86,6 +86,15 @@ async function guardExtension(reference, options = {}) {
   const stagedPath = path.join(workspace, "package");
   const timings = {};
 
+  // The per-audit staging tree is scratch space — extract, scan, decide, done.
+  // Left behind it accumulates one `stage-*` dir per call (the lockfile deep
+  // pass alone stages every dependency), so clean it up on completion unless
+  // the caller wants it kept for inspection/promotion (the interactive `guard`
+  // entry points pass keepStaging:true). A promoted package is already copied
+  // out to promoteTo, so removing the workspace never destroys a kept artifact.
+  const keepStaging = options.keepStaging === true;
+  try {
+
   const stageStart = now();
   const resolved = await stageReference(reference, stagedPath, options);
   timings.stageMs = elapsed(stageStart);
@@ -224,7 +233,19 @@ async function guardExtension(reference, options = {}) {
     result.promotedPath = await promoteStagedPackage(stagedPath, options.promoteTo, options);
   }
 
+  // When we're about to reap the workspace, don't hand back paths that point
+  // at a directory that no longer exists.
+  if (!keepStaging) {
+    result.quarantinePath = null;
+    result.stagedPath = null;
+  }
+
   return result;
+  } finally {
+    if (!keepStaging) {
+      await fsp.rm(workspace, { recursive: true, force: true }).catch(() => {});
+    }
+  }
 }
 
 async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, workspace }) {

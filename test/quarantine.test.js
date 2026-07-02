@@ -72,7 +72,10 @@ test("refuses to follow symlinks in a local source dir", async () => {
     quarantineRoot: path.join(root, "quarantine"),
     vulnerabilityCheck: false,
     githubMetadata: false,
-    githubDiff: false
+    githubDiff: false,
+    // This test inspects the staged tree on disk after the call, so opt out
+    // of the default post-audit cleanup.
+    keepStaging: true
   });
 
   // The package.json symlink must not have been followed: no npmMetadata
@@ -130,4 +133,40 @@ test("does not promote blocked local extensions", async () => {
   assert.equal(result.decision, "block");
   assert.equal(result.promotedPath, null);
   await assert.rejects(fs.stat(promoteTo));
+});
+
+test("reaps the staging workspace by default, keeps it on keepStaging", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-cleanup-"));
+  const source = path.join(root, "source");
+  await fs.mkdir(source);
+  await fs.writeFile(
+    path.join(source, "package.json"),
+    JSON.stringify({ name: "clean-me", version: "1.0.0" })
+  );
+  await fs.writeFile(path.join(source, "index.js"), "module.exports = 1;");
+  const quarantineRoot = path.join(root, "quarantine");
+  const opts = {
+    quarantineRoot,
+    vulnerabilityCheck: false,
+    githubMetadata: false,
+    githubDiff: false
+  };
+
+  // Default: workspace removed, paths nulled so we don't hand back dead paths.
+  const reaped = await guardExtension(source, opts);
+  assert.equal(reaped.quarantinePath, null);
+  assert.equal(reaped.stagedPath, null);
+  assert.deepEqual(await fs.readdir(quarantineRoot).catch(() => []), []);
+
+  // Opt-out: workspace preserved for inspection/promotion.
+  const kept = await guardExtension(source, { ...opts, keepStaging: true });
+  assert.ok(kept.stagedPath);
+  assert.ok((await fs.stat(kept.stagedPath)).isDirectory());
+
+  // An error after staging must not leak its workspace (only the kept dir
+  // from the previous call should remain).
+  await assert.rejects(() =>
+    guardExtension(path.join(root, "missing"), opts)
+  );
+  assert.equal((await fs.readdir(quarantineRoot)).length, 1);
 });

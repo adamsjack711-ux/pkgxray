@@ -397,7 +397,9 @@ function handleRequest(request) {
     }
 
     if (name === GUARD_TOOL_NAME) {
-      return guardExtension(args.reference, args).then((guardResult) => {
+      // Keep the staging tree so the returned Quarantine path stays valid for
+      // inspection / promotion; non-interactive callers reap it by default.
+      return guardExtension(args.reference, { ...args, keepStaging: true }).then((guardResult) => {
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(guardResult, null, 2)

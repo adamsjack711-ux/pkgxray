@@ -113,7 +113,9 @@ async function main() {
     if (!options.reference) {
       throw new Error("guard requires an extension reference");
     }
-    const result = await guardExtension(options.reference, options);
+    // Keep the staging tree so the user can inspect / promote it from the
+    // printed Quarantine path; non-interactive callers reap it by default.
+    const result = await guardExtension(options.reference, { ...options, keepStaging: true });
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else {
