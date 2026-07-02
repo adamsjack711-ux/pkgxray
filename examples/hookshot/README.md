@@ -113,6 +113,23 @@ echo '{"tool_name":"Bash","tool_input":{"command":"npm install left-pad"}}' \
   | ./pkgxray-guard claude-pre-tool-use
 ```
 
+## CI
+
+Two workflows in this repo's [`.github/workflows/`](../../.github/workflows/):
+
+- **`hookshot-guard-ci.yml`** builds, vets, and tests this module against the
+  published hookshot module on every change under `examples/hookshot/`.
+- **`pkgxray-audit.yml`** audits lockfiles with pkgxray and fails on a `BLOCK`.
+  It's reusable — call it from any repo:
+
+  ```yaml
+  jobs:
+    supply-chain:
+      uses: adamsjack711-ux/pkgxray/.github/workflows/pkgxray-audit.yml@main
+      with:
+        fail-on: block   # or "review" to also fail on REVIEW verdicts
+  ```
+
 ## Notes & limits
 
 - Only registry installs are triaged. Local/VCS installs are out of scope for

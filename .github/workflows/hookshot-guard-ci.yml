@@ -1,0 +1,57 @@
+name: hookshot guard CI
+
+# Build, vet, and test the pkgxray × hookshot guard hook (examples/hookshot).
+#
+# In this repo the module's go.mod has `replace … => ../..` so it builds inside
+# the hookshot fork. Here there is no hookshot parent, so CI drops the replace
+# and resolves the real module from the proxy — which also verifies the
+# integration compiles against the published hookshot API.
+
+on:
+  push:
+    paths:
+      - "examples/hookshot/**"
+      - ".github/workflows/hookshot-guard-ci.yml"
+  pull_request:
+    paths:
+      - "examples/hookshot/**"
+      - ".github/workflows/hookshot-guard-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/hookshot
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      # The repo module go.mod has `replace … => ../..` (valid only inside the
+      # hookshot fork). Drop it and resolve the published module first — Go
+      # needs the whole module graph to load even a single subpackage.
+      - name: Resolve the real hookshot module
+        run: |
+          go mod edit -dropreplace github.com/CorridorSecurity/hookshot
+          go get github.com/CorridorSecurity/hookshot@latest
+          go mod tidy
+
+      - name: Build, vet, and test against real hookshot
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      - name: Fail if gofmt would change anything
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "gofmt needed on:"; echo "${unformatted}"; exit 1
+          fi
