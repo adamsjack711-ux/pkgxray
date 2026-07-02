@@ -1,0 +1,130 @@
+name: pkgxray audit
+
+# Supply-chain audit of dependency lockfiles with pkgxray.
+#
+# Three ways to run:
+#   • automatically, when a dependency manifest changes on push / PR;
+#   • on demand, via the "Run workflow" button (workflow_dispatch);
+#   • from another repo, by calling this as a reusable workflow, e.g.
+#
+#       jobs:
+#         audit:
+#           uses: adamsjack711-ux/pkgxray/.github/workflows/pkgxray-audit.yml@main
+#           with:
+#             fail-on: block
+
+on:
+  workflow_call:
+    inputs:
+      lockfile:
+        description: "Lockfile to audit (blank = auto-detect all)."
+        type: string
+        default: ""
+      fail-on:
+        description: "Worst verdict that fails the job: block | review."
+        type: string
+        default: block
+      pkgxray-version:
+        description: "npm version/tag of pkgxray to install."
+        type: string
+        default: latest
+  workflow_dispatch:
+    inputs:
+      lockfile:
+        description: "Lockfile to audit (blank = auto-detect all)."
+        type: string
+        default: ""
+      fail-on:
+        description: "Worst verdict that fails the job: block | review."
+        type: string
+        default: block
+      pkgxray-version:
+        description: "npm version/tag of pkgxray to install."
+        type: string
+        default: latest
+  push:
+    paths:
+      - "**/package-lock.json"
+      - "**/npm-shrinkwrap.json"
+      - "**/yarn.lock"
+      - "**/pnpm-lock.yaml"
+      - "**/package.json"
+  pull_request:
+    paths:
+      - "**/package-lock.json"
+      - "**/npm-shrinkwrap.json"
+      - "**/yarn.lock"
+      - "**/pnpm-lock.yaml"
+      - "**/package.json"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pkgxray
+        run: npm install -g "pkgxray@${{ inputs.pkgxray-version || 'latest' }}"
+
+      - name: Audit dependencies
+        env:
+          LOCKFILE: ${{ inputs.lockfile }}
+          FAIL_ON: ${{ inputs.fail-on || 'block' }}
+        run: |
+          set -u
+
+          # Resolve the manifests to audit: the explicit input, else all
+          # lockfiles in the repo, else fall back to package.json files.
+          if [ -n "${LOCKFILE}" ]; then
+            printf '%s\n' "${LOCKFILE}" > /tmp/pkgxray-targets
+          else
+            find . -type d -name node_modules -prune -o \
+              \( -name package-lock.json -o -name npm-shrinkwrap.json \
+                 -o -name yarn.lock -o -name pnpm-lock.yaml \) -print \
+              | sort > /tmp/pkgxray-targets
+            if [ ! -s /tmp/pkgxray-targets ]; then
+              find . -type d -name node_modules -prune -o \
+                -name package.json -print | sort > /tmp/pkgxray-targets
+            fi
+          fi
+
+          if [ ! -s /tmp/pkgxray-targets ]; then
+            echo "No dependency manifests found — nothing to audit."
+            exit 0
+          fi
+
+          # Single pass. Reading from a file (not a pipe) keeps `blocked`/`flagged`
+          # in this shell so the gate below sees them. pkgxray audit exits
+          # 2=block, 3=review, 0=safe.
+          blocked=0
+          flagged=0
+          while IFS= read -r f; do
+            [ -n "${f}" ] || continue
+            echo "::group::pkgxray audit ${f}"
+            pkgxray audit "${f}"
+            code=$?
+            echo "::endgroup::"
+            case "${code}" in
+              2) echo "::error file=${f}::pkgxray verdict: BLOCK"; blocked=1 ;;
+              3) echo "::warning file=${f}::pkgxray verdict: REVIEW"; flagged=1 ;;
+              0) echo "pkgxray: ${f} — SAFE" ;;
+              *) echo "::error file=${f}::pkgxray failed to run (exit ${code})"; exit 1 ;;
+            esac
+          done < /tmp/pkgxray-targets
+
+          if [ "${blocked}" = "1" ]; then
+            echo "Failing: a dependency was BLOCKed by pkgxray."
+            exit 1
+          fi
+          if [ "${flagged}" = "1" ] && [ "${FAIL_ON}" = "review" ]; then
+            echo "Failing: fail-on=review and a dependency needs REVIEW."
+            exit 1
+          fi
+          echo "pkgxray audit passed (fail-on=${FAIL_ON})."

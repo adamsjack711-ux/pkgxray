@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "/absolute/path/to/pkgxray-guard claude-pre-tool-use" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|Bash", "hooks": [{ "type": "command", "command": "/absolute/path/to/pkgxray-guard claude-after-file-edit" }] }
+    ]
+  }
+}

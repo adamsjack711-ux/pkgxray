@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash|mcp__.*", "hooks": [{ "type": "command", "command": "/absolute/path/to/pkgxray-guard codex-pre-tool-use" }] }
+    ]
+  }
+}

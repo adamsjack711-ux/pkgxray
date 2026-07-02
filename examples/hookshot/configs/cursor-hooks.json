@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [{ "command": "/absolute/path/to/pkgxray-guard cursor-before-shell" }],
+    "afterFileEdit": [{ "command": "/absolute/path/to/pkgxray-guard cursor-after-file-edit" }]
+  }
+}
