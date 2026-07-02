@@ -28,6 +28,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ type config struct {
 	policy         pkgxrayguard.Policy
 	disabled       bool
 	auditLockfiles bool
+	guardWorkers   int // max packages guarded concurrently per command
 }
 
 func loadConfig() config {
@@ -82,6 +84,12 @@ func loadConfig() config {
 		ExtraArgs: extra,
 		CacheURL:  strings.TrimSpace(os.Getenv("PKGXRAY_CACHE_URL")),
 	}
+	workers := pkgxrayguard.DefaultGuardWorkers
+	if v := strings.TrimSpace(os.Getenv("PKGXRAY_HOOK_CONCURRENCY")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			workers = n
+		}
+	}
 	return config{
 		guard: guard,
 		// One memo per process = one agent session; repeat installs of the same
@@ -90,6 +98,7 @@ func loadConfig() config {
 		policy:         pkgxrayguard.ParsePolicy(os.Getenv("PKGXRAY_HOOK_POLICY")),
 		disabled:       os.Getenv("PKGXRAY_HOOK_DISABLE") == "1",
 		auditLockfiles: os.Getenv("PKGXRAY_HOOK_AUDIT_LOCKFILES") == "1",
+		guardWorkers:   workers,
 	}
 }
 
@@ -97,10 +106,7 @@ func loadConfig() config {
 // per-package results into one hook decision (worst verdict wins).
 func decideInstalls(cfg config, specs []pkgxrayguard.InstallSpec) hookshot.ExecutionDecision {
 	ctx := context.Background()
-	results := make([]pkgxrayguard.Result, 0, len(specs))
-	for _, spec := range specs {
-		results = append(results, cfg.checker.Check(ctx, spec))
-	}
+	results := pkgxrayguard.CheckAll(ctx, cfg.checker, specs, cfg.guardWorkers)
 
 	switch pkgxrayguard.DecideAll(cfg.policy, results) {
 	case pkgxrayguard.Deny:
@@ -181,10 +187,7 @@ func auditManifestEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdi
 // FileEditBlock (honored by Claude) and an Ask becomes added context.
 func decideManifestSpecs(cfg config, filePath string, specs []pkgxrayguard.InstallSpec) hookshot.FileEditDecision {
 	ctx := context.Background()
-	results := make([]pkgxrayguard.Result, 0, len(specs))
-	for _, spec := range specs {
-		results = append(results, cfg.checker.Check(ctx, spec))
-	}
+	results := pkgxrayguard.CheckAll(ctx, cfg.checker, specs, cfg.guardWorkers)
 	base := filepath.Base(filePath)
 	switch pkgxrayguard.DecideAll(cfg.policy, results) {
 	case pkgxrayguard.Deny:
