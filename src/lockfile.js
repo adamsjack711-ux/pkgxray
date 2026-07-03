@@ -307,36 +307,30 @@ async function runDeep(results, options) {
   if (results.length === 0) return;
   // Lazy-require to avoid a cycle (lockfile -> quarantine -> lockfile).
   const { guardExtension } = require("./quarantine");
-  const queue = results.slice();
-  const workers = Array.from({ length: Math.min(DEEP_CONCURRENCY, queue.length) }, () => worker());
-  await Promise.all(workers);
-
-  async function worker() {
-    while (queue.length > 0) {
-      const r = queue.shift();
-      try {
-        const result = await guardExtension(`npm:${r.name}@${r.version}`, {
-          vulnerabilityCheck: false, // already done by the lockfile pass
-          githubMetadata: options.githubMetadata !== false,
-          githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
-          quarantineRoot: options.quarantineRoot
-        });
-        r.deep = {
-          verdict: result.report.verdict,
-          grade: result.report.grade,
-          riskBands: result.report.riskBands || []
-        };
-        // Upgrade the decision if deep found something worse than OSV did.
-        if (result.report.verdict === "block" && r.decision !== "block") {
-          r.decision = "block";
-        } else if (result.report.verdict === "review" && r.decision === "safe") {
-          r.decision = "review";
-        }
-      } catch (error) {
-        r.deep = { error: error.message };
+  const { mapPool } = require("./pool");
+  await mapPool(results, Math.min(DEEP_CONCURRENCY, results.length), async (r) => {
+    try {
+      const result = await guardExtension(`npm:${r.name}@${r.version}`, {
+        vulnerabilityCheck: false, // already done by the lockfile pass
+        githubMetadata: options.githubMetadata !== false,
+        githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
+        quarantineRoot: options.quarantineRoot
+      });
+      r.deep = {
+        verdict: result.report.verdict,
+        grade: result.report.grade,
+        riskBands: result.report.riskBands || []
+      };
+      // Upgrade the decision if deep found something worse than OSV did.
+      if (result.report.verdict === "block" && r.decision !== "block") {
+        r.decision = "block";
+      } else if (result.report.verdict === "review" && r.decision === "safe") {
+        r.decision = "review";
       }
+    } catch (error) {
+      r.deep = { error: error.message };
     }
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
