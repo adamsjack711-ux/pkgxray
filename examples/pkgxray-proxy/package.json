@@ -1,0 +1,38 @@
+{
+  "name": "pkgxray-proxy",
+  "version": "0.1.0",
+  "description": "A scanning pull-through npm registry proxy that gates package tarballs through pkgxray before serving them.",
+  "type": "module",
+  "bin": {
+    "pkgxray-proxy": "bin/proxy.js"
+  },
+  "exports": {
+    ".": "./src/proxy.js",
+    "./config": "./src/config.js",
+    "./verdict-store": "./src/verdict-store.js",
+    "./pkgxray-runner": "./src/pkgxray-runner.js",
+    "./path-parser": "./src/path-parser.js"
+  },
+  "scripts": {
+    "start": "node bin/proxy.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "keywords": [
+    "npm",
+    "registry",
+    "proxy",
+    "pkgxray",
+    "supply-chain",
+    "security"
+  ],
+  "author": "",
+  "license": "MIT"
+}
