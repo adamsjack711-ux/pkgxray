@@ -28,6 +28,36 @@ export class VerdictStore {
     return `${name}@${version}`;
   }
 
+  // Split a "name@version" key back into its parts. Scoped names keep their
+  // leading "@" — the version is always after the LAST "@".
+  static parseKey(key) {
+    const at = key.lastIndexOf('@');
+    if (at <= 0) return { name: key, version: '' };
+    return { name: key.slice(0, at), version: key.slice(at + 1) };
+  }
+
+  /**
+   * Is this cached entry too old to trust? Used for TTL-based lazy refresh.
+   * A missing/zero ts is always stale (unknown age). ttlMs=0 => always stale
+   * (force re-scan). ttlMs undefined/null => TTL disabled, never stale.
+   */
+  isStale(entry, ttlMs) {
+    if (!entry) return true;
+    if (ttlMs === undefined || ttlMs === null) return false;
+    if (typeof entry.ts !== 'number' || entry.ts <= 0) return true;
+    return this._now() - entry.ts > ttlMs;
+  }
+
+  /** Snapshot of every cached entry as {name, version, decision, findings, ts}. */
+  entries() {
+    const out = [];
+    for (const [k, v] of this._map) {
+      const { name, version } = VerdictStore.parseKey(k);
+      out.push({ name, version, decision: v.decision, findings: v.findings, ts: v.ts });
+    }
+    return out;
+  }
+
   _load() {
     let raw;
     try {

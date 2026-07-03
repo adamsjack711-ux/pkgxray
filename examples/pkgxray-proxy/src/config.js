@@ -23,6 +23,10 @@ export const DEFAULTS = Object.freeze({
   allowlist: [],
   denylist: [],
   verdictStorePath: join(homedir(), '.pkgxray-proxy', 'verdicts.json'),
+  // A cached verdict older than this is treated as stale and re-scanned on the
+  // next request, so new intelligence flips a stale allow instead of serving it
+  // forever. 0 = always re-scan (never serve from cache). Default 24h.
+  verdictTtlMs: 24 * 60 * 60 * 1000,
   cacheUrl: undefined,
   logDecisions: true,
 });
@@ -83,6 +87,9 @@ function readEnv(env) {
   if (env.PKGXRAY_PROXY_ALLOWLIST !== undefined) out.allowlist = splitList(env.PKGXRAY_PROXY_ALLOWLIST);
   if (env.PKGXRAY_PROXY_DENYLIST !== undefined) out.denylist = splitList(env.PKGXRAY_PROXY_DENYLIST);
   if (env.PKGXRAY_PROXY_VERDICT_STORE !== undefined) out.verdictStorePath = env.PKGXRAY_PROXY_VERDICT_STORE;
+  if (env.PKGXRAY_PROXY_VERDICT_TTL_MS !== undefined) {
+    out.verdictTtlMs = toInt(env.PKGXRAY_PROXY_VERDICT_TTL_MS, 'PKGXRAY_PROXY_VERDICT_TTL_MS');
+  }
   // PKGXRAY_CACHE_URL is the shared-cache server URL forwarded to the CLI.
   if (env.PKGXRAY_CACHE_URL !== undefined) out.cacheUrl = env.PKGXRAY_CACHE_URL;
   if (env.PKGXRAY_PROXY_LOG_DECISIONS !== undefined) {
@@ -121,6 +128,9 @@ function validate(cfg) {
   }
   if (typeof cfg.verdictStorePath !== 'string' || cfg.verdictStorePath.length === 0) {
     throw new Error('Invalid verdictStorePath');
+  }
+  if (!Number.isInteger(cfg.verdictTtlMs) || cfg.verdictTtlMs < 0) {
+    throw new Error(`Invalid verdictTtlMs: ${cfg.verdictTtlMs} (expected non-negative integer; 0 = always re-scan)`);
   }
   if (cfg.cacheUrl !== undefined && typeof cfg.cacheUrl !== 'string') {
     throw new Error('Invalid cacheUrl');
