@@ -26,6 +26,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,6 +38,15 @@ import (
 )
 
 func main() {
+	// Out-of-band `recheck` subcommand. Hookshot only dispatches event hooks
+	// (OnBeforeExecution / OnAfterFileEdit) via RunCommand — there is no periodic
+	// entry point — so re-evaluating already-installed deps against fresh
+	// intelligence is exposed as a plain subcommand a cron/CI step (or a human)
+	// invokes: `pkgxray-guard recheck [lockfile]`. See README "Out-of-band recheck".
+	if len(os.Args) > 1 && os.Args[1] == "recheck" {
+		os.Exit(runRecheck(loadConfig(), os.Args[2:]))
+	}
+
 	cfg := loadConfig()
 
 	hookshot.OnBeforeExecution(func(ctx hookshot.ExecutionContext) hookshot.ExecutionDecision {
@@ -152,6 +162,98 @@ func joinRefs(specs []pkgxrayguard.InstallSpec) string {
 		refs[i] = s.Ref
 	}
 	return strings.Join(refs, ", ")
+}
+
+// runRecheck implements the out-of-band `recheck` subcommand: locate the
+// project lockfile, re-evaluate its already-installed deps against current
+// intelligence, and surface any regressions. It reuses the same policy folding
+// (DecideAll) and Verdict vocabulary as the install gate — a regressed dep is
+// treated exactly like a flagged install would be.
+//
+// Exit codes mirror the gate/CLI: 0 = nothing regressed, 3 = a dep regressed to
+// review (ask/notify), 2 = a dep regressed to block, or the engine was
+// unreachable under a fail-closed policy. Version drift is informational and
+// never moves the exit code. The bounded-concurrency fan-out lives in the
+// engine's single `recheck` call — the hook does not re-implement it.
+func runRecheck(cfg config, args []string) int {
+	lockfile, err := resolveLockfile(args)
+	if err != nil {
+		os.Stderr.WriteString("pkgxray-guard recheck: " + err.Error() + "\n")
+		return 2
+	}
+
+	rc := pkgxrayguard.Rechecker{
+		Bin:       cfg.guard.Bin,
+		Timeout:   5 * time.Minute,
+		ExtraArgs: cfg.guard.ExtraArgs,
+		CacheURL:  cfg.guard.CacheURL,
+	}
+	report := rc.Recheck(context.Background(), lockfile)
+
+	// Fold the regressions (plus an Unknown, if the engine failed) through the
+	// shared policy layer — no second dialect for allow/ask/deny.
+	action := pkgxrayguard.DecideAll(cfg.policy, report.AsResults())
+	os.Stdout.WriteString(renderRecheck(lockfile, report, action))
+
+	switch action {
+	case pkgxrayguard.Deny:
+		return 2
+	case pkgxrayguard.Ask:
+		return 3
+	default:
+		return 0
+	}
+}
+
+// resolveLockfile takes an explicit path argument or auto-detects the project
+// lockfile in the current directory, preferring the most precise (a real
+// lockfile) over package.json.
+func resolveLockfile(args []string) (string, error) {
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			if _, err := os.Stat(a); err != nil {
+				return "", errors.New("lockfile not found: " + a)
+			}
+			return a, nil
+		}
+	}
+	for _, name := range []string{"package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "package.json"} {
+		if _, err := os.Stat(name); err == nil {
+			return name, nil
+		}
+	}
+	return "", errors.New("no lockfile found in the current directory (package-lock.json | yarn.lock | pnpm-lock.yaml | package.json); pass one explicitly")
+}
+
+// renderRecheck produces the surfaced report. Regressed deps are the actionable
+// ask/notify signal; version-drift flagged updates are informational only.
+func renderRecheck(lockfile string, report pkgxrayguard.RecheckReport, action pkgxrayguard.Action) string {
+	var b strings.Builder
+	if report.Err != nil {
+		b.WriteString("pkgxray recheck could not evaluate " + lockfile + ": " + report.Err.Error() + "\n")
+		if action == pkgxrayguard.Allow {
+			b.WriteString("(permissive policy: treated as non-blocking)\n")
+		}
+		return b.String()
+	}
+
+	if len(report.Regressed) == 0 && len(report.FlaggedUpdates) == 0 {
+		return "pkgxray recheck: no regressions in " + lockfile + " — nothing you already depend on became worse.\n"
+	}
+
+	if len(report.Regressed) > 0 {
+		b.WriteString("pkgxray recheck: a dependency you already have regressed since install (" + lockfile + "):\n")
+		for _, d := range report.Regressed {
+			b.WriteString("  • " + d.Name + "@" + d.Version + " → " + d.Baseline + " → " + d.Verdict + "\n")
+		}
+	}
+	if len(report.FlaggedUpdates) > 0 {
+		b.WriteString("informational — newer versions available but flagged (don't blind-upgrade):\n")
+		for _, f := range report.FlaggedUpdates {
+			b.WriteString("  • " + f.Name + " (pinned " + f.Version + ") → newer version guards " + f.Worst + "\n")
+		}
+	}
+	return b.String()
 }
 
 // toFileEdits converts hookshot's edit hunks into the guard package's stdlib-only

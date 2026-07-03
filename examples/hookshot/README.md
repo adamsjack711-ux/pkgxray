@@ -134,11 +134,40 @@ errors, the verdict is `UNKNOWN` and the install is denied. On OpenAI Codex,
 hookshot rewrites an `ask` decision to a deny (Codex has no approval prompt), so
 `REVIEW` under `balanced` blocks there too.
 
+## Out-of-band recheck
+
+The install gate only ever sees *new* installs. Dependencies you already have
+can go bad later — a maintainer takeover, a trojaned patch release. Hookshot
+dispatches only event hooks (there is no periodic entry point), so re-evaluating
+already-installed deps is exposed as a plain subcommand of the same binary that
+a cron/CI step (or a human) invokes:
+
+```bash
+pkgxray-guard recheck                 # auto-detect the project lockfile in CWD
+pkgxray-guard recheck package-lock.json
+```
+
+It shells out to `pkgxray recheck <lockfile> --format json` (all drift logic
+lives in the engine — this is a thin orchestration layer) and surfaces the
+result through the **same policy and verdict vocabulary** as the gate:
+
+- **regressed** deps — a dependency you already have got worse since install →
+  folded through `DecideAll` exactly like a flagged install (block → deny/notify,
+  review → ask under balanced).
+- **version drift** (a newer-but-flagged version exists) — informational only;
+  it never enters the fold or moves the exit code.
+
+Fail-mode is honoured: a recheck that can't reach the engine is `Unknown`, which
+denies under `strict`/`balanced` and is allowed only under `permissive` — never a
+silent "nothing regressed". `PKGXRAY_CACHE_URL` is forwarded so the recheck shares
+the gate's warm cache. Exit codes mirror the gate: `0` clean, `3` regressed to
+review, `2` regressed to block (or engine unreachable under a fail-closed policy).
+
 ## Layout
 
 ```
 examples/pkgxray-guard/
-├── main.go              hookshot handler registration + env config
+├── main.go              hookshot handler registration + env config + `recheck` subcommand
 ├── helpers.go           lockfile detection + pkgxray CLI runner
 ├── pkgxrayguard/        pure, stdlib-only, unit-tested core
 │   ├── parse.go         shell command → []InstallSpec
@@ -146,6 +175,7 @@ examples/pkgxray-guard/
 │   ├── policy.go        verdict × policy → allow/ask/deny
 │   ├── cache.go         per-session verdict memo (keyed by ref@version)
 │   ├── manifest.go      diff a package.json edit → added/changed deps
+│   ├── recheck.go       run `pkgxray recheck`, map drift → surfaced report
 │   └── *_test.go        table tests + fake-pkgxray exec tests (offline)
 └── configs/             ready-to-edit hook configs per agent
     ├── claude-settings.json   Claude Code   (~/.claude/settings.json)
