@@ -28,6 +28,28 @@ function makeFakeStdin() {
   stdin.resume = function () {};
   stdin.pause = function () {};
   stdin.off = function (event, fn) { this.removeListener(event, fn); };
+
+  // Buffer `data` emitted before a consumer subscribes and replay it when a
+  // 'data' listener attaches — mirroring how a real raw stdin queues bytes.
+  // Without this, feedKeys' first key (fired on a 5ms timer) races triageLockfile's
+  // async setup (loadDecisions + auditLockfile): on a slow runner the key is
+  // emitted with no listener yet and silently dropped, which flaked in CI.
+  const pending = [];
+  const realEmit = EventEmitter.prototype.emit;
+  stdin.emit = function (event, ...args) {
+    if (event === "data" && this.listenerCount("data") === 0) {
+      pending.push(args);
+      return true;
+    }
+    return realEmit.call(this, event, ...args);
+  };
+  stdin.on = function (event, fn) {
+    EventEmitter.prototype.on.call(this, event, fn);
+    if (event === "data" && pending.length > 0) {
+      for (const args of pending.splice(0)) realEmit.call(this, "data", ...args);
+    }
+    return this;
+  };
   return stdin;
 }
 
