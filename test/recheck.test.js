@@ -75,6 +75,7 @@ test("a dep whose OSV status flipped shows in regressed and sets exit 2", async 
     ]
   );
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     evaluate: evaluatorFrom({ good: "safe", gonebad: "block" })
   });
 
@@ -92,6 +93,7 @@ test("a stable dep is unchanged with exit 0", async () => {
     [{ name: "stable", version: "1.0.0", verdict: "safe" }]
   );
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     evaluate: evaluatorFrom({ stable: "safe" })
   });
   assert.equal(result.counts.unchanged, 1);
@@ -105,6 +107,7 @@ test("regression only to review yields exit 3, not 2", async () => {
     [{ name: "soft", version: "1.0.0", verdict: "safe" }]
   );
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     evaluate: evaluatorFrom({ soft: "review" })
   });
   assert.equal(result.exitCode, 3);
@@ -117,6 +120,7 @@ test("a pre-existing block that stays block is NOT a regression (exit 0)", async
     [{ name: "alwaysbad", version: "1.0.0", verdict: "block", decision: "block" }]
   );
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     evaluate: evaluatorFrom({ alwaysbad: "block" })
   });
   assert.equal(result.counts.regressed, 0);
@@ -130,6 +134,7 @@ test("an errored recheck is reported unknown and never overwrites a good stored 
     [{ name: "flaky", version: "1.0.0", verdict: "safe", checkedAt: "2026-01-01T00:00:00.000Z" }]
   );
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     evaluate: evaluatorFrom({ flaky: "explode" })
   });
   assert.equal(result.counts.unknown, 1);
@@ -149,6 +154,7 @@ test("successful recheck updates the stored verdict + checkedAt", async () => {
     [{ name: "drifter", version: "1.0.0", verdict: "safe", checkedAt: "2026-01-01T00:00:00.000Z" }]
   );
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     evaluate: evaluatorFrom({ drifter: "block" })
   });
   assert.equal(result.updated, 1);
@@ -163,6 +169,7 @@ test("--no-write leaves the lock untouched", async () => {
     [{ name: "x", version: "1.0.0", verdict: "safe", checkedAt: "2026-01-01T00:00:00.000Z" }]
   );
   await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     write: false,
     evaluate: evaluatorFrom({ x: "block" })
   });
@@ -173,6 +180,7 @@ test("--no-write leaves the lock untouched", async () => {
 test("a dep with no stored baseline is reported no-baseline, not regressed", async () => {
   const lockfilePath = await project([["fresh", "1.0.0"]], []); // no .pkgxray.lock
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     evaluate: evaluatorFrom({ fresh: "block" })
   });
   assert.equal(result.counts.noBaseline, 1);
@@ -190,6 +198,7 @@ test("concurrent recheck of N deps folds correctly (worst regression wins exit c
   });
   const lockfilePath = await project(deps, baselines);
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     concurrency: 8,
     evaluate: async (dep) => ({ verdict: fresh[dep.name] })
   });

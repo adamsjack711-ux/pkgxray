@@ -7,6 +7,7 @@ const {
   lockPathForLockfile
 } = require("./triage");
 const { mapPool, defaultConcurrency } = require("./pool");
+const { newerCandidates } = require("./semver");
 
 // ---------------------------------------------------------------------------
 // recheck — the monitoring tier.
@@ -77,6 +78,71 @@ function makeDefaultEvaluator(options) {
     });
     return { verdict: result.report.verdict, report: result.report };
   };
+}
+
+// ---------------------------------------------------------------------------
+// Version drift — newer-version pre-vetting. For each dep, ask the registry for
+// versions newer than the pinned one and guard the candidate(s) so a team sees
+// the security verdict BEFORE upgrading (the trojaned-update catch: an update
+// that's available but flagged shouldn't be blind-installed).
+//
+// Informational by DEFAULT — an available flagged update you haven't installed
+// isn't an active exposure, so it does NOT move the exit code unless the caller
+// passes failOnAvailableUpdates. Candidates are bounded (latest + latest-in-
+// major, ≤2 per dep) to keep registry/OSV cost sane.
+// ---------------------------------------------------------------------------
+async function versionDriftPass(depList, evaluate, options) {
+  const listVersions = options.listVersions || defaultListVersions(options);
+  const concurrency = options.concurrency || defaultConcurrency(depList.length);
+
+  const results = await mapPool(depList, concurrency, async (dep) => {
+    let candidates;
+    try {
+      const { versions } = await listVersions(dep.name);
+      const picked = newerCandidates(dep.version, versions || []);
+      candidates = [picked.latest, picked.latestInMajor].filter(Boolean);
+    } catch (err) {
+      // Registry unreachable — report as unknown, not "no update available".
+      return { name: dep.name, version: dep.version, error: err && err.message ? err.message : String(err), candidates: [] };
+    }
+    if (candidates.length === 0) {
+      return { name: dep.name, version: dep.version, candidates: [] };
+    }
+    const vetted = [];
+    for (const candidate of candidates) {
+      let verdict = "unknown";
+      let error = null;
+      try {
+        const outcome = await evaluate({ name: dep.name, version: candidate, paths: [] }, { versionDrift: true });
+        verdict = outcome && typeof outcome.verdict === "string" ? outcome.verdict : "unknown";
+      } catch (err) {
+        error = err && err.message ? err.message : String(err);
+      }
+      vetted.push({ version: candidate, verdict, ...(error ? { error } : {}) });
+    }
+    return { name: dep.name, version: dep.version, candidates: vetted };
+  });
+
+  const available = []; // newer version exists and guards clean
+  const flagged = [];   // newer version exists but is review/block
+  const unknown = [];    // registry/guard errored
+  for (const r of results) {
+    if (r.error) {
+      unknown.push(r);
+      continue;
+    }
+    if (r.candidates.length === 0) continue; // no newer version -> nothing
+    const worst = worstVerdict(r.candidates.map((c) => c.verdict).filter((v) => verdictRank(v) >= 0));
+    const entry = { name: r.name, version: r.version, candidates: r.candidates, worst };
+    if (worst === "review" || worst === "block") flagged.push(entry);
+    else available.push(entry);
+  }
+  return { available, flagged, unknown };
+}
+
+function defaultListVersions(options) {
+  const { listNpmVersions } = require("./registry");
+  return (name) => listNpmVersions(name, { registry: options.registry });
 }
 
 async function recheckLockfile(lockfilePath, options = {}) {
@@ -152,12 +218,28 @@ async function recheckLockfile(lockfilePath, options = {}) {
     else buckets.unchanged.push(d);
   }
 
+  // Version drift — informational newer-version pre-vetting. On by default;
+  // skip with { versionDrift: false }.
+  let versionDrift = { available: [], flagged: [], unknown: [] };
+  if (options.versionDrift !== false) {
+    versionDrift = await versionDriftPass(depList, evaluate, options);
+  }
+
   // Exit code keys off the worst *regression* target — not the worst absolute
   // verdict. A dep that was block at install and is still block is not a NEW
   // regression and must not fail a monitoring run.
   const regressionTargets = buckets.regressed.map((d) => d.verdict);
   const worstRegression = buckets.regressed.length > 0 ? worstVerdict(regressionTargets) : null;
-  const exitCode = worstRegression === "block" ? 2 : worstRegression === "review" ? 3 : 0;
+  let exitCode = worstRegression === "block" ? 2 : worstRegression === "review" ? 3 : 0;
+
+  // Version drift stays OUT of the exit code by default (an available flagged
+  // update isn't an active exposure). Only fold it in when explicitly asked.
+  if (options.failOnAvailableUpdates && versionDrift.flagged.length > 0) {
+    const worstFlagged = worstVerdict(versionDrift.flagged.map((f) => f.worst));
+    const flaggedExit = worstFlagged === "block" ? 2 : worstFlagged === "review" ? 3 : 0;
+    // Worst (lowest-tolerance) exit wins: block(2) over review(3) over ok(0).
+    exitCode = mergeExit(exitCode, flaggedExit);
+  }
 
   return {
     schemaVersion: 1,
@@ -167,16 +249,25 @@ async function recheckLockfile(lockfilePath, options = {}) {
     totalDeps: depList.length,
     updated,
     buckets,
+    versionDrift,
     counts: {
       regressed: buckets.regressed.length,
       improved: buckets.improved.length,
       unchanged: buckets.unchanged.length,
       noBaseline: buckets.noBaseline.length,
-      unknown: buckets.unknown.length
+      unknown: buckets.unknown.length,
+      updateAvailableSafe: versionDrift.available.length,
+      updateAvailableFlagged: versionDrift.flagged.length
     },
     worstRegression,
     exitCode
   };
+}
+
+// Merge two exit codes where 2 (block) is worst, then 3 (review), then 0 (ok).
+function mergeExit(a, b) {
+  const sev = (c) => (c === 2 ? 2 : c === 3 ? 1 : 0);
+  return sev(a) >= sev(b) ? a : b;
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +327,26 @@ function renderRecheckText(result, options = {}) {
     lines.push("");
   }
 
+  const vd = result.versionDrift || { available: [], flagged: [], unknown: [] };
+  if (vd.flagged.length > 0) {
+    lines.push("UPDATE AVAILABLE BUT FLAGGED (don't blind-upgrade — newer version is review/block):");
+    for (const f of vd.flagged) {
+      const cs = f.candidates
+        .map((c) => `${sanitizeForTerminal(c.version)}=${sanitizeForTerminal(c.verdict)}`)
+        .join(", ");
+      lines.push(`- ${sanitizeForTerminal(f.name)} (pinned ${sanitizeForTerminal(f.version)}) → ${cs}`);
+    }
+    lines.push("");
+  }
+  if (verbose && vd.available.length > 0) {
+    lines.push("Update available (guards clean):");
+    for (const a of vd.available) {
+      const newest = a.candidates[0] ? sanitizeForTerminal(a.candidates[0].version) : "";
+      lines.push(`- ${sanitizeForTerminal(a.name)} (pinned ${sanitizeForTerminal(a.version)}) → ${newest}`);
+    }
+    lines.push("");
+  }
+
   const verb = result.exitCode === 2 ? "BLOCK" : result.exitCode === 3 ? "REVIEW" : "OK";
   lines.push(`Result: **${verb}** (exit ${result.exitCode})`);
   return lines.join("\n");
@@ -255,6 +366,7 @@ function recheckJson(result) {
     decision: d.decision,
     ...(d.error ? { error: d.error } : {})
   });
+  const vd = result.versionDrift || { available: [], flagged: [], unknown: [] };
   return {
     schemaVersion: result.schemaVersion,
     file: result.file,
@@ -270,6 +382,11 @@ function recheckJson(result) {
       unchanged: result.buckets.unchanged.map(slim),
       noBaseline: result.buckets.noBaseline.map(slim),
       unknown: result.buckets.unknown.map(slim)
+    },
+    versionDrift: {
+      updateAvailableSafe: vd.available,
+      updateAvailableFlagged: vd.flagged,
+      unknown: vd.unknown
     }
   };
 }

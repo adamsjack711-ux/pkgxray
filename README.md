@@ -211,6 +211,26 @@ version drift below) unless you pass `--fail-on-available-updates`.
 Set `PKGXRAY_CACHE_URL` so a large tree shares `guard`'s warm cache instead of
 re-fetching everything cold.
 
+### Version drift — pre-vet newer versions before you upgrade
+
+Alongside verdict drift, `recheck` also asks the registry whether a **newer
+version** exists for each dep and guards it, so you see the security verdict
+*before* upgrading — the trojaned-update catch:
+
+- **update-available-safe** — a newer version exists and guards clean.
+- **update-available-flagged** — a newer version exists but is `review`/`block`.
+  Don't blind-upgrade into it.
+
+To keep registry/OSV cost sane, at most two candidates are vetted per dep: the
+**latest** published stable version and the **latest within the pinned major**
+(an approximation of your install range), when they differ. Prereleases are
+skipped unless the pinned version is itself a prerelease.
+
+Version drift is **informational** — an available flagged update you haven't
+installed isn't an active exposure, so it never changes the exit code on its
+own. Pass `--fail-on-available-updates` to make a flagged update count, or
+`--no-version-drift` to skip the registry pass entirely.
+
 ### Scheduled CI job (GitHub Actions)
 
 Run `recheck` against the committed lockfile on a schedule; the job fails the

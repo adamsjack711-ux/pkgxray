@@ -45,6 +45,7 @@ test("worst absolute verdict is block but the only regression is to review => ex
   );
   const fresh = { alwaysbad: "block", slipped: "review" };
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     write: false,
     evaluate: async (dep) => ({ verdict: fresh[dep.name] })
   });
@@ -66,6 +67,7 @@ test("recheckJson is a stable machine-readable diff", async () => {
   );
   const fresh = { a: "block", b: "safe" };
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     write: false,
     evaluate: async (dep) => ({ verdict: fresh[dep.name] })
   });
@@ -75,7 +77,8 @@ test("recheckJson is a stable machine-readable diff", async () => {
   assert.equal(json.exitCode, 2);
   assert.equal(json.worstRegression, "block");
   assert.deepEqual(json.counts, {
-    regressed: 1, improved: 0, unchanged: 1, noBaseline: 0, unknown: 0
+    regressed: 1, improved: 0, unchanged: 1, noBaseline: 0, unknown: 0,
+    updateAvailableSafe: 0, updateAvailableFlagged: 0
   });
   // Per-dep detail present in the bucket, heavy `report` blob stripped.
   const reg = json.buckets.regressed[0];
@@ -92,6 +95,7 @@ test("clean recheck exits 0 with empty regressed bucket", async () => {
     [{ name: "ok", version: "1.0.0", verdict: "safe" }]
   );
   const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
     write: false,
     evaluate: async () => ({ verdict: "safe" })
   });
