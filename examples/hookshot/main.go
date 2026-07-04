@@ -8,7 +8,11 @@
 //     (npm/pnpm/yarn/bun add|install, npx/bunx/pnpm-dlx runners, and
 //     `claude mcp add … -- <launcher>`), runs `pkgxray guard` on each package,
 //     and denies the command on a BLOCK verdict — carrying pkgxray's cited
-//     evidence back to the agent as the deny reason.
+//     evidence back to the agent as the deny reason. MCP server registrations
+//     (`… mcp add`) are gated too: a stdio launcher takes the static package
+//     scan (the hook never spawns the server), a streamable-HTTP URL is probed
+//     with `pkgxray mcp <url>` (read-only manifest enumeration + audit), and a
+//     legacy SSE config surfaces as review-worthy.
 //   - OnAfterFileEdit: when the agent edits package.json or a lockfile, runs
 //     `pkgxray audit` on it and feeds the verdict back as context (opt-in).
 //
@@ -19,6 +23,8 @@
 //	PKGXRAY_HOOK_DISABLE    set to "1" to bypass all checks (fail-open)
 //	PKGXRAY_HOOK_AUDIT_LOCKFILES  set to "1" to enable the OnAfterFileEdit audit
 //	PKGXRAY_GUARD_ARGS      extra space-separated flags for `pkgxray guard`
+//	PKGXRAY_HOOK_MCP_PROBE  set to "0" to skip probing HTTP MCP servers on
+//	                        `mcp add` (they then surface as REVIEW, not probed)
 //
 // Build:   go build -o pkgxray-guard .
 // Install: hookshot install --binary ./pkgxray-guard
@@ -89,10 +95,11 @@ func loadConfig() config {
 		extra = strings.Fields(raw)
 	}
 	guard := pkgxrayguard.Guard{
-		Bin:       bin,
-		Timeout:   60 * time.Second,
-		ExtraArgs: extra,
-		CacheURL:  strings.TrimSpace(os.Getenv("PKGXRAY_CACHE_URL")),
+		Bin:             bin,
+		Timeout:         60 * time.Second,
+		ExtraArgs:       extra,
+		CacheURL:        strings.TrimSpace(os.Getenv("PKGXRAY_CACHE_URL")),
+		DisableMcpProbe: os.Getenv("PKGXRAY_HOOK_MCP_PROBE") == "0",
 	}
 	workers := pkgxrayguard.DefaultGuardWorkers
 	if v := strings.TrimSpace(os.Getenv("PKGXRAY_HOOK_CONCURRENCY")); v != "" {
