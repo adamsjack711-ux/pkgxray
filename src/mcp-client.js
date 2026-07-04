@@ -28,7 +28,10 @@ const https = require("node:https");
 // initialize response and we accept whatever they answer with — enumeration
 // only needs tools/list, which every revision has.
 const PROTOCOL_VERSION = "2025-06-18";
-const CLIENT_INFO = { name: "pkgxray-mcp-adapter", version: "0.15.0" };
+const CLIENT_INFO = {
+  name: "pkgxray-mcp-adapter",
+  version: require("../package.json").version
+};
 
 // Mirror bin/mcp-server.js's MAX_BUFFER_BYTES: 4 MiB is comfortably larger
 // than any realistic JSON-RPC frame or tool manifest.
