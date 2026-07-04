@@ -2263,5 +2263,8 @@ module.exports = {
   normalizeEvidence,
   gradeEvidence,
   letterGrade,
+  // Exported for the MCP adapter, which re-folds the verdict after dropping
+  // package-evidence-completeness findings that don't apply to a manifest.
+  decideVerdict,
   VERDICT_ORDER
 };
