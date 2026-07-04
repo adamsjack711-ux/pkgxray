@@ -8,7 +8,7 @@
 import http from 'node:http';
 import https from 'node:https';
 
-import { parsePath } from './path-parser.js';
+import { parsePath, canonicalTarballPath } from './path-parser.js';
 import { runGuard as defaultRunGuard, ScanError } from './pkgxray-runner.js';
 import { VerdictStore } from './verdict-store.js';
 
@@ -237,6 +237,22 @@ export function createServer(config, store, deps = {}) {
 
   async function handleTarball(req, res, parsed) {
     const { name, version } = parsed;
+
+    // Fail closed on any tarball request that isn't in strict canonical form.
+    // A divergent basename / smuggled version / query string means the bytes the
+    // client would receive don't correspond to the identity the gate scans, so
+    // we reject rather than serve. (See path-parser isCanonicalTarball.)
+    if (parsed.invalid) {
+      log({ event: 'reject', reason: 'non-canonical-tarball', path: req.url, name, version });
+      res.setHeader(HEADER_VERDICT, 'block');
+      res.setHeader(HEADER_SOURCE, 'path-validation');
+      return sendJson(res, 400, {
+        error: 'invalid_tarball_request',
+        message: 'tarball path must be canonical: <name>/-/<unscoped-name>-<version>.tgz with no query string',
+        path: req.url,
+      });
+    }
+
     const decision = await gate({ config, store, name, version, runGuard, log });
 
     log({
@@ -262,21 +278,27 @@ export function createServer(config, store, deps = {}) {
       });
     }
 
-    // Serve: stream the real tarball from upstream, annotate the verdict.
+    // Serve: stream the real tarball from upstream, annotate the verdict. Fetch
+    // the CANONICAL path derived from the scanned identity — not the client's raw
+    // URL — so the served bytes correspond to exactly what pkgxray vetted, and no
+    // basename/version/query smuggled in the request reaches upstream.
     return passthrough(req, res, {
       [HEADER_VERDICT]: decision.decision,
       [HEADER_SOURCE]: decision.source,
-    });
+    }, canonicalTarballPath(name, version));
   }
 
   /** Transparent reverse-proxy to upstream, streaming the response. */
-  function passthrough(req, res, extraHeaders = {}) {
+  function passthrough(req, res, extraHeaders = {}, targetPath) {
     return new Promise((resolve) => {
       const headers = { ...req.headers };
       delete headers.host; // let the upstream client set the correct Host
       delete headers['accept-encoding']; // avoid decompression surprises; stream as-is is fine
 
-      const upReq = upstreamRequest(req.url, { method: req.method, headers }, (upRes) => {
+      // Tarball serves pass an explicit canonical targetPath; metadata/other
+      // passthrough uses the incoming URL verbatim.
+      const upstreamPath = targetPath || req.url;
+      const upReq = upstreamRequest(upstreamPath, { method: req.method, headers }, (upRes) => {
         const outHeaders = { ...upRes.headers, ...extraHeaders };
         res.writeHead(upRes.statusCode || 502, outHeaders);
         upRes.pipe(res);

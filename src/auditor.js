@@ -300,7 +300,16 @@ const INJECTION_SCAFFOLD_REGEXES = [
 const INJECTION_STEER_RE =
   /\b(?:ignore|disregard|forget|bypass|override|overridden|jailbroken|jailbreak|unrestricted|approve|whitelist|trusted|safe\s+verdict|mark\w*\s+(?:it|this|them|everything|all)?\s*(?:as\s+)?safe|do\s+not\s+(?:flag|report|mention|warn)|no\s+(?:issues|findings|problems)\b|free\s+of\s+(?:issues|malware|problems))\b/i;
 
-const SKIP_FILE_EXTENSIONS = [".d.ts", ".map", ".min.js", ".min.mjs", ".min.css", ".lock"];
+const SKIP_FILE_EXTENSIONS = [".d.ts", ".map", ".min.css", ".lock"];
+// Minified JS/MJS is executable code, not inert data — it ships to the runtime
+// and is exactly where bundled/obfuscated malware hides. It used to sit in the
+// blanket skip list, which made a payload in `bundle.min.js` invisible (it
+// scored `safe` while the identical payload in `bundle.js` blocked). We no
+// longer skip it; instead we scan it for the high-confidence behavioral sinks
+// and suppress only the obfuscation heuristics (see auditFiles), since
+// minification itself reads as obfuscation and would false-positive on
+// legitimately-bundled vendor code.
+const MINIFIED_CODE_EXTENSIONS = [".min.js", ".min.mjs"];
 const DOCUMENTATION_EXTENSIONS = [".md", ".markdown", ".rst", ".txt"];
 
 function fileBaseName(path) {
@@ -311,6 +320,11 @@ function fileBaseName(path) {
 function shouldSkipFile(path) {
   const lower = path.toLowerCase();
   return SKIP_FILE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function isMinifiedExecutable(path) {
+  const lower = path.toLowerCase();
+  return MINIFIED_CODE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
 function isDocumentationFile(path) {
@@ -911,10 +925,18 @@ function auditFiles(files, findings) {
   const exfilDomainFiles = [];
 
   for (const file of files) {
-    if (shouldSkipFile(file.path)) continue;
+    const isRuntimeReferenced = runtimePaths.has(normalizeRelPath(file.path));
+    // Minified JS/MJS is executable and must be scanned (a lifecycle-referenced
+    // file of ANY extension is runtime too). Only genuinely inert data files
+    // (.d.ts/.map/.min.css/.lock) that no lifecycle script runs are skipped.
+    const isMinifiedCode = isMinifiedExecutable(file.path);
+    if (shouldSkipFile(file.path) && !isRuntimeReferenced) continue;
+    // For non-runtime minified code, run the high-confidence behavioral sinks
+    // but suppress the obfuscation heuristics — minification itself trips them
+    // and would false-positive on legitimately-bundled vendor code.
+    const suppressObfuscationHeuristics = isMinifiedCode && !isRuntimeReferenced;
     const content = file.content || "";
     const lower = content.toLowerCase();
-    const isRuntimeReferenced = runtimePaths.has(normalizeRelPath(file.path));
 
     // Documentation (README / markdown / rst / txt) is data, not executable
     // code — Node never runs it. Applying the code-malware heuristics to it
@@ -946,12 +968,16 @@ function auditFiles(files, findings) {
 
     inspectInjectionAttempt(file, lower, findings);
     inspectConcealedInjection(file, false, findings);
-    inspectObfuscation(file, content, lower, findings);
+    if (!suppressObfuscationHeuristics) {
+      inspectObfuscation(file, content, lower, findings);
+    }
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
     inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged);
     inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged);
-    inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
+    if (!suppressObfuscationHeuristics) {
+      inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
+    }
     inspectHiddenUnicode(file, content, findings);
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
