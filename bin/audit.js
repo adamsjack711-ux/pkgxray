@@ -8,6 +8,7 @@ const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("
 const { triageLockfile } = require("../src/triage");
 const { recheckLockfile, renderRecheckText, recheckJson } = require("../src/recheck");
 const { inspectMcpServer } = require("../src/mcp-audit");
+const { pinMcpManifest, recheckMcpManifest } = require("../src/mcp-pin");
 
 function printUsage() {
   process.stderr.write(
@@ -25,6 +26,7 @@ function printUsage() {
       "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
       "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
       "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
+      "                     [--pin] [--recheck] [--lock <path>]                     #   pin the approved manifest / diff live manifest vs. the pin (rug-pull)",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -61,6 +63,14 @@ function parseArgs(argv) {
         options.packageScan = false;
       } else if (arg === "--no-audit") {
         options.audit = false;
+      } else if (arg === "--pin") {
+        options.pin = true;
+      } else if (arg === "--recheck") {
+        options.recheck = true;
+      } else if (arg === "--lock") {
+        options.lockPath = argv.shift();
+      } else if (arg === "--no-write") {
+        options.write = false;
       } else if (arg === "--force") {
         options.force = true;
       } else if (arg === "--timeout") {
@@ -199,14 +209,37 @@ async function main() {
         "pkgxray: note — package scan skipped (--no-package-scan); connecting to an unvetted server.\n"
       );
     }
+    if (options.pin && options.recheck) {
+      throw new Error("--pin and --recheck are mutually exclusive (pin re-approves, recheck compares)");
+    }
     const result = await inspectMcpServer(options.mcpTarget, options);
+
+    if (!result.halted && options.pin) {
+      result.pin = await pinMcpManifest({
+        manifest: result.manifest,
+        verdict: result.verdict,
+        lockPath: options.lockPath
+      });
+    }
+    if (!result.halted && options.recheck) {
+      result.recheck = await recheckMcpManifest({
+        manifest: result.manifest,
+        verdict: result.verdict,
+        lockPath: options.lockPath,
+        write: options.write
+      });
+    }
+
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else {
       process.stdout.write(`${renderMcpMarkdown(result)}\n`);
     }
-    process.exitCode =
-      result.verdict === "block" ? 2 : result.verdict === "review" ? 3 : 0;
+    // recheck gates on what is NEW vs. the baseline (recheck's rule); the
+    // plain audit and pin gate on the absolute verdict.
+    process.exitCode = result.recheck
+      ? result.recheck.exitCode
+      : result.verdict === "block" ? 2 : result.verdict === "review" ? 3 : 0;
     return;
   }
 
@@ -326,6 +359,40 @@ function renderMcpMarkdown(result) {
     }
     if (visible.length === 0) {
       lines.push("- no findings in the tool manifest");
+    }
+  }
+
+  if (result.pin) {
+    lines.push(
+      "",
+      `Pinned: \`${sanitizeForTerminal(result.pin.record.name)}@${sanitizeForTerminal(result.pin.record.version)}\` (${result.pin.record.manifest.tools.length} tool fingerprints) → \`${sanitizeForTerminal(result.pin.lockPath)}\``
+    );
+  }
+
+  if (result.recheck) {
+    const rc = result.recheck;
+    lines.push("");
+    if (rc.status === "no-baseline") {
+      lines.push("Recheck: **no baseline** — this server was never pinned. Run with --pin to approve the current manifest.");
+    } else {
+      lines.push(`Recheck vs. baseline (pinned ${sanitizeForTerminal(rc.baseline.decided_at || "?")}):`);
+      lines.push(`- verdict: ${sanitizeForTerminal(rc.baseline.verdict || "unknown")} → ${sanitizeForTerminal(result.verdict)} (**${rc.verdictDrift}**)`);
+      if (rc.manifestDrift) {
+        if (rc.manifestDrift.drifted) {
+          const parts = [];
+          if (rc.manifestDrift.added.length) parts.push(`added: ${rc.manifestDrift.added.map(sanitizeForTerminal).join(", ")}`);
+          if (rc.manifestDrift.removed.length) parts.push(`removed: ${rc.manifestDrift.removed.map(sanitizeForTerminal).join(", ")}`);
+          if (rc.manifestDrift.changed.length) parts.push(`changed: ${rc.manifestDrift.changed.map(sanitizeForTerminal).join(", ")}`);
+          lines.push(`- manifest DRIFTED since approval — ${parts.join("; ")}. Re-review and --pin to re-approve.`);
+        } else {
+          lines.push("- manifest matches the approved fingerprints");
+        }
+      } else {
+        lines.push("- no manifest fingerprints in the baseline (pinned by an older pkgxray) — --pin to upgrade the record");
+      }
+      if (rc.versionChanged) {
+        lines.push(`- server version changed: ${sanitizeForTerminal(rc.baseline.version)} → ${sanitizeForTerminal(result.manifest.server.version || "?")}`);
+      }
     }
   }
   return lines.join("\n");

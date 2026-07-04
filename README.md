@@ -274,6 +274,54 @@ a lockfile), `triage_lockfile_supply_chain` (record each flagged dep as
 
 ---
 
+## MCP servers it connects to: `pkgxray mcp`
+
+An agent pulls untrusted things in from outside two ways — packages it installs
+(covered by guard/hook/proxy) and MCP servers it connects to. `pkgxray mcp`
+covers the second with the same engine: it connects to a server (stdio or
+streamable HTTP), performs the read-only handshake, enumerates the tool
+manifest via `tools/list` — and never calls a tool, reads a resource, or
+invokes a prompt.
+
+```bash
+# Vet the server package statically FIRST, then connect and audit the manifest
+pkgxray mcp --package npm:some-mcp-server@1.4.2 npx some-mcp-server
+
+# An HTTP server
+pkgxray mcp https://mcp.example.com/mcp
+
+# Approve what you just reviewed (pins per-tool fingerprints into .pkgxray.lock)
+pkgxray mcp --pin --package npm:some-mcp-server@1.4.2 npx some-mcp-server
+
+# Later / in CI: catch the rug-pull — descriptions, tools, or schemas that
+# changed since approval. Exits 3 on unapproved drift, 2 on a verdict regression.
+pkgxray mcp --recheck npx some-mcp-server
+```
+
+What the manifest audit looks for, all with the existing engine: prompt
+injection in tool descriptions and the server's `instructions` blurb (the same
+tiered matcher used on READMEs), instructions concealed in invisible Unicode
+tag characters or base64 envelopes, and one MCP-specific check —
+**capability-surface mismatch**, a tool whose stated purpose is narrow but
+whose input schema takes a general-execution parameter (a `get_weather` that
+accepts a `command`). Calibrated like the rest of pkgxray: a file reader
+taking a `path`, an HTTP tool taking a `url`, a DB tool taking a `query`, or
+an honest `execute_shell` tool are not findings.
+
+**The one caveat, stated plainly:** everything else pkgxray does is static —
+it never executes what it inspects. Enumerating an MCP server is not. There
+is no manifest without a connection, and for a **stdio server that means
+spawning and running it**. `pkgxray mcp` narrows the risk the way guard
+isolates a tarball — the child gets an allowlist-scrubbed environment (no
+inherited secrets), a hard timeout, bounded output, and its process group is
+killed after the listing — but the safe order is **package-scan first**: pass
+`--package <ref>` so the static, no-execution scan clears the server before
+anything connects to it. A `block` halts the connect step (`--force` to
+override); skipping the scan entirely requires the explicit
+`--no-package-scan`.
+
+---
+
 ## Integrations
 
 **hookshot** — a [hookshot](https://github.com/CorridorSecurity/hookshot) hook
