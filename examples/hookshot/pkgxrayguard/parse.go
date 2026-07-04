@@ -19,6 +19,15 @@ type SpecKind string
 const (
 	KindRegistry SpecKind = "registry"
 	KindVCS      SpecKind = "vcs" // git+/git@/tarball/HTTP URL — unvettable, review-worthy
+	// An MCP server the agent is registering. KindMcpHTTP carries a streamable-
+	// HTTP URL that `pkgxray mcp <url>` can probe (network connect + read-only
+	// manifest enumeration — no local code execution). KindMcpSSE is the legacy
+	// SSE transport the probe cannot speak — unvettable, review-worthy, like
+	// KindVCS. Stdio servers never get their own kind: their launcher command
+	// (npx/bunx/…) already parses to a registry spec and takes the static
+	// package-scan path — the package-scan-first order from the MCP adapter.
+	KindMcpHTTP SpecKind = "mcp-http"
+	KindMcpSSE  SpecKind = "mcp-sse"
 )
 
 // InstallSpec is a single package an agent is about to install/run, expressed
@@ -66,6 +75,13 @@ func replaceAll(s string, olds []string, new string) string {
 }
 
 func parseSegment(seg string) []InstallSpec {
+	// `<cli> mcp add …` (claude today; the shape is CLI-agnostic on purpose):
+	// registering an MCP server. Handled before the generic `--` recursion so
+	// URL forms without a `--` are seen too.
+	if specs := parseMcpAdd(tokenize(seg)); specs != nil {
+		return specs
+	}
+
 	// `claude mcp add <name> -- <launcher…>` (and similar wrappers): the real
 	// package lives in the launcher command after the `--` separator.
 	if i := indexToken(seg, "--"); i >= 0 {

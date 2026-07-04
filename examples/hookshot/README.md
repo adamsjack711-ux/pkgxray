@@ -31,6 +31,19 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
   - `npm|pnpm|yarn|bun install|i|add <pkg…>` (incl. `yarn global add`)
   - `npx` / `bunx` / `pnpm dlx` / `bun x` runners
   - `claude mcp add <name> -- <launcher>` (audits the launcher's package)
+  - **MCP server registrations** (`… mcp add` / `mcp add-json`, CLI-agnostic):
+    - a stdio launcher (`npx some-server`, with or without `--`) takes the
+      **static package scan** — the hook never spawns the server itself
+      (package-scan-first; run `pkgxray mcp` yourself for the connect-time
+      manifest audit once the package clears);
+    - a streamable-HTTP URL is probed with **`pkgxray mcp <url>`** — read-only
+      handshake + `tools/list`, then the manifest audit (prompt injection in
+      tool descriptions, concealed instructions, capability-surface mismatch).
+      Connecting is a network fetch the agent was about to make anyway — no
+      local code executes. Disable with `PKGXRAY_HOOK_MCP_PROBE=0` (the add
+      then surfaces as **review**, not silently allowed);
+    - a legacy SSE transport (or unreadable `add-json` config) can't be
+      probed — surfaced as **review-worthy**.
   - Git / tarball / HTTP URL specs (`git+https://…`, `git@…`, `https://…​.tgz`)
     can't be resolved by registry triage, so they're surfaced as **review-worthy**
     (never silently allowed).
@@ -57,10 +70,14 @@ The hook shells out to the **pkgxray CLI** and depends on this contract:
 - `pkgxray guard <ref> --format json` emitting a top-level `decision`
   (`allow`/`review`/`block`) and, for finding locations,
   `report.findings[].file`;
+- `pkgxray mcp <url> --format json` (pkgxray ≥ 0.16.0) emitting a top-level
+  `verdict`, `manifest.server`/`manifest.tools`, and
+  `manifestAudit.findings[]` — used to probe HTTP MCP-server registrations;
 - exit codes `2`=block, `3`=review, `0`=safe (used as the fallback when the JSON
   can't be parsed).
 
-This is stable as of **pkgxray ≥ 0.15.0** — keep the CLI reasonably current.
+This is stable as of **pkgxray ≥ 0.15.0** (≥ 0.16.0 for the MCP probe) — keep
+the CLI reasonably current.
 pkgxray has no `--version` flag today, so the hook can't probe the version at
 runtime; instead it **degrades safely**: a missing `file` just omits the path,
 and a missing/old/erroring pkgxray yields `UNKNOWN`, which is denied under
@@ -100,6 +117,7 @@ All via environment variables (the hook reads them at startup):
 | `PKGXRAY_GUARD_ARGS` | — | Extra flags passed to `pkgxray guard`, e.g. `--no-github-diff`. |
 | `PKGXRAY_CACHE_URL` | — | Forwarded to pkgxray so registry/GitHub fetches route through a shared cache server across runs. |
 | `PKGXRAY_HOOK_CONCURRENCY` | `8` | Max packages guarded concurrently within one command. |
+| `PKGXRAY_HOOK_MCP_PROBE` | `1` | `0` skips the `pkgxray mcp <url>` probe on HTTP MCP-server adds; they then surface as **review** instead of being probed. |
 
 When a single command installs several packages (`npm i a b c …`), they are
 guarded **concurrently** (bounded by `PKGXRAY_HOOK_CONCURRENCY`), so the gate's

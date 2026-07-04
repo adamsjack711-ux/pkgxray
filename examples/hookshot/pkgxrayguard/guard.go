@@ -31,10 +31,11 @@ type Result struct {
 
 // Guard runs the pkgxray CLI to triage packages.
 type Guard struct {
-	Bin       string        // pkgxray executable (default "pkgxray")
-	Timeout   time.Duration // per-package timeout (default 60s)
-	ExtraArgs []string      // extra guard flags, e.g. ["--no-github-diff"]
-	CacheURL  string        // PKGXRAY_CACHE_URL forwarded to the CLI so registry/GitHub fetches collapse across runs (optional)
+	Bin             string        // pkgxray executable (default "pkgxray")
+	Timeout         time.Duration // per-package timeout (default 60s)
+	ExtraArgs       []string      // extra guard flags, e.g. ["--no-github-diff"]
+	CacheURL        string        // PKGXRAY_CACHE_URL forwarded to the CLI so registry/GitHub fetches collapse across runs (optional)
+	DisableMcpProbe bool          // skip the `pkgxray mcp <url>` probe; MCP-HTTP adds surface as Review instead
 }
 
 // guardJSON is the subset of `pkgxray guard <ref> --format json` output this
@@ -71,6 +72,11 @@ type guardJSON struct {
 // the correct direction. Any execution error yields Verdict=Unknown with Err
 // set, leaving the fail-open/closed choice to the policy layer.
 func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
+	// MCP server registrations take the manifest-probe path (see mcp.go).
+	if spec.Kind == KindMcpHTTP || spec.Kind == KindMcpSSE {
+		return g.checkMcp(ctx, spec)
+	}
+
 	// A git/tarball/HTTP URL can't be resolved by pre-install registry triage —
 	// pkgxray has no registry ref to fetch. Surface it as review-worthy rather
 	// than shelling out (which would just error) or silently allowing it.
