@@ -334,9 +334,16 @@ test("upstream 404 is propagated to client and not cached", async (t) => {
 test("cache-client + github.js end-to-end via cache server", async (t) => {
   // Reset module cache so cache-client picks up the env var, then restore.
   const previous = process.env.PKGXRAY_CACHE_URL;
+  // The cache runs over loopback http here; that requires the explicit insecure
+  // opt-in (remote/plaintext caches are refused so the GitHub token is never
+  // sent over the wire — see cache-client getCacheUrl).
+  const previousInsecure = process.env.PKGXRAY_CACHE_ALLOW_INSECURE;
+  process.env.PKGXRAY_CACHE_ALLOW_INSECURE = "1";
   t.after(() => {
     if (previous === undefined) delete process.env.PKGXRAY_CACHE_URL;
     else process.env.PKGXRAY_CACHE_URL = previous;
+    if (previousInsecure === undefined) delete process.env.PKGXRAY_CACHE_ALLOW_INSECURE;
+    else process.env.PKGXRAY_CACHE_ALLOW_INSECURE = previousInsecure;
   });
 
   const upstream = await startFakeUpstream({

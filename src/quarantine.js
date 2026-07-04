@@ -577,6 +577,10 @@ async function resolveGithubRepo(parsed, options) {
     ref,
     needsDownload: true,
     tarballUrl,
+    // Initial host is fixed (codeload); allow GitHub's own hosts and any public
+    // redirect target, but block redirects to private/loopback addresses.
+    allowedHosts: tarballHostAllowlist(["codeload.github.com", "github.com", "objects.githubusercontent.com"]),
+    strictHosts: false,
     packageName: `${parsed.owner}/${parsed.repo}`,
     githubArchive: true,
     npmMetadata: resolvedMeta
@@ -627,10 +631,20 @@ async function copyLocalPath(sourcePath, stagedPath) {
 }
 
 async function resolveNpmPackage(specifier, options) {
-  const metadata = await fetchNpmMetadata(specifier, options.registry || "https://registry.npmjs.org");
+  const registry = options.registry || "https://registry.npmjs.org";
+  const metadata = await fetchNpmMetadata(specifier, registry);
   const tarballUrl = metadata.dist && metadata.dist.tarball;
   if (!tarballUrl) {
     throw new Error(`No npm tarball URL found for ${specifier}`);
+  }
+
+  // Pin the tarball to the registry origin (dist.tarball is attacker-
+  // influenceable). Fail fast with a clear error before any download/cache work.
+  const allowedHosts = tarballHostAllowlist([registryHostOf(registry)]);
+  try {
+    assertDownloadHostAllowed(new URL(tarballUrl), { allowedHosts, strictHosts: true, originalUrl: tarballUrl });
+  } catch (err) {
+    throw new Error(`Unsafe npm tarball URL for ${specifier}: ${err.message}`);
   }
 
   return {
@@ -639,6 +653,8 @@ async function resolveNpmPackage(specifier, options) {
     version: metadata.version,
     needsDownload: true,
     tarballUrl,
+    allowedHosts,
+    strictHosts: true,
     integrity: (metadata.dist && metadata.dist.integrity) || null,
     shasum: (metadata.dist && metadata.dist.shasum) || null,
     npmMetadata: npmMetadataForEvidence(metadata)
@@ -692,8 +708,9 @@ async function downloadResolvedPackage(resolved, stagedPath) {
     // No cache hit — fall through.
   }
 
+  const downloadOptions = { allowedHosts: resolved.allowedHosts, strictHosts: resolved.strictHosts };
   if (!servedFromCache) {
-    await downloadFile(resolved.tarballUrl, archivePath);
+    await downloadFile(resolved.tarballUrl, archivePath, downloadOptions);
   }
 
   // Single tarball read feeds BOTH the sha256 telemetry digest and the
@@ -718,7 +735,7 @@ async function downloadResolvedPackage(resolved, stagedPath) {
     // If the failure was a cache-corrupted copy, retry once via the network.
     if (servedFromCache) {
       await fsp.rm(cachePath, { force: true }).catch(() => {});
-      await downloadFile(resolved.tarballUrl, archivePath);
+      await downloadFile(resolved.tarballUrl, archivePath, downloadOptions);
       const fresh = await hashFileMulti(archivePath, algos);
       try {
         verifyNpmTarballIntegrity(resolved, fresh);
@@ -985,9 +1002,120 @@ function postJson(url, payload) {
   });
 }
 
+// --- SSRF guard for tarball downloads -------------------------------------
+//
+// `dist.tarball` comes from the (attacker-influenceable) registry packument, and
+// redirects can point anywhere. Without a host check, a poisoned/mirrored
+// registry can make pkgxray fetch `http://169.254.169.254/…` (cloud metadata) or
+// an internal service from a CI runner. We therefore (a) require https by
+// default, (b) pin the npm tarball host to the registry origin (strict), and
+// (c) block redirects to private/loopback/link-local addresses on every path.
+// Node's WHATWG URL parser normalizes hex/octal/decimal IPv4 to dotted-quad, so
+// the numeric-host evasions (`http://0x08080808/`) are caught by these checks.
+
+function ipv4IsPrivate(host) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return false;
+  const o = m.slice(1).map(Number);
+  if (o.some((n) => n > 255)) return false;
+  const [a, b, c] = o;
+  if (a === 0 || a === 10 || a === 127) return true;          // this-host / private / loopback
+  if (a === 169 && b === 254) return true;                    // link-local + cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;           // 172.16/12
+  if (a === 192 && b === 168) return true;                    // 192.168/16
+  if (a === 100 && b >= 64 && b <= 127) return true;          // CGNAT 100.64/10
+  if (a === 192 && b === 0 && c === 0) return true;           // 192.0.0/24
+  if (a === 198 && (b === 18 || b === 19)) return true;       // benchmarking 198.18/15
+  if (a >= 224) return true;                                  // multicast / reserved
+  return false;
+}
+
+function isPrivateOrLocalHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    const v6 = host.slice(1, -1);
+    if (v6 === "::1" || v6 === "::") return true;
+    const mapped = /^::ffff:(.+)$/.exec(v6);
+    if (mapped) {
+      if (mapped[1].includes(".")) return ipv4IsPrivate(mapped[1]);
+      const hx = mapped[1].split(":");
+      if (hx.length === 2) {
+        const hi = parseInt(hx[0], 16);
+        const lo = parseInt(hx[1], 16);
+        if (Number.isFinite(hi) && Number.isFinite(lo)) {
+          return ipv4IsPrivate(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
+        }
+      }
+    }
+    if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true;   // fc00::/7 unique-local
+    if (/^fe[89ab][0-9a-f]:/.test(v6)) return true;   // fe80::/10 link-local
+    return false;
+  }
+  return ipv4IsPrivate(host);
+}
+
+// Build the allowlist of hosts a tarball may be served from. `PKGXRAY_TARBALL_HOSTS`
+// (comma-separated) extends it for registries that serve tarballs off-origin.
+function tarballHostAllowlist(baseHosts) {
+  const hosts = new Set();
+  for (const h of baseHosts) {
+    if (h) hosts.add(String(h).toLowerCase());
+  }
+  const extra = process.env.PKGXRAY_TARBALL_HOSTS;
+  if (extra) {
+    for (const part of extra.split(",")) {
+      const t = part.trim().toLowerCase();
+      if (t) hosts.add(t);
+    }
+  }
+  return hosts;
+}
+
+function registryHostOf(registryUrl) {
+  try {
+    return new URL(registryUrl).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+// Throws if `parsed` is not an allowed download target. `allowedHosts` is a Set
+// of trusted hosts (with or without port). `strictHosts` requires membership in
+// that set (npm path, pinned to the registry origin); when false (GitHub path,
+// whose initial host is fixed) any public host is allowed but private/loopback
+// targets are rejected.
+function assertDownloadHostAllowed(parsed, { allowedHosts, strictHosts, originalUrl }) {
+  const allowInsecure = process.env.PKGXRAY_ALLOW_INSECURE_DOWNLOADS === "1";
+  if (parsed.protocol !== "https:" && !(allowInsecure && parsed.protocol === "http:")) {
+    throw new Error(
+      `Refusing non-https download URL (${parsed.protocol}//${parsed.host}) for ${originalUrl}; ` +
+        `set PKGXRAY_ALLOW_INSECURE_DOWNLOADS=1 to allow http (local testing only)`
+    );
+  }
+  const host = parsed.host.toLowerCase();
+  const hostname = parsed.hostname.toLowerCase();
+  if (allowedHosts && (allowedHosts.has(host) || allowedHosts.has(hostname))) {
+    return; // explicitly trusted origin (allowed even if it's a private-registry IP)
+  }
+  if (strictHosts) {
+    throw new Error(
+      `Refusing to download tarball from ${parsed.host}: not an allowed host ` +
+        `(${allowedHosts ? [...allowedHosts].join(", ") : "none"}). ` +
+        `If your registry serves tarballs from a different host, set PKGXRAY_TARBALL_HOSTS=${hostname}`
+    );
+  }
+  if (isPrivateOrLocalHost(hostname)) {
+    throw new Error(`Refusing to download from private/loopback address ${parsed.host} (SSRF guard) for ${originalUrl}`);
+  }
+}
+
 function downloadFile(url, destination, options = {}) {
   const maxBytes = options.maxBytes || DEFAULT_DOWNLOAD_MAX_BYTES;
   const maxRedirects = options.maxRedirects || DEFAULT_DOWNLOAD_MAX_REDIRECTS;
+  const allowedHosts = options.allowedHosts || null;
+  const strictHosts = Boolean(options.strictHosts);
   const originalUrl = url;
   const http = require("node:http");
 
@@ -1011,7 +1139,13 @@ function downloadFile(url, destination, options = {}) {
       if (hops > maxRedirects) {
         return fail(new Error(`Too many redirects from ${originalUrl}`));
       }
-      const parsed = new URL(currentUrl);
+      let parsed;
+      try {
+        parsed = new URL(currentUrl);
+        assertDownloadHostAllowed(parsed, { allowedHosts, strictHosts, originalUrl });
+      } catch (err) {
+        return fail(err);
+      }
       const client = parsed.protocol === "http:" ? http : https;
       const request = client.get(
         {
@@ -1326,5 +1460,9 @@ module.exports = {
   parseNpmSpecifier,
   collectSourceFiles,
   queryOsvPackage,
-  decisionForReport
+  decisionForReport,
+  // exported for tests: SSRF download guard
+  isPrivateOrLocalHost,
+  assertDownloadHostAllowed,
+  tarballHostAllowlist
 };
