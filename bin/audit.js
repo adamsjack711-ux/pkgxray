@@ -59,6 +59,8 @@ function parseArgs(argv) {
         options.packageRef = argv.shift();
       } else if (arg === "--no-package-scan") {
         options.packageScan = false;
+      } else if (arg === "--no-audit") {
+        options.audit = false;
       } else if (arg === "--force") {
         options.force = true;
       } else if (arg === "--timeout") {
@@ -203,7 +205,8 @@ async function main() {
     } else {
       process.stdout.write(`${renderMcpMarkdown(result)}\n`);
     }
-    process.exitCode = result.halted ? 2 : 0;
+    process.exitCode =
+      result.verdict === "block" ? 2 : result.verdict === "review" ? 3 : 0;
     return;
   }
 
@@ -311,6 +314,19 @@ function renderMcpMarkdown(result) {
   }
   for (const warning of manifest.diagnostics.warnings || []) {
     lines.push(`> warning: ${sanitizeForTerminal(warning)}`);
+  }
+
+  if (result.manifestAudit) {
+    lines.push("", `Manifest verdict: **${result.verdict.toUpperCase()}**`);
+    const visible = result.manifestAudit.findings.filter((f) => f.severity !== "info");
+    for (const finding of visible) {
+      lines.push(
+        `- [${finding.severity.toUpperCase()}] ${sanitizeForTerminal(finding.category)} in \`${sanitizeForTerminal(finding.file)}\`: ${sanitizeForTerminal(finding.rationale)}`
+      );
+    }
+    if (visible.length === 0) {
+      lines.push("- no findings in the tool manifest");
+    }
   }
   return lines.join("\n");
 }

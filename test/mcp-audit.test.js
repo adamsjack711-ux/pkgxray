@@ -73,6 +73,26 @@ test("no packageRef: no scan runs, enumeration still works", async () => {
   assert.equal(result.manifest.tools.length, 2);
 });
 
+test("the final verdict folds worst-of over package scan and manifest audit", async () => {
+  const result = await inspectMcpServer(TARGET, {
+    packageRef: "npm:sketchy-server@1.0.0",
+    guard: fakeGuard("review", []),
+    timeoutMs: 10_000
+  });
+  assert.equal(result.manifestAudit.verdict, "safe", "fixture manifest is clean");
+  assert.equal(result.verdict, "review", "package review verdict must win the fold");
+});
+
+test("audit:false skips the manifest audit and the fold sees only the package scan", async () => {
+  const result = await inspectMcpServer(TARGET, {
+    guard: fakeGuard("allow", []),
+    audit: false,
+    timeoutMs: 10_000
+  });
+  assert.equal(result.manifestAudit, null);
+  assert.equal(result.verdict, "safe");
+});
+
 test("packageScan:false skips the scan even with a packageRef (the loud opt-out)", async () => {
   const calls = [];
   const result = await inspectMcpServer(TARGET, {
