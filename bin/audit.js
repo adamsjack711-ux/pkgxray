@@ -7,6 +7,7 @@ const { guardExtension } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
 const { triageLockfile } = require("../src/triage");
 const { recheckLockfile, renderRecheckText, recheckJson } = require("../src/recheck");
+const { inspectMcpServer } = require("../src/mcp-audit");
 
 function printUsage() {
   process.stderr.write(
@@ -21,6 +22,9 @@ function printUsage() {
       "  pkgxray triage --resume                                                  # resume interrupted triage",
       "  pkgxray recheck <lockfile> [--verbose] [--no-write]                      # re-evaluate pinned deps; diff verdict vs. stored baseline",
       "                     [--no-version-drift] [--fail-on-available-updates]     #   + pre-vet newer versions (informational unless --fail-on-...)",
+      "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
+      "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
+      "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -43,6 +47,44 @@ function parseArgs(argv) {
     options.command = "recheck";
     options.lockfilePath = argv[1];
     argv = argv.slice(2);
+  } else if (argv[0] === "mcp") {
+    options.command = "mcp";
+    argv = argv.slice(1);
+    // Own flags come first; the first non-flag token starts the target —
+    // an https URL, or a stdio command whose remaining argv (flags included)
+    // belongs to the server, not to us.
+    while (argv.length > 0 && argv[0].startsWith("--")) {
+      const arg = argv.shift();
+      if (arg === "--package") {
+        options.packageRef = argv.shift();
+      } else if (arg === "--no-package-scan") {
+        options.packageScan = false;
+      } else if (arg === "--force") {
+        options.force = true;
+      } else if (arg === "--timeout") {
+        options.timeoutMs = Number(argv.shift());
+        if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
+          throw new Error("--timeout must be a positive number of milliseconds");
+        }
+      } else if (arg === "--format") {
+        options.format = argv.shift();
+      } else if (arg === "--help" || arg === "-h") {
+        options.help = true;
+      } else {
+        throw new Error(`Unknown mcp argument: ${arg}`);
+      }
+    }
+    if (argv.length > 0) {
+      if (/^https?:\/\//i.test(argv[0])) {
+        options.mcpTarget = { url: argv[0] };
+        if (argv.length > 1) {
+          throw new Error("an HTTP MCP target takes no further arguments");
+        }
+      } else {
+        options.mcpTarget = { command: argv[0], args: argv.slice(1) };
+      }
+    }
+    argv = [];
   } else if (argv[0] === "triage") {
     options.command = "triage";
     // Allow `pkgxray triage --resume` with no lockfile path (we resolve at
@@ -140,6 +182,31 @@ async function main() {
     return;
   }
 
+  if (options.command === "mcp") {
+    if (!options.mcpTarget) {
+      throw new Error("mcp requires a target: an https:// URL or a stdio command");
+    }
+    // The caveat, said out loud every time it applies: enumerating a stdio
+    // server runs it. A prior package scan is the safe order.
+    if (options.mcpTarget.command && !options.packageRef) {
+      process.stderr.write(
+        "pkgxray: note — enumerating a stdio MCP server SPAWNS it. No package scan was requested; pass --package <ref> to statically vet the server first.\n"
+      );
+    } else if (options.packageScan === false) {
+      process.stderr.write(
+        "pkgxray: note — package scan skipped (--no-package-scan); connecting to an unvetted server.\n"
+      );
+    }
+    const result = await inspectMcpServer(options.mcpTarget, options);
+    if (options.format === "json") {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${renderMcpMarkdown(result)}\n`);
+    }
+    process.exitCode = result.halted ? 2 : 0;
+    return;
+  }
+
   if (options.command === "triage") {
     if (!options.lockfilePath) {
       throw new Error("triage requires a lockfile path (package-lock.json | yarn.lock | pnpm-lock.yaml | package.json)");
@@ -206,6 +273,46 @@ async function main() {
   }
 
   process.exitCode = report.verdict === "block" ? 2 : report.verdict === "review" ? 3 : 0;
+}
+
+// Every string in the manifest is attacker-controlled (a hostile server names
+// its own tools) — strip control bytes before it reaches a terminal.
+function renderMcpMarkdown(result) {
+  const lines = [];
+
+  if (result.packageScan) {
+    lines.push(
+      `Package scan: **${result.packageScan.decision.toUpperCase()}** — \`${sanitizeForTerminal(result.packageScan.reference)}\``
+    );
+  }
+  if (result.halted) {
+    lines.push(
+      "",
+      "Enumeration halted: the package scan says **BLOCK**. Pass --force to connect anyway (not recommended)."
+    );
+    return lines.join("\n");
+  }
+
+  const manifest = result.manifest;
+  lines.push(
+    `Server: **${sanitizeForTerminal(manifest.server.name || "(unnamed)")}** v${sanitizeForTerminal(manifest.server.version || "?")}`,
+    `Transport: ${manifest.transport} — \`${sanitizeForTerminal(manifest.target)}\``,
+    `Protocol: ${sanitizeForTerminal(manifest.protocolVersion || "unknown")}`,
+    "",
+    `Tools (${manifest.tools.length}):`
+  );
+  for (const tool of manifest.tools) {
+    const params = tool.inputSchema && tool.inputSchema.properties
+      ? Object.keys(tool.inputSchema.properties).join(", ")
+      : "";
+    lines.push(
+      `- \`${sanitizeForTerminal(tool.name)}\`${params ? ` (${sanitizeForTerminal(params)})` : ""} — ${sanitizeForTerminal(tool.description || "(no description)")}`
+    );
+  }
+  for (const warning of manifest.diagnostics.warnings || []) {
+    lines.push(`> warning: ${sanitizeForTerminal(warning)}`);
+  }
+  return lines.join("\n");
 }
 
 function renderGuardMarkdown(result) {
