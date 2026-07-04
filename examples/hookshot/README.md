@@ -50,10 +50,21 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
   - Local paths (`./x`, `file:`, `link:`, `workspace:`) and bare `npm ci` /
     `npm install` are skipped — that code is already local/visible, or there's
     no per-package ref to triage.
-- **`OnAfterFileEdit`** *(opt-in)* — when the agent edits `package.json` or a
-  lockfile, checks it and feeds the verdict back as agent context (or a block on
-  Claude for a `BLOCK`). It diffs the edit hunks so it doesn't re-triage the
-  whole tree every time:
+- **`OnAfterFileEdit`** — two jobs:
+  - **MCP config files** *(on by default)* — `mcp add` isn't the only way a
+    server gets registered: an agent can write `.mcp.json` (Claude Code),
+    `.cursor/mcp.json` / `.vscode/mcp.json`, Windsurf's `mcp_config.json`, or
+    `claude_desktop_config.json` directly and bypass the execution gate. The
+    hook diffs the edit for **added/changed server entries** and gates each one
+    exactly like an `mcp add`: launcher command → static package scan, http(s)
+    URL → `pkgxray mcp` probe, an entry it can't read → **review** (never a
+    silent allow). Env-only or formatting edits re-triage nothing. A post-edit
+    hook can't undo the write, so a BLOCK becomes a file-edit block (honored by
+    Claude) and a review becomes agent context.
+  - **Dependency manifests** *(opt-in)* — when the agent edits `package.json`
+    or a lockfile, checks it and feeds the verdict back as agent context (or a
+    block on Claude for a `BLOCK`). It diffs the edit hunks so it doesn't
+    re-triage the whole tree every time:
   - `package.json` — deep-guards **only the newly added/changed deps** (reusing
     the session cache); a formatting/script-only edit triages nothing. Falls
     back to a full-file audit if no added dep can be extracted, so it's never
