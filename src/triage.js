@@ -20,6 +20,12 @@ const { auditLockfile } = require("./lockfile");
 // (added for the recheck monitoring tier) record the last *computed* guard
 // verdict and when it was computed — the baseline drift is measured against.
 // Both are additive and optional; a legacy record without them still loads.
+//
+// `manifest` (added for the MCP adapter, records named `mcp:<server>`) pins an
+// approved tool-manifest fingerprint: { tools: [{ name, sha256 }] }. It is the
+// APPROVAL baseline — mcp recheck diffs the live manifest against it and only
+// `--pin` (a human re-approval) may rewrite it, unlike verdict/checkedAt which
+// every recheck refreshes. Additive and optional like the rest.
 // Unlike `decided_at`, a missing `checkedAt` is NEVER back-filled to "now" — a
 // verdict with no known compute time is treated as unknown/stale, so a stale
 // allow is not trusted forever (see `isStale`).
@@ -41,6 +47,18 @@ function lockPathForLockfile(lockfilePath) {
 // Normalize one raw record from disk into the in-memory shape. Shared by the
 // async and sync loaders so they can never drift. Returns null for records
 // that fail the minimal validity bar (bad name/version/decision).
+// Validate the optional MCP manifest fingerprint. Malformed shapes are
+// dropped to null (an absent approval baseline), never partially kept.
+function normalizeManifestPin(m) {
+  if (!m || typeof m !== "object" || !Array.isArray(m.tools)) return null;
+  const tools = [];
+  for (const t of m.tools) {
+    if (!t || typeof t.name !== "string" || typeof t.sha256 !== "string") return null;
+    tools.push({ name: t.name, sha256: t.sha256 });
+  }
+  return { tools };
+}
+
 function normalizeRecord(d) {
   if (!d || typeof d.name !== "string" || typeof d.version !== "string") return null;
   if (d.decision !== "allow" && d.decision !== "block") return null;
@@ -54,7 +72,9 @@ function normalizeRecord(d) {
     verdict: VALID_VERDICTS.has(d.verdict) ? d.verdict : null,
     // Missing checkedAt is preserved as null (NOT fabricated) so `isStale`
     // can report an unknown-age verdict as stale.
-    checkedAt: typeof d.checkedAt === "string" ? d.checkedAt : null
+    checkedAt: typeof d.checkedAt === "string" ? d.checkedAt : null,
+    // Approved-manifest fingerprint — optional, MCP records only.
+    manifest: normalizeManifestPin(d.manifest)
   };
 }
 
@@ -122,6 +142,8 @@ async function saveDecisions(lockPath, decisionsMap) {
       // records (and human-only decisions) don't sprout null fields.
       if (VALID_VERDICTS.has(d.verdict)) record.verdict = d.verdict;
       if (typeof d.checkedAt === "string") record.checkedAt = d.checkedAt;
+      const manifestPin = normalizeManifestPin(d.manifest);
+      if (manifestPin) record.manifest = manifestPin;
       return record;
     })
   };
