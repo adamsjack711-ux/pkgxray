@@ -320,6 +320,55 @@ anything connects to it. A `block` halts the connect step (`--force` to
 override); skipping the scan entirely requires the explicit
 `--no-package-scan`.
 
+### Per-call runtime gate: `pkgxray mcp-proxy`
+
+`pkgxray mcp` is connect-time: it answers "should this server be registered?"
+and then gets out of the request path. Two attacks only exist *inside* a live
+session, where a connect-time check can never see them: a manifest that
+changes after approval (`notifications/tools/list_changed` — the rug-pull
+moving in real time), and poisoned tool **output** steering the model. And a
+separate probe can't watch a running stdio server either — it would spawn a
+different instance than the one the agent is talking to. The only seam that
+sees the actual session is the wire itself, so `mcp-proxy` sits on it: point
+the host's server config at the proxy and it launches the real server as its
+child, relaying every JSON-RPC frame through the gate.
+
+```jsonc
+// .mcp.json — wrap the real launcher
+{
+  "mcpServers": {
+    "some-server": {
+      "command": "pkgxray",
+      "args": ["mcp-proxy", "--", "npx", "some-mcp-server"]
+    }
+  }
+}
+```
+
+What the gate does, and what each piece costs:
+
+| Moment | Check | Cost |
+|---|---|---|
+| first `tools/list` | full static manifest audit (same engine as `pkgxray mcp`), tools that would be denied are **stripped from the listing** so the model never reads their descriptions | ~1 ms per 30 tools, no network |
+| every `tools/call` | in-memory verdict lookup against the last verified manifest; unknown / blocked tools denied | **~0.05 µs** (p95 ~0.1 µs) |
+| `tools/list_changed` | immediate re-list + re-audit through the same session; calls arriving mid-verification are **held**, then decided against the fresh manifest (denied if the server won't answer — fail closed) | one manifest audit |
+| every `tools/call` result | doc-typed injection scan of the result text (tiered prompt-injection, unicode-tag smuggling, base64 envelopes), capped at 512 KiB | ~0.06 ms for a 2 KB result, ~13 ms worst-case at the cap; `--no-scan-results` to disable |
+| after `--pin` | fresh manifest diffed against the pinned per-tool fingerprints; **drifted tools are denied under strict/balanced** until re-approved with `pkgxray mcp --pin` | one lock-file read per verification |
+
+Policies mirror the hookshot gate: `block` denies everywhere; `review` denies
+under `--policy strict`, passes with a logged warning under `balanced`
+(default) and `permissive`. A denied call never reaches the server — the
+agent gets an `isError` tool result naming the reason, so the model can
+explain instead of hanging. The proxy's own diagnostics go to stderr only;
+stdout stays protocol-clean. On session close it prints a summary
+(`N calls gated, M denied, per-call gate p50/p95`).
+
+One deliberate difference from `pkgxray mcp`: the proxy is the production
+conduit, not an enumerator — the child inherits the full environment the host
+configured for it. Trust decisions here are about frames, not the child's env.
+HTTP servers aren't wrapped (the host connects to them directly); vet those
+with connect-time `pkgxray mcp <url>` + `--pin`/`--recheck`.
+
 ---
 
 ## Integrations
@@ -386,6 +435,12 @@ round-trips (registry, OSV, GitHub, provenance). Measured on an Apple M1
 
 A known-vulnerable package blocks at the OSV precheck, before download. Point CI
 at the cache server to collapse repeated GitHub fetches across runners.
+
+`mcp-proxy` runtime overhead (same machine): per-`tools/call` gate decision
+p50 ~0.05 µs / p95 ~0.1 µs (in-memory verdict lookup, no IO); full manifest
+re-audit ~1 ms per 30 tools, and it runs only when the manifest changes;
+result scan ~0.06 ms for a typical 2 KB result, ~13 ms worst-case at the
+512 KiB cap.
 </details>
 
 <details>
