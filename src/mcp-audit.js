@@ -200,6 +200,24 @@ function inspectCapabilityMismatch(tool, evidencePath) {
   return findings;
 }
 
+// Scan one tool RESULT's text through the same doc-typed evidence path the
+// manifest audit uses (tiered prompt-injection, unicode-tag smuggling, base64
+// envelopes — none of the code-malware heuristics). This is the per-call
+// rug-pull surface: a server whose manifest was clean can still steer the
+// model through poisoned tool OUTPUT. Caller bounds `text` (the proxy caps at
+// RESULT_SCAN_CAP) so a huge result can't turn a µs gate into a stall.
+function scanResultText(toolName, text) {
+  const taken = new Set();
+  const path = `mcp-result/${safeToolSlug(toolName, taken)}.md`;
+  const report = auditEvidence({
+    packageName: `mcp-result:${toolName}`,
+    sourceFiles: { [path]: String(text) }
+  });
+  return report.findings.filter(
+    (finding) => !PACKAGE_EVIDENCE_CATEGORIES.has(finding.category)
+  );
+}
+
 // Route the manifest through the existing engine and fold a verdict over it.
 // Same verdict vocabulary ({safe, review, block}), same severity fold
 // (decideVerdict) — only the inapplicable package-evidence findings are
@@ -296,5 +314,7 @@ module.exports = {
   inspectMcpServer,
   auditManifest,
   manifestSourceFiles,
-  inspectCapabilityMismatch
+  manifestEntries,
+  inspectCapabilityMismatch,
+  scanResultText
 };
