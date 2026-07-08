@@ -80,8 +80,10 @@ checklist to get there:
       one reference ([json-schema.md](json-schema.md)) committed to
       `schemaVersion: 1` (additive-only), with a schema-stability test that fails
       CI if a documented top-level field disappears. *(landed)*
-- [ ] **Freeze exit codes and the config schema** — both are already stable in
-      practice; make the promise explicit.
+- [x] **Freeze exit codes and the config schema** — the exit-code contract
+      (`0` safe/allow · `2` block · `3` review, incl. `failOn` variants) is
+      pinned by a stability test; the config schema is documented in
+      [config.md](config.md). *(landed)*
 - [ ] **`canary` decision** — either harden the execution sandbox to a
       documented threat model or keep it flagged Experimental at 1.0.
 - [x] **Publish + provenance** — the [`release` workflow](../.github/workflows/release.yml)

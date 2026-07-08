@@ -116,3 +116,19 @@ test("recheck JSON keeps its documented top-level shape", () => {
     "recheck.versionDrift"
   );
 });
+
+const { exitCodeForVerdict } = require("../src/config");
+
+test("exit-code contract is frozen (0 safe/allow · 2 block · 3 review)", () => {
+  // Default failOn=review — the CI-fail-closed contract every command shares.
+  assert.equal(exitCodeForVerdict("safe"), 0);
+  assert.equal(exitCodeForVerdict("review"), 3);
+  assert.equal(exitCodeForVerdict("block"), 2);
+
+  // failOn=block only fails on hard blocks.
+  assert.equal(exitCodeForVerdict("review", { failOn: "block" }), 0);
+  assert.equal(exitCodeForVerdict("block", { failOn: "block" }), 2);
+
+  // failOn=never never fails on the verdict.
+  assert.equal(exitCodeForVerdict("block", { failOn: "never" }), 0);
+});
