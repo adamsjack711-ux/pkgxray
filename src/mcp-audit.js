@@ -3,7 +3,7 @@
 // MCP adapter orchestration — package-scan-first, then connect-and-enumerate,
 // then route the manifest through the EXISTING scanner.
 //
-// The ordering is the point (see MCP_ADAPTER_PROMPT.md): enumerating a stdio
+// The ordering is the point (see docs/design/mcp-adapter-prompt.md): enumerating a stdio
 // server SPAWNS it, so when the server ships as a package/local ref the
 // static, no-execution scan (guardExtension — the same call `pkgxray guard`
 // makes) runs BEFORE any connection, and a `block` halts the connect step
