@@ -1,0 +1,13 @@
+{
+  "name": "child-process-in-test-file",
+  "expect": "safe",
+  "note": "child_process in a *.test.js with no network — exec alone is info, must not gate",
+  "evidence": {
+    "packageName": "cli-tool",
+    "sourceFiles": {
+      "index.js": "module.exports = 1;",
+      "run.test.js": "const {execSync}=require('child_process');execSync('node --version');",
+      "package.json": "{\"name\":\"cli-tool\",\"repository\":\"https://github.com/x/ct\"}"
+    }
+  }
+}

@@ -1,0 +1,92 @@
+name: release
+
+# Publishes pkgxray to npm WITH provenance, but only after it passes its own
+# gates — correctness (tests), calibration (benchmark), and its own
+# supply-chain guard. A security tool that can't prove its own supply chain has
+# no business vetting anyone else's.
+#
+# Trigger: publishing a GitHub Release (tag like v0.17.0). Also runnable via
+# workflow_dispatch with dry_run=true to exercise everything except the publish.
+#
+# Why the self-guard uses --no-source-scan: pkgxray's source *is* a catalogue of
+# attack signatures (injection phrases, `http://1.2.3.4`, `pastebin.com`, bidi
+# test characters live in the detector definitions), so a static source scan of
+# the scanner necessarily flags itself. That layer is instead exercised, against
+# controlled inputs, by `node --test` and `node benchmark/run.js` above. The
+# self-guard here proves the part that actually matters for a release: no known
+# vulnerability (OSV), and — post-publish — valid provenance and npm↔GitHub
+# source parity.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run every gate but skip npm publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance (OIDC)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      # 1. Correctness gate — zero runtime deps, nothing to install.
+      - name: Tests
+        run: node --test
+
+      # 2. Calibration gate — false-block / missed-detection invariants.
+      - name: Calibration benchmark
+        run: node ./benchmark/run.js
+
+      # 3. Pre-publish self-guard — build exactly what ships and run the
+      #    supply-chain layer over it. Fails the release only on a BLOCK
+      #    (exit 2, e.g. a known vulnerability); a REVIEW (exit 3, e.g. a
+      #    transient OSV error, or no provenance yet on the local tree) is
+      #    logged but tolerated.
+      - name: Pack the publishable artifact
+        run: |
+          mkdir -p ./.pack
+          npm pack --pack-destination ./.pack
+
+      - name: Self-guard (supply-chain layer)
+        run: |
+          set -o pipefail
+          tar xzf ./.pack/*.tgz -C ./.pack
+          node bin/audit.js guard ./.pack/package --no-source-scan || rc=$?
+          rc=${rc:-0}
+          echo "self-guard exit code: $rc"
+          if [ "$rc" = "2" ]; then
+            echo "::error::pkgxray self-guard BLOCKED the release artifact"
+            exit 1
+          fi
+          echo "self-guard passed (block-gate clear)"
+
+      # 4. Publish with provenance (the SLSA/npm attestation — the core proof).
+      - name: Publish to npm with provenance
+        if: github.event_name == 'release' || inputs.dry_run == false
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # 5. Post-publish smoke test — the published artifact must vet clean on the
+      #    supply-chain layer (valid provenance now exists, source parity with the
+      #    tagged commit). Informational: never blocks a release that already shipped.
+      - name: Verify published artifact
+        if: github.event_name == 'release' || inputs.dry_run == false
+        continue-on-error: true
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "verifying npm:pkgxray@${VERSION}"
+          node bin/audit.js guard "npm:pkgxray@${VERSION}" --no-source-scan

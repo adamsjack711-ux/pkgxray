@@ -2342,11 +2342,15 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // INFO: exec or network alone is common in legitimate build tools, language
   // servers, request libraries — record it but don't gate the verdict.
   if (hasExec) {
+    // hasExec may have matched only the normalized (de-obfuscated) text, so an
+    // EXEC_REGEX match against `content` alone can be null — fall back to the
+    // normalized match, then to a description, rather than dereferencing null.
+    const execMatch = content.match(EXEC_REGEX) || (normChanged ? normalized.match(EXEC_REGEX) : null);
     findings.push({
       severity: "info",
       category: "code-execution",
       file: file.path,
-      snippet: clip(content.match(EXEC_REGEX)[0]),
+      snippet: clip(execMatch ? execMatch[0] : "child_process / shell execution"),
       rationale: "Uses child_process / shell execution. Common in build tools and CLIs."
     });
   }
@@ -2563,6 +2567,16 @@ const SIMPLE_DESTRUCTIVE_REGEXES = [
 // dir-destructive with recursive:true — checked in a small window after the call.
 const RM_CALL_REGEX = /\.rm(?:dir)?(?:Sync)?\s*\(/g;
 const RECURSIVE_FLAG_REGEX = /recursive\s*:\s*true/;
+// node-ipc "peacenotwar" CORRUPTED files in place rather than deleting them:
+// enumerate a directory and overwrite each entry's contents (a heart emoji, in
+// that case). That's the "or corrupt files" half of the block comment above
+// that the delete-only patterns miss entirely. To stay low-FP we require a
+// directory enumeration within a small window of the write — bulk in-place
+// overwrite, not a lone config-file write — which, combined with the geo gate
+// below, is essentially only the node-ipc shape.
+const DIR_WRITE_REGEX = /\.writeFile(?:Sync)?\s*\(/g;
+const DIR_ENUM_REGEX = /\breaddir(?:Sync)?\s*\(/;
+const CORRUPTION_WINDOW = 400;
 // High-signal region/locale gates only. Broad timezone/date APIs
 // (getTimezoneOffset, Intl.DateTimeFormat, resolvedOptions().timeZone) are
 // deliberately excluded: they co-occur benignly with cleanup code (a recursive
@@ -2588,6 +2602,20 @@ function inspectLogicBomb(file, content, findings) {
   while ((rm = RM_CALL_REGEX.exec(content)) !== null) {
     if (RECURSIVE_FLAG_REGEX.test(content.slice(rm.index, rm.index + 200))) {
       indices.push(rm.index);
+    }
+  }
+  // In-place corruption: a writeFile co-located with a directory enumeration
+  // (the "overwrite every file under a dir" shape). The geo-gate check below
+  // still has to pass, so a benign bulk write without a region gate is ignored.
+  DIR_WRITE_REGEX.lastIndex = 0;
+  let wr;
+  while ((wr = DIR_WRITE_REGEX.exec(content)) !== null) {
+    const near = content.slice(
+      Math.max(0, wr.index - CORRUPTION_WINDOW),
+      wr.index + CORRUPTION_WINDOW
+    );
+    if (DIR_ENUM_REGEX.test(near)) {
+      indices.push(wr.index);
     }
   }
   for (const index of indices) {

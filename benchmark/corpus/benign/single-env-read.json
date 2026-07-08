@@ -1,0 +1,12 @@
+{
+  "name": "reads-one-env-var",
+  "expect": "safe",
+  "note": "reads a single named env var for config, no network sink",
+  "evidence": {
+    "packageName": "debug-flag",
+    "sourceFiles": {
+      "index.js": "const on = process.env.DEBUG === '1';module.exports = { on };",
+      "package.json": "{\"name\":\"debug-flag\",\"repository\":\"https://github.com/x/df\"}"
+    }
+  }
+}

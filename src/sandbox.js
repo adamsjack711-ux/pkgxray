@@ -207,11 +207,27 @@ function detectSandboxWrapper(sandboxRoot) {
     return { level: "sandbox-exec", wrap: (argv) => ["sandbox-exec", "-p", profile, ...argv] };
   }
   if (process.platform === "linux" && has("bwrap")) {
-    // bubblewrap: bind the sandbox root rw, everything else ro, keep net (so
-    // loopback→proxy works; the proxy is what actually denies real egress).
+    // bubblewrap: bind the sandbox root rw, everything else ro, and isolate the
+    // process/IPC/hostname namespaces. Net stays SHARED so loopback→proxy still
+    // works (the capture proxy, not the network namespace, is what denies real
+    // egress). --die-with-parent guarantees no sandbox process outlives pkgxray,
+    // and --new-session detaches the controlling terminal (blocks TIOCSTI
+    // input-injection back into the parent). All flags are long-standing.
     return {
       level: "bwrap",
-      wrap: (argv) => ["bwrap", "--ro-bind", "/", "/", "--bind", sandboxRoot, sandboxRoot, "--dev", "/dev", "--proc", "/proc", ...argv]
+      wrap: (argv) => [
+        "bwrap",
+        "--ro-bind", "/", "/",
+        "--bind", sandboxRoot, sandboxRoot,
+        "--dev", "/dev",
+        "--proc", "/proc",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--die-with-parent",
+        "--new-session",
+        ...argv
+      ]
     };
   }
   return { level: "env-only", wrap: (argv) => argv };
@@ -404,9 +420,23 @@ async function runCanarySandbox(options = {}) {
   const home = path.join(root, "home");
   await fsp.mkdir(home, { recursive: true, mode: 0o700 });
 
+  // Decide isolation up front so a caller that DEMANDS real OS-level confinement
+  // (--require-sandbox) fails closed BEFORE we seed decoys, start the proxy, or
+  // execute anything, rather than silently running with env-only isolation.
+  const wrapperInfo = detectSandboxWrapper(root);
+  if (options.requireSandbox === true && wrapperInfo.level === "env-only") {
+    await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
+    const err = new Error(
+      "canary --require-sandbox: no OS sandbox wrapper (bwrap / sandbox-exec) is available; " +
+        "refusing to execute untrusted install scripts with env-only isolation. " +
+        "Install bubblewrap (Linux) or run on macOS with sandbox-exec, or drop --require-sandbox to accept env-only."
+    );
+    err.code = "SANDBOX_REQUIRED";
+    throw err;
+  }
+
   const canary = await seedCanaryFilesystem(home, runId);
   const proxy = await startCaptureProxy(new Set(canary.tokens.keys()));
-  const wrapperInfo = detectSandboxWrapper(root);
 
   const proxyUrl = `http://127.0.0.1:${proxy.port}`;
   // Scrubbed env: keep only what a script needs to run, repoint HOME at the
@@ -464,6 +494,7 @@ async function runCanarySandbox(options = {}) {
     schemaVersion: 1,
     runId,
     isolation: wrapperInfo.level,
+    isolationRequired: options.requireSandbox === true,
     sandboxRoot: options.keepSandbox ? root : null,
     timeoutMs,
     executed: execResult || null,

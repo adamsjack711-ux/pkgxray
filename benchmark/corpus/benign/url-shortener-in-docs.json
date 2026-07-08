@@ -1,0 +1,13 @@
+{
+  "name": "shortener-in-readme-no-capability",
+  "expect": "safe",
+  "note": "a bit.ly link in prose with no co-located exec/network capability",
+  "evidence": {
+    "packageName": "link-notes",
+    "sourceFiles": {
+      "README.md": "# link-notes\\n\\nSee the demo video at https://bit.ly/demo-video for a walkthrough.",
+      "index.js": "module.exports = 1;",
+      "package.json": "{\"name\":\"link-notes\",\"repository\":\"https://github.com/x/l\"}"
+    }
+  }
+}

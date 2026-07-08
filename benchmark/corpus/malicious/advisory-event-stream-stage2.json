@@ -1,0 +1,12 @@
+{
+  "name": "event-stream-flatmap-stage2-loader",
+  "expect": "block",
+  "expectFinding": "network-exfil-or-loader",
+  "note": "modeled on event-stream/flatmap-stream (2018): reads an opaque encrypted blob, decrypts it, and evals the result — pkgxray blocks it as a stage-2 loader",
+  "evidence": {
+    "packageName": "flatmap-stream",
+    "sourceFiles": {
+      "index.js": "const fs=require('fs'),crypto=require('crypto');const blob=fs.readFileSync(__dirname+'/payload.dat');const key=(process.env.npm_package_description||'').slice(0,32);const d=crypto.createDecipheriv('aes-256-cbc',key,Buffer.alloc(16));const code=Buffer.concat([d.update(blob),d.final()]).toString();eval(code);"
+    }
+  }
+}
