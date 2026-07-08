@@ -76,8 +76,10 @@ checklist to get there:
       blocks" claim is enforced, not asserted. *(landed — keep the corpus growing)*
 - [ ] **Graduate or drop each Beta surface** — decide `mcp` / `mcp-proxy` /
       cache are Stable (freeze their flags) or keep them Beta with that stated.
-- [ ] **Freeze the JSON schema** — audit every `--format json` consumer field,
-      document it in one schema reference, commit to `schemaVersion: 1`.
+- [x] **Freeze the JSON schema** — every `--format json` field is documented in
+      one reference ([json-schema.md](json-schema.md)) committed to
+      `schemaVersion: 1` (additive-only), with a schema-stability test that fails
+      CI if a documented top-level field disappears. *(landed)*
 - [ ] **Freeze exit codes and the config schema** — both are already stable in
       practice; make the promise explicit.
 - [ ] **`canary` decision** — either harden the execution sandbox to a

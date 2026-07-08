@@ -436,7 +436,7 @@ Detailed reference lives in [`docs/reference.md`](docs/reference.md):
 
 - **[Severity policy](docs/reference.md#severity-policy-what-lands-in-block--review--info)** — exactly what lands in `block` / `review` / `info`.
 - **[Performance](docs/reference.md#performance)** — `guard` timings and `mcp-proxy` gate overhead.
-- **[JSON output](docs/reference.md#json-output)** — top-level fields per command.
+- **[JSON output](docs/reference.md#json-output)** — top-level fields per command (full schema: [json-schema.md](docs/json-schema.md)).
 - **[Browser extension](docs/reference.md#browser-extension)** — the local MV3 unpacked extension.
 - **[Self-hostable cache server](docs/reference.md#self-hostable-cache-server)** — collapse duplicate CI fetches.
 
