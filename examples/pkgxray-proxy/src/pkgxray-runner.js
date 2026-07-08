@@ -103,7 +103,7 @@ function interpret(stdout, code, ref, stderr) {
   if (parsed) {
     const decision = normalizeDecision(parsed.decision ?? parsed.verdict ?? parsed.result);
     if (decision) {
-      return { decision, findings: extractFindings(parsed), raw: parsed };
+      return { decision, findings: extractFindings(parsed), sha256: extractSha256(parsed), raw: parsed };
     }
   }
 
@@ -144,6 +144,18 @@ function normalizeDecision(value) {
   if (v === 'block' || v === 'blocked' || v === 'deny' || v === 'fail' || v === 'malicious') return 'block';
   if (v === 'review' || v === 'warn' || v === 'suspicious') return 'review';
   return null;
+}
+
+// The artifact digest pkgxray scanned, if the report carries one. The shared
+// `.pkgxray.json` allowlist is pinned to a sha256, so a pinned allow can only
+// apply when we can prove the bytes — no digest here means the allow is skipped.
+function extractSha256(parsed) {
+  const raw =
+    (parsed.report && (parsed.report.sha256 || parsed.report.digest)) ||
+    parsed.sha256 ||
+    parsed.digest ||
+    (parsed.artifact && parsed.artifact.sha256);
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : null;
 }
 
 function extractFindings(parsed) {

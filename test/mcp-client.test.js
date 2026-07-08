@@ -12,7 +12,9 @@ const test = require("node:test");
 const {
   enumerateMcpServer,
   parseSseMessages,
-  scrubbedEnv
+  scrubbedEnv,
+  isBlockedIp,
+  MINIMAL_PATH
 } = require("../src/mcp-client");
 
 const FIXTURE = path.join(__dirname, "fixtures", "mcp-stdio-server.js");
@@ -63,6 +65,37 @@ test("stdio: a hung server hits the hard timeout and the child is killed", async
   );
 });
 
+// FIX 2 — the timeout→kill path must actually reap the child. The old code
+// unref'd the SIGKILL timer, so the process could exit after SIGTERM but before
+// SIGKILL landed, leaking the child. Here we prove the child is dead once
+// enumeration rejects on timeout.
+test("stdio: timeout kills the child — it is not left alive", async () => {
+  const os = require("node:os");
+  const fs = require("node:fs");
+  const pidFile = path.join(os.tmpdir(), `pkgxray-pid-${process.pid}-${Date.now()}`);
+  const target = { command: process.execPath, args: [FIXTURE, "hang", pidFile] };
+
+  await assert.rejects(enumerateMcpServer(target, { timeoutMs: 800 }), /timed out/);
+
+  // The fixture wrote its PID before hanging. After the timeout resolves, the
+  // client must have SIGTERM/SIGKILL'd it. Poll briefly for the process to die.
+  const pid = parseInt(fs.readFileSync(pidFile, "utf8"), 10);
+  fs.rmSync(pidFile, { force: true });
+  assert.ok(Number.isInteger(pid) && pid > 0, "fixture did not record its pid");
+
+  let alive = true;
+  for (let i = 0; i < 40; i += 1) {
+    try {
+      process.kill(pid, 0); // signal 0 = liveness probe, does not kill
+    } catch {
+      alive = false;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(alive, false, "child survived the enumeration timeout — kill did not land");
+});
+
 test("stdio: early exit rejects with the stderr excerpt", async () => {
   await assert.rejects(
     enumerateMcpServer(stdioTarget("exit-early"), { timeoutMs: 10_000 }),
@@ -107,11 +140,61 @@ test("scrubbedEnv never carries common credential variables", () => {
   }
 });
 
+// FIX 1 — PATH hijack: the child must NOT inherit the operator's PATH (a
+// package-writable dir on it would let the untrusted command pick its binary).
+test("scrubbedEnv sets a fixed minimal PATH, never the operator's", () => {
+  const marker = "/tmp/pkgxray-evil-path-marker-xyz";
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${marker}:${savedPath}`;
+  try {
+    const env = scrubbedEnv();
+    assert.equal(env.PATH, MINIMAL_PATH, "child PATH should be the fixed minimal PATH");
+    assert.ok(!env.PATH.includes(marker), "operator PATH entry leaked to the child");
+  } finally {
+    process.env.PATH = savedPath;
+  }
+});
+
+test("stdio: the child sees the minimal PATH, not the operator's", async () => {
+  const marker = "/tmp/pkgxray-evil-path-marker-abc";
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${marker}:${savedPath}`;
+  try {
+    const manifest = await enumerateMcpServer(stdioTarget("env-path"), { timeoutMs: 10_000 });
+    const desc = manifest.tools[0].description;
+    assert.ok(desc.startsWith("child PATH:"));
+    assert.ok(!desc.includes(marker), "operator PATH leaked into the spawned child");
+    assert.ok(desc.includes(MINIMAL_PATH), "child did not receive the fixed minimal PATH");
+  } finally {
+    process.env.PATH = savedPath;
+  }
+});
+
+// FIX 1 — extraEnv denylist: a caller must not be able to reintroduce PATH,
+// LD_PRELOAD, or NODE_OPTIONS through the opt-in channel and undo the scrub.
+test("scrubbedEnv denylist blocks PATH/LD_PRELOAD/NODE_OPTIONS via extraEnv", () => {
+  const env = scrubbedEnv({
+    PATH: "/attacker/bin",
+    LD_PRELOAD: "/tmp/evil.so",
+    NODE_OPTIONS: "--require /tmp/evil.js",
+    HARMLESS_CONFIG: "ok"
+  });
+  assert.equal(env.PATH, MINIMAL_PATH, "extraEnv must not override the fixed PATH");
+  assert.ok(!("LD_PRELOAD" in env), "LD_PRELOAD must be denylisted");
+  assert.ok(!("NODE_OPTIONS" in env), "NODE_OPTIONS must be denylisted");
+  assert.equal(env.HARMLESS_CONFIG, "ok", "a harmless extraEnv var should still pass");
+});
+
 // ---------------------------------------------------------------------------
 // streamable HTTP transport
 // ---------------------------------------------------------------------------
 
 function startHttpFixture(behavior) {
+  // The fixtures bind to loopback (127.0.0.1) over plain http — exactly what
+  // the SSRF guard refuses by default. These are trusted in-process servers,
+  // so opt in for the HTTP-transport tests. The SSRF guard itself is covered
+  // by its own dedicated tests below.
+  process.env.PKGXRAY_MCP_ALLOW_PRIVATE = "1";
   const seen = { sessionHeaders: [], deletes: 0 };
   const server = http.createServer((request, response) => {
     if (request.method === "DELETE") {
@@ -135,7 +218,13 @@ function startHttpFixture(behavior) {
         server,
         url: `http://127.0.0.1:${server.address().port}/mcp`,
         seen,
-        close: () => new Promise((done) => server.close(done))
+        // close() also clears the opt-in so it never leaks into the SSRF tests,
+        // which must run with the guard fully armed.
+        close: () =>
+          new Promise((done) => {
+            delete process.env.PKGXRAY_MCP_ALLOW_PRIVATE;
+            server.close(done);
+          })
       });
     });
   });
@@ -257,6 +346,94 @@ test("http: non-http(s) URLs are refused", async () => {
   await assert.rejects(
     enumerateMcpServer({ url: "file:///etc/passwd" }, { timeoutMs: 1_000 }),
     /unsupported URL protocol/
+  );
+});
+
+// ---------------------------------------------------------------------------
+// FIX 3 — SSRF guard
+// ---------------------------------------------------------------------------
+
+test("isBlockedIp flags loopback, private, link-local, metadata, and IPv6 ranges", () => {
+  // Must block:
+  for (const ip of [
+    "127.0.0.1",
+    "127.1.2.3",
+    "10.0.0.5",
+    "172.16.0.1",
+    "172.31.255.254",
+    "192.168.1.1",
+    "169.254.169.254", // the cloud-metadata IP
+    "169.254.0.1",
+    "100.64.0.1", // CGNAT
+    "0.0.0.0",
+    "::1",
+    "fe80::1", // link-local
+    "fc00::1", // ULA
+    "fd12:3456::1", // ULA
+    "::ffff:127.0.0.1", // IPv4-mapped loopback
+    "::ffff:169.254.169.254"
+  ]) {
+    assert.equal(isBlockedIp(ip), true, `${ip} should be blocked`);
+  }
+  // Must allow (public):
+  for (const ip of ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700:4700::1111"]) {
+    assert.equal(isBlockedIp(ip), false, `${ip} should be allowed`);
+  }
+});
+
+// These must run with the guard fully armed — defensively clear the opt-in.
+function armSsrfGuard() {
+  delete process.env.PKGXRAY_MCP_ALLOW_PRIVATE;
+}
+
+test("http: the cloud-metadata IP is refused (SSRF)", async () => {
+  armSsrfGuard();
+  await assert.rejects(
+    enumerateMcpServer({ url: "http://169.254.169.254/latest/meta-data/" }, { timeoutMs: 1_000 }),
+    /private\/loopback\/link-local|plain http/
+  );
+});
+
+test("http: a private-range IP is refused (SSRF)", async () => {
+  armSsrfGuard();
+  await assert.rejects(
+    enumerateMcpServer({ url: "https://10.0.0.5/mcp" }, { timeoutMs: 1_000 }),
+    /private\/loopback\/link-local/
+  );
+});
+
+test("http: plain http:// to a non-loopback host is refused without opt-in", async () => {
+  armSsrfGuard();
+  await assert.rejects(
+    enumerateMcpServer({ url: "http://example.com/mcp" }, { timeoutMs: 1_000 }),
+    /plain http/
+  );
+});
+
+test("http: localhost is refused as a loopback host", async () => {
+  armSsrfGuard();
+  await assert.rejects(
+    enumerateMcpServer({ url: "https://localhost/mcp" }, { timeoutMs: 1_000 }),
+    /loopback host/
+  );
+});
+
+test("http: a normal https URL passes the SSRF guard and is attempted", async () => {
+  armSsrfGuard();
+  // We don't need a live server — only proof the SSRF guard does NOT reject a
+  // public https host. It should fail LATER (DNS/connect/transport), never with
+  // an ssrf-phase rejection. Use a reserved-for-docs domain that resolves but
+  // won't answer MCP.
+  await enumerateMcpServer({ url: "https://example.com/mcp" }, { timeoutMs: 1_500 }).then(
+    () => {
+      throw new Error("expected the fixture-less request to fail at the transport layer");
+    },
+    (err) => {
+      assert.ok(
+        !/private\/loopback\/link-local|plain http|loopback host/.test(err.message),
+        `SSRF guard wrongly rejected a public https host: ${err.message}`
+      );
+    }
   );
 });
 

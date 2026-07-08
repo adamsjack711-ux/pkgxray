@@ -9,12 +9,24 @@
 // have it as of 2026: TypeScript-adjacent tooling, vite/vitest, sigstore,
 // @actions/*, @octokit/*, etc.).
 //
-// We do NOT cryptographically verify the sigstore signature — that's a full
-// sigstore client (Fulcio chain, Rekor log inclusion proof, certificate
-// transparency, etc.) which would be ~hundreds of KB of dependency weight
-// against a "zero-dep" goal. npm verified the signature when it accepted
-// the attestation at publish time; we trust npm's verification and parse
-// what the bundle claims.
+// IMPORTANT — pkgxray does NOT cryptographically verify these attestations.
+// We base64-decode the DSSE payload and read the self-reported fields. We do
+// NOT check the sigstore signature, the Fulcio certificate chain, the Rekor
+// transparency-log inclusion proof, or that the subject digest binds to the
+// tarball we actually downloaded. A full sigstore client (Fulcio + Rekor +
+// certificate transparency) is ~hundreds of KB against a "zero-dep" goal, so
+// it is deliberately out of scope.
+//
+// Consequently `attested:true` means ONLY "a parseable, SLSA-shaped provenance
+// document is present" — NOT "verified provenance". Anyone can hand-craft an
+// unsigned bundle whose payload claims any repo/workflow; this module would
+// parse it. That is why provenance is surfaced at severity INFO and is
+// excluded from scoring (see the non-offsetting invariant in auditor.js): a
+// parseable-but-unsigned attestation must never move a verdict toward "safe".
+//
+// If a caller has the downloaded tarball's digest, it can call
+// verifySubjectDigest() to check the attestation's subject[].digest actually
+// binds to that artifact — but even a match is not a signature check.
 //
 // Cache: ~/.cache/pkgxray/attestations/<name>@<version>.json, 24h TTL. We
 // cache 404s too (most packages don't have attestations — caching the
@@ -31,6 +43,10 @@ const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "attestations");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const FETCH_TIMEOUT_MS = 4000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // attestations are JSON, ~10-50KB each
+// Cap on a single DSSE payload after base64-decode. Real in-toto Statements
+// are a few KB; refusing anything larger stops a crafted bundle from decoding
+// a huge base64 blob and blowing up JSON.parse. (finding 4a)
+const MAX_DECODED_PAYLOAD_BYTES = 1 * 1024 * 1024;
 const REGISTRY_BASE = "https://registry.npmjs.org/-/npm/v1/attestations";
 
 // Module-local keep-alive agent so the provenance fetch can re-use a socket
@@ -125,14 +141,60 @@ function fetchJson(url) {
 }
 
 // Decode a DSSE envelope payload (base64-encoded in-toto Statement JSON).
+// NOTE: this only decodes/parses — it does NOT verify the DSSE signature.
 function decodePayload(envelope) {
   if (!envelope || typeof envelope.payload !== "string") return null;
+  // Cheap pre-check on the encoded length so we never even allocate the
+  // decoded buffer for an oversized payload (base64 is ~4/3 the raw size).
+  if (envelope.payload.length > Math.ceil((MAX_DECODED_PAYLOAD_BYTES * 4) / 3) + 4) {
+    return null;
+  }
   try {
-    const decoded = Buffer.from(envelope.payload, "base64").toString("utf8");
-    return JSON.parse(decoded);
+    const buf = Buffer.from(envelope.payload, "base64");
+    if (buf.length > MAX_DECODED_PAYLOAD_BYTES) return null; // finding 4a
+    return JSON.parse(buf.toString("utf8"));
   } catch {
     return null;
   }
+}
+
+// Extract the raw subject[].digest map(s) from a decoded in-toto Statement.
+// Returns an array of { name, digest } so a caller with the tarball's digest
+// can check that the attestation actually binds to the artifact it downloaded.
+function extractSubjectDigests(payload) {
+  if (!payload || !Array.isArray(payload.subject)) return [];
+  return payload.subject
+    .filter((s) => s && typeof s === "object")
+    .map((s) => ({
+      name: typeof s.name === "string" ? s.name : null,
+      digest: s.digest && typeof s.digest === "object" ? s.digest : {}
+    }));
+}
+
+// Given a parsed attestation (or its subjectDigests array) and the digest of
+// the tarball we actually downloaded, return true only if some subject digest
+// binds to it. `downloadedDigest` is { algorithm, value } e.g.
+// { algorithm: "sha512", value: "abc..." }. Comparison is case-insensitive
+// hex/base64-agnostic exact-string. This is a BINDING check, NOT a signature
+// check — a matching digest on an unsigned bundle still proves nothing about
+// authenticity, only that this artifact is the one the (unverified) claim
+// names.
+function verifySubjectDigest(parsedOrDigests, downloadedDigest) {
+  if (!downloadedDigest || !downloadedDigest.algorithm || !downloadedDigest.value) return false;
+  const wantAlg = String(downloadedDigest.algorithm).toLowerCase();
+  const wantVal = String(downloadedDigest.value).toLowerCase();
+  const subjects = Array.isArray(parsedOrDigests)
+    ? parsedOrDigests
+    : (parsedOrDigests && parsedOrDigests.subjectDigests) || [];
+  for (const subj of subjects) {
+    const digest = (subj && subj.digest) || {};
+    for (const [alg, val] of Object.entries(digest)) {
+      if (String(alg).toLowerCase() === wantAlg && String(val).toLowerCase() === wantVal) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // Pull `owner/repo` out of a `https://github.com/owner/repo` URL or a
@@ -250,6 +312,13 @@ function parseAttestation(attestation) {
   return {
     predicateType,
     subjects,
+    // Raw subject digests so a caller can bind the claim to the artifact it
+    // actually downloaded via verifySubjectDigest(). Presence of a tlog entry
+    // is NOT verification — we never check the inclusion proof.
+    subjectDigests: extractSubjectDigests(payload),
+    // Explicit: this field is parsed, not cryptographically verified. `true`
+    // here means "SLSA-shaped provenance was parseable", never "signature ok".
+    cryptographicallyVerified: false,
     hasTlogEntry: hasTlog,
     tlogEntryCount: tlogEntries.length,
     mediaType: bundle.mediaType || null,
@@ -349,14 +418,17 @@ module.exports = {
   parseAttestation,
   compareProvenanceToRepository,
   canonicalGithubKey,
+  verifySubjectDigest,
   // exported for tests
   _internal: {
     decodePayload,
     parseGithubUrl,
     extractSlsaV1,
     extractSlsaV02,
+    extractSubjectDigests,
     stripGitUri,
     refFromGitUri,
+    MAX_DECODED_PAYLOAD_BYTES,
     CACHE_DIR
   }
 };

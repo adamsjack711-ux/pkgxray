@@ -58,8 +58,11 @@ function comparePrerelease(a, b) {
     if (i >= b.length) return 1;
     const ai = a[i];
     const bi = b[i];
-    const an = /^\d+$/.test(ai);
-    const bn = /^\d+$/.test(bi);
+    // Per semver §11.4, a numeric identifier has NO leading zeros. Treating a
+    // leading-zero form (e.g. "01") as numeric would coalesce "1" and "01" to
+    // equal via Number(); classify it as alphanumeric so they order distinctly.
+    const an = /^(0|[1-9]\d*)$/.test(ai);
+    const bn = /^(0|[1-9]\d*)$/.test(bi);
     if (an && bn) {
       const d = Number(ai) - Number(bi);
       if (d !== 0) return d < 0 ? -1 : 1;

@@ -4,7 +4,8 @@ const { parseLockfile, sanitizeForTerminal } = require("./lockfile");
 const {
   loadDecisions,
   saveDecisions,
-  lockPathForLockfile
+  lockPathForLockfile,
+  isStale
 } = require("./triage");
 const { mapPool, defaultConcurrency } = require("./pool");
 const { newerCandidates } = require("./semver");
@@ -132,7 +133,20 @@ async function versionDriftPass(depList, evaluate, options) {
       continue;
     }
     if (r.candidates.length === 0) continue; // no newer version -> nothing
-    const worst = worstVerdict(r.candidates.map((c) => c.verdict).filter((v) => verdictRank(v) >= 0));
+    const vettedVerdicts = r.candidates.map((c) => c.verdict).filter((v) => verdictRank(v) >= 0);
+    // Fail-open guard: if EVERY candidate's guard scan errored (all "unknown"),
+    // worstVerdict([]) is "safe" — do NOT report an unvetted newer version as a
+    // clean/available update. Surface it as unknown so it isn't blind-installed.
+    if (vettedVerdicts.length === 0) {
+      unknown.push({
+        name: r.name,
+        version: r.version,
+        candidates: r.candidates,
+        error: "no candidate could be vetted"
+      });
+      continue;
+    }
+    const worst = worstVerdict(vettedVerdicts);
     const entry = { name: r.name, version: r.version, candidates: r.candidates, worst };
     if (worst === "review" || worst === "block") flagged.push(entry);
     else available.push(entry);
@@ -155,10 +169,21 @@ async function recheckLockfile(lockfilePath, options = {}) {
   const concurrency = options.concurrency || defaultConcurrency(depList.length);
   const nowIso = () => new Date().toISOString();
 
+  // A baseline older than this (or with no checkedAt) is not trusted as the
+  // drift-comparison point — a stale/crafted verdict must not hide a live block.
+  // Default: any verdict lacking a checkedAt is stale; an explicit
+  // baselineTtlMs also ages out old-but-timestamped verdicts.
+  const baselineTtlMs = options.baselineTtlMs;
+
   const perDep = await mapPool(depList, concurrency, async (dep) => {
     const key = `${dep.name}@${dep.version}`;
     const record = decisions.get(key) || null;
-    const baseline = record ? record.verdict : null;
+    // Treat a stale or checkedAt-less baseline as NO baseline: recheck must not
+    // trust an ancient/crafted stored verdict as the comparison point, or a live
+    // block could be reported "unchanged" and hidden. isStale() returns true for
+    // a missing/unparseable checkedAt (and for one older than baselineTtlMs).
+    const baselineStale = !record || isStale(record, baselineTtlMs);
+    const baseline = record && !baselineStale ? record.verdict : null;
 
     let fresh = "unknown";
     let error = null;

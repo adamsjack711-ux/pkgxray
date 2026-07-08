@@ -9,6 +9,19 @@ const { triageLockfile } = require("../src/triage");
 const { recheckLockfile, renderRecheckText, recheckJson } = require("../src/recheck");
 const { inspectMcpServer } = require("../src/mcp-audit");
 const { pinMcpManifest, recheckMcpManifest } = require("../src/mcp-pin");
+const { runCanarySandbox } = require("../src/sandbox");
+const cfg = require("../src/config");
+
+// Map a config-adjusted verdict (safe|review|block, from applyConfig, which has
+// already applied mutes + the pinned allowlist) through the same policy
+// promotion the guard uses for its decision: under `allow-review` a review-grade
+// package is promoted to `allow`. Keeps the guard/file exit code driven by
+// exitCodeForVerdict while preserving today's --policy behavior.
+function promoteVerdict(verdict, policy) {
+  if (verdict === "block") return "block";
+  if (verdict === "review") return policy === "allow-review" ? "allow" : "review";
+  return verdict; // safe / allow pass through
+}
 
 function printUsage() {
   process.stderr.write(
@@ -17,7 +30,10 @@ function printUsage() {
       "  pkgxray < evidence.json",
       "  pkgxray --format json < evidence.json",
       "  pkgxray --file evidence.json --format markdown",
-      "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan]",
+      "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps]",
+      "                     # --deps also OSV-scans the package's DIRECT dependencies (transitive worm entry point)",
+      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox]  # OPT-IN: run install scripts in a",
+      "                     # decoy-credential sandbox behind a capture proxy; confirms exfil behaviorally (cannot clear a pkg)",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
       "  pkgxray triage --resume                                                  # resume interrupted triage",
@@ -39,6 +55,10 @@ function parseArgs(argv) {
   const options = { command: "audit", format: "markdown", file: null };
   if (argv[0] === "guard") {
     options.command = "guard";
+    options.reference = argv[1];
+    argv = argv.slice(2);
+  } else if (argv[0] === "canary") {
+    options.command = "canary";
     options.reference = argv[1];
     argv = argv.slice(2);
   } else if (argv[0] === "audit") {
@@ -128,6 +148,17 @@ function parseArgs(argv) {
       options.force = true;
     } else if (arg === "--no-source-scan") {
       options.sourceScan = false;
+    } else if (arg === "--deps") {
+      options.scanDependencies = true;
+    } else if (arg === "--yes-run-untrusted-code") {
+      options.allowExecution = true;
+    } else if (arg === "--keep-sandbox") {
+      options.keepSandbox = true;
+    } else if (arg === "--timeout") {
+      options.timeoutMs = Number(argv[++i]);
+      if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
+        throw new Error("--timeout must be a positive number of milliseconds");
+      }
     } else if (arg === "--no-vulnerability-check") {
       options.vulnerabilityCheck = false;
     } else if (arg === "--no-github") {
@@ -178,19 +209,112 @@ async function main() {
     return;
   }
 
+  // Load the shared policy once, at startup, for every surface. A CLI
+  // `--policy` flag is the highest-precedence override (it wins over the file
+  // and env). Every warning is printed LOUD to stderr — a loosening or a
+  // misconfig must never be silent.
+  const { config, warnings } = cfg.loadConfig({
+    cwd: process.cwd(),
+    overrides: options.policy ? { policy: options.policy } : {}
+  });
+  for (const warning of warnings) {
+    process.stderr.write(`pkgxray: ${warning}\n`);
+  }
+  // Keep the existing --policy semantics working downstream (guardExtension,
+  // decisionForReport) by carrying the effective policy back onto options.
+  options.policy = config.policy;
+
   if (options.command === "guard") {
     if (!options.reference) {
       throw new Error("guard requires an extension reference");
     }
     // Keep the staging tree so the user can inspect / promote it from the
     // printed Quarantine path; non-interactive callers reap it by default.
-    const result = await guardExtension(options.reference, { ...options, keepStaging: true });
+    let result;
+    try {
+      result = await guardExtension(options.reference, { ...options, keepStaging: true });
+    } catch (error) {
+      // A guard that crashes / times out must not exit to an unclear state.
+      // Route it through the config's scan-error policy (fail-closed → review),
+      // never a bare crash-to-1-or-silent-safe.
+      const verdict = cfg.verdictForScanError(config);
+      process.stderr.write(`pkgxray: guard failed to complete (${error.message}); treating as ${verdict}\n`);
+      process.exitCode = cfg.exitCodeForVerdict(verdict, config);
+      return;
+    }
+
+    // Apply the shared policy to the guard's report before deciding: mutes are
+    // kept-but-excluded, a pinned+matching-sha256 allow can force safe. The
+    // resolved identity + tarball sha256 come off result.resolved (sha256 is
+    // set by the npm download path in quarantine.js; absent for local refs, in
+    // which case a pinned allow simply won't match).
+    const adjusted = cfg.applyConfig(result.report, {
+      config,
+      packageName: result.resolved && result.resolved.packageName,
+      version: result.resolved && result.resolved.version,
+      sha256: result.resolved && result.resolved.sha256,
+      evidence: { sourceFiles: Object.keys(result.sourceFiles || {}).map(() => ({})) }
+    });
+    result.report = adjusted;
+    result.configEffects = adjusted.configEffects;
+    // Fold the policy promotion (--policy allow-review) over the config verdict
+    // so the guard's reported decision + exit code stay consistent with today.
+    const finalVerdict = promoteVerdict(adjusted.verdict, config.policy);
+    result.decision = finalVerdict;
+
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else {
-      process.stdout.write(`${renderGuardMarkdown(result)}\n`);
+      const lines = [renderGuardMarkdown(result), ...cfg.renderConfigEffects(adjusted.configEffects)];
+      process.stdout.write(`${lines.join("\n")}\n`);
     }
-    process.exitCode = result.decision === "block" ? 2 : result.decision === "review" ? 3 : 0;
+    process.exitCode = cfg.exitCodeForVerdict(finalVerdict, config);
+    return;
+  }
+
+  if (options.command === "canary") {
+    if (!options.reference) {
+      throw new Error("canary requires a package reference");
+    }
+    const allow = options.allowExecution === true || process.env.PKGXRAY_ALLOW_EXECUTION === "1";
+    process.stderr.write(
+      "pkgxray: WARNING — the canary sandbox EXECUTES this package's install lifecycle scripts " +
+        "(in a throwaway HOME seeded with decoy credentials, behind a capture proxy that never forwards egress).\n"
+    );
+    if (!allow) {
+      throw new Error(
+        "canary requires explicit opt-in: pass --yes-run-untrusted-code or set PKGXRAY_ALLOW_EXECUTION=1"
+      );
+    }
+    // Stage the package WITHOUT executing it (guard's normal quarantine). Force
+    // staging even when OSV would flag it — the canary is about behavior — by
+    // skipping the vuln precheck that otherwise short-circuits the download.
+    const staged = await guardExtension(options.reference, {
+      ...options,
+      keepStaging: true,
+      vulnerabilityCheck: false
+    });
+    if (!staged.stagedPath) {
+      throw new Error("could not stage the package for the canary sandbox");
+    }
+    const behavioral = await runCanarySandbox({
+      stagedPath: staged.stagedPath,
+      allowExecution: true,
+      timeoutMs: options.timeoutMs,
+      keepSandbox: options.keepSandbox
+    });
+    if (options.format === "json") {
+      process.stdout.write(`${JSON.stringify({ static: staged.report, behavioral }, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${renderCanaryMarkdown(staged, behavioral)}\n`);
+    }
+    const worst =
+      behavioral.verdict === "block" || staged.decision === "block"
+        ? "block"
+        : behavioral.verdict === "review" || staged.decision === "review"
+          ? "review"
+          : "safe";
+    process.exitCode = worst === "block" ? 2 : worst === "review" ? 3 : 0;
     return;
   }
 
@@ -290,7 +414,12 @@ async function main() {
     } else {
       process.stdout.write(`${renderLockfileMarkdown(result)}\n`);
     }
-    process.exitCode = result.worstDecision === "block" ? 2 : result.worstDecision === "review" ? 3 : 0;
+    // Config is applied here only for the exit-code threshold (failOn) and the
+    // startup warnings — per-dep identity + sha256 isn't readily available on
+    // this batch path, so per-dep allow/mute wiring is a deliberate follow-up.
+    // worstDecision uses {block, review, allow/safe}; exitCodeForVerdict ranks
+    // allow/safe as 0, so the default config reproduces today's codes.
+    process.exitCode = cfg.exitCodeForVerdict(result.worstDecision, config);
     return;
   }
 
@@ -299,16 +428,40 @@ async function main() {
     throw new Error("No evidence JSON provided");
   }
 
-  const evidence = JSON.parse(raw);
+  let evidence;
+  try {
+    evidence = JSON.parse(raw);
+  } catch (error) {
+    // Unparseable evidence is a scan that could not complete — fail closed
+    // (default → review) rather than crash to an unclear state.
+    const verdict = cfg.verdictForScanError(config);
+    process.stderr.write(`pkgxray: could not parse evidence JSON (${error.message}); treating as ${verdict}\n`);
+    process.exitCode = cfg.exitCodeForVerdict(verdict, config);
+    return;
+  }
   const report = auditEvidence(evidence);
 
+  // Apply the shared policy: this path has full identity (packageName/version)
+  // from the evidence, and an optional sha256 the caller may pass so a pinned
+  // allow can match. Mutes always apply.
+  const adjusted = cfg.applyConfig(report, {
+    config,
+    packageName: evidence.packageName,
+    version:
+      (evidence.npmMetadata && evidence.npmMetadata.version) || evidence.version || null,
+    sha256: evidence.sha256 || (evidence.dist && evidence.dist.sha256) || null,
+    evidence
+  });
+  const finalVerdict = promoteVerdict(adjusted.verdict, config.policy);
+
   if (options.format === "json") {
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(adjusted, null, 2)}\n`);
   } else {
-    process.stdout.write(`${renderMarkdown(report)}\n`);
+    const lines = [renderMarkdown(adjusted), ...cfg.renderConfigEffects(adjusted.configEffects)];
+    process.stdout.write(`${lines.join("\n")}\n`);
   }
 
-  process.exitCode = report.verdict === "block" ? 2 : report.verdict === "review" ? 3 : 0;
+  process.exitCode = cfg.exitCodeForVerdict(finalVerdict, config);
 }
 
 // Every string in the manifest is attacker-controlled (a hostile server names
@@ -398,6 +551,52 @@ function renderMcpMarkdown(result) {
   return lines.join("\n");
 }
 
+function renderCanaryMarkdown(staged, behavioral) {
+  const lines = [
+    `Canary sandbox — behavioral verdict: **${behavioral.verdict.toUpperCase()}**`,
+    `Reference: \`${sanitizeForTerminal(staged.reference)}\``,
+    `Isolation: ${sanitizeForTerminal(behavioral.isolation)}  ·  run ${sanitizeForTerminal(behavioral.runId)}`,
+    ""
+  ];
+
+  // The single most important framing: this tool CONFIRMS malice, it cannot
+  // CLEAR a package. A quiet run is not a safe package.
+  if (behavioral.verdict === "safe") {
+    lines.push(
+      "> No malicious behavior was OBSERVED in this run. This does NOT clear the package:",
+      "> sandbox-aware malware can stay dormant when it detects analysis, a proxy, a",
+      "> throwaway HOME, or a missing C2 server, and activate only on a real developer's",
+      "> machine. Treat a quiet canary as 'nothing caught', never as 'proven safe' — the",
+      "> static scan below is still authoritative.",
+      ""
+    );
+  }
+
+  if (behavioral.findings.length > 0) {
+    lines.push("Observed behavior:");
+    for (const f of behavioral.findings) {
+      lines.push(`- **${f.severity.toUpperCase()} ${sanitizeForTerminal(f.category)}** — ${sanitizeForTerminal(f.rationale)}`);
+    }
+    lines.push("");
+  }
+
+  if (behavioral.egress && behavioral.egress.length > 0) {
+    lines.push("Captured egress (not forwarded):");
+    for (const hit of behavioral.egress.slice(0, 15)) {
+      const leaked = hit.tokensSeen && hit.tokensSeen.length > 0 ? "  ⚠ CANARY TOKEN LEAKED" : "";
+      lines.push(`- ${sanitizeForTerminal(hit.transport)} ${sanitizeForTerminal(hit.method)} ${sanitizeForTerminal(hit.host)}${leaked}`);
+    }
+    lines.push("");
+  } else {
+    lines.push("Captured egress: none.", "");
+  }
+
+  lines.push(`Limits: ${sanitizeForTerminal(behavioral.limits)}`, "");
+  lines.push("--- Static scan (authoritative) ---", "");
+  lines.push(renderGuardMarkdown(staged));
+  return lines.join("\n");
+}
+
 function renderGuardMarkdown(result) {
   const lines = [
     `Decision: **${result.decision.toUpperCase()}**`,
@@ -410,16 +609,41 @@ function renderGuardMarkdown(result) {
     lines.push(`Promoted to: \`${sanitizeForTerminal(result.promotedPath)}\``, "");
   }
 
+  if (result.dependencyAudit) {
+    const da = result.dependencyAudit;
+    if (da.error) {
+      lines.push(`Dependency scan: could not run (${sanitizeForTerminal(da.error)})`, "");
+    } else if (da.flagged && da.flagged.length > 0) {
+      lines.push(`Dependency scan: **${da.flagged.length} of ${da.scanned} direct dependencies have known vulnerabilities**`);
+      for (const dep of da.flagged.slice(0, 25)) {
+        const ids = dep.vulnerabilities.map((v) => sanitizeForTerminal(v.id)).join(", ");
+        lines.push(`- \`${sanitizeForTerminal(dep.name)}@${sanitizeForTerminal(dep.range)}\` — ${ids}`);
+      }
+      if (da.note) lines.push(`  _${sanitizeForTerminal(da.note)}_`);
+      lines.push("");
+    } else {
+      lines.push(`Dependency scan: ${da.scanned} direct dependencies, none with known OSV vulnerabilities.`);
+      if (da.note) lines.push(`  _${sanitizeForTerminal(da.note)}_`);
+      lines.push("");
+    }
+  }
+
   lines.push(renderMarkdown(result.report));
   return lines.join("\n");
 }
 
-try {
-  main().catch((error) => {
+// Only auto-run when invoked as the CLI. When required by a test, the exported
+// functions are used instead so behavior can be driven in-process.
+if (require.main === module) {
+  try {
+    main().catch((error) => {
+      process.stderr.write(`pkgxray: ${error.message}\n`);
+      process.exitCode = 1;
+    });
+  } catch (error) {
     process.stderr.write(`pkgxray: ${error.message}\n`);
     process.exitCode = 1;
-  });
-} catch (error) {
-  process.stderr.write(`pkgxray: ${error.message}\n`);
-  process.exitCode = 1;
+  }
 }
+
+module.exports = { main, parseArgs, promoteVerdict };

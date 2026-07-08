@@ -26,6 +26,21 @@ const { fetchProvenanceAttestation } = require("./attestation");
 const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
 
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
+// Files larger than DEFAULT_MAX_FILE_BYTES used to be dropped entirely (replaced
+// with an "[omitted]" marker) and never scanned — so a payload padded past
+// 256 KB became invisible and the package scored safe. Instead of omitting we
+// now read a BOUNDED slice of any oversized file so its content still reaches
+// the auditor. For a file bigger than the hard read cap we take a prefix + a
+// suffix (payloads hide at either end — top-of-file `require`/credential reads
+// or bottom-of-file appended blobs) so both extremities are scanned while total
+// memory stays bounded. SCAN_SLICE_BYTES is the hard per-file read ceiling.
+const SCAN_SLICE_BYTES = 5 * 1024 * 1024;
+// Half the slice is read from the head, half from the tail of a very large file.
+const SCAN_SLICE_HALF_BYTES = SCAN_SLICE_BYTES / 2;
+// Whole-package read budget so a package of many multi-MB files can't OOM us
+// even within maxFiles. Once exceeded, remaining files are recorded as skipped
+// rather than read (fail-visible, not silently dropped).
+const DEFAULT_MAX_TOTAL_SCAN_BYTES = 128 * 1024 * 1024;
 const DEFAULT_MAX_FILES = 600;
 const DEFAULT_TARBALL_MAX_BYTES = 256 * 1024 * 1024;
 // The 256 MB uncompressed byte cap above is the real zip-bomb defense; this
@@ -63,12 +78,19 @@ const TEXT_FILE_PATTERNS = [
   ".java",
   ".sh",
   ".ps1",
+  ".rb",
   ".toml",
   ".yaml",
   ".yml",
   ".md",
   ".txt",
-  ".env"
+  ".env",
+  // Native-build and auto-execution surfaces (install-time / agent / IDE).
+  // These aren't "source" in the usual sense, but node-gyp runs binding.gyp
+  // at install, `gem install` runs extconf.rb, an agent runs .claude hooks,
+  // and VS Code runs a folderOpen task — so they must reach the auditor.
+  ".gyp",
+  ".gypi"
 ];
 
 async function guardExtension(reference, options = {}) {
@@ -228,6 +250,22 @@ async function guardExtension(reference, options = {}) {
     promotedPath: null,
     report
   };
+
+  // Dependency-tree scan (#7). A single-package guard only inspects the named
+  // package; almost every real supply-chain compromise arrives TRANSITIVELY,
+  // through a dependency you never named. `--deps` OSV-scans the package's
+  // DIRECT dependencies (best-effort, ranges stripped — not a full resolver).
+  // The complete transitive path is `pkgxray audit <lockfile>`, which resolves
+  // and scans the whole tree; we say so in the result so the user isn't lulled.
+  if (options.scanDependencies && vulnerabilities.length === 0) {
+    const depStart = now();
+    result.dependencyAudit = await scanDirectDependencies(stagedPath).catch((error) => ({
+      scanned: 0,
+      flagged: [],
+      error: error.message
+    }));
+    timings.dependencyScanMs = elapsed(depStart);
+  }
 
   if (options.promoteTo && shouldPromote(decision)) {
     result.promotedPath = await promoteStagedPackage(stagedPath, options.promoteTo, options);
@@ -936,6 +974,57 @@ async function precheckVulnerabilities(resolved, stagedPath) {
   return queryOsvPackage(identity.name, identity.version, "npm");
 }
 
+// Best-effort OSV scan of a package's DIRECT dependencies (#7). Reads the
+// staged package.json, strips version ranges (like the lockfile package-json
+// parser does), and runs one batched OSV query. This is deliberately shallow —
+// direct deps only, ranges not resolved to concrete versions — and is honest
+// about it: the note steers the user to `pkgxray audit <lockfile>` for the full
+// resolved transitive tree. Reuses the lockfile module's batch OSV client, so
+// large dependency sets still cost a single fan-out.
+async function scanDirectDependencies(stagedPath) {
+  let pkg;
+  try {
+    pkg = JSON.parse(await safeReadFile(path.join(stagedPath, "package.json")));
+  } catch {
+    return { scanned: 0, flagged: [], note: "no readable package.json in the staged package" };
+  }
+  const deps = new Map();
+  for (const section of ["dependencies", "optionalDependencies"]) {
+    const entries = pkg[section] || {};
+    for (const [name, rawRange] of Object.entries(entries)) {
+      const range = String(rawRange);
+      // Skip non-registry specifiers OSV can't resolve (file:/git+/workspace:).
+      if (/^(?:file:|link:|git\+|github:|workspace:|npm:@?[^@]+@)/.test(range)) continue;
+      const version = range.replace(/^[~^>=<\s]+/, "").trim();
+      if (!version) continue;
+      deps.set(`${name}@${version}`, { name, version, range, paths: [name] });
+    }
+  }
+  if (deps.size === 0) return { scanned: 0, flagged: [] };
+
+  const { batchOsvQuery } = require("./lockfile");
+  const osv = await batchOsvQuery(deps);
+  const values = Array.from(deps.values());
+  const flagged = [];
+  for (let i = 0; i < values.length; i += 1) {
+    const vulns = osv[i] && Array.isArray(osv[i].vulns) ? osv[i].vulns : [];
+    if (vulns.length > 0) {
+      flagged.push({
+        name: values[i].name,
+        range: values[i].range,
+        version: values[i].version,
+        vulnerabilities: vulns.map((v) => ({ id: v.id, aliases: v.aliases || [] }))
+      });
+    }
+  }
+  return {
+    scanned: deps.size,
+    flagged,
+    note:
+      "Direct dependencies only, version ranges stripped (not fully resolved). For the complete transitive tree run `pkgxray audit <package-lock.json | yarn.lock | pnpm-lock.yaml>`."
+  };
+}
+
 async function readPackageIdentity(stagedPath) {
   try {
     const packageJson = JSON.parse(
@@ -1197,6 +1286,22 @@ async function extractTarball(archivePath, destination, options = {}) {
   const listing = await runCapture("tar", ["-tvzf", archivePath]);
   const lines = listing.split("\n").filter((line) => line.trim().length > 0);
 
+  validateTarListing(lines, maxBytes, maxEntries);
+
+  await run("tar", [
+    "-xzf", archivePath,
+    "-C", destination,
+    "--strip-components", "1",
+    "--no-same-owner", "--no-same-permissions"
+  ]);
+}
+
+// Validate a `tar -tvzf` listing (array of non-empty lines). Throws
+// "Tarball rejected: ..." on any unsafe/unparseable entry so extraction fails
+// closed. Extracted out of extractTarball so the security decisions are unit-
+// testable with crafted listing lines (raw control chars, hardlink targets)
+// that a given platform's tar can't easily be coaxed into emitting.
+function validateTarListing(lines, maxBytes, maxEntries) {
   if (lines.length > maxEntries) {
     throw new Error(`Tarball rejected: ${lines.length} entries exceeds limit of ${maxEntries}`);
   }
@@ -1207,8 +1312,24 @@ async function extractTarball(archivePath, destination, options = {}) {
     if (!entry) {
       throw new Error(`Tarball rejected: unparseable listing line: ${line}`);
     }
+    // A name (or link target) carrying a newline/control char desyncs this
+    // line-based parser from the real entry set — a later line could then be
+    // a hidden entry we never validated. Reject fail-closed.
+    assertNoControlChars(entry.path, "entry name");
     assertSafeTarPath(entry.path);
-    if (entry.linkTarget !== null) {
+    // Link entries: symlink (l) and hardlink (h). bsdtar prints a hardlink as
+    // "path link to <target>" (no " -> "), so relying on the arrow alone let
+    // hardlinks slip past target validation entirely. Any entry the parser
+    // flagged as a link MUST carry a target and be range-checked; a link entry
+    // with no parseable target is rejected rather than trusted.
+    if (entry.typeChar === "l" || entry.typeChar === "h") {
+      if (entry.linkTarget === null) {
+        throw new Error(`Tarball rejected: link entry with no parseable target: ${entry.path}`);
+      }
+      assertNoControlChars(entry.linkTarget, "link target");
+      assertSafeSymlinkTarget(entry.path, entry.linkTarget);
+    } else if (entry.linkTarget !== null) {
+      assertNoControlChars(entry.linkTarget, "link target");
       assertSafeSymlinkTarget(entry.path, entry.linkTarget);
     }
     totalBytes += entry.size;
@@ -1216,13 +1337,6 @@ async function extractTarball(archivePath, destination, options = {}) {
       throw new Error(`Tarball rejected: uncompressed size exceeds limit of ${maxBytes} bytes`);
     }
   }
-
-  await run("tar", [
-    "-xzf", archivePath,
-    "-C", destination,
-    "--strip-components", "1",
-    "--no-same-owner", "--no-same-permissions"
-  ]);
 }
 
 // tar -tvzf listing formats differ between bsdtar (macOS) and GNU tar:
@@ -1264,15 +1378,33 @@ function parseTarListingLine(line) {
   const remainder = line.slice(i);
   let entryPath = remainder;
   let linkTarget = null;
+  // Symlinks print as "path -> target"; bsdtar hardlinks print as
+  // "path link to target" (no arrow). Parse BOTH so a hardlink carries a target
+  // through to validation instead of being dropped/aborting on a bare `l`/`h`.
   const arrowIdx = remainder.indexOf(" -> ");
+  const linkToIdx = remainder.indexOf(" link to ");
   if (arrowIdx !== -1) {
     entryPath = remainder.slice(0, arrowIdx);
     linkTarget = remainder.slice(arrowIdx + 4);
-  } else if (typeChar === "l") {
-    return null;
+  } else if (linkToIdx !== -1) {
+    entryPath = remainder.slice(0, linkToIdx);
+    linkTarget = remainder.slice(linkToIdx + " link to ".length);
   }
+  // A link-type entry (symlink or hardlink) with no parseable target is
+  // returned WITH a null target so the caller can reject it fail-closed rather
+  // than us silently returning null (which would abort the whole audit).
   if (entryPath.length === 0) return null;
   return { path: entryPath, size, linkTarget, typeChar };
+}
+
+// A newline in an entry name would split into a phantom "line" and desync the
+// line-based listing parser, hiding a later real entry. Other control chars are
+// never legitimate in a package path either. Reject any of them fail-closed.
+function assertNoControlChars(value, label) {
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(value)) {
+    throw new Error(`Tarball rejected: control character in ${label}: ${JSON.stringify(value)}`);
+  }
 }
 
 function assertSafeTarPath(entryPath) {
@@ -1344,9 +1476,42 @@ function run(command, args) {
   });
 }
 
+// Read up to `limit` bytes of a file for scanning. If the file is larger than
+// `limit`, read a head slice + a tail slice (each half the limit) joined by a
+// truncation marker, so payloads hidden at either end still reach the auditor
+// while total memory stays bounded. Decoded as utf8 (matching whole-file reads).
+async function readBoundedForScan(fullPath, size, limit) {
+  if (size <= limit) {
+    return fsp.readFile(fullPath, "utf8");
+  }
+  const half = Math.floor(limit / 2);
+  const handle = await fsp.open(fullPath, "r");
+  try {
+    const head = Buffer.alloc(half);
+    const tail = Buffer.alloc(half);
+    await handle.read(head, 0, half, 0);
+    await handle.read(tail, 0, half, size - half);
+    return (
+      head.toString("utf8") +
+      `\n[scan-truncated: middle of ${size}-byte file elided; head+tail scanned]\n` +
+      tail.toString("utf8")
+    );
+  } finally {
+    await handle.close();
+  }
+}
+
 async function collectSourceFiles(root, options = {}) {
   const maxFiles = options.maxFiles || DEFAULT_MAX_FILES;
-  const maxFileBytes = options.maxFileBytes || DEFAULT_MAX_FILE_BYTES;
+  // Per-file read ceiling. maxFileBytes is honoured as a FLOOR on how much we
+  // read (never scan less than the caller's threshold), but oversized files are
+  // no longer dropped — we read up to SCAN_SLICE_BYTES (head+tail) of them.
+  const perFileScanBytes = Math.max(
+    options.maxFileBytes || DEFAULT_MAX_FILE_BYTES,
+    SCAN_SLICE_BYTES
+  );
+  const maxTotalScanBytes = options.maxTotalScanBytes || DEFAULT_MAX_TOTAL_SCAN_BYTES;
+  let totalScanBytes = 0;
   const sourceFiles = {};
   // Index cursor + manual counter so we don't pay O(n) per iteration on
   // both queue.shift() and Object.keys(sourceFiles).length.
@@ -1386,14 +1551,24 @@ async function collectSourceFiles(root, options = {}) {
       // and the read is still recognised — the stat would otherwise follow.
       const stat = await fsp.lstat(fullPath);
       if (!stat.isFile()) continue;
-      if (stat.size > maxFileBytes) {
-        sourceFiles[relativePath] = `[omitted: file exceeds ${maxFileBytes} bytes]`;
+
+      // Total-bytes budget: once the whole-package read budget is exhausted,
+      // record remaining files as skipped (fail-VISIBLE, so a reviewer knows
+      // coverage was capped) rather than silently dropping them.
+      if (totalScanBytes >= maxTotalScanBytes) {
+        sourceFiles[relativePath] = `[skipped: total scan budget of ${maxTotalScanBytes} bytes reached]`;
         fileCount += 1;
         if (fileCount >= maxFiles) break;
         continue;
       }
 
-      sourceFiles[relativePath] = await fsp.readFile(fullPath, "utf8");
+      // Oversized files are NOT dropped: read a bounded head+tail slice so a
+      // payload padded past the per-file threshold still reaches the auditor.
+      const budgetRemaining = maxTotalScanBytes - totalScanBytes;
+      const readLimit = Math.min(perFileScanBytes, budgetRemaining);
+      const content = await readBoundedForScan(fullPath, stat.size, readLimit);
+      sourceFiles[relativePath] = content;
+      totalScanBytes += Buffer.byteLength(content, "utf8");
       fileCount += 1;
       if (fileCount >= maxFiles) {
         break;
@@ -1459,10 +1634,17 @@ module.exports = {
   parseReference,
   parseNpmSpecifier,
   collectSourceFiles,
+  scanDirectDependencies,
   queryOsvPackage,
   decisionForReport,
   // exported for tests: SSRF download guard
   isPrivateOrLocalHost,
   assertDownloadHostAllowed,
-  tarballHostAllowlist
+  tarballHostAllowlist,
+  // exported for tests: tarball listing validator + local extractor
+  extractTarball,
+  parseTarListingLine,
+  assertNoControlChars,
+  assertSafeSymlinkTarget,
+  validateTarListing
 };

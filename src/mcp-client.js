@@ -23,6 +23,8 @@
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const https = require("node:https");
+const dns = require("node:dns");
+const net = require("node:net");
 
 // Newest protocol revision this client knows; servers negotiate down in the
 // initialize response and we accept whatever they answer with — enumeration
@@ -43,8 +45,14 @@ const MAX_LIST_PAGES = 50;
 // Environment allowlist for the spawned server: enough to run a normal
 // Node/Python launcher, nothing that carries credentials. Everything else
 // (AWS_*, GITHUB_TOKEN, npm_config_*, SSH_AUTH_SOCK, ...) is withheld.
+//
+// SECURITY: PATH is deliberately NOT inherited from the operator. The child's
+// `command` is untrusted (the package we're inspecting picks it), and it is
+// resolved against PATH with cwd=process.cwd(). If the operator's PATH contained
+// a package-writable dir (e.g. `node_modules/.bin/` shims, or `.` early on the
+// path), the "scrubbed" spawn would hand binary selection to the very package
+// we're auditing. We pin a minimal, fixed system PATH instead (see MINIMAL_PATH).
 const ENV_ALLOWLIST = [
-  "PATH",
   "HOME",
   "TMPDIR",
   "TMP",
@@ -58,16 +66,51 @@ const ENV_ALLOWLIST = [
   "PATHEXT"
 ];
 
+// A fixed, minimal system PATH — never the operator's. None of these dirs is
+// package-writable on a sane host, so the untrusted `command` can only resolve
+// to a real system binary (node/python launchers live here or are passed by
+// absolute path).
+const MINIMAL_PATH =
+  process.platform === "win32"
+    ? "C:\\Windows\\System32;C:\\Windows"
+    : "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+
+// Keys a caller must NOT be able to reintroduce via extraEnv — they change which
+// binary runs or inject code into it, defeating the whole scrub. PATH is here so
+// extraEnv can't put the operator's PATH back; LD_PRELOAD/DYLD_*/NODE_OPTIONS are
+// classic code-injection vectors. Case-insensitive on the key.
+const ENV_DENYLIST = new Set(
+  [
+    "PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "DYLD_INSERT_LIBRARIES",
+    "DYLD_LIBRARY_PATH",
+    "DYLD_FRAMEWORK_PATH",
+    "NODE_OPTIONS",
+    "PYTHONSTARTUP",
+    "BASH_ENV",
+    "ENV",
+    "IFS"
+  ].map((k) => k.toUpperCase())
+);
+
 function scrubbedEnv(extraEnv) {
   const env = {};
   for (const key of ENV_ALLOWLIST) {
     if (process.env[key] !== undefined) env[key] = process.env[key];
   }
+  // Fixed system PATH — see MINIMAL_PATH. Never the operator's PATH.
+  env.PATH = MINIMAL_PATH;
   // Explicit caller opt-in only (a server that genuinely needs a config var);
-  // nothing is ever inherited implicitly.
+  // nothing is ever inherited implicitly. The denylist stops a caller from
+  // reintroducing PATH/LD_PRELOAD/NODE_OPTIONS and undoing the scrub.
   if (extraEnv && typeof extraEnv === "object") {
     for (const [key, value] of Object.entries(extraEnv)) {
-      if (typeof value === "string") env[key] = value;
+      if (typeof value !== "string") continue;
+      if (ENV_DENYLIST.has(String(key).toUpperCase())) continue;
+      env[key] = value;
     }
   }
   return env;
@@ -172,6 +215,10 @@ async function enumerateStdio(command, args, options = {}) {
     stdio: ["pipe", "pipe", "pipe"],
     // Own process group so a server that spawns grandchildren can be killed
     // as a unit (POSIX). windowsHide keeps it from flashing a console.
+    // NOTE: this only contains descendants that STAY in the group — a server
+    // that calls setsid()/double-forks escapes it. See killChild's comment for
+    // the honest limitation; a pure-Node parent cannot fully reap a setsid
+    // grandchild without an OS sandbox.
     detached: process.platform !== "win32",
     windowsHide: true
   });
@@ -183,26 +230,84 @@ async function enumerateStdio(command, args, options = {}) {
   let lineBuffer = "";
   const pending = new Map(); // id -> {resolve, reject}
   let nextId = 1;
+  let escalateTimer = null;
+  let exited = child.exitCode !== null || child.signalCode !== null;
+  child.once("exit", () => {
+    exited = true;
+    if (escalateTimer) {
+      clearTimeout(escalateTimer);
+      escalateTimer = null;
+    }
+  });
 
-  const killChild = () => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    const pid = child.pid;
-    const signalGroup = (sig) => {
+  // Signal the child's whole process group (POSIX). Because the child is a
+  // group leader (detached:true below), kill(-pid) reaches every descendant
+  // that stayed in the group.
+  //
+  // RESIDUAL LIMITATION (honest): a hostile server can call setsid()/double-fork
+  // to move its grandchildren into a NEW session/process group. kill(-pid) can
+  // never reach a group it does not know the id of, and a pure-Node parent has
+  // no portable way to enumerate or contain a detached grandchild. So this
+  // contains the common case (a server that forks helpers in-group) but CANNOT
+  // guarantee a setsid escapee is reaped. Full containment needs an OS
+  // sandbox/cgroup/job-object — out of scope for a zero-dep client.
+  const signalGroup = (sig) => {
+    try {
+      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig);
+      else child.kill(sig);
+    } catch {
       try {
-        if (process.platform !== "win32" && pid) process.kill(-pid, sig);
-        else child.kill(sig);
+        child.kill(sig);
       } catch {
-        try {
-          child.kill(sig);
-        } catch {
-          /* already gone */
-        }
+        /* already gone */
       }
-    };
-    signalGroup("SIGTERM");
-    const escalate = setTimeout(() => signalGroup("SIGKILL"), 500);
-    escalate.unref();
+    }
   };
+
+  // Best-effort synchronous teardown: SIGTERM the group, then arm a SIGKILL.
+  // The escalation timer is NOT unref'd — see killChildAndWait for why the
+  // timeout path must not let Node exit before the kill lands.
+  const killChild = () => {
+    if (exited) return;
+    signalGroup("SIGTERM");
+    if (!escalateTimer) {
+      escalateTimer = setTimeout(() => {
+        escalateTimer = null;
+        signalGroup("SIGKILL");
+      }, 500);
+    }
+  };
+
+  // Kill and RESOLVE ONLY once the child is actually gone (or a hard deadline
+  // passes). On the timeout path the previous code unref'd the SIGKILL timer,
+  // so `node --test`/a short-lived process could exit after SIGTERM but before
+  // SIGKILL fired — leaving the child alive. Awaiting the exit closes that gap.
+  const killChildAndWait = () =>
+    new Promise((resolve) => {
+      if (exited) {
+        resolve();
+        return;
+      }
+      let done = false;
+      // SIGKILL and hard-deadline timers are NOT unref'd: they must keep the
+      // event loop alive so the kill is actually delivered before the process
+      // is allowed to exit — the bug this replaces.
+      const kill = setTimeout(() => signalGroup("SIGKILL"), 500);
+      const finishWait = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(kill);
+        clearTimeout(deadline);
+        resolve();
+      };
+      // Absolute ceiling: even if exit never arrives (an escaped grandchild
+      // holding the group open), don't hang the caller forever.
+      const deadline = setTimeout(finishWait, 2_000);
+      child.once("exit", finishWait);
+      signalGroup("SIGTERM");
+      // Race guard: if the child exited between the top check and now.
+      if (child.exitCode !== null || child.signalCode !== null) finishWait();
+    });
 
   const failAll = (error) => {
     for (const { reject } of pending.values()) reject(error);
@@ -333,7 +438,11 @@ async function enumerateStdio(command, args, options = {}) {
     return await Promise.race([enumeration, timeout]);
   } finally {
     clearTimeout(timeoutHandle);
-    finish();
+    settled = true;
+    // Await the kill on every exit path (success, rpc failure, TIMEOUT). The
+    // old code fire-and-forgot an unref'd SIGKILL timer, so on the timeout path
+    // the process could exit before SIGKILL was delivered and leak the child.
+    await killChildAndWait();
   }
 }
 
@@ -359,7 +468,118 @@ function parseSseMessages(body) {
   return messages;
 }
 
-function httpPost(url, headers, body, timeoutMs) {
+// ---------------------------------------------------------------------------
+// SSRF guard (implemented locally — no shared import, per the ownership rules).
+//
+// An MCP server *descriptor* supplies the URL. Without this, the HTTP transport
+// would happily POST to http://169.254.169.254/… (cloud metadata), http://localhost,
+// or any RFC1918 host — a classic SSRF pivot driven by attacker-controlled input.
+// We resolve the host to its IP(s) up front, refuse loopback / private / link-local /
+// ULA, and PIN the vetted IP into the request (lookup override) so a DNS-rebind
+// between check and connect can't slip a private address through. Opt out with
+// PKGXRAY_MCP_ALLOW_PRIVATE=1 for on-prem / testing.
+// ---------------------------------------------------------------------------
+
+function allowPrivateHosts() {
+  return process.env.PKGXRAY_MCP_ALLOW_PRIVATE === "1";
+}
+
+// Is this literal IP address in a range we must never reach from an SSRF-driven
+// request? Covers loopback, RFC1918, link-local (incl. the 169.254.169.254
+// metadata IP), CGNAT, and their IPv6 equivalents (loopback ::1, ULA fc00::/7,
+// link-local fe80::/10, and IPv4-mapped forms).
+function isBlockedIp(ip) {
+  const type = net.isIP(ip);
+  if (type === 4) {
+    const octets = ip.split(".").map((n) => parseInt(n, 10));
+    const [a, b] = octets;
+    if (a === 127) return true; // 127.0.0.0/8 loopback
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local + metadata IP
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+    if (a === 0) return true; // 0.0.0.0/8 "this host"
+    return false;
+  }
+  if (type === 6) {
+    let v6 = ip.toLowerCase();
+    const zone = v6.indexOf("%");
+    if (zone !== -1) v6 = v6.slice(0, zone);
+    if (v6 === "::1" || v6 === "::") return true; // loopback / unspecified
+    // IPv4-mapped / -compatible (::ffff:a.b.c.d) — check the embedded v4.
+    const mapped = v6.match(/(?:::ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+    if (mapped && net.isIP(mapped[1]) === 4) return isBlockedIp(mapped[1]);
+    if (v6.startsWith("fe8") || v6.startsWith("fe9") || v6.startsWith("fea") || v6.startsWith("feb"))
+      return true; // fe80::/10 link-local
+    if (v6.startsWith("fc") || v6.startsWith("fd")) return true; // fc00::/7 ULA
+    return false;
+  }
+  return false; // not an IP literal
+}
+
+function assertUrlAllowed(parsed, addresses) {
+  const host = parsed.hostname.toLowerCase();
+  // Belt-and-suspenders: a literal loopback hostname even if DNS is bypassed.
+  if (host === "localhost" || host.endsWith(".localhost")) {
+    throw rpcError("refusing to connect to a loopback host (localhost)", "ssrf");
+  }
+  for (const addr of addresses) {
+    if (isBlockedIp(addr)) {
+      throw rpcError(
+        "refusing to connect to a private/loopback/link-local address (set PKGXRAY_MCP_ALLOW_PRIVATE=1 to override)",
+        "ssrf"
+      );
+    }
+  }
+}
+
+// Resolve every A/AAAA record for the host. A bare IP literal short-circuits
+// DNS. Returns the vetted list of addresses so the caller can pin one.
+function resolveHostAddresses(hostname) {
+  return new Promise((resolve, reject) => {
+    if (net.isIP(hostname)) {
+      resolve([{ address: hostname, family: net.isIP(hostname) }]);
+      return;
+    }
+    dns.lookup(hostname, { all: true, verbatim: true }, (err, results) => {
+      if (err) {
+        reject(rpcError(`could not resolve host: ${err.code || err.message}`, "transport"));
+        return;
+      }
+      resolve(results);
+    });
+  });
+}
+
+async function httpPostChecked(url, headers, body, timeoutMs) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw rpcError(`unsupported URL protocol: ${parsed.protocol}`, "transport");
+  }
+  // Plain http:// to anything but a deliberately opted-in target is refused —
+  // cleartext to a remote host is both an SSRF-in-the-clear and a downgrade risk.
+  if (parsed.protocol === "http:" && !allowPrivateHosts()) {
+    throw rpcError(
+      "refusing plain http:// (use https, or set PKGXRAY_MCP_ALLOW_PRIVATE=1 for a trusted private endpoint)",
+      "ssrf"
+    );
+  }
+
+  let pinnedAddress = null;
+  if (!allowPrivateHosts()) {
+    const addresses = await resolveHostAddresses(parsed.hostname);
+    assertUrlAllowed(parsed, addresses.map((a) => a.address));
+    // Pin the vetted address to defeat DNS rebinding between check and connect.
+    if (addresses.length > 0 && net.isIP(addresses[0].address)) {
+      pinnedAddress = addresses[0];
+    }
+  }
+
+  return httpPost(url, headers, body, timeoutMs, pinnedAddress);
+}
+
+function httpPost(url, headers, body, timeoutMs, pinnedAddress) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -367,9 +587,18 @@ function httpPost(url, headers, body, timeoutMs) {
       return;
     }
     const lib = parsed.protocol === "https:" ? https : http;
+    const requestOptions = { method: "POST", headers };
+    if (pinnedAddress) {
+      // Connect to the vetted IP but keep the Host/SNI as the original hostname
+      // (servername for TLS, Host header via the URL). This closes the rebind
+      // window: DNS is not consulted again at connect time.
+      requestOptions.lookup = (_hostname, _opts, cb) =>
+        cb(null, pinnedAddress.address, pinnedAddress.family);
+      if (parsed.protocol === "https:") requestOptions.servername = parsed.hostname;
+    }
     const request = lib.request(
       parsed,
-      { method: "POST", headers },
+      requestOptions,
       (response) => {
         let bytes = 0;
         const chunks = [];
@@ -408,7 +637,7 @@ async function httpRpc(url, message, { sessionId, protocolVersion, timeoutMs }) 
   if (sessionId) headers["mcp-session-id"] = sessionId;
   if (protocolVersion) headers["mcp-protocol-version"] = protocolVersion;
 
-  const response = await httpPost(url, headers, JSON.stringify(message), timeoutMs);
+  const response = await httpPostChecked(url, headers, JSON.stringify(message), timeoutMs);
   const isNotification = message.id === undefined;
 
   if (isNotification) {
@@ -536,6 +765,9 @@ module.exports = {
   normalizeManifest,
   parseSseMessages,
   scrubbedEnv,
+  // Exported for the SSRF-guard regression tests.
+  isBlockedIp,
+  MINIMAL_PATH,
   PROTOCOL_VERSION,
   MAX_OUTPUT_BYTES,
   DEFAULT_TIMEOUT_MS

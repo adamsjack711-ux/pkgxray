@@ -13,6 +13,76 @@ const USER_AGENT = "pkgxray/0.6.0";
 const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "github");
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FETCH_TIMEOUT_MS = 3000;
+// Ceiling on a GitHub JSON response body. Repo metadata is a few KB; a
+// compromised cache / MITM serving a multi-GB JSON body would otherwise OOM
+// the process as we accumulate `body +=`. 8MB is generous headroom.
+const MAX_JSON_BYTES = 8 * 1024 * 1024;
+
+// ---- SSRF guard (finding 1) ----
+//
+// A 3xx Location header is attacker-influenceable (a compromised cache, a
+// hostile mirror, or GitHub itself if MITM'd). Following it blindly lets an
+// on-path actor redirect a codeload download to `http://169.254.169.254/…`
+// (cloud metadata), an internal service, or an http:// downgrade. We re-check
+// every redirect hop's target here rather than importing quarantine.js's
+// helper (owned by another agent) — this keeps github.js self-contained.
+//
+// Node's WHATWG URL parser normalizes hex/octal/decimal IPv4 to dotted-quad,
+// so numeric-host evasions (`http://0x08080808/`) are caught by these checks.
+function ipv4IsPrivate(host) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return false;
+  const o = m.slice(1).map(Number);
+  if (o.some((n) => n > 255)) return false;
+  const [a, b, c] = o;
+  if (a === 0 || a === 10 || a === 127) return true;          // this-host / private / loopback
+  if (a === 169 && b === 254) return true;                    // link-local + cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;           // 172.16/12
+  if (a === 192 && b === 168) return true;                    // 192.168/16
+  if (a === 100 && b >= 64 && b <= 127) return true;          // CGNAT 100.64/10
+  if (a === 192 && b === 0 && c === 0) return true;           // 192.0.0/24
+  if (a === 198 && (b === 18 || b === 19)) return true;       // benchmarking 198.18/15
+  if (a >= 224) return true;                                  // multicast / reserved
+  return false;
+}
+
+function isPrivateOrLocalHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    const v6 = host.slice(1, -1);
+    if (v6 === "::1" || v6 === "::") return true;
+    const mapped = /^::ffff:(.+)$/.exec(v6);
+    if (mapped) {
+      if (mapped[1].includes(".")) return ipv4IsPrivate(mapped[1]);
+      const hx = mapped[1].split(":");
+      if (hx.length === 2) {
+        const hi = parseInt(hx[0], 16);
+        const lo = parseInt(hx[1], 16);
+        if (Number.isFinite(hi) && Number.isFinite(lo)) {
+          return ipv4IsPrivate(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
+        }
+      }
+    }
+    if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true;   // fc00::/7 unique-local
+    if (/^fe[89ab][0-9a-f]:/.test(v6)) return true;   // fe80::/10 link-local
+    return false;
+  }
+  return ipv4IsPrivate(host);
+}
+
+// Throw if `parsed` (a URL) is not a safe redirect/download target: reject any
+// non-https scheme (blocks http:// downgrade) and any private/loopback/
+// link-local/metadata host.
+function assertSafeRedirectTarget(parsed, context) {
+  if (parsed.protocol !== "https:") {
+    throw new Error(`Refusing non-https redirect (${parsed.protocol}//${parsed.host}) for ${context} (SSRF guard)`);
+  }
+  if (isPrivateOrLocalHost(parsed.hostname)) {
+    throw new Error(`Refusing redirect to private/loopback address ${parsed.host} for ${context} (SSRF guard)`);
+  }
+}
 
 // Module-local keep-alive agent for api.github.com + codeload.github.com.
 // In lockfile-mode + --deep we hit api.github.com many times in a row for
@@ -97,11 +167,23 @@ function githubApiGet(urlPath, token, hops = 0) {
           return githubApiGet(nextUrl.pathname + nextUrl.search, token, hops + 1).then(resolve, reject);
         }
         let body = "";
+        let size = 0;
+        let aborted = false;
         response.setEncoding("utf8");
         response.on("data", (chunk) => {
+          if (aborted) return;
+          // Cap the accumulated body: a compromised cache / MITM serving a
+          // giant JSON body would otherwise OOM the process (finding 2).
+          size += Buffer.byteLength(chunk);
+          if (size > MAX_JSON_BYTES) {
+            aborted = true;
+            response.destroy();
+            return reject(new Error(`GitHub response exceeded ${MAX_JSON_BYTES} bytes`));
+          }
           body += chunk;
         });
         response.on("end", () => {
+          if (aborted) return;
           if (response.statusCode === 404) {
             const error = new Error(`GitHub 404: ${urlPath}`);
             error.statusCode = 404;
@@ -199,6 +281,15 @@ function tarballCachePath(owner, repo, ref) {
 
 async function downloadCodeload(url, destination) {
   return new Promise((resolve, reject) => {
+    // Validate the initial URL BEFORE opening the destination file, so a
+    // refused target never leaves a stray temp file behind (and never races
+    // the async createWriteStream open against the error-path unlink).
+    // Redirect hops are re-validated below inside get().
+    try {
+      assertSafeRedirectTarget(new URL(url), "codeload download");
+    } catch (err) {
+      return reject(err);
+    }
     const file = fs.createWriteStream(destination, { mode: 0o600 });
     let written = 0;
     let cleanedUp = false;
@@ -210,7 +301,17 @@ async function downloadCodeload(url, destination) {
     };
     const get = (currentUrl, hops) => {
       if (hops > 5) return cleanup(new Error("Too many redirects"));
-      const parsed = new URL(currentUrl);
+      let parsed;
+      try {
+        parsed = new URL(currentUrl);
+        // Re-validate the target host+scheme on EVERY hop (finding 1). The
+        // first URL is a trusted codeload URL; redirects are attacker-
+        // influenceable and must not reach private/metadata IPs or downgrade
+        // to http.
+        assertSafeRedirectTarget(parsed, "codeload download");
+      } catch (err) {
+        return cleanup(err);
+      }
       const request = https.get(
         {
           hostname: parsed.hostname,
@@ -222,7 +323,13 @@ async function downloadCodeload(url, destination) {
         (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
             response.resume();
-            return get(new URL(response.headers.location, currentUrl).toString(), hops + 1);
+            let nextUrl;
+            try {
+              nextUrl = new URL(response.headers.location, currentUrl).toString();
+            } catch (err) {
+              return cleanup(err);
+            }
+            return get(nextUrl, hops + 1);
           }
           if (response.statusCode === 404) {
             response.resume();
@@ -504,5 +611,12 @@ module.exports = {
   fetchRepoTarballForVersion,
   extractTarball,
   listTarballEntries,
-  extractTarballSubset
+  extractTarballSubset,
+  // exported for tests
+  _internal: {
+    isPrivateOrLocalHost,
+    assertSafeRedirectTarget,
+    downloadCodeload,
+    MAX_JSON_BYTES
+  }
 };

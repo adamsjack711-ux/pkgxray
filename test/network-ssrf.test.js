@@ -64,3 +64,71 @@ test("PKGXRAY_TARBALL_HOSTS extends the npm allowlist", () => {
     else process.env.PKGXRAY_TARBALL_HOSTS = prev;
   }
 });
+
+// ---- github.js redirect SSRF guard (finding 1) ----
+//
+// downloadCodeload re-validates the target host+scheme on EVERY redirect hop
+// via the same assertSafeRedirectTarget() we exercise here. A hostile Location
+// header pointing at cloud-metadata / an internal host / an http downgrade
+// must be refused. github.js keeps its OWN copy of the SSRF helper (it must
+// not depend on quarantine.js).
+const github = require("../src/github");
+const {
+  isPrivateOrLocalHost: ghIsPrivate,
+  assertSafeRedirectTarget,
+  downloadCodeload
+} = github._internal;
+
+test("github.js isPrivateOrLocalHost classifies internal vs public hosts", () => {
+  for (const h of ["127.0.0.1", "10.0.0.5", "172.16.0.1", "192.168.1.1",
+    "169.254.169.254", "0.0.0.0", "100.64.0.1", "localhost", "[::1]", "[fe80::1]", "[fc00::1]",
+    "[::ffff:169.254.169.254]"]) {
+    assert.equal(ghIsPrivate(h), true, `${h} should be private/local`);
+  }
+  for (const h of ["8.8.8.8", "1.1.1.1", "codeload.github.com", "[2606:4700::1111]"]) {
+    assert.equal(ghIsPrivate(h), false, `${h} should be public`);
+  }
+});
+
+test("github.js assertSafeRedirectTarget refuses metadata/private/http redirects", () => {
+  // Legit codeload redirect target (public https) is allowed.
+  assert.doesNotThrow(() =>
+    assertSafeRedirectTarget(new URL("https://objects.githubusercontent.com/abc"), "codeload"));
+  // Cloud-metadata IP over http — the exact SSRF the finding calls out.
+  assert.throws(() => assertSafeRedirectTarget(new URL("http://169.254.169.254/latest/meta-data/"), "codeload"));
+  // Metadata IP even over https.
+  assert.throws(() => assertSafeRedirectTarget(new URL("https://169.254.169.254/x"), "codeload"));
+  // Internal / private hosts.
+  assert.throws(() => assertSafeRedirectTarget(new URL("https://10.0.0.5/x"), "codeload"));
+  assert.throws(() => assertSafeRedirectTarget(new URL("https://[::1]/x"), "codeload"));
+  // http downgrade to an otherwise-public host is refused (no plaintext).
+  assert.throws(() => assertSafeRedirectTarget(new URL("http://codeload.github.com/x"), "codeload"));
+});
+
+test("github.js downloadCodeload refuses a private/metadata redirect target", async () => {
+  const os = require("node:os");
+  const fsp = require("node:fs/promises");
+  const path = require("node:path");
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-codeload-ssrf-"));
+  try {
+    // downloadCodeload validates hop 0 with the same guard used for every
+    // redirect hop, so passing a metadata/private URL directly proves the
+    // redirect path (which re-enters get() with the Location target) is
+    // guarded too. No socket is opened — the guard throws before https.get.
+    // Each case uses a distinct destination so the async unlink-on-error of
+    // one cannot race the createWriteStream of the next.
+    const cases = [
+      "http://169.254.169.254/latest/meta-data/", // cloud metadata + http downgrade
+      "https://10.0.0.5/o/r/tar.gz/main",           // private redirect target
+      "https://[::1]/o/r/tar.gz/main"               // ipv6 loopback
+    ];
+    for (let idx = 0; idx < cases.length; idx += 1) {
+      const dest = path.join(dir, `out-${idx}.tgz`);
+      await assert.rejects(() => downloadCodeload(cases[idx], dest), /SSRF guard/);
+      // The refused download must not leave a file behind.
+      await assert.rejects(() => fsp.stat(dest));
+    }
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});

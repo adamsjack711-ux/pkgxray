@@ -21,6 +21,15 @@ test("compare orders by major.minor.patch and prerelease precedence", () => {
   assert.equal(compare("1.0.0-alpha.1", "1.0.0-alpha"), 1, "more identifiers = higher");
 });
 
+test("prerelease with a leading-zero identifier is not coalesced to equal", () => {
+  // "1" is numeric; "01" has a leading zero so per semver it is alphanumeric.
+  // They must not compare equal (the old Number() coalescing bug returned 0).
+  assert.notEqual(compare("1.0.0-1", "1.0.0-01"), 0);
+  // Numeric (lower precedence) sorts before alphanumeric.
+  assert.equal(compare("1.0.0-1", "1.0.0-01"), -1);
+  assert.equal(compare("1.0.0-01", "1.0.0-1"), 1);
+});
+
 test("gt / isPrerelease", () => {
   assert.equal(gt("2.0.0", "1.9.9"), true);
   assert.equal(gt("1.0.0", "1.0.0"), false);

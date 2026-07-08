@@ -12,6 +12,47 @@ import { parsePath, canonicalTarballPath } from './path-parser.js';
 import { runGuard as defaultRunGuard, ScanError } from './pkgxray-runner.js';
 import { VerdictStore } from './verdict-store.js';
 
+// The shared, team-wide security POLICY (`.pkgxray.json`) — the SAME file the
+// CLI, MCP server, and install hook read, so a team has one policy across every
+// surface. This is deliberately separate from the proxy's own config.js, which
+// holds SERVER settings (port/upstream/store/reviewPolicy). We layer the shared
+// policy (allow/mute/scanErrorPolicy) on top of the server's gate decisions.
+//
+// It is a CommonJS module; from ESM we import the DEFAULT object and reach the
+// named functions off it (`pkgxrayConfig.loadConfig` etc.) — named CJS imports
+// are unreliable under Node's interop, the default object always works.
+import pkgxrayConfig from '../../../src/config.js';
+
+/**
+ * Load the shared `.pkgxray.json` policy once, at startup. Warnings (malformed
+ * file, dropped un-pinned allow, a loosening) are surfaced through the proxy's
+ * logger so a policy change is never silent. Never throws: a broken shared file
+ * degrades to the safe DEFAULTS (maximum strictness), the proxy still runs.
+ *
+ * @param {object} [opts] { cwd, log }
+ * @returns {object} the validated shared policy config
+ */
+export function loadSharedPolicy({ cwd = process.cwd(), log } = {}) {
+  try {
+    const { config, warnings, sources } = pkgxrayConfig.loadConfig({ cwd });
+    // Only ADOPT the shared policy when a real `.pkgxray.json` (or .local) was
+    // found. With no authored file, loadConfig returns the safe DEFAULTS — but
+    // those defaults must NOT clobber the proxy's own explicitly-set server
+    // settings (e.g. a proxy configured fail-open). So: no file -> null -> the
+    // proxy uses only its own config; a real file present -> it takes precedence
+    // (this is the whole point: one team policy across CLI/MCP/proxy).
+    if (!sources || sources.length === 0) return null;
+    if (log) {
+      for (const s of sources) logSafe(log, { event: 'shared-policy', source: s });
+      for (const w of warnings) logSafe(log, { event: 'shared-policy-warning', message: w });
+    }
+    return config;
+  } catch (err) {
+    if (log) logSafe(log, { event: 'shared-policy-error', message: err && err.message });
+    return null;
+  }
+}
+
 const HEADER_VERDICT = 'x-pkgxray-verdict';
 const HEADER_SOURCE = 'x-pkgxray-source'; // allowlist | denylist | cache | scan
 
@@ -22,7 +63,7 @@ const HEADER_SOURCE = 'x-pkgxray-source'; // allowlist | denylist | cache | scan
  * @returns {Promise<{serve:boolean, status:number, decision:string,
  *   source:string, findings:Array, cached:boolean, note?:string}>}
  */
-export async function gate({ config, store, name, version, runGuard = defaultRunGuard, log }) {
+export async function gate({ config, store, name, version, runGuard = defaultRunGuard, log, sharedPolicy }) {
   // 1. Admin allow/denylist short-circuits — never scanned.
   if (listMatches(config.denylist, name, version)) {
     return plan(false, 403, 'block', 'denylist', [{ reason: 'denylisted by admin' }], false);
@@ -42,7 +83,7 @@ export async function gate({ config, store, name, version, runGuard = defaultRun
 
   // 3. Cache miss or stale entry — (re)scan. `prev` is the stale entry, if any,
   // so a failed refresh can fall back to it instead of overwriting a good verdict.
-  return scanAndDecide({ config, store, name, version, runGuard, log, prev: cached || null });
+  return scanAndDecide({ config, store, name, version, runGuard, log, prev: cached || null, sharedPolicy });
 }
 
 /**
@@ -54,7 +95,7 @@ export async function gate({ config, store, name, version, runGuard = defaultRun
  *     back to serving the prior cached verdict; on a true miss it follows
  *     scanErrorPolicy.
  */
-async function scanAndDecide({ config, store, name, version, runGuard, log, prev }) {
+async function scanAndDecide({ config, store, name, version, runGuard, log, prev, sharedPolicy }) {
   let result;
   try {
     result = await runGuard(config.pkgxrayBin, `${name}@${version}`, {
@@ -68,24 +109,116 @@ async function scanAndDecide({ config, store, name, version, runGuard, log, prev
       logSafe(log, { event: 'refresh-error', name, version, message: err.message, keeping: prev.decision });
       return fromDecision(config, prev.decision, prev.findings, 'cache', true, `stale refresh failed: ${err.message}`);
     }
-    if (config.scanErrorPolicy === 'fail-open') {
-      return plan(true, 200, 'scan-error', 'scan', findingsFromError(err), false, err.message);
+    // Scan-error handling. PRECEDENCE: the shared `.pkgxray.json`
+    // scanErrorPolicy wins when present — it is the one policy the whole team
+    // shares across CLI/MCP/proxy, and this example server's own
+    // config.scanErrorPolicy is only a fallback for a proxy run without a shared
+    // file. verdictForScanError() maps fail-closed -> "review", fail-open ->
+    // "safe"; anything that isn't an explicit fail-open serves closed (403).
+    const errPolicy = errorPolicy(config, sharedPolicy);
+    if (errPolicy === 'fail-open') {
+      return plan(true, 200, 'scan-error', 'scan', findingsFromError(err), false, `${err.message} (scanErrorPolicy=fail-open)`);
     }
-    return plan(false, 403, 'scan-error', 'scan', findingsFromError(err), false, err.message);
+    return plan(false, 403, 'scan-error', 'scan', findingsFromError(err), false, `${err.message} (scanErrorPolicy=fail-closed)`);
   }
 
+  // Layer the shared team policy on top of the raw scan verdict: a pinned+sha256
+  // allow can clear a package the scan would gate; a mute suppresses a check.
+  // applyConfig re-folds the verdict over the surviving findings and records
+  // exactly what it changed in `configEffects`, so nothing is ever silent.
+  const applied = applySharedPolicy(sharedPolicy, {
+    decision: result.decision,
+    findings: result.findings,
+    name, version,
+    sha256: result.sha256,
+  });
+  const decision = applied.decision;
+  const findings = applied.findings;
+
   const prevDecision = prev ? prev.decision : null;
-  store.set(name, version, result.decision, result.findings);
-  if (prevDecision && prevDecision !== result.decision) {
+  store.set(name, version, decision, findings);
+  if (prevDecision && prevDecision !== decision) {
     logSafe(log, {
       event: 'verdict-transition',
       name, version,
       from: prevDecision,
-      to: result.decision,
+      to: decision,
       reason: 'ttl-refresh',
     });
   }
-  return fromDecision(config, result.decision, result.findings, 'scan', false);
+  return fromDecision(config, decision, findings, 'scan', false, undefined, applied.configEffects);
+}
+
+/**
+ * Reconcile the shared scanErrorPolicy with the proxy's own. The shared team
+ * policy (from `.pkgxray.json`) takes precedence when it is present; the proxy's
+ * server-level `config.scanErrorPolicy` is the fallback. Both express the same
+ * fail-closed/fail-open choice, so when they conflict we defer to the shared one
+ * — one policy file for the whole team beats a per-proxy override.
+ */
+function errorPolicy(config, sharedPolicy) {
+  if (sharedPolicy) {
+    // "safe" => serve (fail-open); "review" => gate closed (fail-closed).
+    return pkgxrayConfig.verdictForScanError(sharedPolicy) === 'safe' ? 'fail-open' : 'fail-closed';
+  }
+  return config.scanErrorPolicy;
+}
+
+/**
+ * Apply the shared `.pkgxray.json` policy to a single scan result. Maps the
+ * proxy's allow|block|review verdict into the shared engine's finding-based
+ * model, runs applyConfig (pinned allow / mute), and maps the result back.
+ *
+ * Returns { decision, findings, configEffects }. When no shared policy is loaded
+ * (or nothing changes) the original decision passes through untouched.
+ */
+function applySharedPolicy(sharedPolicy, { decision, findings, name, version, sha256 }) {
+  if (!sharedPolicy) return { decision, findings, configEffects: null };
+
+  // The shared engine folds a verdict over findings. Give it the proxy's
+  // findings and a placeholder verdict-bearing finding so a gated package (no
+  // structured findings from the runner) still looks non-safe to applyConfig —
+  // otherwise an empty findings list would already read as "safe" and there'd be
+  // nothing for a pinned allow to clear.
+  const modelFindings = (Array.isArray(findings) ? findings.slice() : []).map((f) => ({ ...f }));
+  if (decision !== 'allow' && modelFindings.length === 0) {
+    modelFindings.push({
+      category: 'proxy-verdict',
+      severity: decision === 'block' ? 'high' : 'medium',
+      reason: `proxy scan verdict: ${decision}`,
+    });
+  }
+  const report = { packageName: name, verdict: proxyToShared(decision), findings: modelFindings };
+  const adjusted = pkgxrayConfig.applyConfig(report, {
+    config: sharedPolicy,
+    packageName: name,
+    version,
+    sha256,
+  });
+
+  const effects = adjusted.configEffects;
+  const touched = effects && (effects.allowlisted || effects.mutedCount > 0 || (effects.notices && effects.notices.length));
+  if (!touched) return { decision, findings, configEffects: null };
+
+  // Map the re-folded shared verdict back to a proxy decision. A pinned allow
+  // forces "safe" -> the proxy serves it as "allow"; muting can drop a package
+  // from block/review down as findings disappear.
+  return {
+    decision: sharedToProxy(adjusted.verdict, decision),
+    findings: adjusted.findings,
+    configEffects: effects,
+  };
+}
+
+// The shared engine speaks safe|review|block; the proxy speaks allow|block|review.
+function proxyToShared(decision) {
+  if (decision === 'allow') return 'safe';
+  return decision; // block / review are shared vocabulary too
+}
+function sharedToProxy(verdict, fallback) {
+  if (verdict === 'safe' || verdict === 'allow') return 'allow';
+  if (verdict === 'block' || verdict === 'review') return verdict;
+  return fallback;
 }
 
 /**
@@ -142,21 +275,32 @@ function logSafe(log, entry) {
 }
 
 /** Map a real decision (allow|block|review) + review policy to a plan. */
-function fromDecision(config, decision, findings, source, cached) {
-  if (decision === 'allow') return plan(true, 200, 'allow', source, findings, cached);
-  if (decision === 'block') return plan(false, 403, 'block', source, findings, cached);
+function fromDecision(config, decision, findings, source, cached, note, configEffects) {
+  if (decision === 'allow') return plan(true, 200, 'allow', source, findings, cached, note, configEffects);
+  if (decision === 'block') return plan(false, 403, 'block', source, findings, cached, note, configEffects);
   if (decision === 'review') {
-    if (config.reviewPolicy === 'block') return plan(false, 403, 'review', source, findings, cached, 'reviewPolicy=block');
+    // reviewPolicy is the proxy's own server-level knob for review-grade
+    // verdicts; it still applies after the shared policy has had its say.
+    if (config.reviewPolicy === 'block') return plan(false, 403, 'review', source, findings, cached, note || 'reviewPolicy=block', configEffects);
     // warn or allow both serve; warn just annotates.
-    const note = config.reviewPolicy === 'warn' ? 'reviewPolicy=warn (served with warning)' : 'reviewPolicy=allow';
-    return plan(true, 200, 'review', source, findings, cached, note);
+    const rpNote = config.reviewPolicy === 'warn' ? 'reviewPolicy=warn (served with warning)' : 'reviewPolicy=allow';
+    return plan(true, 200, 'review', source, findings, cached, note || rpNote, configEffects);
   }
   // Shouldn't happen (store only holds cacheable decisions), but fail safe.
-  return plan(false, 403, 'block', source, findings, cached, `unknown decision: ${decision}`);
+  return plan(false, 403, 'block', source, findings, cached, note || `unknown decision: ${decision}`, configEffects);
 }
 
-function plan(serve, status, decision, source, findings, cached, note) {
-  return { serve, status, decision, source, findings: findings || [], cached: Boolean(cached), ...(note ? { note } : {}) };
+function plan(serve, status, decision, source, findings, cached, note, configEffects) {
+  // Surface what the shared config changed (allowlisted/muted) so a loosening is
+  // never invisible — carried on the plan and logged/served with the decision.
+  const effectLines = configEffects ? pkgxrayConfig.renderConfigEffects(configEffects) : [];
+  return {
+    serve, status, decision, source,
+    findings: findings || [],
+    cached: Boolean(cached),
+    ...(note ? { note } : {}),
+    ...(effectLines.length ? { configEffects: effectLines } : {}),
+  };
 }
 
 function findingsFromError(err) {
@@ -190,6 +334,11 @@ export function createServer(config, store, deps = {}) {
   const runGuard = deps.runGuard || defaultRunGuard;
   const upstreamRequest = deps.upstreamRequest || makeUpstreamRequest();
   const log = deps.log || (config.logDecisions ? defaultLog : () => {});
+  // Load the shared team policy ONCE, at startup. Tests inject `deps.sharedPolicy`
+  // (which may be `null` to disable it). Warnings are printed through the logger.
+  const sharedPolicy = deps.sharedPolicy !== undefined
+    ? deps.sharedPolicy
+    : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
 
   const server = http.createServer((req, res) => {
     handle(req, res).catch((err) => {
@@ -253,7 +402,7 @@ export function createServer(config, store, deps = {}) {
       });
     }
 
-    const decision = await gate({ config, store, name, version, runGuard, log });
+    const decision = await gate({ config, store, name, version, runGuard, log, sharedPolicy });
 
     log({
       event: 'decision',
@@ -263,6 +412,8 @@ export function createServer(config, store, deps = {}) {
       cached: decision.cached,
       serve: decision.serve,
       ...(decision.note ? { note: decision.note } : {}),
+      // Never let a config-driven change (allowlisted/muted) go unlogged.
+      ...(decision.configEffects ? { configEffects: decision.configEffects } : {}),
     });
 
     if (!decision.serve) {
@@ -275,6 +426,7 @@ export function createServer(config, store, deps = {}) {
         source: decision.source,
         findings: decision.findings,
         ...(decision.note ? { note: decision.note } : {}),
+        ...(decision.configEffects ? { configEffects: decision.configEffects } : {}),
       });
     }
 
