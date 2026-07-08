@@ -82,8 +82,10 @@ checklist to get there:
       practice; make the promise explicit.
 - [ ] **`canary` decision** — either harden the execution sandbox to a
       documented threat model or keep it flagged Experimental at 1.0.
-- [ ] **Publish + provenance** — publish to npm with npm provenance / an SLSA
-      attestation (pkgxray should pass its own `guard`).
+- [x] **Publish + provenance** — the [`release` workflow](../.github/workflows/release.yml)
+      gates every publish on the tests, the calibration benchmark, and pkgxray's
+      own supply-chain `guard`, then ships with `npm publish --provenance` (SLSA
+      attestation). *(landed — wire the `NPM_TOKEN` secret to enable publishing.)*
 - [ ] **Supported Node range** — CI matrix across the `engines.node` range
       (currently `>=18`) so the floor is tested, not assumed.
 
