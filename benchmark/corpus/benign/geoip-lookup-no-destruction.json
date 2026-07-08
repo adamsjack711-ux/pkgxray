@@ -1,0 +1,12 @@
+{
+  "name": "legit-geoip-lookup",
+  "expect": "safe",
+  "note": "a geoip library that fetches location data and returns it — network + geo but no destructive/credential behavior",
+  "evidence": {
+    "packageName": "geo-lookup",
+    "sourceFiles": {
+      "index.js": "module.exports = async () => { const r = await fetch('https://api.ipgeolocation.io/ipgeo'); return r.json(); };",
+      "package.json": "{\"name\":\"geo-lookup\",\"repository\":\"https://github.com/x/geo-lookup\"}"
+    }
+  }
+}

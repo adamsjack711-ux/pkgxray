@@ -64,8 +64,29 @@ Each file is one case:
 The benign corpus intentionally includes the false-positive traps pkgxray is
 tuned against — `eval` on a string literal (bundler wrapper), `new
 Function("return this")`, a URL shortener in prose with no capability,
-`child_process` alone in a test file, npm↔GitHub divergence — so a
-recalibration that starts blocking them fails CI.
+`child_process` alone in a test file, npm↔GitHub divergence, a legitimate geoip
+lookup, a CI-detecting postinstall — so a recalibration that starts blocking
+them fails CI.
+
+### Real-world advisory samples
+
+The `advisory-*` fixtures are modeled on documented npm supply-chain incidents,
+each reduced to the smallest source that still trips the finding:
+`event-stream`/`flatmap-stream` (stage-2 loader, 2018), `node-ipc`/`peacenotwar`
+(geo-gated file corruption, 2022), `crossenv` (typosquat env-exfil, 2017),
+`eslint-scope` (`.npmrc` token theft, 2018), `ua-parser-js` (preinstall dropper,
+2021), `@solana/web3.js` (wallet key exfil, 2024), a torchtriton-style
+dependency-confusion recon payload (2023), and a Unicode-tag ASCII-smuggling
+injection. Building these paid off immediately: the `node-ipc` sample exposed a
+real gap — the logic-bomb detector caught file *deletion* but not the in-place
+*overwrite* corruption that node-ipc actually used, so the sample passed with
+zero behavioral findings. That gap is now closed (see `inspectLogicBomb`).
+
+Two samples are intentional **under-flags** the benchmark documents rather than
+hides: a bare `curl | sh` to an unknown host and the `node-ipc` geo-bomb both
+reach `review`, not `block`, because pkgxray routes download-then-execute and
+geo/locale-gated destructive ops to a human by policy (see the
+[severity policy](../docs/reference.md#severity-policy-what-lands-in-block--review--info)).
 
 ## Adding a case
 
