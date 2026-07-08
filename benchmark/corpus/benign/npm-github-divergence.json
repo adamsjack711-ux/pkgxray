@@ -1,0 +1,28 @@
+{
+  "name": "npm-vs-github-divergence",
+  "expect": "review",
+  "note": "artifact carries a source file absent from the tagged GitHub ref — review, cannot tell build step from tampering",
+  "evidence": {
+    "packageName": "diverged-pkg",
+    "npmVsGithubDiff": {
+      "compared": true,
+      "githubRef": "v1.2.0",
+      "counts": {
+        "extraSource": 1,
+        "mismatchedSource": 0,
+        "matched": 4,
+        "npmFiles": 5
+      },
+      "suspiciousExtras": [
+        {
+          "category": "extra-source",
+          "path": "dist/extra.js"
+        }
+      ]
+    },
+    "sourceFiles": {
+      "index.js": "module.exports = 1;",
+      "package.json": "{\"name\":\"diverged-pkg\",\"repository\":\"https://github.com/x/dp\"}"
+    }
+  }
+}

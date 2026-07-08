@@ -2342,11 +2342,15 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // INFO: exec or network alone is common in legitimate build tools, language
   // servers, request libraries — record it but don't gate the verdict.
   if (hasExec) {
+    // hasExec may have matched only the normalized (de-obfuscated) text, so an
+    // EXEC_REGEX match against `content` alone can be null — fall back to the
+    // normalized match, then to a description, rather than dereferencing null.
+    const execMatch = content.match(EXEC_REGEX) || (normChanged ? normalized.match(EXEC_REGEX) : null);
     findings.push({
       severity: "info",
       category: "code-execution",
       file: file.path,
-      snippet: clip(content.match(EXEC_REGEX)[0]),
+      snippet: clip(execMatch ? execMatch[0] : "child_process / shell execution"),
       rationale: "Uses child_process / shell execution. Common in build tools and CLIs."
     });
   }

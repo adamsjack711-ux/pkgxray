@@ -1,0 +1,12 @@
+{
+  "name": "simple-pure-utility",
+  "expect": "safe",
+  "note": "a normal utility with a repository and no risky capability",
+  "evidence": {
+    "packageName": "is-thing",
+    "sourceFiles": {
+      "index.js": "module.exports = (x) => typeof x === 'string';",
+      "package.json": "{\"name\":\"is-thing\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/is-thing\"}"
+    }
+  }
+}

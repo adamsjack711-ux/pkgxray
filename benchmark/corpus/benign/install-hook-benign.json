@@ -1,0 +1,12 @@
+{
+  "name": "postinstall-script-present",
+  "expect": "review",
+  "note": "a lone postinstall script is legitimately review, not block",
+  "evidence": {
+    "packageName": "native-dep",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"native-dep\",\"scripts\":{\"postinstall\":\"node ./scripts/rebuild.js\"},\"repository\":\"https://github.com/x/nd\"}",
+      "scripts/rebuild.js": "console.log('rebuilding native module');"
+    }
+  }
+}

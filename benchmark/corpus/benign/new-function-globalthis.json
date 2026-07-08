@@ -1,0 +1,12 @@
+{
+  "name": "feature-detect-globalthis",
+  "expect": "safe",
+  "note": "new Function('return this') globalThis probe — literal arg, must not gate",
+  "evidence": {
+    "packageName": "global-this-shim",
+    "sourceFiles": {
+      "index.js": "var g=(function(){return this;})()||new Function('return this')();module.exports=g;",
+      "package.json": "{\"name\":\"global-this-shim\",\"repository\":\"https://github.com/x/g\"}"
+    }
+  }
+}

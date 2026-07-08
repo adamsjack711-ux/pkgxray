@@ -19,6 +19,7 @@
   "scripts": {
     "build:browser": "node ./scripts/build-browser-extension.js",
     "test": "node --test",
+    "benchmark": "node ./benchmark/run.js",
     "audit:evidence": "node ./bin/audit.js",
     "mcp": "node ./bin/mcp-server.js",
     "cache": "node ./bin/pkgxray-cache.js"

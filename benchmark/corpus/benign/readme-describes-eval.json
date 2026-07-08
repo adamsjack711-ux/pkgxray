@@ -1,0 +1,13 @@
+{
+  "name": "prose-mentions-eval",
+  "expect": "safe",
+  "note": "documentation that talks ABOUT eval in English prose, not code",
+  "evidence": {
+    "packageName": "safe-eval-docs",
+    "sourceFiles": {
+      "README.md": "# safe-eval-docs\\n\\nThis library avoids eval and new Function entirely; user input is never passed to a code interpreter.",
+      "index.js": "module.exports = 1;",
+      "package.json": "{\"name\":\"safe-eval-docs\",\"repository\":\"https://github.com/x/sed\"}"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+name: pkgxray calibration benchmark
+
+# Runs the labelled calibration corpus (benchmark/) through the real static
+# engine on every push / PR that touches detection code or the corpus. The gate
+# fails on exactly the two outcomes that matter: a benign fixture wrongly
+# blocked (the "0 false blocks" invariant) or a malicious fixture that passes as
+# safe. Benign calibration drift (safe -> review) is reported, not failed.
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "benchmark/**"
+      - ".github/workflows/pkgxray-benchmark.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "benchmark/**"
+      - ".github/workflows/pkgxray-benchmark.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Zero runtime dependencies — the benchmark drives src/auditor.js directly.
+      - name: Run calibration benchmark
+        run: node ./benchmark/run.js

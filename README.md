@@ -448,12 +448,19 @@ Other docs: **[compatibility & stability tiers](docs/compatibility.md)** ·
 ## Development
 
 ```bash
-npm test
+npm test                 # zero-dep node --test suite
+npm run benchmark        # calibration corpus: precision/recall + 0-false-block gate
 npm run build:browser
 npm run audit:evidence -- --file examples/evidence.json
 ```
 
+The [calibration benchmark](benchmark/) runs a labelled corpus of malicious and
+benign fixtures through the real engine and fails on a false block or a missed
+detection — the reproducible form of the "0 false blocks" claim. See
+[`benchmark/README.md`](benchmark/README.md).
+
 ```
 src/   analysis engines   bin/   CLI entrypoints   browser-extension/   MV3 ext
 docs/  architecture        examples/  sample evidence   test/  node --test suites
+benchmark/  calibration corpus + runner
 ```

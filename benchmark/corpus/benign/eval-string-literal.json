@@ -1,0 +1,12 @@
+{
+  "name": "bundler-eval-source-map-wrapper",
+  "expect": "safe",
+  "note": "eval on a STRING LITERAL (bundler wrapper) — info, must not gate",
+  "evidence": {
+    "packageName": "bundled-lib",
+    "sourceFiles": {
+      "dist.js": "(function(){eval('\\\\n//# sourceURL=webpack-internal:///./src/index.js\\\\n');})();",
+      "package.json": "{\"name\":\"bundled-lib\",\"repository\":\"https://github.com/x/bundled-lib\"}"
+    }
+  }
+}

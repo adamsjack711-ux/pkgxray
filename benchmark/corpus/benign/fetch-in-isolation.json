@@ -1,0 +1,12 @@
+{
+  "name": "http-client-no-env",
+  "expect": "safe",
+  "note": "an HTTP client that fetches a URL argument, no credential/env access",
+  "evidence": {
+    "packageName": "tiny-get",
+    "sourceFiles": {
+      "index.js": "module.exports = (url) => fetch(url).then(r => r.text());",
+      "package.json": "{\"name\":\"tiny-get\",\"repository\":\"https://github.com/x/tg\"}"
+    }
+  }
+}

@@ -1203,3 +1203,17 @@ test("minified file run by a lifecycle script gets the full scan", () => {
   });
   assert.equal(report.verdict, "block");
 });
+
+test("does not crash when exec appears only in the de-obfuscated text", () => {
+  // Regression: hasExec matches the normalized (de-obfuscated) text, but the
+  // info-snippet extraction re-matched EXEC_REGEX against the ORIGINAL content
+  // only — so a base64-encoded child_process call threw
+  // "Cannot read properties of null" instead of scanning the package.
+  const encoded = Buffer.from("require('child_process').exec('id')", "utf8").toString("base64");
+  assert.doesNotThrow(() => {
+    const report = auditEvidence({ sourceFiles: { "index.js": `eval(atob('${encoded}'));` } });
+    // still flagged as obfuscation (computed-arg eval over a decoded blob)
+    assert.equal(report.verdict, "block");
+    assert.ok(report.findings.some((f) => f.category === "obfuscation"));
+  });
+});
