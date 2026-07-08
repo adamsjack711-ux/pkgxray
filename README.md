@@ -176,6 +176,54 @@ promotes review-grade. Exit codes: `0` safe/allow, `2` block, `3` review.
 
 ---
 
+## Configuration: `.pkgxray.json`
+
+Every surface — the CLI, the MCP server, and the proxy — reads **one** optional
+policy file, `.pkgxray.json`, through the same loader, so your policy can never
+drift between them. Zero config is fully safe: an absent file means maximum
+strictness. You never have to write one.
+
+The governing rule is **tighten freely, loosen loudly**. You may make the policy
+stricter without limit; you may loosen it (allow a package, mute a check) only
+*explicitly*, and every loosening is printed in the report — never silent. Two
+rules are enforced in code, not by convention:
+
+1. **An `allow` entry must be pinned** to `name@version` **and** a `sha256`. A
+   bare name would blanket-trust every future version — exactly how a trojaned
+   update gets in — so un-pinned allows are dropped with a warning, and a pin
+   only applies when the scanned artifact's digest matches.
+2. **A published vulnerability can never be muted or allowed away.** OSV
+   `known-vulnerability` findings always surface. You can vouch for a package's
+   code; you cannot vouch away a CVE.
+
+```jsonc
+{
+  "policy": "safe-only",        // or "allow-review" (a loosening — warns)
+  "failOn": "review",           // CI exit threshold: fail at review (exit 3) / block (exit 2)
+  "scanErrorPolicy": "fail-closed",   // a scan that errors → review, never silently safe
+
+  // loosen ONLY explicitly — each is shown in every report
+  "allow": [
+    { "pkg": "left-pad@1.3.0", "sha256": "e0b0…",
+      "reason": "reviewed 2026-07", "expires": "2026-10-01" }
+  ],
+  "mute": [
+    { "check": "lonely-maintainer", "scope": "@myorg/*", "reason": "internal registry" }
+  ],
+
+  // the MCP server reads the same file, but the agent deployment starts stricter
+  "mcp": { "tools": ["audit", "recheck"], "packageScanFirst": true, "timeoutMs": 15000 }
+}
+```
+
+Precedence (lowest → highest): built-in safe defaults → project `.pkgxray.json`
+→ local `.pkgxray.local.json` (gitignored, personal) → `PKGXRAY_*` env vars →
+CLI flags. `allow`/`mute` lists concatenate across layers. See
+[`.pkgxray.example.json`](.pkgxray.example.json) and [`docs/config.md`](docs/config.md)
+for the full schema.
+
+---
+
 ## Monitoring: `pkgxray recheck`
 
 `guard` and `audit` give a point-in-time verdict *at install*. `recheck` answers

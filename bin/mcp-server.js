@@ -3,9 +3,10 @@
 
 const fs = require("node:fs");
 const { auditEvidence, renderMarkdown } = require("../src/auditor");
-const { guardExtension } = require("../src/quarantine");
+const { guardExtension, decisionForReport } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
 const { triageLockfile } = require("../src/triage");
+const cfg = require("../src/config");
 
 const AUDIT_TOOL_NAME = "audit_agent_extension_supply_chain";
 const GUARD_TOOL_NAME = "guard_agent_extension_install";
@@ -13,6 +14,43 @@ const LOCKFILE_AUDIT_TOOL_NAME = "audit_lockfile_supply_chain";
 const LOCKFILE_TRIAGE_TOOL_NAME = "triage_lockfile_supply_chain";
 
 const SERVER_VERSION = "0.12.0";
+
+// ---------------------------------------------------------------------------
+// Shared config (`.pkgxray.json`) — loaded ONCE at startup. The MCP server is
+// the agent-deployment surface, so it reads the same policy file every other
+// surface reads (via src/config.js) and starts from the stricter `mcp` view.
+// Warnings (loosenings, malformed entries, dropped un-pinned allows) go to
+// stderr so they never contaminate the JSON-RPC stream on stdout.
+//
+// Config uses SHORT tool names ("audit" / "guard" / "recheck"); the MCP wire
+// protocol uses the long, self-describing names. This table maps each MCP tool
+// to the config short name that gates it, so `mcp.tools: ["audit","recheck"]`
+// controls exposure without the config author having to know wire names:
+//   guard   -> guard_agent_extension_install
+//   audit   -> audit_agent_extension_supply_chain + audit_lockfile_supply_chain
+//   recheck -> triage_lockfile_supply_chain   (recheck == re-triage a lockfile)
+// A tool is exposed only when mcpToolAllowed(config, <shortName>) is true
+// (mcp.tools null/omitted = all tools exposed).
+// ---------------------------------------------------------------------------
+const CONFIG_TOOL_KEY = Object.freeze({
+  [GUARD_TOOL_NAME]: "guard",
+  [AUDIT_TOOL_NAME]: "audit",
+  [LOCKFILE_AUDIT_TOOL_NAME]: "audit",
+  [LOCKFILE_TRIAGE_TOOL_NAME]: "recheck"
+});
+
+const { config: CONFIG, warnings: CONFIG_WARNINGS } = cfg.loadConfig({ cwd: process.cwd() });
+for (const w of CONFIG_WARNINGS) {
+  process.stderr.write(`pkgxray: ${w}\n`);
+}
+const MCP_CONFIG = cfg.mcpConfig(CONFIG);
+
+// Whether an MCP tool is exposed under the effective config.
+function toolExposed(mcpToolName) {
+  const key = CONFIG_TOOL_KEY[mcpToolName];
+  if (!key) return true; // unmapped tools are never hidden by config
+  return cfg.mcpToolAllowed(CONFIG, key);
+}
 
 // SECURITY: cap the inbound stdin buffer so a hostile caller can't OOM us
 // by sending gigabytes of payload with no newline. 4 MiB is comfortably
@@ -235,12 +273,15 @@ function lockfileTriageToolDefinition() {
 }
 
 function listTools() {
+  // Only advertise tools the config permits. A config with
+  // `mcp.tools: ["audit","recheck"]` drops guard from the listing entirely, so
+  // an agent never even sees a tool it isn't allowed to invoke.
   return [
     auditToolDefinition(),
     guardToolDefinition(),
     lockfileAuditToolDefinition(),
     lockfileTriageToolDefinition()
-  ];
+  ].filter((t) => toolExposed(t.name));
 }
 
 const TOOL_NAMES = new Set([
@@ -389,6 +430,19 @@ function handleRequest(request) {
       };
     }
 
+    // A tool the config filtered out of tools/list must not run even if a
+    // client calls it directly — treat it as if it doesn't exist.
+    if (!toolExposed(name)) {
+      return {
+        jsonrpc: "2.0",
+        id,
+        error: {
+          code: -32602,
+          message: `Tool not available under current .pkgxray.json policy: ${name}`
+        }
+      };
+    }
+
     const args = (params && params.arguments) || {};
 
     const validationError = validateToolCall(name, args);
@@ -397,22 +451,42 @@ function handleRequest(request) {
     }
 
     if (name === GUARD_TOOL_NAME) {
+      // Stricter MCP defaults: when the caller doesn't pin a policy, fall back
+      // to the (stricter) MCP-view policy rather than guard's own safe-only
+      // default, so the agent surface can be tightened centrally in config.
+      const guardOpts = { ...args, keepStaging: true };
+      if (guardOpts.policy === undefined) guardOpts.policy = MCP_CONFIG.policy;
+      // packageScanFirst (default true): the agent surface insists on a static
+      // package scan before it will vouch for anything. Only when config
+      // explicitly disables it (and the caller didn't ask for a scan) do we let
+      // guard stage without collecting source.
+      if (guardOpts.sourceScan === undefined) guardOpts.sourceScan = MCP_CONFIG.packageScanFirst !== false;
       // Keep the staging tree so the returned Quarantine path stays valid for
       // inspection / promotion; non-interactive callers reap it by default.
-      return guardExtension(args.reference, { ...args, keepStaging: true }).then((guardResult) => {
+      return guardExtension(args.reference, guardOpts).then((guardResult) => {
+        // Apply shared config to the resolved artifact: mutes, and — since guard
+        // resolved a real sha256 — a pinned allowlist that can force `safe`.
+        // applyConfig never changes a verdict silently; renderConfigEffects
+        // surfaces every suppression in the response text below.
+        const adjusted = applyConfigToGuardResult(guardResult, guardOpts.policy);
         const text =
           args.outputFormat === "json"
-            ? JSON.stringify(guardResult, null, 2)
-            : renderGuardMarkdown(guardResult);
+            ? JSON.stringify(adjusted, null, 2)
+            : renderGuardMarkdown(adjusted);
         return {
           jsonrpc: "2.0",
           id,
           result: {
             content: textContent(text),
-            structuredContent: guardResult
+            structuredContent: adjusted
           }
         };
       });
+      // NOTE: guard rejections (bad reference, promote-collision, network) are
+      // caller/usage errors, not scan errors, and fall through to the central
+      // handler, which returns a sanitized -32603. verdictForScanError is
+      // applied on the batch-scan surface (audit_lockfile) below, where an
+      // errored scan genuinely warrants a fail-closed verdict.
     }
 
     if (name === LOCKFILE_AUDIT_TOOL_NAME) {
@@ -431,7 +505,7 @@ function handleRequest(request) {
             structuredContent: result
           }
         };
-      });
+      }).catch((error) => scanErrorResult(id, LOCKFILE_AUDIT_TOOL_NAME, error, args.outputFormat));
     }
 
     if (name === LOCKFILE_TRIAGE_TOOL_NAME) {
@@ -527,6 +601,73 @@ function invalidParams(id, message) {
   };
 }
 
+// A batch scan (audit_lockfile) that ERRORS or times out must not be reported
+// as an opaque transport failure the agent might treat as "nothing to worry
+// about". Route it through the config's scan-error policy (default fail-closed
+// → "review") and hand the agent an explicit, sanitized verdict it can act on
+// conservatively. (Guard's own rejections are caller/usage errors and keep the
+// -32603 path.)
+function scanErrorResult(id, toolName, error, outputFormat) {
+  const verdict = cfg.verdictForScanError(CONFIG);
+  const reason = sanitizeErrorMessage(error && error.message);
+  const structured = {
+    schemaVersion: 1,
+    tool: toolName,
+    scanError: true,
+    verdict,
+    scanErrorPolicy: CONFIG.scanErrorPolicy,
+    message: reason
+  };
+  const text =
+    outputFormat === "json"
+      ? JSON.stringify(structured, null, 2)
+      : `Scan error: verdict **${verdict.toUpperCase()}** (scanErrorPolicy=${CONFIG.scanErrorPolicy}). ${reason}`;
+  return {
+    jsonrpc: "2.0",
+    id,
+    result: {
+      content: textContent(text),
+      structuredContent: structured,
+      isError: true
+    }
+  };
+}
+
+// Fold the shared config into a guard result. Guard has already resolved the
+// artifact, so we have name@version + the tarball sha256 — everything applyConfig
+// needs to honor a pinned allow. Returns a NEW result with the config-adjusted
+// report, the re-derived decision, and a `configEffects` block. When config
+// changes nothing the result is materially unchanged (empty effects).
+function applyConfigToGuardResult(result, policy) {
+  if (!result || !result.report) return result;
+  const resolved = result.resolved || {};
+  const adjustedReport = cfg.applyConfig(result.report, {
+    config: CONFIG,
+    packageName: resolved.packageName || result.report.packageName || null,
+    version: resolved.version || null,
+    sha256: resolved.sha256 || null,
+    // Pass the original source files so the verdict re-fold sees the same
+    // evidence completeness the initial audit did (avoids a spurious review
+    // from an empty-evidence placeholder).
+    evidence: { sourceFiles: sourceFilesEvidence(result.sourceFiles) }
+  });
+  // Re-derive the policy-folded decision from the (possibly allowlisted) verdict
+  // so the top-line Decision can't disagree with the adjusted report verdict.
+  const decision = decisionForReport(adjustedReport, policy || "safe-only");
+  return { ...result, decision, report: adjustedReport, configEffects: adjustedReport.configEffects };
+}
+
+// applyConfig only reads `evidence.sourceFiles.length` (the incomplete-evidence
+// gate). Guard stores sourceFiles as a path->text map; hand decideVerdict an
+// array of the same cardinality so a fully-scanned package doesn't look empty.
+function sourceFilesEvidence(sourceFiles) {
+  if (Array.isArray(sourceFiles)) return sourceFiles;
+  if (sourceFiles && typeof sourceFiles === "object") {
+    return Object.keys(sourceFiles).map(() => ({}));
+  }
+  return [{}];
+}
+
 function renderGuardMarkdown(result) {
   const lines = [
     `Decision: **${result.decision.toUpperCase()}**`,
@@ -540,6 +681,13 @@ function renderGuardMarkdown(result) {
   }
 
   lines.push(renderMarkdown(result.report));
+
+  // Surface what config suppressed (mutes / allowlist force-to-safe). Never let
+  // a loosening be invisible: these lines always accompany a changed verdict.
+  const effectLines = cfg.renderConfigEffects(result.configEffects);
+  if (effectLines.length > 0) {
+    lines.push("", ...effectLines);
+  }
   return lines.join("\n");
 }
 
@@ -619,49 +767,68 @@ function processLine(line) {
   }
 }
 
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  // SECURITY: drop bytes once the buffer is past the cap, but keep reading
-  // so the stream drains normally. Emit ONE parse-error reply per overflow
-  // event and then reset on the next newline.
-  if (bufferOverflowed) {
-    const nl = chunk.indexOf("\n");
-    if (nl === -1) return;
-    buffer = "";
-    bufferOverflowed = false;
-    const tail = chunk.slice(nl + 1);
-    if (tail.length === 0) return;
-    chunk = tail;
-  }
-  buffer += chunk;
-  if (buffer.length > MAX_BUFFER_BYTES) {
-    bufferOverflowed = true;
-    buffer = "";
-    send({
-      jsonrpc: "2.0",
-      id: null,
-      error: {
-        code: -32700,
-        message: `Parse error: JSON-RPC frame exceeded ${MAX_BUFFER_BYTES} bytes without a newline`
-      }
-    });
-    return;
-  }
-  let newlineIndex = buffer.indexOf("\n");
-  while (newlineIndex !== -1) {
-    const line = buffer.slice(0, newlineIndex);
-    buffer = buffer.slice(newlineIndex + 1);
-    processLine(line);
-    newlineIndex = buffer.indexOf("\n");
-  }
-});
+// Wire up the stdin JSON-RPC loop. Kept behind a function (and only invoked
+// when this file is the process entrypoint) so tests can `require` the module
+// to exercise the pure config-folding helpers without the server attaching a
+// stdin listener and hanging.
+function attachStdin() {
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    // SECURITY: drop bytes once the buffer is past the cap, but keep reading
+    // so the stream drains normally. Emit ONE parse-error reply per overflow
+    // event and then reset on the next newline.
+    if (bufferOverflowed) {
+      const nl = chunk.indexOf("\n");
+      if (nl === -1) return;
+      buffer = "";
+      bufferOverflowed = false;
+      const tail = chunk.slice(nl + 1);
+      if (tail.length === 0) return;
+      chunk = tail;
+    }
+    buffer += chunk;
+    if (buffer.length > MAX_BUFFER_BYTES) {
+      bufferOverflowed = true;
+      buffer = "";
+      send({
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32700,
+          message: `Parse error: JSON-RPC frame exceeded ${MAX_BUFFER_BYTES} bytes without a newline`
+        }
+      });
+      return;
+    }
+    let newlineIndex = buffer.indexOf("\n");
+    while (newlineIndex !== -1) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      processLine(line);
+      newlineIndex = buffer.indexOf("\n");
+    }
+  });
 
-process.stdin.on("end", () => {
-  if (bufferOverflowed) {
-    buffer = "";
-    return;
-  }
-  if (buffer.trim()) {
-    processLine(buffer);
-  }
-});
+  process.stdin.on("end", () => {
+    if (bufferOverflowed) {
+      buffer = "";
+      return;
+    }
+    if (buffer.trim()) {
+      processLine(buffer);
+    }
+  });
+}
+
+if (require.main === module) {
+  attachStdin();
+}
+
+// Exported for tests only. The wire behavior is unchanged whether or not these
+// are consumed; they let the offline suite unit-test the config seam.
+module.exports = {
+  applyConfigToGuardResult,
+  toolExposed,
+  listTools,
+  CONFIG_TOOL_KEY
+};

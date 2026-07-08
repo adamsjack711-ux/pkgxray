@@ -138,6 +138,27 @@ test("registry error puts the dep in version-drift unknown, not a false 'no upda
   assert.equal(result.exitCode, 0);
 });
 
+test("when EVERY newer candidate's guard errors, it is NOT reported as a clean update", async () => {
+  const lockfilePath = await project(
+    [["riskyupdate", "1.0.0"]],
+    [{ name: "riskyupdate", version: "1.0.0", verdict: "safe" }]
+  );
+  const result = await recheckLockfile(lockfilePath, {
+    write: false,
+    listVersions: listVersionsFrom({ riskyupdate: ["1.0.0", "1.1.0", "2.0.0"] }),
+    // pinned stays safe (isolates version drift); every newer candidate throws.
+    evaluate: async (dep) => {
+      if (dep.version === "1.0.0") return { verdict: "safe" };
+      throw new Error("guard scan failed");
+    }
+  });
+  // Fail-open guard: no candidate could be vetted => must NOT be updateAvailableSafe.
+  assert.equal(result.counts.updateAvailableSafe, 0, "unvetted newer version is not a clean update");
+  assert.equal(result.versionDrift.available.length, 0);
+  assert.equal(result.versionDrift.unknown.length, 1);
+  assert.equal(result.versionDrift.unknown[0].name, "riskyupdate");
+});
+
 test("version drift can be turned off entirely", async () => {
   const lockfilePath = await project(
     [["widget", "1.0.0"]],

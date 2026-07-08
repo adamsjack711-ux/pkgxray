@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+
+  "policy": "safe-only",
+  "failOn": "review",
+  "scanErrorPolicy": "fail-closed",
+
+  "allow": [
+    {
+      "pkg": "left-pad@1.3.0",
+      "sha256": "e0b0f3f5c2b1a9d4c7e6f8a1b2c3d4e5f60718293a4b5c6d7e8f90112233445",
+      "reason": "manually reviewed 2026-07-01",
+      "expires": "2026-10-01"
+    }
+  ],
+
+  "mute": [
+    {
+      "check": "lonely-maintainer",
+      "scope": "@myorg/*",
+      "reason": "internal registry — single maintainer is expected"
+    }
+  ],
+
+  "mcp": {
+    "tools": ["audit", "recheck"],
+    "policy": "safe-only",
+    "packageScanFirst": true,
+    "timeoutMs": 15000
+  }
+}

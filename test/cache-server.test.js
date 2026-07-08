@@ -303,6 +303,145 @@ test("strips Authorization header on cross-host upstream redirects", async (t) =
   );
 });
 
+test("server does NOT use its own token for a client with no token (confused-deputy, finding 3a)", async (t) => {
+  // The server is configured with its own PKGXRAY_CACHE_GITHUB_TOKEN. A client
+  // that sends NO token must NOT have the server's token attached upstream —
+  // otherwise an unauthenticated client could make the server fetch a private
+  // repo with its credentials and cache it for later unauthenticated retrieval.
+  let upstreamSawAuth = "UNSET";
+  const upstream = await startFakeUpstream({
+    "/repos/private/repo": (req, res) => {
+      upstreamSawAuth = req.headers["authorization"] || null;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ full_name: "private/repo" }));
+    }
+  });
+  const cacheDir = await makeTempDir("deputy");
+  const prevServerToken = process.env.PKGXRAY_CACHE_GITHUB_TOKEN;
+  const prevGithubToken = process.env.GITHUB_TOKEN;
+  process.env.PKGXRAY_CACHE_GITHUB_TOKEN = "server_secret_token";
+  process.env.GITHUB_TOKEN = "server_github_token";
+  const { server, address } = await start({
+    port: 0,
+    host: "127.0.0.1",
+    cacheDir,
+    upstreamGithubApi: upstream.url,
+    upstreamCodeload: upstream.url
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+    if (prevServerToken === undefined) delete process.env.PKGXRAY_CACHE_GITHUB_TOKEN;
+    else process.env.PKGXRAY_CACHE_GITHUB_TOKEN = prevServerToken;
+    if (prevGithubToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = prevGithubToken;
+  });
+
+  // Client sends NO x-pkgxray-github-token.
+  const result = await getJson(`http://127.0.0.1:${address.port}/github/repos/private/repo`);
+  assert.equal(result.statusCode, 200);
+  assert.equal(
+    upstreamSawAuth,
+    null,
+    `server leaked its own token upstream for a tokenless client: ${upstreamSawAuth}`
+  );
+});
+
+test("client-supplied token IS forwarded upstream (finding 3a, positive path)", async (t) => {
+  let upstreamSawAuth = "UNSET";
+  const upstream = await startFakeUpstream({
+    "/repos/team/repo": (req, res) => {
+      upstreamSawAuth = req.headers["authorization"] || null;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ full_name: "team/repo" }));
+    }
+  });
+  const cacheDir = await makeTempDir("fwd");
+  const { server, address } = await start({
+    port: 0, host: "127.0.0.1", cacheDir,
+    upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+  const result = await getJson(
+    `http://127.0.0.1:${address.port}/github/repos/team/repo`,
+    { "x-pkgxray-github-token": "client_token_abc" }
+  );
+  assert.equal(result.statusCode, 200);
+  assert.equal(upstreamSawAuth, "Bearer client_token_abc");
+});
+
+test("uncapped upstream JSON body is refused with a size ceiling (finding 3b)", async (t) => {
+  // Upstream serves a body larger than MAX_JSON_BYTES (8MB). The server must
+  // destroy the request and surface a 502 rather than buffering it all.
+  const huge = "x".repeat(9 * 1024 * 1024);
+  const upstream = await startFakeUpstream({
+    "/repos/big/body": (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(`{"padding":"${huge}"}`);
+    }
+  });
+  const cacheDir = await makeTempDir("bigjson");
+  const { server, address } = await start({
+    port: 0, host: "127.0.0.1", cacheDir,
+    upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+  const result = await getJson(`http://127.0.0.1:${address.port}/github/repos/big/body`);
+  assert.equal(result.statusCode, 502, `expected 502 for oversized body, got ${result.statusCode}`);
+  assert.match(result.body, /exceeded/i);
+  // Nothing should have been persisted.
+  const cacheFile = path.join(cacheDir, "github", "repos", "big", "body.json");
+  await assert.rejects(() => fsp.stat(cacheFile));
+});
+
+test("disk cap: over-cap tarball is proxied live (BYPASS) and not persisted (finding 3c)", async (t) => {
+  const payload = zlib.gzipSync(Buffer.from("over-cap payload\n".repeat(32)));
+  const upstream = await startFakeUpstream({
+    "/big/repo/tar.gz/v1.0.0": (_req, res) => {
+      res.writeHead(200, { "content-type": "application/gzip", "content-length": payload.length });
+      res.end(payload);
+    }
+  });
+  const cacheDir = await makeTempDir("diskcap");
+  // Seed the cache with a byte so its size is already at/over the 1-byte cap.
+  await fsp.writeFile(path.join(cacheDir, "seed"), "x");
+  const { server, address } = await start({
+    port: 0, host: "127.0.0.1", cacheDir,
+    upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url,
+    maxCacheBytes: 1 // cache already at/over cap → new tarballs bypass disk
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const url = `http://127.0.0.1:${address.port}/github/tarball/big/repo/v1.0.0`;
+  const result = await getBuffer(url);
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers["x-pkgxray-cache"], "BYPASS");
+  assert.deepEqual(result.body, payload);
+  // The over-cap response must NOT have been written to disk.
+  const cacheFile = path.join(cacheDir, "github", "tarballs", "big", "repo", "v1.0.0.tgz");
+  await assert.rejects(() => fsp.stat(cacheFile));
+});
+
+test("parseArgs accepts --max-cache-bytes and rejects a negative value", () => {
+  const { parseArgs } = require("../bin/pkgxray-cache");
+  assert.equal(parseArgs(["--max-cache-bytes", "1024"]).maxCacheBytes, 1024);
+  assert.equal(parseArgs(["--max-cache-bytes=0"]).maxCacheBytes, 0);
+  assert.throws(() => parseArgs(["--max-cache-bytes", "-5"]));
+});
+
 test("upstream 404 is propagated to client and not cached", async (t) => {
   const upstream = await startFakeUpstream({
     __default: (_req, res) => {
@@ -334,9 +473,16 @@ test("upstream 404 is propagated to client and not cached", async (t) => {
 test("cache-client + github.js end-to-end via cache server", async (t) => {
   // Reset module cache so cache-client picks up the env var, then restore.
   const previous = process.env.PKGXRAY_CACHE_URL;
+  // The cache runs over loopback http here; that requires the explicit insecure
+  // opt-in (remote/plaintext caches are refused so the GitHub token is never
+  // sent over the wire — see cache-client getCacheUrl).
+  const previousInsecure = process.env.PKGXRAY_CACHE_ALLOW_INSECURE;
+  process.env.PKGXRAY_CACHE_ALLOW_INSECURE = "1";
   t.after(() => {
     if (previous === undefined) delete process.env.PKGXRAY_CACHE_URL;
     else process.env.PKGXRAY_CACHE_URL = previous;
+    if (previousInsecure === undefined) delete process.env.PKGXRAY_CACHE_ALLOW_INSECURE;
+    else process.env.PKGXRAY_CACHE_ALLOW_INSECURE = previousInsecure;
   });
 
   const upstream = await startFakeUpstream({

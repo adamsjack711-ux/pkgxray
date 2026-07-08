@@ -18,8 +18,12 @@
 //     runtime gate) in the deny reason — the agent re-runs the wrapped form,
 //     whose inner launcher is still scanned, and it passes (default on;
 //     PKGXRAY_HOOK_MCP_WRAP=0 to disable).
-//   - OnAfterFileEdit: when the agent edits package.json or a lockfile, runs
-//     `pkgxray audit` on it and feeds the verdict back as context (opt-in).
+//   - OnAfterFileEdit: when the agent edits an MCP config file (.mcp.json,
+//     mcp.json, mcp_config.json, claude_desktop_config.json), gates the
+//     added/changed server entries exactly like an `mcp add` command — closing
+//     the write-the-config-directly bypass (on by default). When the agent
+//     edits package.json or a lockfile, runs `pkgxray audit` on it and feeds
+//     the verdict back as context (opt-in).
 //
 // Configuration (environment variables):
 //
@@ -90,7 +94,17 @@ func main() {
 	})
 
 	hookshot.OnAfterFileEdit(func(ctx hookshot.FileEditContext) hookshot.FileEditDecision {
-		if cfg.disabled || !cfg.auditLockfiles || !isDependencyManifest(ctx.FilePath) {
+		if cfg.disabled {
+			return hookshot.FileEditOK()
+		}
+		// MCP config files (.mcp.json & friends): writing one registers a
+		// server without any `mcp add` command for the execution gate to see.
+		// This closes that bypass, so it is ON by default (only the global
+		// PKGXRAY_HOOK_DISABLE turns it off) — unlike the opt-in lockfile audit.
+		if pkgxrayguard.IsMcpConfig(ctx.FilePath) {
+			return decideMcpConfigEdit(cfg, ctx.FilePath, toFileEdits(ctx.Edits))
+		}
+		if !cfg.auditLockfiles || !isDependencyManifest(ctx.FilePath) {
 			return hookshot.FileEditOK()
 		}
 		return auditManifestEdit(cfg, ctx.FilePath, toFileEdits(ctx.Edits))
@@ -337,6 +351,19 @@ func auditManifestEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdi
 		// rather than skipping, so an unusually-formatted addition can't slip by.
 	}
 	return auditManifestFile(cfg, filePath)
+}
+
+// decideMcpConfigEdit diffs an MCP-config edit for added/changed server
+// entries and runs each through the same gate as an `mcp add` command —
+// launcher packages get the static scan, http(s) URLs get the `pkgxray mcp`
+// probe, unreadable entries surface as review-worthy. An edit that adds no
+// server (formatting, env tweak) triages nothing.
+func decideMcpConfigEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdit) hookshot.FileEditDecision {
+	specs := pkgxrayguard.McpConfigAddedSpecs(edits)
+	if len(specs) == 0 {
+		return hookshot.FileEditOK()
+	}
+	return decideManifestSpecs(cfg, filePath, specs)
 }
 
 // decideManifestSpecs guards the added deps and maps the worst decision onto a

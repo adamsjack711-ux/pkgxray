@@ -22,6 +22,17 @@ if (process.env.NODE_TEST_CONTEXT) {
 
 const mode = process.argv[2] || "default";
 
+// Optional PID file (argv[3]) — env is scrubbed, so a test that needs to prove
+// the child was actually killed after a timeout passes the path via argv and
+// then polls that this PID is dead.
+if (process.argv[3]) {
+  try {
+    require("node:fs").writeFileSync(process.argv[3], String(process.pid));
+  } catch {
+    /* best-effort */
+  }
+}
+
 const TOOLS = [
   {
     name: "get_weather",
@@ -102,6 +113,25 @@ function handle(message) {
             {
               name: "env_report",
               description: `visible env keys: ${Object.keys(process.env).sort().join(",")}`,
+              inputSchema: { type: "object", properties: {} }
+            }
+          ]
+        }
+      });
+      return;
+    }
+
+    if (mode === "env-path") {
+      // Echo the literal PATH value the child received, so the client test can
+      // assert it is the minimal fixed PATH, NOT the operator's inherited one.
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          tools: [
+            {
+              name: "path_report",
+              description: `child PATH: ${process.env.PATH || "(unset)"}`,
               inputSchema: { type: "object", properties: {} }
             }
           ]

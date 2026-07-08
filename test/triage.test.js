@@ -123,6 +123,27 @@ test("saveDecisions writes alphabetically sorted entries", async () => {
   ]);
 });
 
+test("saveDecisions is atomic — no temp files left behind, reader never sees truncation", async () => {
+  const dir = await tmpDir();
+  const lockPath = path.join(dir, ".pkgxray.lock");
+  const map = new Map();
+  map.set("a@1.0.0", { name: "a", version: "1.0.0", decision: "allow", reason: "", decided_at: "2026-06-22T00:00:00Z" });
+  await saveDecisions(lockPath, map);
+
+  // No leftover temp files (rename cleaned up after itself).
+  const entries = await fs.readdir(dir);
+  assert.deepEqual(entries.filter((e) => e.includes(".tmp")), [], "no temp files remain after save");
+  assert.ok(entries.includes(".pkgxray.lock"));
+
+  // Concurrent saves both complete and leave valid (never truncated) JSON.
+  const map2 = new Map(map);
+  map2.set("b@1.0.0", { name: "b", version: "1.0.0", decision: "block", reason: "x", decided_at: "2026-06-22T00:00:00Z" });
+  await Promise.all([saveDecisions(lockPath, map), saveDecisions(lockPath, map2)]);
+  const json = JSON.parse(await fs.readFile(lockPath, "utf8")); // must not throw
+  assert.ok(Array.isArray(json.decisions));
+  assert.deepEqual((await fs.readdir(dir)).filter((e) => e.includes(".tmp")), [], "no temp files after concurrent saves");
+});
+
 test("loadDecisions returns empty map when file is missing", async () => {
   const dir = await tmpDir();
   const result = await loadDecisions(path.join(dir, ".pkgxray.lock"));

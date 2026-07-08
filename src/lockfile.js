@@ -89,26 +89,99 @@ function parseYarnLockfile(text) {
 }
 
 function extractYarnName(spec) {
-  // Strip optional "npm:" protocol prefix on berry: "@scope/x@npm:1.2.3"
-  const stripped = spec.replace(/@npm:/, "@");
-  const at = stripped.startsWith("@")
-    ? stripped.indexOf("@", 1)
-    : stripped.indexOf("@");
+  // Berry npm-alias: "aliased@npm:realpkg@^1.0.0" — OSV must vet the REAL
+  // published package (realpkg), NOT the local alias. The `version "X"` line
+  // gives the resolved version, so we only need the true name here.
+  const npmAt = spec.indexOf("@npm:");
+  if (npmAt !== -1) {
+    const target = spec.slice(npmAt + "@npm:".length); // "realpkg@^1.0.0" or "1.2.3"
+    // Two shapes: `name@npm:VERSION` (same package, npm protocol) vs
+    // `alias@npm:realpkg@RANGE` (an alias to a DIFFERENT published package).
+    // A leading digit or range operator means it's a bare version → the true
+    // name is the alias part before @npm:. Otherwise the target names the real
+    // published package to vet.
+    if (/^[\d~^><=v]/.test(target)) {
+      return spec.slice(0, npmAt) || null;
+    }
+    const at = target.startsWith("@") ? target.indexOf("@", 1) : target.indexOf("@");
+    const realName = at === -1 ? target : target.slice(0, at);
+    return realName || null;
+  }
+  const at = spec.startsWith("@")
+    ? spec.indexOf("@", 1)
+    : spec.indexOf("@");
   if (at === -1) return null;
-  return stripped.slice(0, at);
+  return spec.slice(0, at);
 }
 
 function parsePnpmLockfile(text) {
   // pnpm-lock.yaml is YAML; rather than pull in a yaml parser we scrape the
-  // `packages:` block whose keys are `/name@version` or `/@scope/name@version`.
+  // package keys under `packages:` and (v9) `snapshots:`. The key shape drifted
+  // across lockfile versions:
+  //   v5:  `/lodash/4.17.21:`              (leading slash, name/version)
+  //   v6:  `/lodash@4.17.21:`              (leading slash, name@version)
+  //   v9:  `lodash@4.17.21:`               (NO slash — pnpm 9 default)
+  //        `'@scope/pkg@1.0.0':`           (scoped, single-quoted)
+  // Any of these may carry a `(peer@x)` suffix and may be single-quoted. v9
+  // lists each dep in both `packages:` and `snapshots:`, so we de-dupe via the
+  // shared `add` helper keyed on name@version.
   const deps = new Map();
-  // Match keys like "/foo@1.2.3:" or "/@scope/foo@1.2.3(peer):"
-  const re = /^\s+\/(@?[^@\n]+?)@([^():\n]+?)(?:\([^)]*\))?:\s*$/gm;
-  let match;
-  while ((match = re.exec(text)) !== null) {
-    add(deps, match[1], match[2], [`${match[1]}@${match[2]}`]);
+  // Line-oriented: a package key is an indented line ending in `:` (no value).
+  const keyLine = /^\s+(['"]?)([^\s].*?)\1:\s*$/;
+  for (const raw of text.split("\n")) {
+    const m = raw.match(keyLine);
+    if (!m) continue;
+    let key = m[2].trim();
+    if (!key) continue;
+    // Skip the section headers / metadata keys and anything that is clearly not
+    // a package spec (contains no version separator once normalised).
+    const parsed = parsePnpmKey(key);
+    if (!parsed) continue;
+    add(deps, parsed.name, parsed.version, [`${parsed.name}@${parsed.version}`]);
   }
   return deps;
+}
+
+// Parse a single pnpm package key into { name, version }, or null if it is not
+// a package spec. Handles optional leading slash, the v5 `name/version` form,
+// the v6/v9 `name@version` form, scoped names, and a trailing `(peer)` suffix.
+function parsePnpmKey(key) {
+  // Drop a trailing peer-deps suffix: `foo@1.0.0(react@18.0.0)` -> `foo@1.0.0`.
+  let s = key.replace(/\(.*\)\s*$/, "").trim();
+  // Optional leading slash (v5/v6).
+  const hadSlash = s.startsWith("/");
+  if (hadSlash) s = s.slice(1);
+  if (!s) return null;
+
+  // Scope prefix (@scope/...) is a name component, not a version separator.
+  let scope = "";
+  if (s.startsWith("@")) {
+    const slash = s.indexOf("/");
+    if (slash === -1) return null;
+    scope = s.slice(0, slash + 1);
+    s = s.slice(slash + 1);
+  }
+
+  // v6/v9 use `@` between name and version; v5 uses `/`.
+  let name;
+  let version;
+  const at = s.indexOf("@");
+  if (at > 0) {
+    name = scope + s.slice(0, at);
+    version = s.slice(at + 1);
+  } else {
+    // v5 `name/version` (only meaningful when there was a leading slash form).
+    const slash = s.lastIndexOf("/");
+    if (slash <= 0) return null;
+    name = scope + s.slice(0, slash);
+    version = s.slice(slash + 1);
+  }
+  version = version.trim();
+  name = name.trim();
+  // A version must look like a version (start with a digit) — this rejects
+  // section headers or nested keys that happen to end in `:`.
+  if (!name || !/^\d/.test(version)) return null;
+  return { name, version };
 }
 
 function parsePackageJson(text) {
@@ -117,16 +190,64 @@ function parsePackageJson(text) {
   for (const section of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
     const entries = json[section] || {};
     for (const [name, rawVersion] of Object.entries(entries)) {
-      // package.json holds version ranges, not pinned versions. Strip the
-      // common range prefixes so OSV gets something resolvable.
-      const version = String(rawVersion).replace(/^[~^>=<]+/, "").trim();
-      if (!version || version.startsWith("file:") || version.startsWith("github:") || version.startsWith("git+")) {
+      const resolved = resolvePackageJsonSpec(name, String(rawVersion));
+      if (!resolved) continue; // nothing meaningful to record
+      if (resolved.unresolved) {
+        // A spec OSV can't resolve (workspace/catalog/url/git/file). Surface it
+        // so it is NOT silently counted as clean — but never emit a bogus
+        // pinned version that would read "safe".
+        addUnresolved(deps, resolved.name, resolved.spec, [section], resolved.kind);
         continue;
       }
-      add(deps, name, version, [section]);
+      add(deps, resolved.name, resolved.version, [section]);
     }
   }
   return deps;
+}
+
+// Map a package.json dependency spec to a resolvable { name, version } for OSV,
+// or mark it unresolved. Handles npm aliases and non-registry protocols.
+function resolvePackageJsonSpec(declaredName, rawVersion) {
+  const raw = rawVersion.trim();
+  if (!raw) return null;
+
+  // npm alias: `npm:realpkg@^1.2.3` — OSV must vet the REAL published package,
+  // not the local alias name. `npm:realpkg` (no version) resolves to the range
+  // "latest", which OSV can't pin, so treat that as unresolved.
+  if (raw.startsWith("npm:")) {
+    const target = raw.slice(4);
+    const at = target.startsWith("@") ? target.indexOf("@", 1) : target.indexOf("@");
+    if (at > 0) {
+      const realName = target.slice(0, at);
+      const version = stripRange(target.slice(at + 1));
+      if (realName && version) return { name: realName, version };
+    }
+    // Aliased but unpinnable — surface under the real name if we have one.
+    const realName = at > 0 ? target.slice(0, at) : target;
+    return { unresolved: true, name: realName || declaredName, spec: raw, kind: "alias" };
+  }
+
+  // Non-registry protocols OSV cannot query. Don't emit a bogus pinned version.
+  if (
+    raw.startsWith("workspace:") || raw.startsWith("catalog:") ||
+    raw.startsWith("file:") || raw.startsWith("link:") || raw.startsWith("portal:") ||
+    raw.startsWith("github:") || raw.startsWith("git+") || raw.startsWith("git:") ||
+    /^https?:\/\//.test(raw) || /^[\w.-]+\/[\w.-]+(#.*)?$/.test(raw)
+  ) {
+    return { unresolved: true, name: declaredName, spec: raw, kind: "protocol" };
+  }
+
+  const version = stripRange(raw);
+  if (!version) return { unresolved: true, name: declaredName, spec: raw, kind: "unpinnable" };
+  return { name: declaredName, version };
+}
+
+// Strip the common range prefixes so OSV gets something resolvable. Returns ""
+// when what's left isn't a concrete-enough version (e.g. "*", "latest").
+function stripRange(range) {
+  const v = String(range).replace(/^[~^>=<\s]+/, "").trim();
+  if (!v || v === "*" || v === "latest" || v === "x") return "";
+  return v;
 }
 
 function add(deps, name, version, paths) {
@@ -137,6 +258,26 @@ function add(deps, name, version, paths) {
   } else {
     deps.set(key, { name, version, paths: paths || [] });
   }
+}
+
+// Record a dep that cannot be OSV-queried (npm alias without a pin, workspace,
+// catalog, url, git or file spec). It is flagged `unresolved` so the audit
+// surfaces it as not-vetted rather than silently counting it clean. Keyed on
+// the raw spec so distinct unresolved specs don't collide.
+function addUnresolved(deps, name, spec, paths, kind) {
+  const key = `${name}@${spec}`;
+  const existing = deps.get(key);
+  if (existing) {
+    if (paths) existing.paths.push(...paths);
+    return;
+  }
+  deps.set(key, {
+    name,
+    version: spec,
+    paths: paths || [],
+    unresolved: true,
+    unresolvedKind: kind || "unresolved"
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,10 +291,15 @@ const https = require("node:https");
 const OSV_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
 
 function batchOsvQuery(deps) {
-  const queries = Array.from(deps.values()).map((d) => ({
-    package: { name: d.name, ecosystem: "npm" },
-    version: d.version
-  }));
+  // Unresolved specs (workspace/catalog/url/git/alias-without-pin) carry a raw
+  // spec in `version` that OSV cannot resolve — querying them would come back
+  // empty and read "safe". Skip them here; the audit surfaces them separately.
+  const queries = Array.from(deps.values())
+    .filter((d) => !d.unresolved)
+    .map((d) => ({
+      package: { name: d.name, ecosystem: "npm" },
+      version: d.version
+    }));
   if (queries.length === 0) return Promise.resolve([]);
   // OSV /v1/querybatch accepts up to 1000 per call. Split if larger.
   const chunks = [];
@@ -213,7 +359,12 @@ async function auditLockfile(filePath, options = {}) {
   const queries = Array.from(deps.values());
 
   let osvResults = [];
-  if (options.vulnerabilityCheck !== false) {
+  if (Array.isArray(options.osvResults)) {
+    // Test/injection hook: pre-computed OSV results, index-aligned with the
+    // RESOLVED (non-unresolved) deps, in dep-map order. Lets callers exercise
+    // the vuln/triage decision logic without hitting the network.
+    osvResults = options.osvResults;
+  } else if (options.vulnerabilityCheck !== false) {
     osvResults = await batchOsvQuery(deps);
   }
   const osvMs = Date.now() - start;
@@ -234,11 +385,34 @@ async function auditLockfile(filePath, options = {}) {
   }
 
   const results = [];
+  // osvResults are index-aligned with the RESOLVED deps only (batchOsvQuery
+  // skips unresolved specs), so walk a separate cursor for OSV lookups.
+  let osvIndex = 0;
   for (let i = 0; i < queries.length; i += 1) {
     const dep = queries[i];
-    const osv = osvResults[i] || {};
+
+    if (dep.unresolved) {
+      // Not OSV-queryable (workspace/catalog/url/git/alias-without-pin). Do NOT
+      // count it clean — surface it as review/not-vetted so it is visible.
+      results.push({
+        name: dep.name,
+        version: dep.version,
+        paths: dep.paths.slice(0, 3),
+        decision: "review",
+        vulnerabilities: [],
+        unresolved: true,
+        unresolvedKind: dep.unresolvedKind || "unresolved",
+        deep: null,
+        triaged: false
+      });
+      continue;
+    }
+
+    const osv = osvResults[osvIndex] || {};
+    osvIndex += 1;
     const vulns = Array.isArray(osv.vulns) ? osv.vulns : [];
-    let decision = vulns.length > 0 ? "block" : "safe";
+    const osvBlocked = vulns.length > 0;
+    let decision = osvBlocked ? "block" : "safe";
     let triaged = false;
     const triageKey = `${dep.name}@${dep.version}`;
     const triageEntry = triageDecisions && triageDecisions.get
@@ -247,9 +421,11 @@ async function auditLockfile(filePath, options = {}) {
     if (triageEntry) {
       triaged = true;
       if (triageEntry.decision === "allow") {
-        // Allowed packages do not contribute to the block count regardless of
-        // OSV findings.
-        decision = "safe";
+        // A stored `allow` may quiet static/deep heuristics, but it must NEVER
+        // suppress a FRESH known-vulnerability finding from OSV. Otherwise
+        // anyone who can commit .pkgxray.lock could drop an `allow` and neuter
+        // the scan. OSV block wins; only when OSV is clean does the allow hold.
+        decision = osvBlocked ? "block" : "safe";
       } else if (triageEntry.decision === "block") {
         // Block stays block; if OSV said safe, still surface as block.
         decision = "block";

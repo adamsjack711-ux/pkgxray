@@ -5,7 +5,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { parseLockfile, detectFormat } = require("../src/lockfile");
+const { parseLockfile, detectFormat, auditLockfile } = require("../src/lockfile");
 
 async function tmpFile(name, content) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pkgxray-lock-"));
@@ -76,6 +76,162 @@ packages:
   assert.ok(deps.has("lodash@4.17.21"));
   assert.ok(deps.has("@babel/core@7.24.0"));
   assert.ok(deps.has("react@19.0.0"));
+});
+
+test("parses pnpm v9 (no leading slash, current pnpm 9 default)", async () => {
+  // pnpm 9 / lockfileVersion 9.0 dropped the leading slash and lists each dep in
+  // both `packages:` and `snapshots:`. Scoped keys are single-quoted. Must NOT
+  // parse to zero, and the duplicate across sections must de-dupe.
+  const pnpm = `lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+
+packages:
+
+  lodash@4.17.21:
+    resolution: {integrity: sha512-a}
+
+  '@scope/evil@1.0.0':
+    resolution: {integrity: sha512-b}
+
+  react@19.0.0(react-dom@19.0.0):
+    resolution: {integrity: sha512-c}
+
+snapshots:
+
+  lodash@4.17.21: {}
+
+  '@scope/evil@1.0.0': {}
+
+  react@19.0.0(react-dom@19.0.0): {}
+`;
+  const lock = await tmpFile("pnpm-lock.yaml", pnpm);
+  const { deps } = await parseLockfile(lock);
+  assert.equal(deps.size, 3, "v9 must not parse to zero and must de-dupe packages/snapshots");
+  assert.ok(deps.has("lodash@4.17.21"));
+  assert.ok(deps.has("@scope/evil@1.0.0"));
+  assert.ok(deps.has("react@19.0.0"));
+});
+
+test("parses pnpm v6 (leading slash, name@version)", async () => {
+  const pnpm = `lockfileVersion: '6.0'
+packages:
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-a}
+  /@scope/evil@1.0.0:
+    resolution: {integrity: sha512-b}
+`;
+  const lock = await tmpFile("pnpm-lock.yaml", pnpm);
+  const { deps } = await parseLockfile(lock);
+  assert.equal(deps.size, 2);
+  assert.ok(deps.has("lodash@4.17.21"));
+  assert.ok(deps.has("@scope/evil@1.0.0"));
+});
+
+test("parses pnpm v5 (leading slash, name/version)", async () => {
+  const pnpm = `lockfileVersion: 5.4
+packages:
+  /lodash/4.17.21:
+    resolution: {integrity: sha512-a}
+  /@scope/evil/1.0.0:
+    resolution: {integrity: sha512-b}
+`;
+  const lock = await tmpFile("pnpm-lock.yaml", pnpm);
+  const { deps } = await parseLockfile(lock);
+  assert.equal(deps.size, 2);
+  assert.ok(deps.has("lodash@4.17.21"));
+  assert.ok(deps.has("@scope/evil@1.0.0"));
+});
+
+test("package.json npm alias resolves to the REAL published package", async () => {
+  const pkg = await tmpFile("package.json", JSON.stringify({
+    name: "demo",
+    dependencies: { "myalias": "npm:realpkg@^1.2.3" }
+  }));
+  const { deps } = await parseLockfile(pkg);
+  // OSV must vet realpkg@1.2.3, NOT myalias with a garbage version.
+  assert.ok(deps.has("realpkg@1.2.3"), "alias resolves to real name+version");
+  assert.ok(!deps.has("myalias@npm:realpkg@^1.2.3"));
+});
+
+test("yarn berry npm alias vets the real package, not the alias", async () => {
+  const yarn = `"aliased@npm:realpkg@^1.0.0":
+  version "1.4.2"
+  resolved "https://registry.yarnpkg.com/realpkg/-/realpkg-1.4.2.tgz"
+`;
+  const lock = await tmpFile("yarn.lock", yarn);
+  const { deps } = await parseLockfile(lock);
+  assert.ok(deps.has("realpkg@1.4.2"), "vets realpkg, not aliased");
+  assert.ok(!deps.has("aliased@1.4.2"));
+});
+
+test("package.json url/workspace specs are surfaced unresolved, not false-safe", async () => {
+  const pkg = await tmpFile("package.json", JSON.stringify({
+    name: "demo",
+    dependencies: {
+      "ws-lib": "workspace:*",
+      "cat-lib": "catalog:",
+      "tgz-lib": "https://example.com/lib.tgz",
+      "git-lib": "git+https://github.com/x/y.git",
+      "ok-lib": "^1.0.0"
+    }
+  }));
+  const { deps } = await parseLockfile(pkg);
+  // The resolvable one is present with a clean version.
+  assert.ok(deps.has("ok-lib@1.0.0"));
+  // The unresolvable ones are present but flagged unresolved (no bogus version).
+  const unresolved = Array.from(deps.values()).filter((d) => d.unresolved);
+  const names = unresolved.map((d) => d.name).sort();
+  assert.deepEqual(names, ["cat-lib", "git-lib", "tgz-lib", "ws-lib"]);
+});
+
+test("unresolved package.json specs audit as review, not safe", async () => {
+  const pkg = await tmpFile("package.json", JSON.stringify({
+    name: "demo",
+    dependencies: { "ws-lib": "workspace:*" }
+  }));
+  // No OSV network — vulnerabilityCheck false. The unresolved dep must not be
+  // silently counted clean.
+  const result = await auditLockfile(pkg, { vulnerabilityCheck: false, triageDecisions: false });
+  const ws = result.results.find((r) => r.name === "ws-lib");
+  assert.equal(ws.decision, "review");
+  assert.equal(ws.unresolved, true);
+  assert.equal(result.summary.safe, 0);
+});
+
+test("a stored allow NEVER suppresses a fresh OSV block", async () => {
+  const pkg = await tmpFile("package.json", JSON.stringify({
+    name: "demo",
+    dependencies: { "evil": "1.0.0", "fine": "1.0.0" }
+  }));
+  const triageDecisions = new Map();
+  // Attacker drops an `allow` beside the lockfile to neuter the scan.
+  triageDecisions.set("evil@1.0.0", {
+    name: "evil", version: "1.0.0", decision: "allow", reason: "sneaked in",
+    decided_at: "2026-01-01T00:00:00Z"
+  });
+  triageDecisions.set("fine@1.0.0", {
+    name: "fine", version: "1.0.0", decision: "allow", reason: "legit",
+    decided_at: "2026-01-01T00:00:00Z"
+  });
+  // Fresh OSV: evil has a vuln, fine is clean. Index-aligned with the resolved
+  // deps in map order: [evil, fine].
+  const result = await auditLockfile(pkg, {
+    triageDecisions,
+    osvResults: [
+      { vulns: [{ id: "CVE-2026-0001", aliases: [] }] },
+      {}
+    ]
+  });
+  const byName = new Map(result.results.map((r) => [r.name, r]));
+  // OSV block wins over the stored allow.
+  assert.equal(byName.get("evil").decision, "block", "allow must not hide a fresh OSV vuln");
+  assert.equal(byName.get("evil").triaged, true);
+  // A clean dep with an allow still reads safe.
+  assert.equal(byName.get("fine").decision, "safe");
+  assert.equal(result.summary.blocked, 1);
+  assert.equal(result.worstDecision, "block");
 });
 
 test("parses package.json strips version range prefix", async () => {

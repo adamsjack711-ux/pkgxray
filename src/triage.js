@@ -147,7 +147,23 @@ async function saveDecisions(lockPath, decisionsMap) {
       return record;
     })
   };
-  await fsp.writeFile(lockPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  // Atomic write: a concurrent triage/recheck must not lose updates, and a
+  // reader mid-write must never see truncated JSON. Write to a unique temp file
+  // in the same directory (rename is only atomic within a filesystem) then
+  // rename over the target. Clean up the temp file on any failure.
+  const data = `${JSON.stringify(payload, null, 2)}\n`;
+  const dir = path.dirname(lockPath);
+  const tmp = path.join(
+    dir,
+    `.${path.basename(lockPath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
+  );
+  try {
+    await fsp.writeFile(tmp, data, "utf8");
+    await fsp.rename(tmp, lockPath);
+  } catch (error) {
+    try { await fsp.unlink(tmp); } catch { /* best effort */ }
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------

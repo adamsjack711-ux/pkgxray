@@ -16,12 +16,51 @@ const https = require("node:https");
 
 const USER_AGENT = "pkgxray-cache-client/0.10.0";
 
-function getCacheUrl() {
+function rawCacheUrl() {
   const raw = process.env.PKGXRAY_CACHE_URL;
   if (!raw || typeof raw !== "string") return null;
   const trimmed = raw.replace(/\/+$/, "");
-  if (!trimmed) return null;
-  return trimmed;
+  return trimmed || null;
+}
+
+function isLoopbackHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1" || h.endsWith(".localhost");
+}
+
+// Plain http is acceptable ONLY for a loopback cache and ONLY with an explicit
+// opt-in. A plaintext cache on a real network would (a) leak the forwarded
+// GitHub token to anyone on-path and (b) serve unauthenticated poisoned content.
+function insecureCacheAllowed(parsed) {
+  return process.env.PKGXRAY_CACHE_ALLOW_INSECURE === "1" && isLoopbackHost(parsed.hostname);
+}
+
+let insecureCacheWarned = false;
+function getCacheUrl() {
+  const raw = rawCacheUrl();
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null; // malformed -> cache disabled (safe default: direct upstream)
+  }
+  if (parsed.protocol === "https:") return raw;
+  if (parsed.protocol === "http:" && insecureCacheAllowed(parsed)) return raw;
+  // Refuse a non-https (or non-loopback http) cache so we never send the GitHub
+  // token or trust content over plaintext. Fall back to direct GitHub upstream.
+  if (!insecureCacheWarned) {
+    insecureCacheWarned = true;
+    try {
+      process.stderr.write(
+        `pkgxray: ignoring PKGXRAY_CACHE_URL=${parsed.protocol}//${parsed.host} — the cache must be https ` +
+          `(or loopback http with PKGXRAY_CACHE_ALLOW_INSECURE=1). Falling back to direct upstream.\n`
+      );
+    } catch {
+      /* stderr write must never break a scan */
+    }
+  }
+  return null;
 }
 
 function isEnabled() {
@@ -30,6 +69,13 @@ function isEnabled() {
 
 function pickTransport(parsedUrl) {
   return parsedUrl.protocol === "https:" ? https : http;
+}
+
+// Only forward the GitHub token when the connection can't expose it on the wire:
+// https to any host, or http to loopback. getCacheUrl() already enforces this,
+// so this is defense-in-depth in case a base URL is ever passed in directly.
+function tokenSafeToForward(parsedUrl) {
+  return parsedUrl.protocol === "https:" || isLoopbackHost(parsedUrl.hostname);
 }
 
 // GET <cache-url>/github/repos/<owner>/<repo>  →  JSON body
@@ -44,7 +90,9 @@ function getRepoJson(owner, repo, options = {}) {
       "user-agent": USER_AGENT,
       accept: "application/json"
     };
-    if (options.token) headers["x-pkgxray-github-token"] = options.token;
+    if (options.token && tokenSafeToForward(target)) {
+      headers["x-pkgxray-github-token"] = options.token;
+    }
     const transport = pickTransport(target);
     const request = transport.get(
       {

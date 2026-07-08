@@ -188,6 +188,50 @@ test("a dep with no stored baseline is reported no-baseline, not regressed", asy
   assert.equal(result.exitCode, 0);
 });
 
+test("a stale (checkedAt:null) baseline is treated as no-baseline, not trusted as unchanged", async () => {
+  // Craft a baseline that claims 'safe' but has NO checkedAt — an attacker's
+  // ancient/forged verdict. A live block must NOT be hidden as "unchanged".
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pkgxray-stale-"));
+  const lockfilePath = path.join(dir, "package-lock.json");
+  await fs.writeFile(lockfilePath, JSON.stringify({
+    lockfileVersion: 3,
+    packages: { "": { name: "demo", version: "1.0.0" }, "node_modules/sneaky": { version: "1.0.0" } }
+  }));
+  // Write a .pkgxray.lock record with verdict:safe but no checkedAt.
+  const lockPath = lockPathForLockfile(lockfilePath);
+  await fs.writeFile(lockPath, JSON.stringify({
+    schemaVersion: 1,
+    decisions: [
+      { name: "sneaky", version: "1.0.0", decision: "allow", reason: "", decided_at: "2020-01-01T00:00:00.000Z", verdict: "safe" }
+    ]
+  }));
+
+  const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
+    write: false,
+    evaluate: evaluatorFrom({ sneaky: "block" })
+  });
+  // Stale baseline => no-baseline (unknown comparison point), NOT unchanged.
+  assert.equal(result.counts.noBaseline, 1);
+  assert.equal(result.counts.unchanged, 0);
+  assert.equal(result.buckets.noBaseline[0].verdict, "block");
+});
+
+test("an aged baseline beyond baselineTtlMs is treated as no-baseline", async () => {
+  const lockfilePath = await project(
+    [["old", "1.0.0"]],
+    [{ name: "old", version: "1.0.0", verdict: "safe", checkedAt: "2020-01-01T00:00:00.000Z" }]
+  );
+  const result = await recheckLockfile(lockfilePath, {
+    versionDrift: false,
+    write: false,
+    baselineTtlMs: 1000, // any baseline older than 1s is stale
+    evaluate: evaluatorFrom({ old: "block" })
+  });
+  assert.equal(result.counts.noBaseline, 1);
+  assert.equal(result.counts.unchanged, 0);
+});
+
 test("concurrent recheck of N deps folds correctly (worst regression wins exit code)", async () => {
   const deps = Array.from({ length: 25 }, (_, i) => [`p${i}`, "1.0.0"]);
   const baselines = deps.map(([name, version]) => ({ name, version, verdict: "safe" }));

