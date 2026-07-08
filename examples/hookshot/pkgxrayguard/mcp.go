@@ -130,6 +130,11 @@ func parseMcpAddJSON(args []string) []InstallSpec {
 // probe spec (or an unvettable SSE spec), anything else is a launcher command
 // that re-enters the normal parser and takes the static package-scan path.
 func mcpTargetSpecs(target []string, transport string) []InstallSpec {
+	// A target already wrapped in the runtime gate (`pkgxray mcp-proxy … --
+	// npx x`): scan the INNER launcher — that is what will actually run.
+	if inner, ok := unwrapProxyTarget(target); ok {
+		return mcpTargetSpecs(inner, transport)
+	}
 	first := target[0]
 	if strings.HasPrefix(first, "http://") || strings.HasPrefix(first, "https://") {
 		kind := KindMcpHTTP

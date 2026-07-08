@@ -44,6 +44,22 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
       then surfaces as **review**, not silently allowed);
     - a legacy SSE transport (or unreadable `add-json` config) can't be
       probed — surfaced as **review-worthy**.
+    - **Auto-wrap (default on):** a stdio registration that clears the gate is
+      then *denied once* with the same command rewritten so the launcher runs
+      behind **`pkgxray mcp-proxy`** — the per-call runtime gate (every
+      `tools/call` checked in-memory, manifest re-audited on
+      `tools/list_changed`, tool results screened for injection). Hookshot
+      decisions can't modify a command in place, so the rewrite rides back as
+      the deny reason and the agent re-runs it; the wrapped form is recognized,
+      its **inner launcher is still statically scanned**, and it passes. Works
+      for launchers the static scan can't vet at all (local binaries, python
+      servers) — the runtime gate matters most exactly there. Costs one extra
+      agent round-trip (plus a re-scan of the launcher, since each hook
+      invocation is a fresh process — `PKGXRAY_CACHE_URL` softens that).
+      Disable with `PKGXRAY_HOOK_MCP_WRAP=0`. Requires pkgxray ≥ 0.17 on PATH
+      when the host launches the server. `mcp add-json` is gated but not
+      auto-wrapped (the launcher lives inside quoted JSON; rebuilding it
+      through a tokenizer risks quoting bugs).
   - Git / tarball / HTTP URL specs (`git+https://…`, `git@…`, `https://…​.tgz`)
     can't be resolved by registry triage, so they're surfaced as **review-worthy**
     (never silently allowed).
@@ -129,6 +145,7 @@ All via environment variables (the hook reads them at startup):
 | `PKGXRAY_CACHE_URL` | — | Forwarded to pkgxray so registry/GitHub fetches route through a shared cache server across runs. |
 | `PKGXRAY_HOOK_CONCURRENCY` | `8` | Max packages guarded concurrently within one command. |
 | `PKGXRAY_HOOK_MCP_PROBE` | `1` | `0` skips the `pkgxray mcp <url>` probe on HTTP MCP-server adds; they then surface as **review** instead of being probed. |
+| `PKGXRAY_HOOK_MCP_WRAP` | `1` | `0` stops auto-wrapping vetted stdio `mcp add` launchers in `pkgxray mcp-proxy` (the per-call runtime gate). |
 
 When a single command installs several packages (`npm i a b c …`), they are
 guarded **concurrently** (bounded by `PKGXRAY_HOOK_CONCURRENCY`), so the gate's

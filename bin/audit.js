@@ -9,6 +9,7 @@ const { triageLockfile } = require("../src/triage");
 const { recheckLockfile, renderRecheckText, recheckJson } = require("../src/recheck");
 const { inspectMcpServer } = require("../src/mcp-audit");
 const { pinMcpManifest, recheckMcpManifest } = require("../src/mcp-pin");
+const { runMcpProxy } = require("../src/mcp-proxy");
 const { runCanarySandbox } = require("../src/sandbox");
 const cfg = require("../src/config");
 
@@ -43,6 +44,10 @@ function printUsage() {
       "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
       "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
       "                     [--pin] [--recheck] [--lock <path>]                     #   pin the approved manifest / diff live manifest vs. the pin (rug-pull)",
+      "  pkgxray mcp-proxy [flags] [--] <command [args...]>                         # run a stdio MCP server behind a per-call runtime gate: every tools/call",
+      "                     [--policy strict|balanced|permissive]                   #   is checked in-memory (µs), the manifest is re-audited on every",
+      "                     [--pin] [--lock <path>] [--no-recheck]                  #   tools/list_changed, drifted tools are denied until re-pinned,",
+      "                     [--no-scan-results] [--timing]                          #   and tool RESULTS are scanned for injection (use in host config)",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -115,6 +120,44 @@ function parseArgs(argv) {
       } else {
         options.mcpTarget = { command: argv[0], args: argv.slice(1) };
       }
+    }
+    argv = [];
+  } else if (argv[0] === "mcp-proxy") {
+    options.command = "mcpProxy";
+    argv = argv.slice(1);
+    // Same convention as `mcp`: our flags first, the first non-flag token (or
+    // everything after `--`) is the real server's command line, untouched.
+    while (argv.length > 0 && argv[0].startsWith("--") && argv[0] !== "--") {
+      const arg = argv.shift();
+      if (arg === "--policy") {
+        options.policy = argv.shift();
+        if (!["strict", "balanced", "permissive"].includes(options.policy)) {
+          throw new Error("--policy must be strict, balanced or permissive");
+        }
+      } else if (arg === "--pin") {
+        options.pin = true;
+      } else if (arg === "--lock") {
+        options.lockPath = argv.shift();
+      } else if (arg === "--no-recheck") {
+        options.recheck = false;
+      } else if (arg === "--no-scan-results") {
+        options.scanResults = false;
+      } else if (arg === "--timing") {
+        options.timing = true;
+      } else if (arg === "--help" || arg === "-h") {
+        options.help = true;
+      } else {
+        throw new Error(`Unknown mcp-proxy argument: ${arg}`);
+      }
+    }
+    if (argv[0] === "--") argv = argv.slice(1);
+    if (argv.length > 0) {
+      if (/^https?:\/\//i.test(argv[0])) {
+        throw new Error(
+          "mcp-proxy wraps stdio servers only (the host must launch the proxy in the server's place); for HTTP servers use the connect-time `pkgxray mcp <url>`"
+        );
+      }
+      options.mcpTarget = { command: argv[0], args: argv.slice(1) };
     }
     argv = [];
   } else if (argv[0] === "triage") {
@@ -364,6 +407,17 @@ async function main() {
     process.exitCode = result.recheck
       ? result.recheck.exitCode
       : result.verdict === "block" ? 2 : result.verdict === "review" ? 3 : 0;
+    return;
+  }
+
+  if (options.command === "mcpProxy") {
+    if (!options.mcpTarget) {
+      throw new Error("mcp-proxy requires the real server's command line, e.g. pkgxray mcp-proxy -- npx some-mcp-server");
+    }
+    // Long-running: lives as long as the agent session. Exit code mirrors the
+    // wrapped server so the host sees the server's own failures.
+    const { code } = await runMcpProxy(options.mcpTarget, options);
+    process.exitCode = code;
     return;
   }
 

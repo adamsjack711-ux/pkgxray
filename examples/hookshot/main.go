@@ -12,7 +12,12 @@
 //     (`… mcp add`) are gated too: a stdio launcher takes the static package
 //     scan (the hook never spawns the server), a streamable-HTTP URL is probed
 //     with `pkgxray mcp <url>` (read-only manifest enumeration + audit), and a
-//     legacy SSE config surfaces as review-worthy.
+//     legacy SSE config surfaces as review-worthy. A vetted stdio registration
+//     is then AUTO-WRAPPED: the unwrapped `mcp add` is denied with the same
+//     command rewritten to launch through `pkgxray mcp-proxy` (the per-call
+//     runtime gate) in the deny reason — the agent re-runs the wrapped form,
+//     whose inner launcher is still scanned, and it passes (default on;
+//     PKGXRAY_HOOK_MCP_WRAP=0 to disable).
 //   - OnAfterFileEdit: when the agent edits an MCP config file (.mcp.json,
 //     mcp.json, mcp_config.json, claude_desktop_config.json), gates the
 //     added/changed server entries exactly like an `mcp add` command — closing
@@ -29,6 +34,8 @@
 //	PKGXRAY_GUARD_ARGS      extra space-separated flags for `pkgxray guard`
 //	PKGXRAY_HOOK_MCP_PROBE  set to "0" to skip probing HTTP MCP servers on
 //	                        `mcp add` (they then surface as REVIEW, not probed)
+//	PKGXRAY_HOOK_MCP_WRAP   set to "0" to stop auto-wrapping vetted stdio
+//	                        `mcp add` launchers in `pkgxray mcp-proxy`
 //
 // Build:   go build -o pkgxray-guard .
 // Install: hookshot install --binary ./pkgxray-guard
@@ -64,10 +71,26 @@ func main() {
 			return hookshot.AllowExecution()
 		}
 		specs := pkgxrayguard.ParseInstalls(ctx.Command)
-		if len(specs) == 0 {
-			return hookshot.AllowExecution()
+		if len(specs) > 0 {
+			decision := decideInstalls(cfg, specs)
+			if !decision.Allow {
+				// A flagged launcher stays denied/asked as-is — never mix the
+				// verdict message with wrap instructions.
+				return decision
+			}
+			if wrapped, ok := wrapCandidate(cfg, ctx.Command); ok {
+				return hookshot.DenyExecution(wrapMessage(wrapped))
+			}
+			return decision
 		}
-		return decideInstalls(cfg, specs)
+		// No parseable package specs, but the command may still register a
+		// stdio MCP server pkgxray cannot statically vet (a local binary, a
+		// python launcher, …) — the runtime gate is MOST valuable exactly
+		// there, so the wrap rewrite applies to those registrations too.
+		if wrapped, ok := wrapCandidate(cfg, ctx.Command); ok {
+			return hookshot.DenyExecution(wrapMessage(wrapped))
+		}
+		return hookshot.AllowExecution()
 	})
 
 	hookshot.OnAfterFileEdit(func(ctx hookshot.FileEditContext) hookshot.FileEditDecision {
@@ -96,7 +119,31 @@ type config struct {
 	policy         pkgxrayguard.Policy
 	disabled       bool
 	auditLockfiles bool
-	guardWorkers   int // max packages guarded concurrently per command
+	mcpWrap        bool // auto-rewrite `mcp add` launchers behind `pkgxray mcp-proxy`
+	guardWorkers   int  // max packages guarded concurrently per command
+}
+
+// wrapCandidate applies the auto-wrap rewrite when it is enabled and the
+// command is an unwrapped stdio `mcp add`. The policy the proxy enforces at
+// runtime mirrors the hook's own.
+func wrapCandidate(cfg config, command string) (string, bool) {
+	if !cfg.mcpWrap {
+		return "", false
+	}
+	return pkgxrayguard.WrapMcpAdd(command, string(cfg.policy))
+}
+
+// wrapMessage is the deny reason that delegates the rewrite to the agent:
+// hookshot decisions cannot modify a command in place, so the wrapped command
+// travels back as instructions. One extra round-trip, every harness.
+func wrapMessage(wrapped string) string {
+	return "pkgxray: this MCP server registration is allowed, but stdio servers should run behind " +
+		"pkgxray's per-call runtime gate (audits every tools/call, re-checks the manifest on " +
+		"tools/list_changed, screens tool results for injection). Re-run the registration with the " +
+		"launcher wrapped:\n\n  " + wrapped + "\n\n" +
+		"The wrapped form will be allowed (its inner launcher is still statically scanned). " +
+		"Requires pkgxray >= 0.17 on PATH at server launch time. " +
+		"Set PKGXRAY_HOOK_MCP_WRAP=0 to register servers unwrapped."
 }
 
 func loadConfig() config {
@@ -129,6 +176,7 @@ func loadConfig() config {
 		policy:         pkgxrayguard.ParsePolicy(os.Getenv("PKGXRAY_HOOK_POLICY")),
 		disabled:       os.Getenv("PKGXRAY_HOOK_DISABLE") == "1",
 		auditLockfiles: os.Getenv("PKGXRAY_HOOK_AUDIT_LOCKFILES") == "1",
+		mcpWrap:        os.Getenv("PKGXRAY_HOOK_MCP_WRAP") != "0",
 		guardWorkers:   workers,
 	}
 }

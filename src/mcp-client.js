@@ -763,6 +763,7 @@ module.exports = {
   enumerateMcpServer,
   // Exported for tests and for the audit layer's evidence shaping.
   normalizeManifest,
+  normalizeTool,
   parseSseMessages,
   scrubbedEnv,
   // Exported for the SSRF-guard regression tests.
