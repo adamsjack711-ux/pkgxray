@@ -33,8 +33,9 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps]",
       "                     # --deps also OSV-scans the package's DIRECT dependencies (transitive worm entry point)",
-      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox]  # OPT-IN: run install scripts in a",
-      "                     # decoy-credential sandbox behind a capture proxy; confirms exfil behaviorally (cannot clear a pkg)",
+      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox]  # OPT-IN: run install",
+      "                     # scripts in a decoy-credential sandbox behind a capture proxy; confirms exfil behaviorally (cannot clear a pkg).",
+      "                     # --require-sandbox fails closed without an OS sandbox (bwrap/sandbox-exec). See docs/canary-threat-model.md",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
       "  pkgxray triage --resume                                                  # resume interrupted triage",
@@ -197,6 +198,8 @@ function parseArgs(argv) {
       options.allowExecution = true;
     } else if (arg === "--keep-sandbox") {
       options.keepSandbox = true;
+    } else if (arg === "--require-sandbox") {
+      options.requireSandbox = true;
     } else if (arg === "--timeout") {
       options.timeoutMs = Number(argv[++i]);
       if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
@@ -344,7 +347,8 @@ async function main() {
       stagedPath: staged.stagedPath,
       allowExecution: true,
       timeoutMs: options.timeoutMs,
-      keepSandbox: options.keepSandbox
+      keepSandbox: options.keepSandbox,
+      requireSandbox: options.requireSandbox
     });
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify({ static: staged.report, behavioral }, null, 2)}\n`);

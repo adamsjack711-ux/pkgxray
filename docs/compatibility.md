@@ -42,25 +42,31 @@ Changes here are additive within a major version; removals wait for a major bump
 | `.pkgxray.json` config | the schema in [config.md](config.md); precedence order; "tighten freely, loosen loudly" invariants |
 | MCP server tools | `audit_agent_extension_supply_chain`, `guard_agent_extension_install`, `audit_lockfile_supply_chain`, `triage_lockfile_supply_chain` — names and input shapes |
 | Exit-code convention | `0` safe/allow · `2` block · `3` review, across every command |
+| `pkgxray mcp` (connect-time MCP adapter) | subcommands + `--pin` / `--recheck` / `--package` / `--force` / `--no-package-scan` flags; the package-scan-first ordering |
+| `pkgxray mcp-proxy` (per-call runtime gate) | the `pkgxray mcp-proxy -- <launcher>` invocation, `--policy strict\|balanced\|permissive`, `--pin` / `--recheck` / `--no-scan-results`; stdout stays protocol-clean |
+| `pkgxray-cache` server + `PKGXRAY_CACHE_URL` | routes `GET /github/repos/{owner}/{repo}`, `GET /github/tarball/{owner}/{repo}/{ref}`, `GET /healthz`; opt-in via the env var; explicitly **not** an auth boundary |
 
 ### 🟡 Beta — works, contract may still shift
 
-Shipped and tested, but flag names, output shape, or defaults may change in a
-minor release before they graduate to Stable.
+*None currently.* The former Beta surfaces (`mcp`, `mcp-proxy`, cache) graduated
+to Stable in 0.16 with contract tests pinning their flags and routes.
 
-| Surface | Since | Why it's beta |
-|---|---|---|
-| `pkgxray mcp` (connect-time MCP adapter) | 0.15 | newest engine; the `--pin`/`--recheck`/`--package` flag surface is still settling |
-| `pkgxray mcp-proxy` (per-call runtime gate) | 0.16 | newest surface; policy names and the result-scan defaults may change |
-| `pkgxray-cache` server + `PKGXRAY_CACHE_URL` | 0.14 | route set and TTLs may change; explicitly **not** an auth boundary |
+### 🟠 Supported, opt-in — executes untrusted code
+
+`pkgxray canary` is supported but sits apart from the rest of the tool: it is the
+one surface that **runs** a package's install lifecycle. It is opt-in
+(`--yes-run-untrusted-code`) and governed by a published
+[threat model](canary-threat-model.md) — that document, not this table, is its
+contract. It confirms malice behaviorally but **never clears** a package (a quiet
+run is "not caught here," not "safe"), so its output shape may still gain fields
+as hardening lands (TLS termination, loopback-only netns). Run it only on a
+disposable host; pass `--require-sandbox` to fail closed without OS-level
+isolation.
 
 ### 🔴 Experimental — may change or be removed without a major bump
 
-Useful, but treat as previews. Pin an exact version if you depend on them.
-
 | Surface | Note |
 |---|---|
-| `pkgxray canary` | **executes** the package's install lifecycle in a throwaway sandbox — opt-in only (`--yes-run-untrusted-code`). The one surface that runs untrusted code; the boundary is still hardening. |
 | `browser-extension/` | MV3 unpacked extension; not published to any store, load-unpacked only. |
 | hookshot integration (`examples/hookshot/`) | depends on an external project's hook ABI. |
 
@@ -71,11 +77,12 @@ Useful, but treat as previews. Pin an exact version if you depend on them.
 1.0 means "the Stable surface above will not break without a major bump." The
 checklist to get there:
 
-- [ ] **Calibration gate in CI** — the [benchmark corpus](../benchmark/) runs on
-      every PR and fails on a precision/recall regression, so the "0 false
+- [x] **Calibration gate in CI** — the [benchmark corpus](../benchmark/) runs on
+      every PR and fails on a false block or a missed detection, so the "0 false
       blocks" claim is enforced, not asserted. *(landed — keep the corpus growing)*
-- [ ] **Graduate or drop each Beta surface** — decide `mcp` / `mcp-proxy` /
-      cache are Stable (freeze their flags) or keep them Beta with that stated.
+- [x] **Graduate or drop each Beta surface** — `mcp`, `mcp-proxy`, and the cache
+      server are now **Stable**, with contract tests pinning their flags and
+      routes. *(landed)*
 - [x] **Freeze the JSON schema** — every `--format json` field is documented in
       one reference ([json-schema.md](json-schema.md)) committed to
       `schemaVersion: 1` (additive-only), with a schema-stability test that fails
@@ -84,14 +91,17 @@ checklist to get there:
       (`0` safe/allow · `2` block · `3` review, incl. `failOn` variants) is
       pinned by a stability test; the config schema is documented in
       [config.md](config.md). *(landed)*
-- [ ] **`canary` decision** — either harden the execution sandbox to a
-      documented threat model or keep it flagged Experimental at 1.0.
+- [x] **`canary` decision** — hardened (stronger `bwrap` namespace isolation,
+      `--require-sandbox` fail-closed) and given a published
+      [threat model](canary-threat-model.md); reclassified from Experimental to a
+      supported, opt-in, executes-code surface. *(landed)*
 - [x] **Publish + provenance** — the [`release` workflow](../.github/workflows/release.yml)
       gates every publish on the tests, the calibration benchmark, and pkgxray's
       own supply-chain `guard`, then ships with `npm publish --provenance` (SLSA
       attestation). *(landed — wire the `NPM_TOKEN` secret to enable publishing.)*
-- [ ] **Supported Node range** — CI matrix across the `engines.node` range
-      (currently `>=18`) so the floor is tested, not assumed.
+- [x] **Supported Node range** — the [test workflow](../.github/workflows/pkgxray-test.yml)
+      runs `node --test` across `18 · 20 · 22 · 24`, proving the `engines.node`
+      (`>=18`) floor and current lines. *(landed)*
 
 Contributions that move a checkbox are the highest-leverage way to help pkgxray
 reach 1.0.
