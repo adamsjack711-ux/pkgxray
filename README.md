@@ -441,7 +441,8 @@ Detailed reference lives in [`docs/reference.md`](docs/reference.md):
 - **[Self-hostable cache server](docs/reference.md#self-hostable-cache-server)** — collapse duplicate CI fetches.
 
 Other docs: **[compatibility & stability tiers](docs/compatibility.md)** ·
-**[configuration schema](docs/config.md)** · **[design notes](docs/design/)**.
+**[configuration schema](docs/config.md)** · **[design notes](docs/design/)** ·
+**[adoption playbook](docs/adoption.md)**.
 
 ---
 
