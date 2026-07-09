@@ -99,12 +99,17 @@ async function writeLockfile(dir, names) {
 // initialize handshake bumps to 0.12.0
 // ---------------------------------------------------------------------------
 
-test("MCP initialize reports server version 0.12.0", async () => {
+test("MCP initialize reports the published package version", async () => {
   const server = startServer();
   try {
     const res = await server.call("initialize", { protocolVersion: "2024-11-05" });
     assert.equal(res.result.serverInfo.name, "pkgxray");
-    assert.equal(res.result.serverInfo.version, "0.12.0");
+    // Pinned to package.json so the string can never drift again (it sat at
+    // 0.12.0 while the package shipped 0.17.0).
+    assert.equal(
+      res.result.serverInfo.version,
+      require("../package.json").version
+    );
   } finally {
     await server.stop();
   }

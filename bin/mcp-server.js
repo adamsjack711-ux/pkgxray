@@ -13,7 +13,10 @@ const GUARD_TOOL_NAME = "guard_agent_extension_install";
 const LOCKFILE_AUDIT_TOOL_NAME = "audit_lockfile_supply_chain";
 const LOCKFILE_TRIAGE_TOOL_NAME = "triage_lockfile_supply_chain";
 
-const SERVER_VERSION = "0.12.0";
+// Always the published package version — a hardcoded string here drifted to
+// 0.12.0 while the package shipped 0.17.0, so hosts (and pkgxray's own
+// manifest pins) recorded a phantom version.
+const SERVER_VERSION = require("../package.json").version;
 
 // ---------------------------------------------------------------------------
 // Shared config (`.pkgxray.json`) — loaded ONCE at startup. The MCP server is
