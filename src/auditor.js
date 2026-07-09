@@ -453,12 +453,93 @@ function normalizeSourceFiles(sourceFiles) {
   return [];
 }
 
+// ---------------------------------------------------------------------------
+// Self-scan (the antivirus-flags-itself problem). pkgxray's own source is a
+// catalogue of the byte patterns it detects — persistence-path regexes, exfil
+// domain lists, injection phrasing, decode-then-inspect logic — so scanning
+// pkgxray with pkgxray necessarily fires the signature database against
+// itself and BLOCKed every `pkgxray guard pkgxray` a cautious user ran.
+//
+// Recognition is VERIFICATION-GATED, never name-based:
+//   1. the scanned package must be `pkgxray` itself, AND
+//   2. the npm-vs-GitHub diff must have compared CLEAN — zero extra, zero
+//      mismatched source files — against pkgxray's CANONICAL repo below (a
+//      constant in this file, never the manifest's claim). A typosquat that
+//      points its repository field at a fork fails the canonical check; one
+//      that points at the real repo with altered code fails the diff; a
+//      tampered pkgxray tarball (one injected file) fails the diff. All of
+//      them keep the full, undowngraded verdict.
+// Effect: behavioral HIGH findings downgrade to MEDIUM so the verdict is an
+// honest REVIEW ("this is a security scanner whose source embeds its
+// signature database") — never SAFE, and never a silent pass. Findings that
+// are conduct rather than signatures keep their severity: OSV known
+// vulnerabilities, and install-hooks (pkgxray must never grow one).
+const SELF_CANONICAL = {
+  packageName: "pkgxray",
+  githubOwner: "adamsjack711-ux",
+  githubRepo: "pkgxray"
+};
+
+const SELF_SCAN_KEEP_SEVERITY = new Set(["known-vulnerability", "install-hook"]);
+
+const SELF_SCAN_NOTE =
+  " (Self-scan: this is pkgxray itself — the matched bytes are its detection signature" +
+  " database, and the published tarball verified byte-identical to the canonical GitHub" +
+  " repo at the release ref. Downgraded to review, never to safe.)";
+
+function isVerifiedSelfScan(evidence) {
+  if (!evidence || evidence.packageName !== SELF_CANONICAL.packageName) return false;
+  const gh = evidence.githubMetadata;
+  if (
+    !gh ||
+    gh.found !== true ||
+    gh.owner !== SELF_CANONICAL.githubOwner ||
+    gh.repo !== SELF_CANONICAL.githubRepo
+  ) {
+    return false;
+  }
+  const diff = evidence.npmVsGithubDiff;
+  if (!diff || diff.compared !== true) return false;
+  const c = diff.counts || {};
+  return c.extraSource === 0 && c.mismatchedSource === 0 && (c.matched || 0) > 0;
+}
+
+function applySelfScanDowngrade(findings) {
+  let downgraded = 0;
+  for (const finding of findings) {
+    if (finding.severity !== "high") continue;
+    if (SELF_SCAN_KEEP_SEVERITY.has(finding.category)) continue;
+    finding.severity = "medium";
+    finding.rationale += SELF_SCAN_NOTE;
+    downgraded += 1;
+  }
+  findings.push({
+    severity: "info",
+    category: "self-scan-verified",
+    file: "SELF_SCAN",
+    snippet: `${downgraded} signature-database finding(s) downgraded to review`,
+    rationale:
+      "The scanned package is pkgxray itself and its tarball matched the canonical GitHub repo " +
+      `(${SELF_CANONICAL.githubOwner}/${SELF_CANONICAL.githubRepo}) at the release ref. ` +
+      "A scanner's source is a catalogue of what it detects, so its own signature database " +
+      "always matches; provenance-verified self-scans report REVIEW instead of BLOCK. " +
+      "Any divergence from the canonical repo disables this downgrade entirely."
+  });
+}
+
 function auditEvidence(input) {
   const evidence = normalizeEvidence(input);
   const findings = [];
 
   auditMetadata(evidence, findings);
   auditFiles(evidence.sourceFiles, findings, evidence);
+
+  // The antivirus-flags-itself downgrade — see isVerifiedSelfScan above.
+  // Runs after all inspectors so it sees the final severity of every finding,
+  // and before decideVerdict so the verdict reflects the downgrades.
+  if (isVerifiedSelfScan(evidence)) {
+    applySelfScanDowngrade(findings);
+  }
 
   if (evidence.sourceFiles.length === 0) {
     findings.push({
@@ -522,6 +603,7 @@ const BAND_DEFINITIONS = [
   { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
+  { band: "self-scan-verified", label: "self-scan-verified", categories: ["self-scan-verified"], rationale: "The scanned package is pkgxray itself, provenance-verified against its canonical repo; signature-database findings report as review instead of block." },
   { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "Package has a sigstore-signed SLSA provenance attestation from npm linking it to a specific GitHub Action build. Strong 'really came from where it says it did' signal." },
   { band: "provenance-mismatch", label: "provenance-mismatch", categories: ["provenance-mismatch"], rationale: "npm attestation claims the package was built from a different GitHub repo than the one listed in package.json. Strong tampering / typosquat signal." }
 ];
@@ -3076,5 +3158,8 @@ module.exports = {
   // Exported for the MCP adapter, which re-folds the verdict after dropping
   // package-evidence-completeness findings that don't apply to a manifest.
   decideVerdict,
-  VERDICT_ORDER
+  VERDICT_ORDER,
+  // Exported for the self-scan regression tests.
+  isVerifiedSelfScan,
+  SELF_CANONICAL
 };

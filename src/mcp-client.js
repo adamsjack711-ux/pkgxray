@@ -21,10 +21,12 @@
 // the caller (src/mcp-audit.js / bin/audit.js), not here.
 
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
 const dns = require("node:dns");
 const net = require("node:net");
+const path = require("node:path");
 
 // Newest protocol revision this client knows; servers negotiate down in the
 // initialize response and we accept whatever they answer with — enumeration
@@ -47,11 +49,14 @@ const MAX_LIST_PAGES = 50;
 // (AWS_*, GITHUB_TOKEN, npm_config_*, SSH_AUTH_SOCK, ...) is withheld.
 //
 // SECURITY: PATH is deliberately NOT inherited from the operator. The child's
-// `command` is untrusted (the package we're inspecting picks it), and it is
-// resolved against PATH with cwd=process.cwd(). If the operator's PATH contained
-// a package-writable dir (e.g. `node_modules/.bin/` shims, or `.` early on the
-// path), the "scrubbed" spawn would hand binary selection to the very package
-// we're auditing. We pin a minimal, fixed system PATH instead (see MINIMAL_PATH).
+// `command` is untrusted (the package we're inspecting picks it). If the
+// operator's PATH contained a package-writable dir (e.g. `node_modules/.bin/`
+// shims, or `.` early on the path), spawning against it would hand binary
+// selection to the very package we're auditing. We pin a minimal, fixed system
+// PATH in the child env instead (see MINIMAL_PATH), and resolve bare command
+// names in the PARENT via resolveCommand(): fixed system dirs first, then the
+// operator's PATH with relative + node_modules entries stripped (warned when
+// used). The child's own subprocess resolution stays pinned to MINIMAL_PATH.
 const ENV_ALLOWLIST = [
   "HOME",
   "TMPDIR",
@@ -114,6 +119,64 @@ function scrubbedEnv(extraEnv) {
     }
   }
   return env;
+}
+
+function isExecutableFile(candidate) {
+  try {
+    const st = fs.statSync(candidate);
+    if (!st.isFile()) return false;
+    if (process.platform !== "win32") fs.accessSync(candidate, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Resolve a bare command name to an absolute path in the PARENT process, so
+// binary selection never depends on the child's scrubbed environment. (spawn
+// resolves bare names against the CHILD's env.PATH = MINIMAL_PATH, which made
+// every launcher outside the fixed system dirs — /opt/homebrew/bin/node,
+// ~/.local/bin shims — fail with ENOENT even when the operator's shell finds
+// them.) Two tiers, strictest first:
+//   1. MINIMAL_PATH — fixed system dirs a scanned package cannot write to.
+//   2. The operator's PATH, minus the entries that break that guarantee:
+//      relative dirs ("." / "") and anything under node_modules (package-
+//      writable bin shims). A hit here is allowed — the operator typed the
+//      command and their shell would resolve it identically — but it is
+//      surfaced as a diagnostic warning naming the exact binary chosen.
+// Explicit paths (anything containing a separator) pass through untouched, and
+// an unresolved name passes through so spawn reports its usual ENOENT.
+function resolveCommand(command, warnings) {
+  if (command.includes("/") || command.includes("\\")) return command;
+  const exts =
+    process.platform === "win32"
+      ? ["", ...(process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";")]
+      : [""];
+  const findIn = (dirs) => {
+    for (const dir of dirs) {
+      for (const ext of exts) {
+        const candidate = path.join(dir, command + ext);
+        if (isExecutableFile(candidate)) return candidate;
+      }
+    }
+    return null;
+  };
+  const minimalDirs = MINIMAL_PATH.split(path.delimiter);
+  const system = findIn(minimalDirs);
+  if (system) return system;
+  const operatorDirs = (process.env.PATH || "")
+    .split(path.delimiter)
+    .filter((dir) => dir && path.isAbsolute(dir) && !/node_modules/i.test(dir));
+  const operator = findIn(operatorDirs);
+  if (operator) {
+    if (Array.isArray(warnings)) {
+      warnings.push(
+        `command "${command}" resolved outside the minimal system PATH: ${operator}`
+      );
+    }
+    return operator;
+  }
+  return command;
 }
 
 function initializeRequest(id) {
@@ -209,7 +272,7 @@ async function enumerateStdio(command, args, options = {}) {
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const warnings = [];
 
-  const child = spawn(command, args || [], {
+  const child = spawn(resolveCommand(command, warnings), args || [], {
     cwd: options.cwd || process.cwd(),
     env: scrubbedEnv(options.extraEnv),
     stdio: ["pipe", "pipe", "pipe"],
@@ -367,7 +430,11 @@ async function enumerateStdio(command, args, options = {}) {
   });
 
   child.on("error", (error) => {
-    failAll(rpcError(`failed to spawn server: ${error.message}`, "spawn"));
+    const hint =
+      error.code === "ENOENT"
+        ? ` — command not found on the minimal system PATH (${MINIMAL_PATH}) or the operator's PATH`
+        : "";
+    failAll(rpcError(`failed to spawn server: ${error.message}${hint}`, "spawn"));
   });
   child.on("exit", () => {
     if (!settled) {
@@ -765,6 +832,7 @@ module.exports = {
   normalizeManifest,
   normalizeTool,
   parseSseMessages,
+  resolveCommand,
   scrubbedEnv,
   // Exported for the SSRF-guard regression tests.
   isBlockedIp,

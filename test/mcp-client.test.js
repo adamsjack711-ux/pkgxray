@@ -5,13 +5,16 @@
 // in-process HTTP server). No mocks of the code under test.
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
 const {
   enumerateMcpServer,
   parseSseMessages,
+  resolveCommand,
   scrubbedEnv,
   isBlockedIp,
   MINIMAL_PATH
@@ -458,4 +461,101 @@ test("parseSseMessages extracts JSON payloads and skips noise", () => {
 
 test("enumerateMcpServer validates its target shape", async () => {
   await assert.rejects(enumerateMcpServer({}, {}), /requires \{ url \} or \{ command/);
+});
+
+// ---------------------------------------------------------------------------
+// resolveCommand — parent-side binary resolution (two tiers, strictest first)
+// ---------------------------------------------------------------------------
+
+test("resolveCommand passes explicit paths through untouched", () => {
+  const warnings = [];
+  assert.equal(resolveCommand("/usr/bin/env", warnings), "/usr/bin/env");
+  assert.equal(resolveCommand("./local-server", warnings), "./local-server");
+  assert.equal(warnings.length, 0);
+});
+
+test("resolveCommand finds system binaries on the minimal PATH without warning", (t) => {
+  if (process.platform === "win32") return t.skip("posix layout");
+  const warnings = [];
+  const resolved = resolveCommand("env", warnings);
+  assert.ok(path.isAbsolute(resolved), `expected absolute path, got ${resolved}`);
+  assert.ok(
+    MINIMAL_PATH.split(path.delimiter).includes(path.dirname(resolved)),
+    `expected a minimal-PATH dir, got ${resolved}`
+  );
+  assert.equal(warnings.length, 0, "system-dir hits must not warn");
+});
+
+test("resolveCommand falls back to the operator PATH with a warning", (t) => {
+  if (process.platform === "win32") return t.skip("posix layout");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pkgxray-path-"));
+  const bin = path.join(dir, "pkgxray-fixture-server");
+  fs.writeFileSync(bin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${dir}${path.delimiter}${savedPath}`;
+  try {
+    const warnings = [];
+    const resolved = resolveCommand("pkgxray-fixture-server", warnings);
+    assert.equal(resolved, bin);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /resolved outside the minimal system PATH/);
+  } finally {
+    process.env.PATH = savedPath;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveCommand skips relative and node_modules PATH entries", (t) => {
+  if (process.platform === "win32") return t.skip("posix layout");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pkgxray-path-"));
+  const shimDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(shimDir, { recursive: true });
+  const shim = path.join(shimDir, "pkgxray-fixture-shim");
+  fs.writeFileSync(shim, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const savedPath = process.env.PATH;
+  const savedCwd = process.cwd();
+  process.env.PATH = `.${path.delimiter}${shimDir}${path.delimiter}${savedPath}`;
+  process.chdir(root);
+  try {
+    const warnings = [];
+    // The shim exists and its dir is on PATH, but node_modules entries are
+    // package-writable — resolution must refuse it and fall through unresolved.
+    const resolved = resolveCommand("pkgxray-fixture-shim", warnings);
+    assert.equal(resolved, "pkgxray-fixture-shim", "must not resolve into node_modules");
+    assert.equal(warnings.length, 0);
+  } finally {
+    process.chdir(savedCwd);
+    process.env.PATH = savedPath;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("stdio: bare command outside system dirs enumerates via operator PATH", async (t) => {
+  if (process.platform === "win32") return t.skip("posix layout");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pkgxray-path-"));
+  const launcher = path.join(dir, "pkgxray-fixture-launcher");
+  // A shim like ~/.local/bin/graphify-mcp: bare name, lives off the minimal PATH.
+  fs.writeFileSync(
+    launcher,
+    `#!/bin/sh\nexec "${process.execPath}" "${FIXTURE}"\n`,
+    { mode: 0o755 }
+  );
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${dir}${path.delimiter}${savedPath}`;
+  try {
+    const manifest = await enumerateMcpServer(
+      { command: "pkgxray-fixture-launcher" },
+      { timeoutMs: 10_000 }
+    );
+    assert.equal(manifest.server.name, "fixture-server");
+    assert.ok(
+      manifest.diagnostics.warnings.some((w) =>
+        /resolved outside the minimal system PATH/.test(w)
+      ),
+      "operator-PATH resolution must surface a diagnostic warning"
+    );
+  } finally {
+    process.env.PATH = savedPath;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
