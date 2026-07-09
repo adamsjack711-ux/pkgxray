@@ -1,0 +1,12 @@
+{
+  "name": "postinstall-reads-ci-env",
+  "expect": "review",
+  "note": "postinstall reads a couple of env vars to detect CI and skip a download — lifecycle script is review, but no env-harvest-to-network, must not block",
+  "evidence": {
+    "packageName": "native-build-dep",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"native-build-dep\",\"scripts\":{\"postinstall\":\"node ./install.js\"},\"repository\":\"https://github.com/x/nbd\"}",
+      "install.js": "if (process.env.CI || process.env.SKIP_DOWNLOAD) { console.log('skipping prebuilt download'); process.exit(0); }"
+    }
+  }
+}

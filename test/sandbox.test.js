@@ -17,7 +17,8 @@ const {
   runCanarySandbox,
   seedCanaryFilesystem,
   matchTokens,
-  makeRunId
+  makeRunId,
+  detectSandboxWrapper
 } = require("../src/sandbox");
 
 // Send a proxied plaintext HTTP request (absolute-URI form, as an HTTP_PROXY
@@ -219,4 +220,26 @@ test("#6 a post-settle delayed beacon is still captured during the egress grace 
     );
   }
   fs.rmSync(pkgDir, { recursive: true, force: true });
+});
+
+test("#6 --require-sandbox fails closed when no OS sandbox wrapper is available", async () => {
+  const os = require("node:os");
+  const level = detectSandboxWrapper(os.tmpdir()).level;
+  if (level !== "env-only") {
+    // An OS sandbox (bwrap / sandbox-exec) IS present on this host, so
+    // requireSandbox is satisfiable — the fail-closed path can't be exercised
+    // here. (The negative case is covered wherever isolation is env-only.)
+    return;
+  }
+  await assert.rejects(
+    () =>
+      runCanarySandbox({
+        stagedPath: os.tmpdir(),
+        allowExecution: true,
+        requireSandbox: true,
+        egressGraceMs: 0,
+        runner: async () => ({ ran: [] }), // must never be reached
+      }),
+    (e) => e.code === "SANDBOX_REQUIRED"
+  );
 });

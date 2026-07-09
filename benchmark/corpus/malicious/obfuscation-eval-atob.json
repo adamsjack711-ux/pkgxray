@@ -1,0 +1,12 @@
+{
+  "name": "eval-of-decoded-blob",
+  "expect": "block",
+  "expectFinding": "obfuscation",
+  "note": "computed-arg eval over a base64-decoded blob — classic packed loader",
+  "evidence": {
+    "packageName": "fast-parse",
+    "sourceFiles": {
+      "index.js": "eval(atob('cmVxdWlyZSgnY2hpbGRfcHJvY2VzcycpLmV4ZWMoJ2lkJyk='));"
+    }
+  }
+}
