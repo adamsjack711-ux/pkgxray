@@ -6,6 +6,20 @@ A full audit of the detection engine and every surrounding subsystem, the
 resulting fixes, and a new shared configuration layer.
 
 ### Added
+- **EtherHiding / on-chain command-channel detection** (`onchain-c2-loader`). A
+  blockchain-state read used to fetch a payload — `eth_getTransactionByHash`,
+  TronGrid / Aptos account-transaction endpoints, EVM seed RPCs — co-located with
+  a code executor (`eval` / `new Function` / `vm` / `child_process`) blocks as
+  the EtherHiding shape: the chain is the command channel, so the committed
+  loader never changes and there is no server to seize. A chain-read plus a raw
+  calldata-extraction step (`tx.input.slice(2)` / Tron `raw_data.data`) without a
+  visible executor is flagged for review. A plain chain-read that only reports
+  status stays safe, so ordinary web3 libraries are not swept up.
+- **Hidden self-`node -e` execution detection.** A `child_process` call that runs
+  Node itself on an inline `-e`/`--eval` script is eval-by-subprocess; paired
+  with an evasion option (`windowsHide` / `detached` / `stdio:'ignore'`) it blocks
+  as a deliberately-silent, process-outliving stage-2 executor. The plain,
+  unhidden form is review.
 - **`.pkgxray.json` shared configuration** (`src/config.js`). One human-authored
   policy file read by the CLI, the MCP server, and the proxy through a single
   loader — no per-surface drift. Zero config is fully safe; the model is

