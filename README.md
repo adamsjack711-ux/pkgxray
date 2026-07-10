@@ -60,7 +60,12 @@ generalizes past rewording. (Emoji subdivision flags and benign/binary base64
 are excluded.) See [solving prompt injection](#on-prompt-injection).
 
 **Behavioral correlation** — cross-file exfiltration, stage-2 loaders, download→
-execute (`curl | sh`), `process.env` harvesting near a network sink.
+execute (`curl | sh`), `process.env` harvesting near a network sink, **on-chain
+command channels** (EtherHiding — a chain-read like `eth_getTransactionByHash` /
+TronGrid / Aptos co-located with a code executor, so the payload lives on a
+blockchain the repo never has to change), and **hidden self-`node -e` execution**
+(a detached, `windowsHide`, `stdio:'ignore'` inline-eval subprocess — stage-2
+that outlives and escapes the process being scanned).
 
 Every signal resolves to one verdict:
 

@@ -1,0 +1,12 @@
+{
+  "name": "web3-tx-status-read",
+  "expect": "safe",
+  "note": "FP-trap for the on-chain heuristic: a legitimate wallet/explorer helper that reads a transaction by hash (eth_getTransactionByHash / provider.getTransaction) to report its confirmation status. It reads chain state but never extracts raw calldata to decode and never feeds anything to an interpreter — so it must NOT trip onchain-c2-loader. Proves the EtherHiding signal requires a co-located executor (or a raw calldata-extraction step), not merely touching a chain-read RPC that real web3 libraries use constantly.",
+  "evidence": {
+    "packageName": "tx-status",
+    "sourceFiles": {
+      "index.js": "module.exports = async function txStatus(provider, hash){\n  const tx = await provider.send('eth_getTransactionByHash', [hash]);\n  if (!tx) return { found: false };\n  const receipt = await provider.getTransactionReceipt(hash);\n  return { found: true, mined: !!tx.blockNumber, success: receipt && receipt.status === 1, confirmations: receipt ? receipt.confirmations : 0 };\n};\n",
+      "package.json": "{\"name\":\"tx-status\",\"version\":\"1.2.0\",\"repository\":\"https://github.com/x/tx-status\"}"
+    }
+  }
+}

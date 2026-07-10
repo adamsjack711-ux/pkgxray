@@ -164,6 +164,49 @@ const ALT_RUNTIME_DOWNLOAD_REGEX =
 const ALT_RUNTIME_SPAWN_REGEX =
   /(?:["'`]|spawn\w*\s*\(\s*["'`]|execa?\s*\(\s*["'`]|exec\w*\s*\(\s*["'`][^"'`]*\b)(?:bun|deno)\b[^"'`\n]{0,60}?\b(?:run|eval|-e|--allow|install|x)\b/i;
 
+// --- Hidden/detached inline-eval subprocess (self-`node -e`) ----------------
+// child_process spawning Node ITSELF on an inline `-e`/`--eval` script is
+// eval-by-subprocess: the payload runs in a fresh process the parent scan never
+// follows. Malware pairs it with windowsHide / detached / stdio:'ignore' to run
+// the stage-2 silently and outlive the host process (the second execution path
+// in the EtherHiding loader, alongside eval()). The command must be `node` /
+// `process.execPath` and an arg must be an inline-eval flag — a call/spawn
+// boundary keeps the plain word "node" in prose from matching.
+// Two call shapes reach the same place. Array form: the command is a bare
+// `node` / execPath literal and the inline-eval flag is its own quoted arg —
+// `spawn("node", ["-e", payload])`. String-command form: command and flag live
+// in one shell string — `execSync("node -e '…'")`. Both count.
+const NODE_EVAL_SPAWN_ARRAY_REGEX =
+  /\b(?:spawn|spawnSync|exec|execSync|execFile|execFileSync|fork)\w*\s*\(\s*(?:process\.execPath|["'`]node(?:js)?["'`]|["'`][^"'`]*\/node["'`])[\s\S]{0,160}?(?:["'`]--?e(?:val)?["'`]|["'`]--?p(?:rint)?["'`])/i;
+const NODE_EVAL_SPAWN_STRING_REGEX =
+  /\b(?:spawn|spawnSync|exec|execSync|execFile|execFileSync|fork)\w*\s*\(\s*["'`][^"'`]{0,60}?\bnode(?:js)?\b[^"'`]{0,20}?\s--?(?:e(?:val)?|p(?:rint)?)\b/i;
+const NODE_EVAL_SPAWN_REGEXES = [NODE_EVAL_SPAWN_ARRAY_REGEX, NODE_EVAL_SPAWN_STRING_REGEX];
+// Evasion options that turn an inline-eval subprocess into a deliberately silent,
+// process-outliving one. Any single one co-located with NODE_EVAL_SPAWN is the
+// hidden stage-2 shape.
+const HIDDEN_SPAWN_OPTS_REGEX =
+  /windowsHide\s*:\s*true|detached\s*:\s*true|stdio\s*:\s*(?:["']ignore["']|\[[^\]]*["']ignore["'])/i;
+
+// --- On-chain command channel (EtherHiding) --------------------------------
+// EtherHiding hides the real payload in blockchain state and ships only a
+// loader: it READS an attacker transaction (latest tx from a wallet, or a
+// specific tx's calldata) off a public chain, decodes it, and executes it. The
+// code channel is the chain itself, so there is no domain/server to seize and
+// the committed loader never changes. Signals are the raw read primitives a
+// loader uses to pull bytes back OUT of a chain — a specific-tx calldata read
+// (`eth_getTransactionByHash`), the TronGrid/Aptos account-tx endpoints used as
+// resilient fallbacks, and public EVM seed RPCs. These OVERLAP with legitimate
+// web3 libraries, so on their own they are not a signal (see inspectOnChainLoader:
+// only co-location with a code executor escalates).
+const ONCHAIN_C2_READ_REGEX =
+  /\beth_getTransactionByHash\b|\beth_getTransactionReceipt\b|trongrid\.io|tronscan\.[a-z]+|fullnode\.[a-z0-9.-]*aptoslabs\.com|api\.(?:mainnet\.)?aptoslabs\.com|\baptos[a-z]*\.dev\b|bsc-dataseed|\.getTransaction\s*\([^)]*\)/i;
+// Pulling the raw bytes out of a fetched transaction: EVM calldata lives in the
+// `input` hex field (sliced past the `0x`), Tron carries it in `raw_data.data`.
+// This is the "read the payload out of the tx" step that distinguishes a loader
+// from a wallet/explorer that only reads balances or statuses.
+const ONCHAIN_CALLDATA_EXTRACT_REGEX =
+  /\.input\b[\s\S]{0,40}?\.(?:slice|substring|substr|replace)\s*\(|raw_data\s*(?:\.|\[["'])data|\btransaction\.input\b/i;
+
 // Exfil sinks that need more than a single keyword to be a network signal
 // (and would false-positive as bare keywords): a dynamic `import()` of a
 // remote URL, and the `new Image(); img.src = <url>` GET-beacon pattern. Both
@@ -583,6 +626,7 @@ const BAND_DEFINITIONS = [
   { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
   { band: "remote-code-load", label: "remote-code-load", categories: ["remote-code-load"], rationale: "Network content fed straight to an interpreter (curl | sh, eval over a fetched body) — download-then-execute." },
   { band: "alternate-runtime", label: "alternate-runtime-exec", categories: ["alternate-runtime-exec"], rationale: "Fetches a second language runtime (Bun / Deno) at install/runtime and executes a payload under it — the TeamPCP shape that escapes Node-only static analysis and EDR." },
+  { band: "onchain-c2-loader", label: "onchain-c2-loader", categories: ["onchain-c2-loader"], rationale: "Reads a payload out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos) and, co-located with a code executor, runs it — the EtherHiding shape where the chain is the command channel and the committed loader never changes." },
   { band: "agent-config-access", label: "agent-config-access", categories: ["agent-config-access"], rationale: "Reads another AI-coding-agent's config (Claude/Cursor/Kiro/Aider/Continue) — MCP definitions, API keys, and tool allowlists that no ordinary dependency needs." },
   { band: "native-build", label: "native-build-execution", categories: ["native-build"], rationale: "Ships a native-build manifest (binding.gyp / extconf.rb) that compiles/runs code at install; escalates when it shells out or fetches from the network at build time." },
   { band: "agent-auto-exec", label: "agent-auto-execution", categories: ["agent-hook"], rationale: "Ships an agent hook (SessionStart), an auto-registering MCP config, or a VS Code folderOpen task — code that runs on session start / folder open, not on explicit invocation." },
@@ -1144,6 +1188,8 @@ function auditFiles(files, findings, evidence) {
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
+    inspectHiddenNodeExec(file, content, findings, normalized, normChanged);
+    inspectOnChainLoader(file, content, findings, normalized, normChanged);
     inspectCapabilities(file, content, findings);
   }
 
@@ -2795,6 +2841,84 @@ function inspectAlternateRuntime(file, content, lower, findings, normalized, nor
   });
 }
 
+// Spawning `node -e <inline script>` in a child process is eval-by-subprocess:
+// the payload runs in a process the parent scan never follows. On its own that
+// is a review-worthy execution primitive; paired with an evasion option
+// (windowsHide / detached / stdio:'ignore') it is the deliberately-silent,
+// process-outliving stage-2 exec that malware uses (the second execution path in
+// the EtherHiding loader, next to a bare eval()), so it blocks. Runs against the
+// de-obfuscated text too so a split/encoded spawn still counts.
+function inspectHiddenNodeExec(file, content, findings, normalized, normChanged) {
+  const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
+  const spawnRe = NODE_EVAL_SPAWN_REGEXES.find(testBoth);
+  if (!spawnRe) return;
+  const hidden = testBoth(HIDDEN_SPAWN_OPTS_REGEX);
+  const idx = (spawnRe.exec(content) || { index: 0 }).index;
+  if (hidden) {
+    findings.push({
+      severity: "high",
+      category: "code-execution",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Spawns Node on an inline `-e`/`--eval` script AND hides it (windowsHide / detached / stdio:'ignore') — a deliberately-silent, process-outliving stage-2 executor. Running the payload in a detached hidden child process is eval-by-subprocess: it escapes the parent process this scan follows and survives it. Not a build-tool shape."
+    });
+    return;
+  }
+  findings.push({
+    severity: "medium",
+    category: "code-execution",
+    file: file.path,
+    snippet: clipAround(content, idx),
+    rationale:
+      "Spawns Node on an inline `-e`/`--eval` script — eval-by-subprocess. The inline code runs in a fresh process a static scan does not follow; flagged for review."
+  });
+}
+
+// EtherHiding: the committed file is only a LOADER — it reads the real payload
+// out of blockchain state (an attacker's latest tx, or a specific tx's calldata),
+// decodes it, and executes it. The chain is the command channel, so there is no
+// server to seize and the loader never changes. An on-chain READ primitive alone
+// overlaps with legitimate web3 libraries, so it is not flagged by itself; the
+// tell is a chain-read co-located with a code EXECUTOR (dynamic eval / new
+// Function / vm, or child_process) — a wallet or explorer reads chain state, it
+// does not feed it to an interpreter. That co-location blocks; a chain-read plus
+// a raw calldata-extraction step (payload bytes pulled from a tx) without a
+// visible executor is the loader shape minus the sink, flagged for review.
+function inspectOnChainLoader(file, content, findings, normalized, normChanged) {
+  const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
+  if (!testBoth(ONCHAIN_C2_READ_REGEX)) return;
+  const hasExecutor =
+    findDynamicEval(content) !== -1 ||
+    (normChanged && findDynamicEval(normalized) !== -1) ||
+    testBoth(EXEC_REGEX);
+  const extractsCalldata = testBoth(ONCHAIN_CALLDATA_EXTRACT_REGEX);
+  const idx = (ONCHAIN_C2_READ_REGEX.exec(content) || { index: 0 }).index;
+  if (hasExecutor) {
+    findings.push({
+      severity: "high",
+      category: "onchain-c2-loader",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Reads a payload out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos node) AND has a co-located code executor (eval / new Function / vm / child_process) — the EtherHiding shape: the on-chain transaction is the command channel and the committed loader fetches+runs whatever the attacker last broadcast. There is no domain to seize and the payload is invisible to a static scan of the repo. Blocks."
+    });
+    return;
+  }
+  if (extractsCalldata) {
+    findings.push({
+      severity: "medium",
+      category: "onchain-c2-loader",
+      file: file.path,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Reads a specific transaction off-chain and extracts its raw calldata bytes (tx `input` / Tron `raw_data.data`) — the payload-retrieval step of an on-chain loader. A wallet or explorer reads balances and statuses, not raw calldata it decodes. Flagged for review even without a visible executor in this file."
+    });
+  }
+}
+
 const CLIPBOARD_API_REGEX = /\b(?:navigator\.clipboard\.|clipboard\.(?:read|write)|pbpaste(?:\s|$)|pbcopy(?:\s|$)|Get-Clipboard|Set-Clipboard|win32clipboard)\b/;
 
 function inspectCapabilities(file, content, findings) {
@@ -2903,7 +3027,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, ["install-hook", "native-build", "agent-hook"], 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "agent-config-access", "environment-access", "data-access"],
