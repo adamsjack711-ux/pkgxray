@@ -1,0 +1,12 @@
+{
+  "name": "binding-gyp-action-echoes-help-url",
+  "expect": "review",
+  "note": "A binding.gyp whose action echoes a build-help message containing a URL (grpc). Echoing a URL is not a fetch; only curl/wget/etc. is. Must be REVIEW (custom action), not BLOCK. Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "native-thing",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"native-thing\",\"gypfile\":true,\"repository\":\"https://github.com/x/native-thing\"}",
+      "binding.gyp": "{ \"targets\": [ { \"target_name\": \"x\", \"actions\": [ { \"action\": [\"echo\", \"IMPORTANT: see https://github.com/nodejs/node/issues/4932 to build on Windows\"] } ] } ] }"
+    }
+  }
+}

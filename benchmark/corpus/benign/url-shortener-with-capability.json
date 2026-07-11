@@ -1,0 +1,13 @@
+{
+  "name": "shortener-error-link-with-network-capability",
+  "expect": "review",
+  "expectFinding": "network-exfil-or-loader",
+  "note": "A URL shortener in an error/doc link inside a real code file that also has network capability. This is the bluebird/pm2/firebase shape (goo.gl/bit.ly in a warning message). A dual-use shortener must not BLOCK a genuine library — it is reviewed, not blocked. Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "promise-lib",
+    "sourceFiles": {
+      "index.js": "const https = require('https');\nfunction warn(name){ console.error('Unhandled rejection (see http://goo.gl/MqrFmX) for ' + name); }\nmodule.exports = { warn, get: (u) => https.get(u) };",
+      "package.json": "{\"name\":\"promise-lib\",\"repository\":\"https://github.com/x/promise-lib\"}"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "large-bundle-atob-polyfill-far-from-view-compiler",
+  "expect": "safe",
+  "note": "A bundled library with an atob/base64 polyfill (attachment handling) far away from an unrelated `new Function` view-compiler — the pouchdb shape. A whole-file decoder+eval co-location wrongly blocked this; only a co-located decode->exec pair should. Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "docdb",
+    "sourceFiles": {
+      "index.js": "'use strict';\nfunction thisAtob(str){ var base64 = Buffer.from(str, 'base64'); return base64.toString('binary'); }\nexports.decodeAttachment = thisAtob;\n// ---- a few hundred chars of unrelated library code so the decoder and the\n// view compiler below are well outside the proximity window ----\nfunction range(n){ var out = []; for (var i = 0; i < n; i++) { out.push(i * i + 1); } return out; }\nfunction pad(s, n){ while (s.length < n) { s = ' ' + s; } return s; }\nfunction merge(a, b){ var o = {}; for (var k in a) o[k] = a[k]; for (var k in b) o[k] = b[k]; return o; }\nfunction pluck(rows, key){ return rows.map(function(r){ return r[key]; }); }\nfunction sum(xs){ return xs.reduce(function(a, b){ return a + b; }, 0); }\nfunction group(rows, key){ var g = {}; rows.forEach(function(r){ (g[r[key]] = g[r[key]] || []).push(r); }); return g; }\nfunction compileView(mapSource){ return new Function('doc', 'emit', mapSource); }\nexports.compileView = compileView;\n",
+      "package.json": "{\"name\":\"docdb\",\"repository\":\"https://github.com/x/docdb\"}"
+    }
+  }
+}

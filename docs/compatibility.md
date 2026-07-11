@@ -1,29 +1,28 @@
 # Compatibility & stability
 
-pkgxray is pre-1.0. This document states, plainly, **what is a promise and what
-is still moving** — so you can depend on the stable surface today and know which
-edges may shift before 1.0.
+As of **1.0.0**, the Stable surface below is a promise: it will not break
+without a major version bump. This document states, plainly, what is covered by
+that promise and what is explicitly still moving (the Experimental and opt-in
+surfaces), so you know exactly what you can build on.
 
 ---
 
 ## Versioning policy
 
-pkgxray follows [semantic versioning](https://semver.org/). While the major
-version is `0`:
+pkgxray follows [semantic versioning](https://semver.org/):
 
-- **Patch** (`0.16.0 → 0.16.1`) — bug fixes and detection-calibration changes.
+- **Major** (`1.0.0 → 2.0.0`) — any breaking change to a **Stable** surface
+  below. These are rare and called out loudly.
+- **Patch** (`1.0.0 → 1.0.1`) — bug fixes and detection-calibration changes.
   New *findings* on the same input are **not** a breaking change: the detection
   engine is expected to get more accurate over time, and a package that was
   `safe` yesterday may become `review`/`block` today (that is the entire point
   of [`recheck`](../README.md#monitoring-pkgxray-recheck)).
-- **Minor** (`0.16.0 → 0.17.0`) — new surfaces, new flags, new JSON fields.
+- **Minor** (`1.0.0 → 1.1.0`) — new surfaces, new flags, new JSON fields.
   Additive only on the stable surface (see below).
 - The **JSON contract** carries its own `schemaVersion` (currently `1`),
   independent of the package version. Within a `schemaVersion`, fields are
   **added, never removed or repurposed**. A removal bumps `schemaVersion`.
-
-At 1.0 this tightens: any breaking change to a **Stable** surface requires a
-major bump, and each surface below graduates or is explicitly dropped.
 
 ---
 
@@ -98,7 +97,17 @@ checklist to get there:
 - [x] **Publish + provenance** — the [`release` workflow](../.github/workflows/release.yml)
       gates every publish on the tests, the calibration benchmark, and pkgxray's
       own supply-chain `guard`, then ships with `npm publish --provenance` (SLSA
-      attestation). *(landed — wire the `NPM_TOKEN` secret to enable publishing.)*
+      attestation). *(landed — live on npm with a verified SLSA provenance
+      attestation and registry signature.)*
+- [x] **"0 false blocks" proven at scale** — the
+      [top-1000 validation harness](../validation/) runs `pkgxray guard` over the
+      1,000 most-depended-upon npm packages and gates on **0 heuristic false
+      blocks**. The first run found 22 false blocks across ~7 detectors; each was
+      calibrated and captured as a benign benchmark fixture, and the run now
+      reports **0 heuristic false blocks** (26 correct known-CVE blocks; `pm2` is
+      a documented defensible block — it really installs boot persistence). *(landed
+      — see [validation/results/report.md](../validation/results/report.md); re-run
+      with `node scripts/validate-at-scale.js`)*
 - [x] **Supported Node range** — the [test workflow](../.github/workflows/pkgxray-test.yml)
       runs `node --test` across `18 · 20 · 22 · 24`, proving the `engines.node`
       (`>=18`) floor and current lines. *(landed)*

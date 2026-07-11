@@ -1,0 +1,18 @@
+{
+  "name": "transpiled-bundle-with-new-function-diverges-from-git",
+  "expect": "review",
+  "note": "A flat-ESM/transpiled build artifact (Angular fesm / Babel .bc.js / requirejs r.js shape) present in the npm tarball but absent from git source, containing a `new Function` template/loader primitive. Build output legitimately diverges from git and contains code-execution — this must NOT escalate to artifact-only-malware BLOCK. It stays review (divergence + dynamic-eval are MEDIUM). Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "ng-thing",
+    "sourceFiles": {
+      "fesm2022/thing.mjs": "const compileTemplate = (src) => new Function('ctx', 'return `' + src + '`');\nexport { compileTemplate };",
+      "package.json": "{\"name\":\"ng-thing\",\"repository\":\"https://github.com/x/ng-thing\"}"
+    },
+    "npmVsGithubDiff": {
+      "compared": true,
+      "githubRef": "v1.0.0",
+      "suspiciousExtras": [{ "path": "fesm2022/thing.mjs", "category": "extra-source" }],
+      "suspiciousMismatches": []
+    }
+  }
+}

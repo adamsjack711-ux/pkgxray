@@ -1,0 +1,12 @@
+{
+  "name": "example-ip-and-license-url-in-comments",
+  "expect": "safe",
+  "note": "An example IP in a JS comment (superagent's `// request.get('https://1.2.3.4/')`) and a license/issue URL in a comment must not read as an exfil destination or a build fetch. Comments do not execute. Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "http-helper",
+    "sourceFiles": {
+      "index.js": "const https = require('https');\n// Allows request.get('https://1.2.3.4/').set('Host', 'example.com')\nmodule.exports = (u) => https.get(u);",
+      "package.json": "{\"name\":\"http-helper\",\"repository\":\"https://github.com/x/http-helper\"}"
+    }
+  }
+}

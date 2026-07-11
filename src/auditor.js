@@ -73,6 +73,22 @@ const PERSISTENCE_REGEXES = [
   /RunOnce\\/i
 ];
 
+// The first N entries above are shell rc files (.bashrc/.zshrc/.zshenv/
+// .bash_profile/.profile). A write to one of these is normally persistence, but
+// it is also exactly how shell tab-completion installs (`<tool> completion >>
+// ~/.bashrc`) — a documented, user-invoked convenience. The remaining entries
+// (crontab, launch agents, systemd, init.d, Windows Run keys) have no such
+// legitimate story and always block.
+const SHELL_RC_PERSISTENCE_COUNT = 5;
+
+// Markers of a genuine shell tab-completion installer, kept narrow on purpose so
+// a backdoor cannot dodge the persistence BLOCK by merely containing the word
+// "complete": bash/zsh completion builtins/internals, or the documented
+// `<tool> completion >> ~/.bashrc` install idiom. npm ships this and karma, pm2,
+// yeoman and many others copied its model verbatim.
+const SHELL_COMPLETION_CONTEXT_REGEX =
+  /\bCOMP_WORDBREAKS\b|\bCOMP_CWORD\b|\bCOMP_LINE\b|\bcompdef\b|\bcomplete\s+-[oFbW]\b|\bbash_completion\b|\bcompletion\s*>>|tab[\s-]?completion|command completion script/i;
+
 const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|require\(['"]child_process['"]\)|os\.system\(|subprocess\.(?:Popen|run|call|check_output)|Runtime\.getRuntime\(\)\.exec)/;
 
 // require()/import() called with a NON-string-literal argument (a variable or
@@ -80,7 +96,11 @@ const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|r
 // require": `const m = "ht"+"tps"; require(m).request(...)`. The negative
 // lookahead skips ordinary `require("fs")` / `import("./x")` literal loads; the
 // `_` boundary on \b keeps `__webpack_require__(id)` and friends from matching.
-const DYNAMIC_REQUIRE_REGEX = /\b(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/;
+// A bare `require(expr)` / `import(expr)`, NOT a method call. The negative
+// lookbehind excludes `b.require(x)` (browserify's bundler API), `grunt.require`,
+// `foo_require` and `$require` — a `.require(` is a library method, not Node's
+// module loader, so it must not trip the dynamic-require exfil shape.
+const DYNAMIC_REQUIRE_REGEX = /(?<![.\w$])(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/;
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
 // `eval` / `new Function` / `vm.runIn*Context` invoked on a COMPUTED argument —
@@ -442,8 +462,14 @@ function isDocumentationFile(path) {
 // install. A behavioral HIGH from one of these shouldn't hard-BLOCK an
 // otherwise-clean package; it's downgraded to MEDIUM so the signal survives for
 // human review without crying wolf on every well-tested library.
+// Non-runtime directories: tests, fixtures, examples, and documentation/website
+// bundles. A behavioral HIGH in one of these downgrades to review UNLESS the file
+// is actually reachable from the package entrypoint (the runtimePaths guard) or
+// is flagged keepHighInTests. `docs`/`website` cover shipped doc-site bundles
+// (datafire ships a compiled Angular docs bundle under docs/ that a scanner reads
+// as a stage-2 loader) — non-runtime assets that must not auto-block the package.
 const TEST_DIR_REGEX =
-  /(?:^|[\\/])(?:tests?|__tests__|__mocks__|spec|specs|fixtures?|examples?|benchmarks?|bench)(?:[\\/])/i;
+  /(?:^|[\\/])(?:tests?|__tests__|__mocks__|spec|specs|fixtures?|examples?|benchmarks?|bench|docs?|website)(?:[\\/])/i;
 const TEST_FILE_NAME_REGEX = /\.(?:test|spec|bench)\.[cm]?[jt]sx?$/i;
 
 function isTestOrFixtureFile(path) {
@@ -872,12 +898,12 @@ function inspectGithubMetadata(evidence, findings) {
     const where = meta.owner && meta.repo ? `${meta.owner}/${meta.repo}` : "linked URL";
     if (meta.reason === "not-found") {
       findings.push({
-        severity: "high",
+        severity: "medium",
         category: "github-mismatch",
         file: "GITHUB_METADATA",
         snippet: `Repository ${where} 404s on GitHub`,
         rationale:
-          "package.json points at a GitHub repository that does not exist. Strong typosquat / impersonation signal."
+          "package.json points at a GitHub repository that does not exist (404). Ambiguous on its own — a deleted or renamed repo behind an abandoned-but-legitimate package (e.g. optimist → substack/node-optimist) looks identical to a typosquat's fake link — so this is flagged for review rather than blocked; a real impersonation trips the code parameters too."
       });
     } else if (meta.reason === "not-github") {
       // Not a GitHub URL at all — skip silently.
@@ -1097,6 +1123,28 @@ function readableMetadataText(json) {
         : "";
   if (author) parts.push(author);
   return parts.join("\n");
+}
+
+// Blank out comment bodies (replaced with equal-length spaces so downstream
+// match indices and snippets still line up) so BEHAVIORAL detectors don't fire
+// on an IP / URL / keyword that only appears in a comment. A comment does not
+// execute: `// e.g. request.get('https://1.2.3.4/')` (superagent), an Apache
+// license URL in binding.gyp (grpc), or a link to the ExodusOSS GitHub org
+// (jsdom) are documentation, not conduct. NOTE: the injection scanner does the
+// OPPOSITE and deliberately reads comments — a prompt smuggled into a comment IS
+// an attack — so injection detection must never use this.
+function stripComments(content, path) {
+  const lowerPath = (path || "").toLowerCase();
+  const blank = (m) => " ".repeat(m.length);
+  let out = content.replace(BLOCK_COMMENT_RE, blank).replace(LINE_COMMENT_RE, blank);
+  if (
+    HASH_COMMENT_EXTS.some((ext) => lowerPath.endsWith(ext)) ||
+    lowerPath.endsWith(".gyp") ||
+    lowerPath.endsWith(".gypi")
+  ) {
+    out = out.replace(HASH_COMMENT_RE, blank);
+  }
+  return out;
 }
 
 // Behavioral file findings that should never hard-block when they originate
@@ -1387,6 +1435,13 @@ function collectLifecycleReferencedPaths(files) {
 //       server (a stdio one SPAWNS a local command). These run on folder-open,
 //       not on explicit invocation.
 const GYP_NETWORK_TOKEN_RE = /(?:https?:\/\/|(?:^|[\s;&|`$(])(?:curl|wget)\s|Invoke-WebRequest)/im;
+// A genuine download TOOL, not a bare URL. The action-block path uses this so a
+// build-help message that merely echoes a URL — grpc's `'action': ['echo',
+// 'IMPORTANT: ... https://github.com/nodejs/node/issues/4932 ...']` — is not read
+// as a build-time fetch. The `<!()` command-expansion path keeps the broader
+// token regex, since a URL inside an executed expansion is genuinely reachable.
+const GYP_FETCH_TOOL_RE =
+  /(?:^|[\s;&|`$(,'"])(?:curl|wget|nc|scp)\s|Invoke-WebRequest|certutil[^\n]*-urlcache/im;
 const GYP_ACTION_RE = /["']actions?["']\s*:/;
 // gyp `<!(cmd)` / `<!@(cmd)` command expansion runs `cmd` at configure time —
 // this is gyp's "shell out" and is executed by node-gyp, not just data.
@@ -1443,12 +1498,16 @@ function inspectBindingGyp(file, content, findings, fileBasenames, pkgRaw) {
   }
   const hasActionBlock = GYP_ACTION_RE.test(content);
   const netExpansion = expansions.find((e) => GYP_NETWORK_TOKEN_RE.test(e.text));
+  // The action-block co-location test runs on comment-stripped gyp: an Apache
+  // license URL in a `#` header comment (grpc) is not a build-time network fetch.
+  // The `<!()` expansion test above is already comment-free (expansions are code).
+  const codeOnly = stripComments(content, file.path);
 
   // HIGH: fetch-from-network at build time — a `<!()` expansion that shells to
   // curl/wget/a URL, or an actions block co-located with a network token. gyp
   // has no legitimate reason to reach the network while node-gyp runs it.
-  if (netExpansion || (hasActionBlock && GYP_NETWORK_TOKEN_RE.test(content))) {
-    const idx = netExpansion ? netExpansion.index : Math.max(0, content.search(GYP_NETWORK_TOKEN_RE));
+  if (netExpansion || (hasActionBlock && GYP_FETCH_TOOL_RE.test(codeOnly))) {
+    const idx = netExpansion ? netExpansion.index : Math.max(0, codeOnly.search(GYP_FETCH_TOOL_RE));
     findings.push({
       severity: "high",
       category: "native-build",
@@ -1626,6 +1685,15 @@ function collectDivergentPaths(diff) {
 
 // Behavioral categories worth correlating with the diff — a real payload shape,
 // not a metadata/provenance signal.
+// Categories whose presence in a tarball-only file is a genuine tamper signal
+// (Bitwarden / node-ipc shipped an exfil/destructive payload only in the
+// published artifact). Deliberately EXCLUDES the build-ubiquitous primitives —
+// `code-execution` (new Function/eval), `dynamic-require` (module loaders) —
+// because every transpiled/bundled artifact legitimately absent from git source
+// (Angular's fesm2022 bundles, Babel `.bc.js`, the requirejs r.js optimizer)
+// contains them. Correlating those with tarball-vs-tag divergence flags normal
+// build output as malware. A real injected payload trips one of the conduct
+// categories below, which no compiler emits on its own.
 const ARTIFACT_CORRELATION_CATEGORIES = new Set([
   "credential-access",
   "agent-config-access",
@@ -1636,8 +1704,6 @@ const ARTIFACT_CORRELATION_CATEGORIES = new Set([
   "logic-bomb",
   "remote-code-load",
   "alternate-runtime-exec",
-  "code-execution",
-  "dynamic-require",
   "hidden-unicode"
 ]);
 
@@ -1777,7 +1843,13 @@ const OBFUSCATION_CHILD_PROC_REGEX = /\b(?:child_process|spawn\s*\(|execSync\b)/
 // Node's standard base64 decoder: `Buffer.from(<arg>, "base64")`. The bounded
 // `[\s\S]{0,200}?` tolerates a non-trivial first argument (variable, nested
 // call) without letting a runaway match span an entire minified line.
-const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([\s\S]{0,200}?['"]base64['"]/i;
+// A base64 DECODE: `Buffer.from(<data>, "base64")` — "base64" is the SECOND
+// argument of Buffer.from. This must NOT match the ENCODE form
+// `Buffer.from(x, "utf8").toString("base64")` (webpack's inline-sourcemap
+// devtool), where "base64" is an argument to a trailing `.toString()`, not to
+// Buffer.from. Anchoring on a Buffer.from arg (no `)` before the "base64")
+// excludes the `.toString("base64")` encode.
+const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([^)]*,\s*['"]base64['"]\s*\)/i;
 const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
 // Hoisted out of the inner loop — the literal regex was being recompiled on
 // every base64-blob match in every file.
@@ -1809,19 +1881,38 @@ function inspectObfuscation(file, content, lower, findings) {
     }
   }
 
-  // Decode-then-execute: a decoder feeding a genuinely dynamic executor.
-  // Covers both the browser API (`atob`) and Node's standard base64 decoder
-  // (`Buffer.from(x, "base64")`) — the latter is what real Node malware uses.
-  // findDynamicEval ignores `eval("literal")`, so this won't trip on bundlers.
-  const hasDecoder = lower.includes("atob(") || NODE_BASE64_DECODE_REGEX.test(content);
-  if (hasDecoder && (findDynamicEval(content) !== -1 || lower.includes("execsync"))) {
-    findings.push({
-      severity: "high",
-      category: "obfuscation",
-      file: file.path,
-      snippet: snippetForPatterns(file.content, ["atob(", "Buffer.from(", "eval(", "execSync"]),
-      rationale: "Decoded data appears to feed dynamic execution."
-    });
+  // Decode-then-execute: a base64/atob DECODER feeding a genuinely dynamic
+  // executor IN CLOSE PROXIMITY (~600 chars). The proximity window is the fix
+  // for large legitimate bundles: pouchdb ships an unrelated atob polyfill (for
+  // attachments) far from an unrelated `new Function` (its map/reduce view
+  // compiler), and a whole-file co-location test flags that as packed malware.
+  // Only a co-located decode→exec pair (`eval(atob(...))`) is the real shape.
+  // findDynamicEval ignores `eval("literal")`, so bundlers/minifiers don't trip.
+  const decoderPositions = [];
+  for (let i = lower.indexOf("atob("); i !== -1; i = lower.indexOf("atob(", i + 1)) {
+    decoderPositions.push(i);
+  }
+  const globalDecode = new RegExp(NODE_BASE64_DECODE_REGEX.source, "gi");
+  let dm;
+  while ((dm = globalDecode.exec(content)) !== null) decoderPositions.push(dm.index);
+  if (decoderPositions.length) {
+    const evalIdx = findDynamicEval(content);
+    const execIdx = lower.indexOf("execsync");
+    const execPositions = [evalIdx, execIdx].filter((i) => i !== -1);
+    const OBF_PROXIMITY = 600;
+    const near = decoderPositions.some((d) =>
+      execPositions.some((e) => Math.abs(e - d) <= OBF_PROXIMITY)
+    );
+    if (near) {
+      findings.push({
+        severity: "high",
+        category: "obfuscation",
+        file: file.path,
+        snippet: snippetForPatterns(file.content, ["atob(", "Buffer.from(", "eval(", "execSync"]),
+        rationale:
+          "A base64 / atob decoder feeds a dynamic executor within close proximity — the decode-then-execute packed-payload shape."
+      });
+    }
   }
 }
 
@@ -2161,6 +2252,13 @@ function inspectObfuscatedAssembly(file, lower, findings, normalized, normChange
 }
 
 function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
+  // Match credential/wallet targets in comment-stripped code: a wallet keyword in
+  // a comment is not a read. jsdom links to the ExodusOSS GitHub org in a comment
+  // (`// https://github.com/ExodusOSS/bytes`), which is not the Exodus wallet.
+  // Indices are preserved (comments blanked, not removed) so snippets still align.
+  content = stripComments(content, file.path);
+  lower = content.toLowerCase();
+  if (normChanged) normalized = stripComments(normalized, file.path);
   for (const target of SUSPICIOUS_READ_TARGETS) {
     const match = target.re.exec(content);
     if (match && looksLikeCredentialRead(content, lower, match.index)) {
@@ -2242,16 +2340,42 @@ function inspectAgentConfigAccess(file, content, lower, findings, normalized, no
 }
 
 function inspectPersistence(file, content, lower, findings) {
-  for (const regex of PERSISTENCE_REGEXES) {
-    const match = regex.exec(content);
-    if (match && hasWriteVerb(lower)) {
+  if (!hasWriteVerb(lower)) return;
+  // Hard persistence locations first — crontab, launch agents, systemd, init.d,
+  // Windows Run keys have no legitimate "tab completion" story, so they always
+  // BLOCK regardless of surrounding context.
+  for (let i = SHELL_RC_PERSISTENCE_COUNT; i < PERSISTENCE_REGEXES.length; i++) {
+    const match = PERSISTENCE_REGEXES[i].exec(content);
+    if (match) {
       findings.push({
         severity: "high",
         category: "persistence",
         file: file.path,
         snippet: clipAround(file.content, match.index),
         rationale:
-          "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run-key persistence location."
+          "Writes to a crontab, launch agent, systemd unit, init script, or Windows Run-key persistence location."
+      });
+      return;
+    }
+  }
+  // Shell rc files (.bashrc/.zshrc/.profile ...). A write here is HIGH — UNLESS
+  // this is a shell tab-completion installer, in which case the .bashrc write is
+  // the user-invoked `<tool> completion >> ~/.bashrc` idiom, not silent
+  // persistence. That is REVIEWED, not blocked (still surfaced for a human). A
+  // real backdoor written to .bashrc lacks the completion markers and stays HIGH,
+  // and any payload it carries trips the exec/exfil/obfuscation detectors too.
+  const completionContext = SHELL_COMPLETION_CONTEXT_REGEX.test(content);
+  for (let i = 0; i < SHELL_RC_PERSISTENCE_COUNT; i++) {
+    const match = PERSISTENCE_REGEXES[i].exec(content);
+    if (match) {
+      findings.push({
+        severity: completionContext ? "medium" : "high",
+        category: "persistence",
+        file: file.path,
+        snippet: clipAround(file.content, match.index),
+        rationale: completionContext
+          ? "References a shell rc file from a shell tab-completion installer (the documented `<tool> completion >> ~/.bashrc` idiom) — a user-invoked convenience rather than silent persistence, so surfaced for review rather than blocked."
+          : "Writes to a shell rc (.bashrc/.zshrc/.profile) persistence location."
       });
       return;
     }
@@ -2351,6 +2475,13 @@ function isPrivateIpv6(host) {
 // reason to be eval'd.
 const READ_DATA_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:txt|text|dat|data|bin|b64|base64|enc|payload|blob|md|markdown)["'`]/i;
+// The opaque, payload-shaped subset of the blob extensions above. Reading one of
+// these and eval'ing it is a stage-2 loader even inside a test/ path (a payload
+// hidden in a .dat doesn't become benign for living under test/). A human-readable
+// fixture (.txt/.md) read + vm, by contrast, is exactly what a source-transform's
+// own tests do (brfs, watchify) — so that case is allowed the test-path downgrade.
+const READ_OPAQUE_BLOB_REGEX =
+  /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
 function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
@@ -2371,21 +2502,41 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
     SHELL_NETWORK_REGEX.test(content) ||
     testBoth(IMPORT_REMOTE_REGEX) ||
     testBoth(IMAGE_BEACON_REGEX);
-  const hardcodedIp = findPublicIpInCode(content) || (normChanged ? findPublicIpInCode(normalized) : null);
-  const shortener = EXFIL_AND_CALLBACK_DOMAINS.find(
-    (pattern) => lower.includes(pattern) || nlower.includes(pattern)
+  // Destinations (IP / domain / shortener) are searched in COMMENT-STRIPPED text
+  // so an example IP or URL in a comment isn't read as an exfil target — e.g.
+  // superagent's `// request.get('https://1.2.3.4/')`. Capabilities above stay on
+  // the full content: a real exec/network primitive is real wherever it sits.
+  const codeText = stripComments(content, file.path);
+  const codeLower = codeText.toLowerCase();
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const codeNlower = normChanged ? codeNorm.toLowerCase() : codeLower;
+  const hardcodedIp =
+    findPublicIpInCode(codeText) || (normChanged ? findPublicIpInCode(codeNorm) : null);
+  // Split the discriminator by confidence. A no-legitimate-use exfil/callback
+  // domain (paste / webhook / OAST / tunnel) co-located with a capability is a
+  // strong signal → HIGH. A dual-use URL shortener is NOT: legitimate libraries
+  // ship shortener doc/error links (bluebird → goo.gl, immer → bit.ly, pm2 →
+  // bit.ly, firebase / react-scripts / node-gyp → goo.gl), and in a large file
+  // "has a network/exec capability" is almost always true, so a shortener alone
+  // would false-BLOCK popular packages. A shortener is reviewed (MEDIUM) below.
+  const highConfidenceDomain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find(
+    (pattern) => codeLower.includes(pattern) || codeNlower.includes(pattern)
   );
+  const shortener = URL_SHORTENERS.find(
+    (pattern) => codeLower.includes(pattern) || codeNlower.includes(pattern)
+  );
+  const hasCapability = hasExec || hasDynamicEval || hasNetwork;
 
-  // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP /
-  // shortener target.
-  if ((hasExec || hasDynamicEval || hasNetwork) && (hardcodedIp || shortener)) {
+  // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP or
+  // a no-legitimate-use exfil/callback domain.
+  if (hasCapability && (hardcodedIp || highConfidenceDomain)) {
     findings.push({
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
-      snippet: hardcodedIp ? clip(hardcodedIp) : shortener,
+      snippet: hardcodedIp ? clip(hardcodedIp) : clip(highConfidenceDomain),
       rationale:
-        "Code reaches a hardcoded public IP, URL shortener, paste, or webhook destination from a file that also has execution or outbound-network capability."
+        "Code reaches a hardcoded public IP, paste, webhook, or callback destination from a file that also has execution or outbound-network capability."
     });
     return;
   }
@@ -2398,7 +2549,9 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
-      keepHighInTests: true,
+      // Opaque payload blobs stay HIGH even in test paths; a plain .txt/.md
+      // fixture read + vm is allowed the test-path downgrade (brfs/watchify).
+      keepHighInTests: READ_OPAQUE_BLOB_REGEX.test(content),
       snippet: snippetForPatterns(content, ["eval(", "new Function", "readFileSync", "readFile"]),
       rationale:
         "Reads a non-code data file and feeds it to eval / new Function — classic stage-2 loader that hides its payload in a blob the static scanner would otherwise treat as inert data."
@@ -2438,6 +2591,22 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
       snippet: clip(callbackDomain),
       rationale:
         "References a known paste / webhook / tunneling / OAST / request-inspector domain. Legitimate packages essentially never embed these; the matching network call may be in another file."
+    });
+  }
+
+  // MEDIUM: a dual-use URL shortener co-located with a capability. Shorteners can
+  // conceal a redirect target (so they warrant review), but also appear in
+  // legitimate doc/error links, so this is reviewed rather than blocked — a
+  // shortener alone is not proof of exfil. Placed after the HIGH loader/env
+  // branches above so a genuine stage-2 loader still BLOCKS first.
+  if (hasCapability && shortener) {
+    findings.push({
+      severity: "medium",
+      category: "network-exfil-or-loader",
+      file: file.path,
+      snippet: clip(shortener),
+      rationale:
+        "A URL shortener appears in a file that also has execution or outbound-network capability. Shorteners can hide a redirect target, but are also used for legitimate documentation and error links, so this is flagged for review rather than blocked."
     });
   }
 
@@ -2957,7 +3126,11 @@ function inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, 
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
-      keepHighInTests: true,
+      // No keepHighInTests: a genuine token-exfil sink lives in the runtime path
+      // (the malicious fixture is in load.js and stays HIGH). A dynamic require +
+      // env read inside a package's own test/ path — e.g. node-sass's commented
+      // `require(extensionsPath)` beside SASS_BINARY env reads — is allowed the
+      // test-path downgrade to review rather than auto-blocking on test code.
       snippet: clipAround(file.content, match.index),
       rationale:
         "Loads a module by a computed (non-literal) name in the same file as a bulk environment harvest. The network/exec sink is hidden behind the dynamic require, evading static network detection — the classic shape of token exfil."

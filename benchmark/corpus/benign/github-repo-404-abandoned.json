@@ -1,0 +1,13 @@
+{
+  "name": "abandoned-package-repo-404s",
+  "expect": "review",
+  "note": "An established package whose linked GitHub repo was deleted/renamed and now 404s (optimist -> substack/node-optimist). A 404 alone is ambiguous (deleted repo vs typosquat) and must REVIEW, not BLOCK. Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "optimist-like",
+    "sourceFiles": {
+      "index.js": "module.exports = function(argv){ return argv; };",
+      "package.json": "{\"name\":\"optimist-like\",\"repository\":\"https://github.com/someone/deleted-repo\"}"
+    },
+    "githubMetadata": { "found": false, "reason": "not-found", "owner": "someone", "repo": "deleted-repo" }
+  }
+}

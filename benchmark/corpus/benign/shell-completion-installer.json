@@ -1,0 +1,14 @@
+{
+  "name": "shell-tab-completion-installer",
+  "expect": "review",
+  "expectFinding": "persistence",
+  "note": "The `<tool> completion >> ~/.bashrc` tab-completion installer shipped by npm and copied by karma/pm2/yeoman. References a shell rc file, but is a documented user-invoked convenience, not silent persistence. Must REVIEW, not BLOCK. Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "clir",
+    "sourceFiles": {
+      "lib/completion.js": "const fs = require('fs');\n// Installation: clir completion >> ~/.bashrc (or ~/.zshrc)\nfunction install(){ const rc = process.env.HOME + '/.bashrc'; fs.appendFileSync(rc, '\\n. <(clir completion)\\n'); }\nmodule.exports = { install };",
+      "lib/completion.sh": "#!/usr/bin/env bash\n# command completion script\n_clir_completion(){ COMPREPLY=(); }\ncomplete -o default -F _clir_completion clir\nexport COMP_WORDBREAKS",
+      "package.json": "{\"name\":\"clir\",\"repository\":\"https://github.com/x/clir\"}"
+    }
+  }
+}

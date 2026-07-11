@@ -1,0 +1,13 @@
+{
+  "name": "source-transform-test-reads-txt-fixture-and-vm",
+  "expect": "review",
+  "note": "A source-transform's own test reads a local .txt fixture and runs it through vm to assert the transform — the brfs/watchify shape. A .txt (not an opaque .dat/.enc payload) read + vm inside a test/ path must not BLOCK. Regression guard for the top-1000 false-block fix.",
+  "evidence": {
+    "packageName": "inline-fs",
+    "sourceFiles": {
+      "index.js": "module.exports = function(file){ return require('fs').readFileSync(file, 'utf8'); };",
+      "test/separators.js": "const vm = require('vm'); const fs = require('fs'); const text = fs.readFileSync(__dirname + '/files/separators.txt', 'utf8'); const s = new vm.Script(text); module.exports = s;",
+      "package.json": "{\"name\":\"inline-fs\",\"repository\":\"https://github.com/x/inline-fs\"}"
+    }
+  }
+}

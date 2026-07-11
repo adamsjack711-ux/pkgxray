@@ -6,3 +6,6 @@ package-lock.json
 
 # analysis tooling output
 graphify-out/
+
+# transient at-scale validation log
+validation/run.log
