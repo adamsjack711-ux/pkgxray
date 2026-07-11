@@ -1,10 +1,10 @@
 # pkgxray reference
 
 Detailed reference material split out of the [README](../README.md) to keep the
-landing page focused. Covers the severity policy, performance numbers, JSON
-output shapes, the browser extension, and the self-hostable cache server. For
-the compatibility contract and stability tiers, see
-[compatibility.md](compatibility.md).
+landing page focused. Covers the severity policy, `recheck` monitoring,
+performance numbers, JSON output shapes, the browser extension, and the
+self-hostable cache server. For the compatibility contract and stability tiers,
+see [compatibility.md](compatibility.md).
 
 ---
 
@@ -40,6 +40,58 @@ the compatibility contract and stability tiers, see
 
 `.d.ts`, `.map`, `.min.js`, `.lock` files are skipped. Tarballs up to 20,000
 entries / 256 MB uncompressed are scanned.
+
+---
+
+## Monitoring: `pkgxray recheck`
+
+`guard` and `audit` give a point-in-time verdict *at install*. `recheck`
+answers the follow-up: **has anything I already depend on become unsafe since
+I installed it?** — the maintainer-takeover / trojaned-update case.
+
+It walks a lockfile, re-runs the guard evaluation for each pinned
+`name@version`, and diffs the fresh verdict against the baseline in
+`.pkgxray.lock`. It reports a **diff, not a full report**: *regressed*
+(verdict got worse — you may be exposed), *improved*, *unchanged* (hidden
+unless `--verbose`), and *no-baseline* / *unknown*.
+
+```bash
+pkgxray recheck package-lock.json               # human diff
+pkgxray recheck package-lock.json --verbose     # also list unchanged deps
+pkgxray recheck package-lock.json --no-write    # don't update stored baselines
+pkgxray recheck package-lock.json --format json # machine-readable diff
+```
+
+Exit codes key off the worst *regression*: `0` nothing regressed, `2`
+regressed to **block**, `3` regressed to **review**. A dep that was already
+`block` at install is not a new regression. Set `PKGXRAY_CACHE_URL` so a large
+tree shares `guard`'s warm cache.
+
+**Version drift** — `recheck` also asks the registry whether a **newer
+version** exists and guards it, so you see the verdict *before* upgrading.
+This is informational (never changes the exit code) unless you pass
+`--fail-on-available-updates`; `--no-version-drift` skips the registry pass.
+
+### Scheduled CI job (GitHub Actions)
+
+```yaml
+# .github/workflows/pkgxray-recheck.yml
+name: pkgxray recheck
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily 06:00 UTC
+  workflow_dispatch:
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npx pkgxray recheck package-lock.json --format json
+        # exit 2 (regressed→block) or 3 (regressed→review) fails the build
+```
 
 ---
 

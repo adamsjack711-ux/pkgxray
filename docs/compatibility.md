@@ -17,7 +17,7 @@ pkgxray follows [semantic versioning](https://semver.org/):
   New *findings* on the same input are **not** a breaking change: the detection
   engine is expected to get more accurate over time, and a package that was
   `safe` yesterday may become `review`/`block` today (that is the entire point
-  of [`recheck`](../README.md#monitoring-pkgxray-recheck)).
+  of [`recheck`](reference.md#monitoring-pkgxray-recheck)).
 - **Minor** (`1.0.0 → 1.1.0`) — new surfaces, new flags, new JSON fields.
   Additive only on the stable surface (see below).
 - The **JSON contract** carries its own `schemaVersion` (currently `1`),
@@ -38,7 +38,7 @@ Changes here are additive within a major version; removals wait for a major bump
 | `pkgxray audit <lockfile>` / `--file` | verdict, per-dep results, exit codes |
 | `pkgxray recheck <lockfile>` | verdict-drift diff, `.pkgxray.lock` baseline format, exit codes |
 | `--format json` output | `schemaVersion: 1`, additive fields only |
-| `.pkgxray.json` config | the schema in [config.md](config.md); precedence order; "tighten freely, loosen loudly" invariants |
+| `.pkgxray.json` config | the schema in [configuration.md](configuration.md); precedence order; "tighten freely, loosen loudly" invariants |
 | MCP server tools | `audit_agent_extension_supply_chain`, `guard_agent_extension_install`, `audit_lockfile_supply_chain`, `triage_lockfile_supply_chain` — names and input shapes |
 | Exit-code convention | `0` safe/allow · `2` block · `3` review, across every command |
 | `pkgxray mcp` (connect-time MCP adapter) | subcommands + `--pin` / `--recheck` / `--package` / `--force` / `--no-package-scan` flags; the package-scan-first ordering |
@@ -89,7 +89,7 @@ checklist to get there:
 - [x] **Freeze exit codes and the config schema** — the exit-code contract
       (`0` safe/allow · `2` block · `3` review, incl. `failOn` variants) is
       pinned by a stability test; the config schema is documented in
-      [config.md](config.md). *(landed)*
+      [configuration.md](configuration.md). *(landed)*
 - [x] **`canary` decision** — hardened (stronger `bwrap` namespace isolation,
       `--require-sandbox` fail-closed) and given a published
       [threat model](canary-threat-model.md); reclassified from Experimental to a

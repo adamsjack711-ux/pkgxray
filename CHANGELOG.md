@@ -113,7 +113,7 @@ resulting fixes, and a new shared configuration layer.
   *tighten freely, loosen loudly*. Two invariants are enforced in code:
   allowlist entries must be pinned to `name@version` + `sha256`, and a published
   vulnerability can never be muted or allowed away. Muted findings stay visible
-  in the report; every loosening is surfaced. See `docs/config.md`.
+  in the report; every loosening is surfaced. See `docs/configuration.md`.
 - Wired the config into all three surfaces: the CLI (`guard` / `audit` /
   single-file), the MCP server (tool-exposure filtering + stricter agent
   defaults), and the example proxy (shared policy governs the gate).
