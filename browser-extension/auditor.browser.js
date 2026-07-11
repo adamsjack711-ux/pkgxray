@@ -1,6 +1,28 @@
 "use strict";
 
-const { compareProvenanceToRepository } = require("./attestation");
+// Inlined from src/attestation.js (pure, browser-safe):
+function parseGithubUrl(url) {
+  if (typeof url !== "string") return null;
+  const cleaned = url.replace(/^git\+/, "").replace(/\.git(?:[#?].*)?$/, "");
+  const match = cleaned.match(/^(?:https?|git):\/\/github\.com\/([^/]+)\/([^/?#@]+)/);
+  if (!match) return null;
+  return { owner: match[1], repo: match[2], url: `https://github.com/${match[1]}/${match[2]}` };
+}
+
+function canonicalGithubKey(url) {
+  const parsed = parseGithubUrl(url);
+  if (!parsed) return null;
+  return `${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}`;
+}
+
+function compareProvenanceToRepository(primary, declaredRepository) {
+  const provenanceKey = primary && canonicalGithubKey(primary.repository);
+  const declaredKey = declaredRepository && canonicalGithubKey(
+    typeof declaredRepository === "string" ? declaredRepository : declaredRepository.url
+  );
+  if (!provenanceKey || !declaredKey) return "unknown";
+  return provenanceKey === declaredKey ? "match" : "mismatch";
+}
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -73,6 +95,22 @@ const PERSISTENCE_REGEXES = [
   /RunOnce\\/i
 ];
 
+// The first N entries above are shell rc files (.bashrc/.zshrc/.zshenv/
+// .bash_profile/.profile). A write to one of these is normally persistence, but
+// it is also exactly how shell tab-completion installs (`<tool> completion >>
+// ~/.bashrc`) — a documented, user-invoked convenience. The remaining entries
+// (crontab, launch agents, systemd, init.d, Windows Run keys) have no such
+// legitimate story and always block.
+const SHELL_RC_PERSISTENCE_COUNT = 5;
+
+// Markers of a genuine shell tab-completion installer, kept narrow on purpose so
+// a backdoor cannot dodge the persistence BLOCK by merely containing the word
+// "complete": bash/zsh completion builtins/internals, or the documented
+// `<tool> completion >> ~/.bashrc` install idiom. npm ships this and karma, pm2,
+// yeoman and many others copied its model verbatim.
+const SHELL_COMPLETION_CONTEXT_REGEX =
+  /\bCOMP_WORDBREAKS\b|\bCOMP_CWORD\b|\bCOMP_LINE\b|\bcompdef\b|\bcomplete\s+-[oFbW]\b|\bbash_completion\b|\bcompletion\s*>>|tab[\s-]?completion|command completion script/i;
+
 const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|require\(['"]child_process['"]\)|os\.system\(|subprocess\.(?:Popen|run|call|check_output)|Runtime\.getRuntime\(\)\.exec)/;
 
 // require()/import() called with a NON-string-literal argument (a variable or
@@ -80,7 +118,11 @@ const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|r
 // require": `const m = "ht"+"tps"; require(m).request(...)`. The negative
 // lookahead skips ordinary `require("fs")` / `import("./x")` literal loads; the
 // `_` boundary on \b keeps `__webpack_require__(id)` and friends from matching.
-const DYNAMIC_REQUIRE_REGEX = /\b(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/;
+// A bare `require(expr)` / `import(expr)`, NOT a method call. The negative
+// lookbehind excludes `b.require(x)` (browserify's bundler API), `grunt.require`,
+// `foo_require` and `$require` — a `.require(` is a library method, not Node's
+// module loader, so it must not trip the dynamic-require exfil shape.
+const DYNAMIC_REQUIRE_REGEX = /(?<![.\w$])(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/;
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
 // `eval` / `new Function` / `vm.runIn*Context` invoked on a COMPUTED argument —
@@ -163,6 +205,49 @@ const ALT_RUNTIME_DOWNLOAD_REGEX =
 // call/spawn boundary so the plain words "bun"/"deno" in prose don't match.
 const ALT_RUNTIME_SPAWN_REGEX =
   /(?:["'`]|spawn\w*\s*\(\s*["'`]|execa?\s*\(\s*["'`]|exec\w*\s*\(\s*["'`][^"'`]*\b)(?:bun|deno)\b[^"'`\n]{0,60}?\b(?:run|eval|-e|--allow|install|x)\b/i;
+
+// --- Hidden/detached inline-eval subprocess (self-`node -e`) ----------------
+// child_process spawning Node ITSELF on an inline `-e`/`--eval` script is
+// eval-by-subprocess: the payload runs in a fresh process the parent scan never
+// follows. Malware pairs it with windowsHide / detached / stdio:'ignore' to run
+// the stage-2 silently and outlive the host process (the second execution path
+// in the EtherHiding loader, alongside eval()). The command must be `node` /
+// `process.execPath` and an arg must be an inline-eval flag — a call/spawn
+// boundary keeps the plain word "node" in prose from matching.
+// Two call shapes reach the same place. Array form: the command is a bare
+// `node` / execPath literal and the inline-eval flag is its own quoted arg —
+// `spawn("node", ["-e", payload])`. String-command form: command and flag live
+// in one shell string — `execSync("node -e '…'")`. Both count.
+const NODE_EVAL_SPAWN_ARRAY_REGEX =
+  /\b(?:spawn|spawnSync|exec|execSync|execFile|execFileSync|fork)\w*\s*\(\s*(?:process\.execPath|["'`]node(?:js)?["'`]|["'`][^"'`]*\/node["'`])[\s\S]{0,160}?(?:["'`]--?e(?:val)?["'`]|["'`]--?p(?:rint)?["'`])/i;
+const NODE_EVAL_SPAWN_STRING_REGEX =
+  /\b(?:spawn|spawnSync|exec|execSync|execFile|execFileSync|fork)\w*\s*\(\s*["'`][^"'`]{0,60}?\bnode(?:js)?\b[^"'`]{0,20}?\s--?(?:e(?:val)?|p(?:rint)?)\b/i;
+const NODE_EVAL_SPAWN_REGEXES = [NODE_EVAL_SPAWN_ARRAY_REGEX, NODE_EVAL_SPAWN_STRING_REGEX];
+// Evasion options that turn an inline-eval subprocess into a deliberately silent,
+// process-outliving one. Any single one co-located with NODE_EVAL_SPAWN is the
+// hidden stage-2 shape.
+const HIDDEN_SPAWN_OPTS_REGEX =
+  /windowsHide\s*:\s*true|detached\s*:\s*true|stdio\s*:\s*(?:["']ignore["']|\[[^\]]*["']ignore["'])/i;
+
+// --- On-chain command channel (EtherHiding) --------------------------------
+// EtherHiding hides the real payload in blockchain state and ships only a
+// loader: it READS an attacker transaction (latest tx from a wallet, or a
+// specific tx's calldata) off a public chain, decodes it, and executes it. The
+// code channel is the chain itself, so there is no domain/server to seize and
+// the committed loader never changes. Signals are the raw read primitives a
+// loader uses to pull bytes back OUT of a chain — a specific-tx calldata read
+// (`eth_getTransactionByHash`), the TronGrid/Aptos account-tx endpoints used as
+// resilient fallbacks, and public EVM seed RPCs. These OVERLAP with legitimate
+// web3 libraries, so on their own they are not a signal (see inspectOnChainLoader:
+// only co-location with a code executor escalates).
+const ONCHAIN_C2_READ_REGEX =
+  /\beth_getTransactionByHash\b|\beth_getTransactionReceipt\b|trongrid\.io|tronscan\.[a-z]+|fullnode\.[a-z0-9.-]*aptoslabs\.com|api\.(?:mainnet\.)?aptoslabs\.com|\baptos[a-z]*\.dev\b|bsc-dataseed|\.getTransaction\s*\([^)]*\)/i;
+// Pulling the raw bytes out of a fetched transaction: EVM calldata lives in the
+// `input` hex field (sliced past the `0x`), Tron carries it in `raw_data.data`.
+// This is the "read the payload out of the tx" step that distinguishes a loader
+// from a wallet/explorer that only reads balances or statuses.
+const ONCHAIN_CALLDATA_EXTRACT_REGEX =
+  /\.input\b[\s\S]{0,40}?\.(?:slice|substring|substr|replace)\s*\(|raw_data\s*(?:\.|\[["'])data|\btransaction\.input\b/i;
 
 // Exfil sinks that need more than a single keyword to be a network signal
 // (and would false-positive as bare keywords): a dynamic `import()` of a
@@ -399,8 +484,14 @@ function isDocumentationFile(path) {
 // install. A behavioral HIGH from one of these shouldn't hard-BLOCK an
 // otherwise-clean package; it's downgraded to MEDIUM so the signal survives for
 // human review without crying wolf on every well-tested library.
+// Non-runtime directories: tests, fixtures, examples, and documentation/website
+// bundles. A behavioral HIGH in one of these downgrades to review UNLESS the file
+// is actually reachable from the package entrypoint (the runtimePaths guard) or
+// is flagged keepHighInTests. `docs`/`website` cover shipped doc-site bundles
+// (datafire ships a compiled Angular docs bundle under docs/ that a scanner reads
+// as a stage-2 loader) — non-runtime assets that must not auto-block the package.
 const TEST_DIR_REGEX =
-  /(?:^|[\\/])(?:tests?|__tests__|__mocks__|spec|specs|fixtures?|examples?|benchmarks?|bench)(?:[\\/])/i;
+  /(?:^|[\\/])(?:tests?|__tests__|__mocks__|spec|specs|fixtures?|examples?|benchmarks?|bench|docs?|website)(?:[\\/])/i;
 const TEST_FILE_NAME_REGEX = /\.(?:test|spec|bench)\.[cm]?[jt]sx?$/i;
 
 function isTestOrFixtureFile(path) {
@@ -453,12 +544,93 @@ function normalizeSourceFiles(sourceFiles) {
   return [];
 }
 
+// ---------------------------------------------------------------------------
+// Self-scan (the antivirus-flags-itself problem). pkgxray's own source is a
+// catalogue of the byte patterns it detects — persistence-path regexes, exfil
+// domain lists, injection phrasing, decode-then-inspect logic — so scanning
+// pkgxray with pkgxray necessarily fires the signature database against
+// itself and BLOCKed every `pkgxray guard pkgxray` a cautious user ran.
+//
+// Recognition is VERIFICATION-GATED, never name-based:
+//   1. the scanned package must be `pkgxray` itself, AND
+//   2. the npm-vs-GitHub diff must have compared CLEAN — zero extra, zero
+//      mismatched source files — against pkgxray's CANONICAL repo below (a
+//      constant in this file, never the manifest's claim). A typosquat that
+//      points its repository field at a fork fails the canonical check; one
+//      that points at the real repo with altered code fails the diff; a
+//      tampered pkgxray tarball (one injected file) fails the diff. All of
+//      them keep the full, undowngraded verdict.
+// Effect: behavioral HIGH findings downgrade to MEDIUM so the verdict is an
+// honest REVIEW ("this is a security scanner whose source embeds its
+// signature database") — never SAFE, and never a silent pass. Findings that
+// are conduct rather than signatures keep their severity: OSV known
+// vulnerabilities, and install-hooks (pkgxray must never grow one).
+const SELF_CANONICAL = {
+  packageName: "pkgxray",
+  githubOwner: "adamsjack711-ux",
+  githubRepo: "pkgxray"
+};
+
+const SELF_SCAN_KEEP_SEVERITY = new Set(["known-vulnerability", "install-hook"]);
+
+const SELF_SCAN_NOTE =
+  " (Self-scan: this is pkgxray itself — the matched bytes are its detection signature" +
+  " database, and the published tarball verified byte-identical to the canonical GitHub" +
+  " repo at the release ref. Downgraded to review, never to safe.)";
+
+function isVerifiedSelfScan(evidence) {
+  if (!evidence || evidence.packageName !== SELF_CANONICAL.packageName) return false;
+  const gh = evidence.githubMetadata;
+  if (
+    !gh ||
+    gh.found !== true ||
+    gh.owner !== SELF_CANONICAL.githubOwner ||
+    gh.repo !== SELF_CANONICAL.githubRepo
+  ) {
+    return false;
+  }
+  const diff = evidence.npmVsGithubDiff;
+  if (!diff || diff.compared !== true) return false;
+  const c = diff.counts || {};
+  return c.extraSource === 0 && c.mismatchedSource === 0 && (c.matched || 0) > 0;
+}
+
+function applySelfScanDowngrade(findings) {
+  let downgraded = 0;
+  for (const finding of findings) {
+    if (finding.severity !== "high") continue;
+    if (SELF_SCAN_KEEP_SEVERITY.has(finding.category)) continue;
+    finding.severity = "medium";
+    finding.rationale += SELF_SCAN_NOTE;
+    downgraded += 1;
+  }
+  findings.push({
+    severity: "info",
+    category: "self-scan-verified",
+    file: "SELF_SCAN",
+    snippet: `${downgraded} signature-database finding(s) downgraded to review`,
+    rationale:
+      "The scanned package is pkgxray itself and its tarball matched the canonical GitHub repo " +
+      `(${SELF_CANONICAL.githubOwner}/${SELF_CANONICAL.githubRepo}) at the release ref. ` +
+      "A scanner's source is a catalogue of what it detects, so its own signature database " +
+      "always matches; provenance-verified self-scans report REVIEW instead of BLOCK. " +
+      "Any divergence from the canonical repo disables this downgrade entirely."
+  });
+}
+
 function auditEvidence(input) {
   const evidence = normalizeEvidence(input);
   const findings = [];
 
   auditMetadata(evidence, findings);
   auditFiles(evidence.sourceFiles, findings, evidence);
+
+  // The antivirus-flags-itself downgrade — see isVerifiedSelfScan above.
+  // Runs after all inspectors so it sees the final severity of every finding,
+  // and before decideVerdict so the verdict reflects the downgrades.
+  if (isVerifiedSelfScan(evidence)) {
+    applySelfScanDowngrade(findings);
+  }
 
   if (evidence.sourceFiles.length === 0) {
     findings.push({
@@ -502,6 +674,7 @@ const BAND_DEFINITIONS = [
   { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
   { band: "remote-code-load", label: "remote-code-load", categories: ["remote-code-load"], rationale: "Network content fed straight to an interpreter (curl | sh, eval over a fetched body) — download-then-execute." },
   { band: "alternate-runtime", label: "alternate-runtime-exec", categories: ["alternate-runtime-exec"], rationale: "Fetches a second language runtime (Bun / Deno) at install/runtime and executes a payload under it — the TeamPCP shape that escapes Node-only static analysis and EDR." },
+  { band: "onchain-c2-loader", label: "onchain-c2-loader", categories: ["onchain-c2-loader"], rationale: "Reads a payload out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos) and, co-located with a code executor, runs it — the EtherHiding shape where the chain is the command channel and the committed loader never changes." },
   { band: "agent-config-access", label: "agent-config-access", categories: ["agent-config-access"], rationale: "Reads another AI-coding-agent's config (Claude/Cursor/Kiro/Aider/Continue) — MCP definitions, API keys, and tool allowlists that no ordinary dependency needs." },
   { band: "native-build", label: "native-build-execution", categories: ["native-build"], rationale: "Ships a native-build manifest (binding.gyp / extconf.rb) that compiles/runs code at install; escalates when it shells out or fetches from the network at build time." },
   { band: "agent-auto-exec", label: "agent-auto-execution", categories: ["agent-hook"], rationale: "Ships an agent hook (SessionStart), an auto-registering MCP config, or a VS Code folderOpen task — code that runs on session start / folder open, not on explicit invocation." },
@@ -522,6 +695,7 @@ const BAND_DEFINITIONS = [
   { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
+  { band: "self-scan-verified", label: "self-scan-verified", categories: ["self-scan-verified"], rationale: "The scanned package is pkgxray itself, provenance-verified against its canonical repo; signature-database findings report as review instead of block." },
   { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "Package has a sigstore-signed SLSA provenance attestation from npm linking it to a specific GitHub Action build. Strong 'really came from where it says it did' signal." },
   { band: "provenance-mismatch", label: "provenance-mismatch", categories: ["provenance-mismatch"], rationale: "npm attestation claims the package was built from a different GitHub repo than the one listed in package.json. Strong tampering / typosquat signal." }
 ];
@@ -746,12 +920,12 @@ function inspectGithubMetadata(evidence, findings) {
     const where = meta.owner && meta.repo ? `${meta.owner}/${meta.repo}` : "linked URL";
     if (meta.reason === "not-found") {
       findings.push({
-        severity: "high",
+        severity: "medium",
         category: "github-mismatch",
         file: "GITHUB_METADATA",
         snippet: `Repository ${where} 404s on GitHub`,
         rationale:
-          "package.json points at a GitHub repository that does not exist. Strong typosquat / impersonation signal."
+          "package.json points at a GitHub repository that does not exist (404). Ambiguous on its own — a deleted or renamed repo behind an abandoned-but-legitimate package (e.g. optimist → substack/node-optimist) looks identical to a typosquat's fake link — so this is flagged for review rather than blocked; a real impersonation trips the code parameters too."
       });
     } else if (meta.reason === "not-github") {
       // Not a GitHub URL at all — skip silently.
@@ -973,6 +1147,28 @@ function readableMetadataText(json) {
   return parts.join("\n");
 }
 
+// Blank out comment bodies (replaced with equal-length spaces so downstream
+// match indices and snippets still line up) so BEHAVIORAL detectors don't fire
+// on an IP / URL / keyword that only appears in a comment. A comment does not
+// execute: `// e.g. request.get('https://1.2.3.4/')` (superagent), an Apache
+// license URL in binding.gyp (grpc), or a link to the ExodusOSS GitHub org
+// (jsdom) are documentation, not conduct. NOTE: the injection scanner does the
+// OPPOSITE and deliberately reads comments — a prompt smuggled into a comment IS
+// an attack — so injection detection must never use this.
+function stripComments(content, path) {
+  const lowerPath = (path || "").toLowerCase();
+  const blank = (m) => " ".repeat(m.length);
+  let out = content.replace(BLOCK_COMMENT_RE, blank).replace(LINE_COMMENT_RE, blank);
+  if (
+    HASH_COMMENT_EXTS.some((ext) => lowerPath.endsWith(ext)) ||
+    lowerPath.endsWith(".gyp") ||
+    lowerPath.endsWith(".gypi")
+  ) {
+    out = out.replace(HASH_COMMENT_RE, blank);
+  }
+  return out;
+}
+
 // Behavioral file findings that should never hard-block when they originate
 // from a non-runtime file (test fixture / example / benchmark). Kept HIGH for
 // real source files; downgraded to MEDIUM in test paths below.
@@ -1062,6 +1258,8 @@ function auditFiles(files, findings, evidence) {
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
+    inspectHiddenNodeExec(file, content, findings, normalized, normChanged);
+    inspectOnChainLoader(file, content, findings, normalized, normChanged);
     inspectCapabilities(file, content, findings);
   }
 
@@ -1259,6 +1457,13 @@ function collectLifecycleReferencedPaths(files) {
 //       server (a stdio one SPAWNS a local command). These run on folder-open,
 //       not on explicit invocation.
 const GYP_NETWORK_TOKEN_RE = /(?:https?:\/\/|(?:^|[\s;&|`$(])(?:curl|wget)\s|Invoke-WebRequest)/im;
+// A genuine download TOOL, not a bare URL. The action-block path uses this so a
+// build-help message that merely echoes a URL — grpc's `'action': ['echo',
+// 'IMPORTANT: ... https://github.com/nodejs/node/issues/4932 ...']` — is not read
+// as a build-time fetch. The `<!()` command-expansion path keeps the broader
+// token regex, since a URL inside an executed expansion is genuinely reachable.
+const GYP_FETCH_TOOL_RE =
+  /(?:^|[\s;&|`$(,'"])(?:curl|wget|nc|scp)\s|Invoke-WebRequest|certutil[^\n]*-urlcache/im;
 const GYP_ACTION_RE = /["']actions?["']\s*:/;
 // gyp `<!(cmd)` / `<!@(cmd)` command expansion runs `cmd` at configure time —
 // this is gyp's "shell out" and is executed by node-gyp, not just data.
@@ -1315,12 +1520,16 @@ function inspectBindingGyp(file, content, findings, fileBasenames, pkgRaw) {
   }
   const hasActionBlock = GYP_ACTION_RE.test(content);
   const netExpansion = expansions.find((e) => GYP_NETWORK_TOKEN_RE.test(e.text));
+  // The action-block co-location test runs on comment-stripped gyp: an Apache
+  // license URL in a `#` header comment (grpc) is not a build-time network fetch.
+  // The `<!()` expansion test above is already comment-free (expansions are code).
+  const codeOnly = stripComments(content, file.path);
 
   // HIGH: fetch-from-network at build time — a `<!()` expansion that shells to
   // curl/wget/a URL, or an actions block co-located with a network token. gyp
   // has no legitimate reason to reach the network while node-gyp runs it.
-  if (netExpansion || (hasActionBlock && GYP_NETWORK_TOKEN_RE.test(content))) {
-    const idx = netExpansion ? netExpansion.index : Math.max(0, content.search(GYP_NETWORK_TOKEN_RE));
+  if (netExpansion || (hasActionBlock && GYP_FETCH_TOOL_RE.test(codeOnly))) {
+    const idx = netExpansion ? netExpansion.index : Math.max(0, codeOnly.search(GYP_FETCH_TOOL_RE));
     findings.push({
       severity: "high",
       category: "native-build",
@@ -1498,6 +1707,15 @@ function collectDivergentPaths(diff) {
 
 // Behavioral categories worth correlating with the diff — a real payload shape,
 // not a metadata/provenance signal.
+// Categories whose presence in a tarball-only file is a genuine tamper signal
+// (Bitwarden / node-ipc shipped an exfil/destructive payload only in the
+// published artifact). Deliberately EXCLUDES the build-ubiquitous primitives —
+// `code-execution` (new Function/eval), `dynamic-require` (module loaders) —
+// because every transpiled/bundled artifact legitimately absent from git source
+// (Angular's fesm2022 bundles, Babel `.bc.js`, the requirejs r.js optimizer)
+// contains them. Correlating those with tarball-vs-tag divergence flags normal
+// build output as malware. A real injected payload trips one of the conduct
+// categories below, which no compiler emits on its own.
 const ARTIFACT_CORRELATION_CATEGORIES = new Set([
   "credential-access",
   "agent-config-access",
@@ -1508,8 +1726,6 @@ const ARTIFACT_CORRELATION_CATEGORIES = new Set([
   "logic-bomb",
   "remote-code-load",
   "alternate-runtime-exec",
-  "code-execution",
-  "dynamic-require",
   "hidden-unicode"
 ]);
 
@@ -1649,7 +1865,13 @@ const OBFUSCATION_CHILD_PROC_REGEX = /\b(?:child_process|spawn\s*\(|execSync\b)/
 // Node's standard base64 decoder: `Buffer.from(<arg>, "base64")`. The bounded
 // `[\s\S]{0,200}?` tolerates a non-trivial first argument (variable, nested
 // call) without letting a runaway match span an entire minified line.
-const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([\s\S]{0,200}?['"]base64['"]/i;
+// A base64 DECODE: `Buffer.from(<data>, "base64")` — "base64" is the SECOND
+// argument of Buffer.from. This must NOT match the ENCODE form
+// `Buffer.from(x, "utf8").toString("base64")` (webpack's inline-sourcemap
+// devtool), where "base64" is an argument to a trailing `.toString()`, not to
+// Buffer.from. Anchoring on a Buffer.from arg (no `)` before the "base64")
+// excludes the `.toString("base64")` encode.
+const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([^)]*,\s*['"]base64['"]\s*\)/i;
 const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
 // Hoisted out of the inner loop — the literal regex was being recompiled on
 // every base64-blob match in every file.
@@ -1681,19 +1903,38 @@ function inspectObfuscation(file, content, lower, findings) {
     }
   }
 
-  // Decode-then-execute: a decoder feeding a genuinely dynamic executor.
-  // Covers both the browser API (`atob`) and Node's standard base64 decoder
-  // (`Buffer.from(x, "base64")`) — the latter is what real Node malware uses.
-  // findDynamicEval ignores `eval("literal")`, so this won't trip on bundlers.
-  const hasDecoder = lower.includes("atob(") || NODE_BASE64_DECODE_REGEX.test(content);
-  if (hasDecoder && (findDynamicEval(content) !== -1 || lower.includes("execsync"))) {
-    findings.push({
-      severity: "high",
-      category: "obfuscation",
-      file: file.path,
-      snippet: snippetForPatterns(file.content, ["atob(", "Buffer.from(", "eval(", "execSync"]),
-      rationale: "Decoded data appears to feed dynamic execution."
-    });
+  // Decode-then-execute: a base64/atob DECODER feeding a genuinely dynamic
+  // executor IN CLOSE PROXIMITY (~600 chars). The proximity window is the fix
+  // for large legitimate bundles: pouchdb ships an unrelated atob polyfill (for
+  // attachments) far from an unrelated `new Function` (its map/reduce view
+  // compiler), and a whole-file co-location test flags that as packed malware.
+  // Only a co-located decode→exec pair (`eval(atob(...))`) is the real shape.
+  // findDynamicEval ignores `eval("literal")`, so bundlers/minifiers don't trip.
+  const decoderPositions = [];
+  for (let i = lower.indexOf("atob("); i !== -1; i = lower.indexOf("atob(", i + 1)) {
+    decoderPositions.push(i);
+  }
+  const globalDecode = new RegExp(NODE_BASE64_DECODE_REGEX.source, "gi");
+  let dm;
+  while ((dm = globalDecode.exec(content)) !== null) decoderPositions.push(dm.index);
+  if (decoderPositions.length) {
+    const evalIdx = findDynamicEval(content);
+    const execIdx = lower.indexOf("execsync");
+    const execPositions = [evalIdx, execIdx].filter((i) => i !== -1);
+    const OBF_PROXIMITY = 600;
+    const near = decoderPositions.some((d) =>
+      execPositions.some((e) => Math.abs(e - d) <= OBF_PROXIMITY)
+    );
+    if (near) {
+      findings.push({
+        severity: "high",
+        category: "obfuscation",
+        file: file.path,
+        snippet: snippetForPatterns(file.content, ["atob(", "Buffer.from(", "eval(", "execSync"]),
+        rationale:
+          "A base64 / atob decoder feeds a dynamic executor within close proximity — the decode-then-execute packed-payload shape."
+      });
+    }
   }
 }
 
@@ -2033,6 +2274,13 @@ function inspectObfuscatedAssembly(file, lower, findings, normalized, normChange
 }
 
 function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
+  // Match credential/wallet targets in comment-stripped code: a wallet keyword in
+  // a comment is not a read. jsdom links to the ExodusOSS GitHub org in a comment
+  // (`// https://github.com/ExodusOSS/bytes`), which is not the Exodus wallet.
+  // Indices are preserved (comments blanked, not removed) so snippets still align.
+  content = stripComments(content, file.path);
+  lower = content.toLowerCase();
+  if (normChanged) normalized = stripComments(normalized, file.path);
   for (const target of SUSPICIOUS_READ_TARGETS) {
     const match = target.re.exec(content);
     if (match && looksLikeCredentialRead(content, lower, match.index)) {
@@ -2114,16 +2362,42 @@ function inspectAgentConfigAccess(file, content, lower, findings, normalized, no
 }
 
 function inspectPersistence(file, content, lower, findings) {
-  for (const regex of PERSISTENCE_REGEXES) {
-    const match = regex.exec(content);
-    if (match && hasWriteVerb(lower)) {
+  if (!hasWriteVerb(lower)) return;
+  // Hard persistence locations first — crontab, launch agents, systemd, init.d,
+  // Windows Run keys have no legitimate "tab completion" story, so they always
+  // BLOCK regardless of surrounding context.
+  for (let i = SHELL_RC_PERSISTENCE_COUNT; i < PERSISTENCE_REGEXES.length; i++) {
+    const match = PERSISTENCE_REGEXES[i].exec(content);
+    if (match) {
       findings.push({
         severity: "high",
         category: "persistence",
         file: file.path,
         snippet: clipAround(file.content, match.index),
         rationale:
-          "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run-key persistence location."
+          "Writes to a crontab, launch agent, systemd unit, init script, or Windows Run-key persistence location."
+      });
+      return;
+    }
+  }
+  // Shell rc files (.bashrc/.zshrc/.profile ...). A write here is HIGH — UNLESS
+  // this is a shell tab-completion installer, in which case the .bashrc write is
+  // the user-invoked `<tool> completion >> ~/.bashrc` idiom, not silent
+  // persistence. That is REVIEWED, not blocked (still surfaced for a human). A
+  // real backdoor written to .bashrc lacks the completion markers and stays HIGH,
+  // and any payload it carries trips the exec/exfil/obfuscation detectors too.
+  const completionContext = SHELL_COMPLETION_CONTEXT_REGEX.test(content);
+  for (let i = 0; i < SHELL_RC_PERSISTENCE_COUNT; i++) {
+    const match = PERSISTENCE_REGEXES[i].exec(content);
+    if (match) {
+      findings.push({
+        severity: completionContext ? "medium" : "high",
+        category: "persistence",
+        file: file.path,
+        snippet: clipAround(file.content, match.index),
+        rationale: completionContext
+          ? "References a shell rc file from a shell tab-completion installer (the documented `<tool> completion >> ~/.bashrc` idiom) — a user-invoked convenience rather than silent persistence, so surfaced for review rather than blocked."
+          : "Writes to a shell rc (.bashrc/.zshrc/.profile) persistence location."
       });
       return;
     }
@@ -2223,6 +2497,13 @@ function isPrivateIpv6(host) {
 // reason to be eval'd.
 const READ_DATA_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:txt|text|dat|data|bin|b64|base64|enc|payload|blob|md|markdown)["'`]/i;
+// The opaque, payload-shaped subset of the blob extensions above. Reading one of
+// these and eval'ing it is a stage-2 loader even inside a test/ path (a payload
+// hidden in a .dat doesn't become benign for living under test/). A human-readable
+// fixture (.txt/.md) read + vm, by contrast, is exactly what a source-transform's
+// own tests do (brfs, watchify) — so that case is allowed the test-path downgrade.
+const READ_OPAQUE_BLOB_REGEX =
+  /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
 function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
@@ -2243,21 +2524,41 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
     SHELL_NETWORK_REGEX.test(content) ||
     testBoth(IMPORT_REMOTE_REGEX) ||
     testBoth(IMAGE_BEACON_REGEX);
-  const hardcodedIp = findPublicIpInCode(content) || (normChanged ? findPublicIpInCode(normalized) : null);
-  const shortener = EXFIL_AND_CALLBACK_DOMAINS.find(
-    (pattern) => lower.includes(pattern) || nlower.includes(pattern)
+  // Destinations (IP / domain / shortener) are searched in COMMENT-STRIPPED text
+  // so an example IP or URL in a comment isn't read as an exfil target — e.g.
+  // superagent's `// request.get('https://1.2.3.4/')`. Capabilities above stay on
+  // the full content: a real exec/network primitive is real wherever it sits.
+  const codeText = stripComments(content, file.path);
+  const codeLower = codeText.toLowerCase();
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const codeNlower = normChanged ? codeNorm.toLowerCase() : codeLower;
+  const hardcodedIp =
+    findPublicIpInCode(codeText) || (normChanged ? findPublicIpInCode(codeNorm) : null);
+  // Split the discriminator by confidence. A no-legitimate-use exfil/callback
+  // domain (paste / webhook / OAST / tunnel) co-located with a capability is a
+  // strong signal → HIGH. A dual-use URL shortener is NOT: legitimate libraries
+  // ship shortener doc/error links (bluebird → goo.gl, immer → bit.ly, pm2 →
+  // bit.ly, firebase / react-scripts / node-gyp → goo.gl), and in a large file
+  // "has a network/exec capability" is almost always true, so a shortener alone
+  // would false-BLOCK popular packages. A shortener is reviewed (MEDIUM) below.
+  const highConfidenceDomain = HIGH_CONFIDENCE_EXFIL_DOMAINS.find(
+    (pattern) => codeLower.includes(pattern) || codeNlower.includes(pattern)
   );
+  const shortener = URL_SHORTENERS.find(
+    (pattern) => codeLower.includes(pattern) || codeNlower.includes(pattern)
+  );
+  const hasCapability = hasExec || hasDynamicEval || hasNetwork;
 
-  // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP /
-  // shortener target.
-  if ((hasExec || hasDynamicEval || hasNetwork) && (hardcodedIp || shortener)) {
+  // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP or
+  // a no-legitimate-use exfil/callback domain.
+  if (hasCapability && (hardcodedIp || highConfidenceDomain)) {
     findings.push({
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
-      snippet: hardcodedIp ? clip(hardcodedIp) : shortener,
+      snippet: hardcodedIp ? clip(hardcodedIp) : clip(highConfidenceDomain),
       rationale:
-        "Code reaches a hardcoded public IP, URL shortener, paste, or webhook destination from a file that also has execution or outbound-network capability."
+        "Code reaches a hardcoded public IP, paste, webhook, or callback destination from a file that also has execution or outbound-network capability."
     });
     return;
   }
@@ -2270,7 +2571,9 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
-      keepHighInTests: true,
+      // Opaque payload blobs stay HIGH even in test paths; a plain .txt/.md
+      // fixture read + vm is allowed the test-path downgrade (brfs/watchify).
+      keepHighInTests: READ_OPAQUE_BLOB_REGEX.test(content),
       snippet: snippetForPatterns(content, ["eval(", "new Function", "readFileSync", "readFile"]),
       rationale:
         "Reads a non-code data file and feeds it to eval / new Function — classic stage-2 loader that hides its payload in a blob the static scanner would otherwise treat as inert data."
@@ -2313,6 +2616,22 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
     });
   }
 
+  // MEDIUM: a dual-use URL shortener co-located with a capability. Shorteners can
+  // conceal a redirect target (so they warrant review), but also appear in
+  // legitimate doc/error links, so this is reviewed rather than blocked — a
+  // shortener alone is not proof of exfil. Placed after the HIGH loader/env
+  // branches above so a genuine stage-2 loader still BLOCKS first.
+  if (hasCapability && shortener) {
+    findings.push({
+      severity: "medium",
+      category: "network-exfil-or-loader",
+      file: file.path,
+      snippet: clip(shortener),
+      rationale:
+        "A URL shortener appears in a file that also has execution or outbound-network capability. Shorteners can hide a redirect target, but are also used for legitimate documentation and error links, so this is flagged for review rather than blocked."
+    });
+  }
+
   // MEDIUM: eval / new Function / vm on a COMPUTED argument is genuinely dynamic
   // code execution and warrants review even in isolation.
   if (hasDynamicEval) {
@@ -2342,11 +2661,15 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // INFO: exec or network alone is common in legitimate build tools, language
   // servers, request libraries — record it but don't gate the verdict.
   if (hasExec) {
+    // hasExec may have matched only the normalized (de-obfuscated) text, so an
+    // EXEC_REGEX match against `content` alone can be null — fall back to the
+    // normalized match, then to a description, rather than dereferencing null.
+    const execMatch = content.match(EXEC_REGEX) || (normChanged ? normalized.match(EXEC_REGEX) : null);
     findings.push({
       severity: "info",
       category: "code-execution",
       file: file.path,
-      snippet: clip(content.match(EXEC_REGEX)[0]),
+      snippet: clip(execMatch ? execMatch[0] : "child_process / shell execution"),
       rationale: "Uses child_process / shell execution. Common in build tools and CLIs."
     });
   }
@@ -2563,6 +2886,16 @@ const SIMPLE_DESTRUCTIVE_REGEXES = [
 // dir-destructive with recursive:true — checked in a small window after the call.
 const RM_CALL_REGEX = /\.rm(?:dir)?(?:Sync)?\s*\(/g;
 const RECURSIVE_FLAG_REGEX = /recursive\s*:\s*true/;
+// node-ipc "peacenotwar" CORRUPTED files in place rather than deleting them:
+// enumerate a directory and overwrite each entry's contents (a heart emoji, in
+// that case). That's the "or corrupt files" half of the block comment above
+// that the delete-only patterns miss entirely. To stay low-FP we require a
+// directory enumeration within a small window of the write — bulk in-place
+// overwrite, not a lone config-file write — which, combined with the geo gate
+// below, is essentially only the node-ipc shape.
+const DIR_WRITE_REGEX = /\.writeFile(?:Sync)?\s*\(/g;
+const DIR_ENUM_REGEX = /\breaddir(?:Sync)?\s*\(/;
+const CORRUPTION_WINDOW = 400;
 // High-signal region/locale gates only. Broad timezone/date APIs
 // (getTimezoneOffset, Intl.DateTimeFormat, resolvedOptions().timeZone) are
 // deliberately excluded: they co-occur benignly with cleanup code (a recursive
@@ -2588,6 +2921,20 @@ function inspectLogicBomb(file, content, findings) {
   while ((rm = RM_CALL_REGEX.exec(content)) !== null) {
     if (RECURSIVE_FLAG_REGEX.test(content.slice(rm.index, rm.index + 200))) {
       indices.push(rm.index);
+    }
+  }
+  // In-place corruption: a writeFile co-located with a directory enumeration
+  // (the "overwrite every file under a dir" shape). The geo-gate check below
+  // still has to pass, so a benign bulk write without a region gate is ignored.
+  DIR_WRITE_REGEX.lastIndex = 0;
+  let wr;
+  while ((wr = DIR_WRITE_REGEX.exec(content)) !== null) {
+    const near = content.slice(
+      Math.max(0, wr.index - CORRUPTION_WINDOW),
+      wr.index + CORRUPTION_WINDOW
+    );
+    if (DIR_ENUM_REGEX.test(near)) {
+      indices.push(wr.index);
     }
   }
   for (const index of indices) {
@@ -2685,6 +3032,84 @@ function inspectAlternateRuntime(file, content, lower, findings, normalized, nor
   });
 }
 
+// Spawning `node -e <inline script>` in a child process is eval-by-subprocess:
+// the payload runs in a process the parent scan never follows. On its own that
+// is a review-worthy execution primitive; paired with an evasion option
+// (windowsHide / detached / stdio:'ignore') it is the deliberately-silent,
+// process-outliving stage-2 exec that malware uses (the second execution path in
+// the EtherHiding loader, next to a bare eval()), so it blocks. Runs against the
+// de-obfuscated text too so a split/encoded spawn still counts.
+function inspectHiddenNodeExec(file, content, findings, normalized, normChanged) {
+  const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
+  const spawnRe = NODE_EVAL_SPAWN_REGEXES.find(testBoth);
+  if (!spawnRe) return;
+  const hidden = testBoth(HIDDEN_SPAWN_OPTS_REGEX);
+  const idx = (spawnRe.exec(content) || { index: 0 }).index;
+  if (hidden) {
+    findings.push({
+      severity: "high",
+      category: "code-execution",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Spawns Node on an inline `-e`/`--eval` script AND hides it (windowsHide / detached / stdio:'ignore') — a deliberately-silent, process-outliving stage-2 executor. Running the payload in a detached hidden child process is eval-by-subprocess: it escapes the parent process this scan follows and survives it. Not a build-tool shape."
+    });
+    return;
+  }
+  findings.push({
+    severity: "medium",
+    category: "code-execution",
+    file: file.path,
+    snippet: clipAround(content, idx),
+    rationale:
+      "Spawns Node on an inline `-e`/`--eval` script — eval-by-subprocess. The inline code runs in a fresh process a static scan does not follow; flagged for review."
+  });
+}
+
+// EtherHiding: the committed file is only a LOADER — it reads the real payload
+// out of blockchain state (an attacker's latest tx, or a specific tx's calldata),
+// decodes it, and executes it. The chain is the command channel, so there is no
+// server to seize and the loader never changes. An on-chain READ primitive alone
+// overlaps with legitimate web3 libraries, so it is not flagged by itself; the
+// tell is a chain-read co-located with a code EXECUTOR (dynamic eval / new
+// Function / vm, or child_process) — a wallet or explorer reads chain state, it
+// does not feed it to an interpreter. That co-location blocks; a chain-read plus
+// a raw calldata-extraction step (payload bytes pulled from a tx) without a
+// visible executor is the loader shape minus the sink, flagged for review.
+function inspectOnChainLoader(file, content, findings, normalized, normChanged) {
+  const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
+  if (!testBoth(ONCHAIN_C2_READ_REGEX)) return;
+  const hasExecutor =
+    findDynamicEval(content) !== -1 ||
+    (normChanged && findDynamicEval(normalized) !== -1) ||
+    testBoth(EXEC_REGEX);
+  const extractsCalldata = testBoth(ONCHAIN_CALLDATA_EXTRACT_REGEX);
+  const idx = (ONCHAIN_C2_READ_REGEX.exec(content) || { index: 0 }).index;
+  if (hasExecutor) {
+    findings.push({
+      severity: "high",
+      category: "onchain-c2-loader",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Reads a payload out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos node) AND has a co-located code executor (eval / new Function / vm / child_process) — the EtherHiding shape: the on-chain transaction is the command channel and the committed loader fetches+runs whatever the attacker last broadcast. There is no domain to seize and the payload is invisible to a static scan of the repo. Blocks."
+    });
+    return;
+  }
+  if (extractsCalldata) {
+    findings.push({
+      severity: "medium",
+      category: "onchain-c2-loader",
+      file: file.path,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Reads a specific transaction off-chain and extracts its raw calldata bytes (tx `input` / Tron `raw_data.data`) — the payload-retrieval step of an on-chain loader. A wallet or explorer reads balances and statuses, not raw calldata it decodes. Flagged for review even without a visible executor in this file."
+    });
+  }
+}
+
 const CLIPBOARD_API_REGEX = /\b(?:navigator\.clipboard\.|clipboard\.(?:read|write)|pbpaste(?:\s|$)|pbcopy(?:\s|$)|Get-Clipboard|Set-Clipboard|win32clipboard)\b/;
 
 function inspectCapabilities(file, content, findings) {
@@ -2723,7 +3148,11 @@ function inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, 
       severity: "high",
       category: "network-exfil-or-loader",
       file: file.path,
-      keepHighInTests: true,
+      // No keepHighInTests: a genuine token-exfil sink lives in the runtime path
+      // (the malicious fixture is in load.js and stays HIGH). A dynamic require +
+      // env read inside a package's own test/ path — e.g. node-sass's commented
+      // `require(extensionsPath)` beside SASS_BINARY env reads — is allowed the
+      // test-path downgrade to review rather than auto-blocking on test code.
       snippet: clipAround(file.content, match.index),
       rationale:
         "Loads a module by a computed (non-literal) name in the same file as a bulk environment harvest. The network/exec sink is hidden behind the dynamic require, evading static network detection — the classic shape of token exfil."
@@ -2793,7 +3222,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, ["install-hook", "native-build", "agent-hook"], 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "agent-config-access", "environment-access", "data-access"],

@@ -55,7 +55,12 @@ the package in a sandboxed quarantine, audits the staged copy, and only
 promotes it when policy allows. It never runs `npm install`, lifecycle
 scripts, build steps, or package code.
 
-<!-- CLI Screenshot -->
+<img src="docs/screenshots/cli-guard-block.png" alt="pkgxray guard blocking a malicious sample: BLOCK verdict, grade F, HIGH credential-access finding citing a wallet read exfiltrated to an attacker endpoint, exit code 2" width="820">
+
+<sub>`guard` blocking a malicious sample from the [calibration corpus](benchmark/)
+(modeled on the 2024 `@solana/web3.js` compromise) — the HIGH finding cites the
+exact wallet-read + exfiltration code. Real run; see
+[how each screenshot was made](docs/screenshots/README.md).</sub>
 
 ## 🔒 Why pkgxray?
 
@@ -285,13 +290,28 @@ Precedence, the `mute` / `mcp` blocks, and the enforced invariants:
 
 ## 📸 Screenshots
 
-<!-- CLI Screenshot -->
+All captures are real runs — reproduction steps for each are in
+[`docs/screenshots/`](docs/screenshots/README.md).
 
-<!-- Browser Extension Screenshot -->
+**CLI — `pkgxray guard` clearing `express`, with the npm↔GitHub cross-check**
 
-<!-- MCP Proxy Screenshot -->
+<img src="docs/screenshots/cli-guard-safe.png" alt="pkgxray guard on express@4.21.0: SAFE verdict, grade A+, npm tarball matches the linked GitHub repo, per-parameter grades" width="820">
 
-<!-- Hookshot Screenshot -->
+**MCP proxy — a live session against a malicious demo server**
+
+<img src="docs/screenshots/mcp-proxy.png" alt="pkgxray mcp-proxy stripping two tools from tools/list (capability mismatch and injection in the description) and denying a tools/call with an isError result" width="820">
+
+<sub>Two tools stripped at `tools/list` — one for capability-surface mismatch,
+one for injection in its description; the denied `tools/call` never reaches the
+server.</sub>
+
+**hookshot install gate — an agent's `npm install` denied with cited evidence**
+
+<img src="docs/screenshots/hookshot.png" alt="the hookshot guard hook answering a Claude Code PreToolUse event for npm install lodash@4.17.11 with permissionDecision deny and pkgxray's cited known-vulnerability evidence" width="820">
+
+**Browser extension — the local MV3 popup blocking a risky sample**
+
+<img src="docs/screenshots/browser-extension.png" alt="the Supply Chain Auditor extension popup showing a BLOCK verdict, grade F, per-parameter grades, and HIGH injection-attempt and network-exfil-or-loader findings" width="640">
 
 ## 📊 Comparison
 
