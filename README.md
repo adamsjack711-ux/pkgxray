@@ -19,7 +19,7 @@ entirely on your machine, never executes untrusted code.
 
 </div>
 
-## 🚀 Quick start
+## Quick start
 
 ```bash
 npm install -g pkgxray        # or zero-install: npx pkgxray …
@@ -62,7 +62,7 @@ scripts, build steps, or package code.
 exact wallet-read + exfiltration code. Real run; see
 [how each screenshot was made](docs/screenshots/README.md).</sub>
 
-## 🔒 Why pkgxray?
+## Why pkgxray?
 
 AI coding assistants increasingly install packages automatically, often
 without a human ever reading the code. Traditional antivirus inspects what
@@ -87,7 +87,7 @@ injected text can't steer them), and its zero-false-block calibration is
 > pkgxray is designed to run *alongside* `npm audit` and OSV-Scanner, not
 > replace them. See the [comparison table](#-comparison) below.
 
-## ⭐ Key features
+## Key features
 
 ### Supply-chain intelligence
 
@@ -161,7 +161,7 @@ injected text can't steer them), and its zero-false-block calibration is
 - **Fail closed** — zero config means maximum strictness; a scan that errors
   becomes `review`, never `safe`
 
-## 🏗️ Architecture
+## Architecture
 
 <img src="docs/architecture.svg" alt="pkgxray architecture: inputs flow through the acquisition, quarantine, static-analysis and policy engines to a SAFE / REVIEW / BLOCK verdict" width="820">
 
@@ -178,7 +178,7 @@ operate offline whenever possible · zero runtime dependencies.
 Details: [docs/architecture.md](docs/architecture.md) ·
 [docs/design.md](docs/design.md)
 
-## 🚦 Verdicts
+## Verdicts
 
 Every signal resolves to one of three verdicts:
 
@@ -192,7 +192,7 @@ Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 **`3`** review. The exact mapping of every signal to `block` / `review` /
 `info` is specified in the [severity policy](docs/reference.md#severity-policy-what-lands-in-block--review--info).
 
-## 👥 Who is this for?
+## Who is this for?
 
 - **AI developers** — building agents that install packages or connect to MCP
   servers
@@ -204,7 +204,7 @@ Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 - **Organizations adopting AI coding assistants** — putting a deterministic
   gate between the agent and the registry
 
-## 🧰 Use cases
+## Use cases
 
 ### Vet an npm package before installing
 
@@ -266,7 +266,7 @@ Every verdict is a structured, citable report (`schemaVersion: 1`,
 additive-only — [schema](docs/json-schema.md)), and the quarantined copy is
 left on disk for manual inspection on `review`.
 
-## ⚙️ Configuration
+## Configuration
 
 One optional `.pkgxray.json`, read by every surface. Zero config is fully
 safe — an absent file means maximum strictness.
@@ -288,7 +288,7 @@ Precedence, the `mute` / `mcp` blocks, and the enforced invariants:
 [docs/configuration.md](docs/configuration.md) ·
 [`.pkgxray.example.json`](.pkgxray.example.json)
 
-## 📸 Screenshots
+## Screenshots
 
 All captures are real runs — reproduction steps for each are in
 [`docs/screenshots/`](docs/screenshots/README.md).
@@ -313,7 +313,7 @@ server.</sub>
 
 <img src="docs/screenshots/browser-extension.png" alt="the Supply Chain Auditor extension popup showing a BLOCK verdict, grade F, per-parameter grades, and HIGH injection-attempt and network-exfil-or-loader findings" width="640">
 
-## 📊 Comparison
+## Comparison
 
 `npm audit` and [OSV-Scanner](https://google.github.io/osv-scanner/) are
 excellent at what they target — matching your dependencies against known
@@ -336,7 +336,7 @@ they don't attempt:
 documentation at time of writing. OSV-Scanner covers many ecosystems beyond
 npm, which pkgxray does not.</sub>
 
-## 🛡️ Threat coverage
+## Threat coverage
 
 | Threat | Coverage | How pkgxray sees it |
 |---|:-:|---|
@@ -363,7 +363,7 @@ npm, which pkgxray does not.</sub>
 > with runtime/install-time sandboxing when that risk matters. Full analysis:
 > [docs/threat-model.md](docs/threat-model.md).
 
-## ⚡ Performance
+## Performance
 
 - **Local static analysis: ~25 ms.** Almost all of `guard`'s wall-clock is
   network round-trips — a full guard of `express` / `chalk` / `commander` is
@@ -377,7 +377,7 @@ npm, which pkgxray does not.</sub>
 Full numbers: [docs/reference.md#performance](docs/reference.md#performance) ·
 methodology: [docs/benchmark.md](docs/benchmark.md)
 
-## 🗺️ Roadmap
+## Roadmap
 
 - [ ] List the MCP server in the public MCP registries
 - [ ] Ship a reusable GitHub Action wrapping `audit` / `recheck`
@@ -409,7 +409,7 @@ The longer-form plan lives in the [adoption playbook](docs/adoption.md).
 
 Start at the [documentation index](docs/README.md).
 
-## 🛠️ Development
+## Development
 
 ```bash
 npm test                 # zero-dep node --test suite
@@ -423,7 +423,7 @@ and benign fixtures through the real engine and fails on a false block or a
 missed detection. Repo layout is described in
 [docs/architecture.md](docs/architecture.md#repository-layout).
 
-## 🔐 Security & license
+## Security & license
 
 Releases are published to npm with provenance (SLSA attestation), gated on the
 test suite, the calibration benchmark, and pkgxray's own supply-chain guard.
