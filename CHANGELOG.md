@@ -1,9 +1,6 @@
 # Changelog
 
-## Unreleased — security audit hardening + shared config
-
-A full audit of the detection engine and every surrounding subsystem, the
-resulting fixes, and a new shared configuration layer.
+## 0.18.0 (2026-07-10) — EtherHiding detection, calibration benchmark, path to 1.0
 
 ### Added
 - **EtherHiding / on-chain command-channel detection** (`onchain-c2-loader`). A
@@ -20,6 +17,39 @@ resulting fixes, and a new shared configuration layer.
   with an evasion option (`windowsHide` / `detached` / `stdio:'ignore'`) it blocks
   as a deliberately-silent, process-outliving stage-2 executor. The plain,
   unhidden form is review.
+- **Calibration benchmark** (`benchmark/run.js`) — a 30-fixture advisory-modeled
+  corpus (benign and malicious) with hard CI gates (0 false blocks, 0 full
+  misses), making the calibration claim reproducible on every push.
+- **Self-guarding release workflow** — publishing a GitHub Release runs tests,
+  the calibration benchmark, and pkgxray's own supply-chain guard over the
+  packed artifact before publishing to npm with provenance.
+- **Path-to-1.0 freeze** — the JSON output schema (`docs/json-schema.md`) and
+  the exit-code mapping are pinned by contract tests; CI runs a Node
+  18/20/22/24 matrix; `mcp`, `mcp-proxy`, and the cache server graduated to
+  Stable; canary sandbox hardened with a documented threat model.
+
+### Fixed
+- **MCP spawn PATH resolution** — bare stdio commands are resolved in the
+  parent process (minimal system dirs first, then the operator's PATH with
+  package-writable dirs stripped), so launchers outside the fixed system dirs
+  no longer fail ENOENT. The child env stays fully scrubbed; an operator-PATH
+  hit is surfaced as a diagnostic naming the exact binary.
+- **Provenance-verified self-scan reports REVIEW, not BLOCK** — `pkgxray guard
+  pkgxray` no longer blocks on its own signature database. The downgrade is
+  verification-gated on npm↔GitHub parity against the canonical repo, so
+  typosquats, forks, and tampered tarballs keep the full verdict; conduct
+  findings (OSV vulnerabilities, install hooks) never downgrade.
+- The MCP server reports the real package version (was hardcoded at 0.12.0).
+- Exec-snippet null crash on encoded `child_process` payloads.
+- node-ipc-style in-place file corruption (logic bomb) is now caught by the
+  destructive-payload detector.
+
+## 0.17.0 (2026-07-08) — security audit hardening + shared config
+
+A full audit of the detection engine and every surrounding subsystem, the
+resulting fixes, and a new shared configuration layer.
+
+### Added
 - **`.pkgxray.json` shared configuration** (`src/config.js`). One human-authored
   policy file read by the CLI, the MCP server, and the proxy through a single
   loader — no per-surface drift. Zero config is fully safe; the model is
