@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="300" viewBox="0 0 920 300" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0f0d"/>
+      <stop offset="1" stop-color="#0d1411"/>
+    </linearGradient>
+    <linearGradient id="beamgrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3fb56e" stop-opacity="0"/>
+      <stop offset="0.7" stop-color="#3fb56e" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#6ee7a0" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="glowgrad">
+      <stop offset="0" stop-color="#3fb56e" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#3fb56e" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur7" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <filter id="blur2" x="-80%" y="-30%" width="260%" height="160%">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+    <clipPath id="cube">
+      <path d="M150,64 L230,110 L230,198 L150,244 L70,198 L70,110 Z"/>
+    </clipPath>
+    <clipPath id="band">
+      <rect x="128" y="44" width="58" height="212"/>
+    </clipPath>
+    <pattern id="scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="1" fill="#6ee7a0"/>
+    </pattern>
+  </defs>
+
+  <rect width="920" height="300" rx="14" fill="url(#bg)"/>
+  <rect width="920" height="300" rx="14" fill="url(#scanlines)" opacity="0.035"/>
+  <rect x="0.5" y="0.5" width="919" height="299" rx="14" fill="none" stroke="#1d2b24" stroke-width="1"/>
+
+  <!-- Glow behind cube -->
+  <circle cx="150" cy="154" r="140" fill="url(#glowgrad)"/>
+
+  <!-- Package cube -->
+  <g stroke="#2c4a3a" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M150,64 L230,110 L150,156 L70,110 Z" fill="#16241d"/>
+    <path d="M70,110 L150,156 L150,244 L70,198 Z" fill="#0c1611"/>
+    <path d="M150,156 L230,110 L230,198 L150,244 Z" fill="#101d16"/>
+  </g>
+  <!-- Tape seam on top face -->
+  <polygon points="103.9,90.5 116.1,83.5 196.1,129.5 183.9,136.5" fill="#1d2b24" opacity="0.9"/>
+
+  <!-- X-ray window: beam band punches through the cube, revealing contents -->
+  <g clip-path="url(#cube)">
+    <rect x="128" y="44" width="58" height="212" fill="#060c08" opacity="0.92"/>
+    <g clip-path="url(#band)">
+      <!-- skeleton: inner module cube -->
+      <g fill="none" stroke="#6ee7a0" stroke-width="1" stroke-dasharray="3,3" opacity="0.8">
+        <path d="M150,120 L186,141 L150,162 L114,141 Z"/>
+        <path d="M114,141 L114,181 L150,202 L150,162 Z"/>
+        <path d="M186,141 L186,181 L150,202"/>
+      </g>
+      <!-- circuit traces -->
+      <g stroke="#6ee7a0" stroke-width="1" opacity="0.55">
+        <path d="M150,202 L150,224" fill="none"/>
+        <path d="M150,214 L138,214 L138,228" fill="none"/>
+        <path d="M150,224 L162,224 L162,232" fill="none"/>
+        <path d="M150,120 L150,102 L140,102" fill="none"/>
+      </g>
+      <g fill="#6ee7a0" opacity="0.7">
+        <circle cx="138" cy="228" r="2"/>
+        <circle cx="162" cy="232" r="2"/>
+        <circle cx="140" cy="102" r="2"/>
+      </g>
+      <!-- the finding -->
+      <circle cx="164" cy="172" r="6" fill="#e8634f" opacity="0.5" filter="url(#blur2)"/>
+      <circle cx="164" cy="172" r="4" fill="#e8634f"/>
+      <circle cx="164" cy="172" r="8" fill="none" stroke="#e8634f" stroke-width="1" opacity="0.6"/>
+    </g>
+  </g>
+
+  <!-- Beam over and beyond the cube -->
+  <rect x="128" y="44" width="58" height="212" fill="url(#beamgrad)" opacity="0.55"/>
+  <line x1="128" y1="44" x2="128" y2="256" stroke="#3fb56e" stroke-width="1" opacity="0.3"/>
+  <line x1="186" y1="44" x2="186" y2="256" stroke="#6ee7a0" stroke-width="3" opacity="0.5" filter="url(#blur2)"/>
+  <line x1="186" y1="44" x2="186" y2="256" stroke="#6ee7a0" stroke-width="1.5" opacity="0.9"/>
+  <polygon points="180,34 192,34 186,42" fill="#6ee7a0" opacity="0.9"/>
+
+  <!-- Wordmark -->
+  <text x="330" y="126" font-size="80" font-weight="700" fill="#3fb56e" opacity="0.4" filter="url(#blur7)">pkgxray</text>
+  <text x="330" y="126" font-size="80" font-weight="700" fill="#eafff3">pkg<tspan fill="#6ee7a0">xray</tspan></text>
+
+  <!-- Tagline -->
+  <text x="333" y="164" font-size="18.5" fill="#9bdfb8">Analyze packages before you install them.</text>
+  <text x="333" y="188" font-size="13" fill="#5f7a6c">Zero-dependency · runs locally · never executes untrusted code</text>
+
+  <!-- Verdict chips -->
+  <g font-size="14" font-weight="700" text-anchor="middle">
+    <rect x="333" y="212" width="100" height="34" rx="8" fill="#0e2017" stroke="#2f7d4f"/>
+    <text x="383" y="234" fill="#46d07d">● SAFE</text>
+    <rect x="445" y="212" width="120" height="34" rx="8" fill="#221d0c" stroke="#7d6a2f"/>
+    <text x="505" y="234" fill="#e2c558">● REVIEW</text>
+    <rect x="577" y="212" width="110" height="34" rx="8" fill="#22110f" stroke="#7d3a2f"/>
+    <text x="632" y="234" fill="#e8634f">● BLOCK</text>
+  </g>
+</svg>

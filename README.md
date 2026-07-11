@@ -7,7 +7,7 @@
 Local supply-chain security for AI agents & npm packages.
 Zero-dependency Node, runs entirely on your machine, never executes untrusted code.
 
-<img src="docs/architecture.svg" alt="pkgxray architecture: inputs flow through the acquisition, quarantine, static-analysis and policy engines to a SAFE / REVIEW / BLOCK verdict" width="820">
+<img src="docs/banner.png" alt="pkgxray — a package under an x-ray scan beam next to the SAFE / REVIEW / BLOCK verdict chips" width="820">
 
 </div>
 
@@ -79,20 +79,7 @@ Every signal resolves to one verdict:
 
 ## Architecture
 
-```
-   INPUT ADAPTERS        npm: · lockfile · folder · evidence JSON
-         │
-   ACQUISITION ENGINE    registry meta · GitHub meta · provenance · OSV
-         │
-   QUARANTINE ENGINE     stage tarball in a private sandbox (no exec)
-         │
-   STATIC ANALYSIS       credentials · persistence · prompt-injection
-   + CORRELATION         obfuscation · unicode · dynamic load · cross-file
-         │
-   POLICY ENGINE   →   SAFE · REVIEW · BLOCK
-         │
-   CLI · JSON · MCP server · browser extension
-```
+<img src="docs/architecture.svg" alt="pkgxray architecture: inputs flow through the acquisition, quarantine, static-analysis and policy engines to a SAFE / REVIEW / BLOCK verdict" width="820">
 
 **Design principles:** never execute untrusted code · report only citable
 evidence · explainability over black-box scoring · minimize false positives ·
