@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased — canary sandbox containment hardening
+
+Hardens the opt-in `pkgxray canary` behavioral sandbox (`src/sandbox.js`). The
+`behavioral` output is an [Experimental surface](docs/json-schema.md); its
+`schemaVersion` bumps `1 → 2` for the verdict rename below.
+
+### Added
+- **Encoded-exfil detection.** The capture proxy now attributes a leaked decoy
+  token even when the payload **base64/base64url/hex/url-encodes** it before
+  sending — previously only a verbatim plaintext token matched, so a one-line
+  `Buffer.from(token).toString("base64")` defeated the "proof" tripwire. Bodies
+  are captured byte-exact (`latin1`) so an ASCII encoding inside a binary body
+  survives. (Compressed/encrypted bodies still defeat matching — stated in
+  `result.limits`.)
+- **OS-level network confinement on macOS.** The `sandbox-exec` profile now
+  **denies non-loopback egress** while keeping loopback open for the proxy, so a
+  raw-socket / direct-IP exfil that bypasses the proxy env vars is blocked at the
+  OS boundary instead of silently escaping. Reported as `result.netConfined`.
+- **Resource caps (`ulimit`).** The untrusted child runs under lowered CPU-time,
+  file-size, max-process (fork-bomb backstop), and core-dump limits — bounding
+  blast radius, not just wall-clock time. Configurable via `rlimits` (disable
+  with `rlimits:false`). Reported as `result.resourceLimited`.
+- **Real-home masking on Linux.** The `bwrap` wrapper stacks a tmpfs over the
+  operator's real home dir, so a payload can no longer read the actual
+  `~/.aws`/`~/.ssh`/`~/.npmrc` through the read-only bind of `/`.
+
+### Fixed
+- **Teardown can no longer hang.** A payload holding a keep-alive connection open
+  to the capture proxy previously wedged the run forever (`server.close()` waits
+  for all sockets); teardown now force-closes lingering sockets on a bounded
+  timer.
+- **`safe` behavioral verdict renamed to `not-observed`.** A clean canary run can
+  never *clear* a package, only fail to catch it; the verdict vocabulary now says
+  so (`block` · `review` · `not-observed`) instead of emitting a `safe` that
+  invites callers to treat a quiet run as a pass. The static-scan verdict is
+  unchanged (`safe`/`review`/`block`).
+- **SBPL profile paths are now escaped** before interpolation, so a home/sandbox
+  path containing a quote or backslash can't corrupt the sandbox policy.
+
 ## 1.0.0 (2026-07-11) — 0 false blocks at scale; the stability contract is in force
 
 The final item on the [path to 1.0](docs/compatibility.md#path-to-10) is

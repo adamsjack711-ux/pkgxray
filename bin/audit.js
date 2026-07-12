@@ -619,7 +619,7 @@ function renderCanaryMarkdown(staged, behavioral) {
 
   // The single most important framing: this tool CONFIRMS malice, it cannot
   // CLEAR a package. A quiet run is not a safe package.
-  if (behavioral.verdict === "safe") {
+  if (behavioral.verdict === "not-observed") {
     lines.push(
       "> No malicious behavior was OBSERVED in this run. This does NOT clear the package:",
       "> sandbox-aware malware can stay dormant when it detects analysis, a proxy, a",

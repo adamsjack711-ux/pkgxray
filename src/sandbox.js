@@ -110,11 +110,26 @@ async function seedCanaryFilesystem(home, runId) {
   return { files, tokens, runId };
 }
 
-// Which canary tokens appear anywhere in a captured blob.
+// Encoded forms a naive exfil path might apply to a stolen secret before
+// sending it. A payload that base64/hex/url-encodes the token would defeat a
+// plain substring match, so we also probe the common REVERSIBLE encodings and
+// still attribute the leak to the original token. (Compression or encryption of
+// the body still defeats this — reported honestly in the result `limits`.)
+function tokenVariants(token) {
+  const variants = [token];
+  try { variants.push(Buffer.from(token, "utf8").toString("base64")); } catch { /* noop */ }
+  try { variants.push(Buffer.from(token, "utf8").toString("base64url")); } catch { /* noop */ }
+  try { variants.push(Buffer.from(token, "utf8").toString("hex")); } catch { /* noop */ }
+  try { variants.push(encodeURIComponent(token)); } catch { /* noop */ }
+  return Array.from(new Set(variants.filter(Boolean)));
+}
+
+// Which canary tokens appear — verbatim OR in a common reversible encoding —
+// anywhere in a captured blob.
 function matchTokens(haystack, tokenSet) {
   const seen = [];
   for (const token of tokenSet) {
-    if (haystack.includes(token)) seen.push(token);
+    if (tokenVariants(token).some((v) => haystack.includes(v))) seen.push(token);
   }
   return seen;
 }
@@ -134,32 +149,65 @@ function isRawIpHost(host) {
 // machine, so the decoy tokens are safe even when the payload "sends" them.
 function startCaptureProxy(tokenSet) {
   const hits = [];
+  // Track live sockets so teardown can never hang. server.close()'s callback
+  // only fires once EVERY connection has ended; a payload that opens a
+  // keep-alive socket to the proxy and never closes it would otherwise wedge
+  // the run forever in the teardown await. We force-destroy any lingering
+  // sockets on a short timer so close() is guaranteed to complete.
+  const sockets = new Set();
+  // Precompute each token's encoded variants ONCE — they depend only on the
+  // token, never the request — so the capture hot path (every HTTP request and
+  // every CONNECT) doesn't re-encode all decoys on every hit.
+  const tokenIndex = Array.from(tokenSet, (token) => ({ token, variants: tokenVariants(token) }));
+  const scan = (haystack) => {
+    const seen = [];
+    for (const { token, variants } of tokenIndex) {
+      if (variants.some((v) => haystack.includes(v))) seen.push(token);
+    }
+    return seen;
+  };
   const server = http.createServer((req, res) => {
-    let body = "";
+    const chunks = [];
+    let bodyBytes = 0;
     let truncated = false;
     req.on("data", (chunk) => {
-      if (body.length < MAX_CAPTURED_BODY) body += chunk;
-      else truncated = true;
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (bodyBytes < MAX_CAPTURED_BODY) {
+        chunks.push(buf);
+        bodyBytes += buf.length;
+      } else {
+        truncated = true;
+      }
     });
     req.on("end", () => {
+      // latin1 preserves bytes 1:1, so an ASCII-encoded (base64/hex/url) token
+      // inside an otherwise-binary body survives intact for matchTokens.
+      const body = Buffer.concat(chunks).toString("latin1");
       const haystack = `${req.url}\n${JSON.stringify(req.headers)}\n${body}`;
-      const tokensSeen = matchTokens(haystack, tokenSet);
+      const tokensSeen = scan(haystack);
       let host = req.headers.host || "?";
       try {
         host = new URL(req.url).host || host;
       } catch {
         /* relative URL through a proxy is unusual; keep header host */
       }
-      hits.push({ transport: "http", method: req.method, host, url: req.url, tokensSeen, bodyBytes: body.length, truncated });
+      hits.push({ transport: "http", method: req.method, host, url: req.url, tokensSeen, bodyBytes, truncated });
       res.writeHead(204);
       res.end();
     });
     req.on("error", () => { try { res.destroy(); } catch { /* noop */ } });
   });
 
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+
   server.on("connect", (req, clientSocket) => {
+    sockets.add(clientSocket);
+    clientSocket.on("close", () => sockets.delete(clientSocket));
     const host = req.url; // host:port
-    const authTokens = matchTokens(host, tokenSet);
+    const authTokens = scan(host);
     hits.push({ transport: "https-connect", method: "CONNECT", host, url: `https://${host}`, tokensSeen: authTokens, bodyBytes: 0 });
     // No MITM: record the intended destination and refuse the tunnel so
     // nothing actually egresses.
@@ -178,16 +226,40 @@ function startCaptureProxy(tokenSet) {
       resolve({
         port,
         hits,
-        close: () => new Promise((r) => server.close(() => r()))
+        close: () =>
+          new Promise((r) => {
+            let done = false;
+            const finish = () => { if (!done) { done = true; r(); } };
+            // After a short grace, force-destroy any socket still open so
+            // server.close() can fire its callback. Bounded so a lingering
+            // keep-alive connection can't wedge teardown.
+            const destroyTimer = setTimeout(() => {
+              for (const s of sockets) { try { s.destroy(); } catch { /* noop */ } }
+            }, 250);
+            if (destroyTimer.unref) destroyTimer.unref();
+            // Absolute backstop: resolve regardless if close() never calls back.
+            const hardTimer = setTimeout(finish, 1500);
+            if (hardTimer.unref) hardTimer.unref();
+            server.close(() => { clearTimeout(destroyTimer); clearTimeout(hardTimer); finish(); });
+          })
       });
     });
   });
 }
 
+// Escape a path for safe interpolation into an SBPL string literal so a path
+// containing a quote or backslash can't break out of / corrupt the sandbox
+// profile (a malformed profile makes sandbox-exec fail, which fails the run —
+// still fail-closed, but this keeps the policy well-formed).
+function sbplLiteral(p) {
+  return `"${String(p).replace(/(["\\])/g, "\\$1")}"`;
+}
+
 // Detect a best-effort OS sandbox wrapper. We never REQUIRE one (the decoy HOME
 // + capture proxy are the primary controls), but if the platform ships one we
-// use it to confine filesystem writes to the sandbox root while keeping
-// loopback access to the proxy.
+// use it to confine filesystem writes AND real network egress while keeping
+// loopback access to the capture proxy. `netConfined` reports whether the OS
+// boundary — not just the proxy env vars — blocks non-loopback egress.
 function detectSandboxWrapper(sandboxRoot) {
   const has = (cmd) => {
     try {
@@ -197,27 +269,53 @@ function detectSandboxWrapper(sandboxRoot) {
     }
   };
   if (process.platform === "darwin" && has("sandbox-exec")) {
-    // Deny writes outside the sandbox root; allow everything else (incl.
-    // loopback network to the proxy). Read is allowed so the payload can reach
-    // the decoy HOME.
+    // Deny writes outside the sandbox root, AND deny real network egress except
+    // loopback. Denying non-loopback network at the OS boundary means a payload
+    // that opens a raw socket / connects to a direct IP (bypassing the proxy
+    // env vars) is BLOCKED here instead of silently escaping — while the capture
+    // proxy on 127.0.0.1 stays reachable so proxy-respecting egress is still
+    // observed. Reads stay allowed so the payload can reach the decoy HOME.
     const profile =
       "(version 1)(allow default)" +
-      `(deny file-write* (subpath "${os.homedir()}"))` +
-      `(allow file-write* (subpath "${sandboxRoot}") (subpath "/private/tmp") (subpath "/tmp"))`;
-    return { level: "sandbox-exec", wrap: (argv) => ["sandbox-exec", "-p", profile, ...argv] };
+      `(deny file-write* (subpath ${sbplLiteral(os.homedir())}))` +
+      `(allow file-write* (subpath ${sbplLiteral(sandboxRoot)}) (subpath "/private/tmp") (subpath "/tmp"))` +
+      "(deny network*)" +
+      '(allow network-outbound (remote ip "localhost:*"))' +
+      '(allow network-inbound (local ip "localhost:*"))' +
+      '(allow network-bind (local ip "localhost:*"))';
+    return { level: "sandbox-exec", netConfined: true, wrap: (argv) => ["sandbox-exec", "-p", profile, ...argv] };
   }
   if (process.platform === "linux" && has("bwrap")) {
     // bubblewrap: bind the sandbox root rw, everything else ro, and isolate the
     // process/IPC/hostname namespaces. Net stays SHARED so loopback→proxy still
     // works (the capture proxy, not the network namespace, is what denies real
-    // egress). --die-with-parent guarantees no sandbox process outlives pkgxray,
-    // and --new-session detaches the controlling terminal (blocks TIOCSTI
-    // input-injection back into the parent). All flags are long-standing.
+    // egress — so netConfined is false here; raw-socket egress can still leave).
+    // A tmpfs is stacked over the REAL home dir so the payload cannot read the
+    // operator's actual ~/.aws, ~/.npmrc, ~/.ssh, etc. through the ro-bind of /
+    // (HOME itself is repointed at the decoy tree via env). --die-with-parent
+    // guarantees no sandbox process outlives pkgxray, and --new-session detaches
+    // the controlling terminal (blocks TIOCSTI input-injection). All flags are
+    // long-standing.
+    // Mask the real home ONLY when it's a normal directory that does not contain
+    // the sandbox root. Guard the edge where os.homedir() is the filesystem root
+    // ("/", e.g. a misconfigured root account or a minimal container): `--tmpfs /`
+    // would shadow the ro-bind of everything — including the staged package — so
+    // the payload couldn't read its own package.json and the run would falsely
+    // read "not-observed" without executing anything.
+    const realHome = os.homedir();
+    const resolvedHome = realHome ? path.resolve(realHome) : "";
+    const resolvedRoot = path.resolve(sandboxRoot);
+    const homeIsFsRoot = resolvedHome !== "" && resolvedHome === path.parse(resolvedHome).root;
+    const sandboxUnderHome =
+      resolvedHome !== "" && (resolvedRoot === resolvedHome || resolvedRoot.startsWith(resolvedHome + path.sep));
+    const maskRealHome = resolvedHome !== "" && !homeIsFsRoot && !sandboxUnderHome ? ["--tmpfs", realHome] : [];
     return {
       level: "bwrap",
+      netConfined: false,
       wrap: (argv) => [
         "bwrap",
         "--ro-bind", "/", "/",
+        ...maskRealHome,
         "--bind", sandboxRoot, sandboxRoot,
         "--dev", "/dev",
         "--proc", "/proc",
@@ -230,14 +328,14 @@ function detectSandboxWrapper(sandboxRoot) {
       ]
     };
   }
-  return { level: "env-only", wrap: (argv) => argv };
+  return { level: "env-only", netConfined: false, wrap: (argv) => argv };
 }
 
 // The default (real) runner: execute the package's declared install lifecycle
 // scripts, in order, in the package dir with the scrubbed decoy env. This is
 // exactly the install-time execution surface the TeamPCP / node-ipc families
 // use — and the part gated behind allowExecution.
-async function runLifecycleScripts({ pkgDir, env, timeoutMs, wrapper }) {
+async function runLifecycleScripts({ pkgDir, env, timeoutMs, wrapper, rlimits }) {
   let pkg;
   try {
     pkg = JSON.parse(await fsp.readFile(path.join(pkgDir, "package.json"), "utf8"));
@@ -249,10 +347,52 @@ async function runLifecycleScripts({ pkgDir, env, timeoutMs, wrapper }) {
   for (const hook of ["preinstall", "install", "postinstall"]) {
     const command = scripts[hook];
     if (typeof command !== "string" || !command.trim()) continue;
-    const outcome = await execWithTimeout(command, { cwd: pkgDir, env, timeoutMs, wrapper });
+    const outcome = await execWithTimeout(command, { cwd: pkgDir, env, timeoutMs, wrapper, rlimits });
     ran.push({ hook, command, ...outcome });
   }
   return { ran };
+}
+
+// Best-effort resource caps for the untrusted child, applied via `ulimit` in the
+// spawned POSIX shell. The timeout + process-group SIGKILL bound TIME; these
+// bound BLAST RADIUS during that window: CPU spin, disk-fill, fork-bomb, core
+// dumps. `ulimit` can only LOWER a limit, so if the host's is already stricter
+// the call is a harmless no-op (errors swallowed with `2>/dev/null`). We use
+// `;` not `&&` so a limit the host refuses to set can't abort the payload run
+// (that would turn hardening into a false "benign" verdict). Disable with
+// rlimits:false. win32 has no ulimit and is skipped by the caller.
+const DEFAULT_RLIMITS = {
+  cpuSeconds: null,       // null → derived from timeoutMs (wall-clock) + headroom
+  fileSizeBlocks: 524288, // cap single-file writes (~256MB at 512B blocks)
+  // maxProcs (ulimit -u) is OFF by default. On macOS/BSD RLIMIT_NPROC is
+  // per-real-UID (it counts ALL the operator's processes, not just the sandbox
+  // subtree), so a low cap on a busy workstation can starve the PAYLOAD's own
+  // shell — no fork → no execution → a false "not-observed" that suppresses the
+  // very detection this sandbox exists for. dash also rejects `-u` entirely.
+  // The wall-clock timeout + process-group SIGKILL already bound a fork bomb in
+  // TIME, so the backstop isn't worth the false-negative risk. Opt in explicitly
+  // (rlimits:{maxProcs:N}) on a host where per-UID semantics are acceptable.
+  maxProcs: null,
+  coreDumps: 0            // no core dumps (they can leak the decoy HOME to disk)
+};
+
+function buildRlimitPrefix(timeoutMs, rlimits) {
+  if (rlimits === false || process.platform === "win32") return "";
+  const r = { ...DEFAULT_RLIMITS, ...(rlimits && typeof rlimits === "object" ? rlimits : {}) };
+  const wall = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
+  const cpu = Number.isFinite(r.cpuSeconds) && r.cpuSeconds > 0
+    ? Math.floor(r.cpuSeconds)
+    : Math.ceil(wall / 1000) + 10;
+  // Each limit is a SEPARATE, individually error-guarded `ulimit` call. Shells
+  // differ in which options they support — Ubuntu's `/bin/sh` is dash, whose
+  // `ulimit` rejects `-u` (max procs) — and a single combined `ulimit -t … -u …`
+  // aborts ALL limits on the first unsupported flag. Separate `; `-joined calls
+  // apply every supported limit and silently skip the rest. `ulimit` can only
+  // lower a limit, so a stricter host limit is preserved.
+  const stmts = [`ulimit -t ${cpu}`, `ulimit -c ${Math.max(0, Math.floor(r.coreDumps))}`];
+  if (Number.isFinite(r.fileSizeBlocks) && r.fileSizeBlocks > 0) stmts.push(`ulimit -f ${Math.floor(r.fileSizeBlocks)}`);
+  if (Number.isFinite(r.maxProcs) && r.maxProcs > 0) stmts.push(`ulimit -u ${Math.floor(r.maxProcs)}`);
+  return `${stmts.map((s) => `${s} 2>/dev/null`).join("; ")}; `;
 }
 
 // Kill the whole process GROUP of a detached child, not just the direct shell.
@@ -277,9 +417,14 @@ function killProcessGroup(child, signal) {
   }
 }
 
-function execWithTimeout(command, { cwd, env, timeoutMs, wrapper }) {
+function execWithTimeout(command, { cwd, env, timeoutMs, wrapper, rlimits }) {
   return new Promise((resolve) => {
-    const baseArgv = process.platform === "win32" ? ["cmd", "/c", command] : ["sh", "-c", command];
+    // On POSIX, prepend `ulimit` caps inside the shell so they bound the whole
+    // process tree (backgrounded grandchildren inherit them). win32 has no
+    // ulimit, so the command runs unwrapped there.
+    const shellCommand =
+      process.platform === "win32" ? command : `${buildRlimitPrefix(timeoutMs, rlimits)}${command}`;
+    const baseArgv = process.platform === "win32" ? ["cmd", "/c", command] : ["sh", "-c", shellCommand];
     const argv = wrapper ? wrapper(baseArgv) : baseArgv;
     let child;
     try {
@@ -462,7 +607,7 @@ async function runCanarySandbox(options = {}) {
   let execResult;
   try {
     const runner = options.runner || runLifecycleScripts;
-    execResult = await runner({ pkgDir, env, timeoutMs, wrapper: wrapperInfo.wrap, home, proxyPort: proxy.port });
+    execResult = await runner({ pkgDir, env, timeoutMs, wrapper: wrapperInfo.wrap, home, proxyPort: proxy.port, rlimits: options.rlimits });
   } finally {
     // Keep the capture proxy alive for a short grace window after the runner
     // settles. A payload that backgrounds a delayed beacon —
@@ -484,17 +629,28 @@ async function runCanarySandbox(options = {}) {
     await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
   }
 
+  // "not-observed" (NOT "safe"): a clean behavioral run can never clear a
+  // package, only fail to catch it this time. The verdict vocabulary reflects
+  // that — callers compare against "block"/"review" and treat anything else as
+  // inconclusive, never as a pass.
   const verdict = findings.some((f) => f.severity === "high")
     ? "block"
     : findings.some((f) => f.severity === "medium")
       ? "review"
-      : "safe";
+      : "not-observed";
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId,
     isolation: wrapperInfo.level,
     isolationRequired: options.requireSandbox === true,
+    netConfined: wrapperInfo.netConfined === true,
+    // Honest about OUTCOME, not just intent: the ulimit caps are injected only by
+    // the default lifecycle runner (`execWithTimeout`). A custom `options.runner`
+    // (the injectable seam) spawns the child itself and applies none, so we
+    // don't claim caps were installed then. Even when true, the caps are
+    // best-effort (a shell may silently reject an unsupported `ulimit`).
+    resourceLimited: !options.runner && options.rlimits !== false && process.platform !== "win32",
     sandboxRoot: options.keepSandbox ? root : null,
     timeoutMs,
     executed: execResult || null,
@@ -503,11 +659,11 @@ async function runCanarySandbox(options = {}) {
     verdict,
     // A behavioral run is ASYMMETRIC evidence: it can CONFIRM malice but can
     // NEVER clear a package. Sandbox-aware malware evades observation and fires
-    // only on a real developer's machine. Callers must treat a "safe" verdict as
-    // "nothing observed this run", not "safe".
+    // only on a real developer's machine. Callers must treat a "not-observed"
+    // verdict as "nothing observed this run", not "safe".
     confirmsButCannotClear: true,
     caveat:
-      verdict === "safe"
+      verdict === "not-observed"
         ? "No malicious behavior was OBSERVED in this run. This does NOT clear the package. " +
           "Sandbox-aware malware stays dormant when it detects analysis and activates only on a real target, by fingerprinting: " +
           "(1) environment — a set HTTP(S)_PROXY, a HOME under /tmp, decoy-shaped dotfiles, missing shell history/browser data, VM/CI hostnames; " +
@@ -519,7 +675,8 @@ async function runCanarySandbox(options = {}) {
         : "Malicious behavior was OBSERVED and captured. Note the inverse still holds for anything NOT seen: " +
           "sandbox-aware malware can hide additional behavior behind environment/time/geo/C2/interaction gates.",
     limits:
-      "HTTPS bodies are not inspected (CONNECT destination host recorded, no MITM); raw-socket/dgram/non-proxied egress is not captured; " +
+      "HTTPS bodies are not inspected (CONNECT destination host recorded, no MITM); plaintext/base64/hex/url-encoded canary tokens are matched but compressed or encrypted exfil bodies are not; " +
+      `${wrapperInfo.netConfined !== true ? "raw-socket/dgram/non-proxied egress can still leave (net shared to keep the proxy reachable)" : "non-loopback egress is denied at the OS boundary (raw-socket egress blocked, not just unobserved)"}; ` +
       `process isolation level: ${wrapperInfo.level}. Absence of a finding is not evidence of safety.`
   };
 }
@@ -530,10 +687,12 @@ module.exports = {
   startCaptureProxy,
   evaluateTripwires,
   matchTokens,
+  tokenVariants,
   detectSandboxWrapper,
   makeRunId,
   DECOY_SPECS,
-  // exported for tests: process-group kill + timeout runner
+  // exported for tests: process-group kill + timeout runner + resource caps
   killProcessGroup,
-  execWithTimeout
+  execWithTimeout,
+  buildRlimitPrefix
 };
