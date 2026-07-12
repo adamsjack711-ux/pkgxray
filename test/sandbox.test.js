@@ -291,26 +291,33 @@ test("#6 a lingering keep-alive connection to the proxy does not hang teardown",
 // is in effect, not just present as a string).
 test("#6 ulimit resource caps are applied to the untrusted child", { skip: process.platform === "win32" }, async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-ulimit-"));
-  const outcome = await execWithTimeout("ulimit -u; ulimit -c", {
+  // Read back file-size and core-dump caps — both are universally supported by
+  // POSIX sh (dash AND bash), unlike `-u` which Ubuntu's dash rejects. `ulimit`
+  // echoes back the exact value we set, so this proves the caps are in effect.
+  const outcome = await execWithTimeout("ulimit -f; ulimit -c", {
     cwd: dir,
     env: process.env,
     timeoutMs: 5000,
     wrapper: null,
-    rlimits: { maxProcs: 321, coreDumps: 0 }
+    rlimits: { fileSizeBlocks: 4321, coreDumps: 0 }
   });
   const lines = String(outcome.output || "").trim().split(/\s+/);
-  assert.ok(lines.includes("321"), `expected max-procs cap 321 in child ulimit output: ${outcome.output}`);
+  assert.ok(lines.includes("4321"), `expected file-size cap 4321 in child ulimit output: ${outcome.output}`);
   assert.ok(lines.includes("0"), `expected core-dump cap 0 in child ulimit output: ${outcome.output}`);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("#6 buildRlimitPrefix is a no-op when disabled and derives CPU cap from the timeout", () => {
+test("#6 buildRlimitPrefix is a no-op when disabled, guards each limit separately, and derives CPU cap from the timeout", () => {
   assert.equal(buildRlimitPrefix(20000, false), "");
   const prefix = buildRlimitPrefix(20000, undefined);
   if (process.platform !== "win32") {
     assert.match(prefix, /^ulimit /);
-    assert.match(prefix, /-t 30\b/); // ceil(20000/1000) + 10
-    assert.match(prefix, /-u \d+/);
+    assert.match(prefix, /ulimit -t 30\b/); // ceil(20000/1000) + 10
+    // Each limit must be its OWN error-guarded statement so an unsupported flag
+    // (dash `-u`) can't abort the others — regression guard for the CI failure.
+    assert.match(prefix, /ulimit -u \d+ 2>\/dev\/null/);
+    assert.match(prefix, /ulimit -c \d+ 2>\/dev\/null/);
+    assert.ok(!/ulimit -t \d+ -/.test(prefix), "limits must not be combined into one ulimit call");
     assert.match(prefix, /2>\/dev\/null; $/);
   } else {
     assert.equal(prefix, "");

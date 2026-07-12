@@ -356,10 +356,16 @@ function buildRlimitPrefix(timeoutMs, rlimits) {
   const cpu = Number.isFinite(r.cpuSeconds) && r.cpuSeconds > 0
     ? Math.floor(r.cpuSeconds)
     : Math.ceil(wall / 1000) + 10;
-  const parts = [`-t ${cpu}`, `-c ${Math.max(0, Math.floor(r.coreDumps))}`];
-  if (Number.isFinite(r.fileSizeBlocks) && r.fileSizeBlocks > 0) parts.push(`-f ${Math.floor(r.fileSizeBlocks)}`);
-  if (Number.isFinite(r.maxProcs) && r.maxProcs > 0) parts.push(`-u ${Math.floor(r.maxProcs)}`);
-  return `ulimit ${parts.join(" ")} 2>/dev/null; `;
+  // Each limit is a SEPARATE, individually error-guarded `ulimit` call. Shells
+  // differ in which options they support — Ubuntu's `/bin/sh` is dash, whose
+  // `ulimit` rejects `-u` (max procs) — and a single combined `ulimit -t … -u …`
+  // aborts ALL limits on the first unsupported flag. Separate `; `-joined calls
+  // apply every supported limit and silently skip the rest. `ulimit` can only
+  // lower a limit, so a stricter host limit is preserved.
+  const stmts = [`ulimit -t ${cpu}`, `ulimit -c ${Math.max(0, Math.floor(r.coreDumps))}`];
+  if (Number.isFinite(r.fileSizeBlocks) && r.fileSizeBlocks > 0) stmts.push(`ulimit -f ${Math.floor(r.fileSizeBlocks)}`);
+  if (Number.isFinite(r.maxProcs) && r.maxProcs > 0) stmts.push(`ulimit -u ${Math.floor(r.maxProcs)}`);
+  return `${stmts.map((s) => `${s} 2>/dev/null`).join("; ")}; `;
 }
 
 // Kill the whole process GROUP of a detached child, not just the direct shell.
