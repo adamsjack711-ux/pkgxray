@@ -1,43 +1,50 @@
 # Changelog
 
-## Unreleased — canary sandbox containment hardening
+## 1.0.1 (2026-07-12) — a safer "detonation" sandbox
 
-Hardens the opt-in `pkgxray canary` behavioral sandbox (`src/sandbox.js`). The
-`behavioral` output is an [Experimental surface](docs/json-schema.md); its
-`schemaVersion` bumps `1 → 2` for the verdict rename below.
+**In plain terms:** pkgxray normally inspects a package *without* running it. The
+optional `pkgxray canary` command is the one exception — you opt in, and it
+actually *runs* a package's install scripts inside a locked room to watch what
+they do. We seed that room with fake passwords ("decoys") and route all network
+traffic into a recorder that never lets it out, so if the package tries to steal
+a secret and phone home, we catch it red-handed.
 
-### Added
-- **Encoded-exfil detection.** The capture proxy now attributes a leaked decoy
-  token even when the payload **base64/base64url/hex/url-encodes** it before
-  sending — previously only a verbatim plaintext token matched, so a one-line
-  `Buffer.from(token).toString("base64")` defeated the "proof" tripwire. Bodies
-  are captured byte-exact (`latin1`) so an ASCII encoding inside a binary body
-  survives. (Compressed/encrypted bodies still defeat matching — stated in
-  `result.limits`.)
-- **OS-level network confinement on macOS.** The `sandbox-exec` profile now
-  **denies non-loopback egress** while keeping loopback open for the proxy, so a
-  raw-socket / direct-IP exfil that bypasses the proxy env vars is blocked at the
-  OS boundary instead of silently escaping. Reported as `result.netConfined`.
-- **Resource caps (`ulimit`).** The untrusted child runs under lowered CPU-time,
-  file-size, max-process (fork-bomb backstop), and core-dump limits — bounding
-  blast radius, not just wall-clock time. Configurable via `rlimits` (disable
-  with `rlimits:false`). Reported as `result.resourceLimited`.
-- **Real-home masking on Linux.** The `bwrap` wrapper stacks a tmpfs over the
-  operator's real home dir, so a payload can no longer read the actual
-  `~/.aws`/`~/.ssh`/`~/.npmrc` through the read-only bind of `/`.
+This release makes that locked room genuinely locked. A review found several
+ways a sneaky package could slip out or hide — this closes them. It only affects
+the opt-in `canary` command; nothing else changes.
 
-### Fixed
-- **Teardown can no longer hang.** A payload holding a keep-alive connection open
-  to the capture proxy previously wedged the run forever (`server.close()` waits
-  for all sockets); teardown now force-closes lingering sockets on a bounded
-  timer.
-- **`safe` behavioral verdict renamed to `not-observed`.** A clean canary run can
-  never *clear* a package, only fail to catch it; the verdict vocabulary now says
-  so (`block` · `review` · `not-observed`) instead of emitting a `safe` that
-  invites callers to treat a quiet run as a pass. The static-scan verdict is
-  unchanged (`safe`/`review`/`block`).
-- **SBPL profile paths are now escaped** before interpolation, so a home/sandbox
-  path containing a quote or backslash can't corrupt the sandbox policy.
+### What got safer
+- **We now catch disguised secret theft.** Before, we only spotted a stolen fake
+  password if the package sent it out as-is. If it scrambled it first (base64,
+  hex, etc.), we missed it. Now we check for the common disguises too, so a
+  one-line trick no longer beats the trap.
+- **The room actually blocks the internet now (macOS).** Previously a package
+  could open its own direct connection and sneak data out around our recorder.
+  On macOS the sandbox now blocks all outside network access except the internal
+  recorder — so that escape route is closed at the operating-system level.
+- **Your real secrets are hidden (Linux).** The sandbox used to leave your
+  *actual* `~/.aws`, `~/.ssh`, and `~/.npmrc` readable. Now they're hidden behind
+  an empty folder, so a package only ever sees the fakes.
+- **A runaway package can't wreck the machine.** The code being tested now runs
+  with limits on CPU time, file size, and crash dumps, so it can't peg your
+  processor or fill your disk while we watch it.
+
+### What got fixed
+- **A package can no longer freeze the scan.** One that held a network connection
+  open forever used to make pkgxray hang. It now cleans up and moves on.
+- **A clean result is now honestly labelled.** A quiet run used to say `safe`,
+  which sounds like "this package is fine." But watching a package once can only
+  ever *catch* bad behaviour — it can't *prove* good behaviour (clever malware
+  stays quiet when it senses it's being watched). So a clean run now says
+  **`not-observed`** ("we didn't see anything this time"), never `safe`. The
+  normal (non-canary) scan is unchanged.
+- **Odd folder names can't break the sandbox rules** (a path with a quote or
+  backslash is now escaped safely).
+
+_For developers:_ the `canary` command's JSON output is an
+[Experimental surface](docs/json-schema.md); its `schemaVersion` moves `1 → 2`
+because of the `safe` → `not-observed` rename. New fields: `netConfined`,
+`resourceLimited`.
 
 ## 1.0.0 (2026-07-11) — 0 false blocks at scale; the stability contract is in force
 
