@@ -313,12 +313,15 @@ test("#6 buildRlimitPrefix is a no-op when disabled, guards each limit separatel
   if (process.platform !== "win32") {
     assert.match(prefix, /^ulimit /);
     assert.match(prefix, /ulimit -t 30\b/); // ceil(20000/1000) + 10
-    // Each limit must be its OWN error-guarded statement so an unsupported flag
-    // (dash `-u`) can't abort the others — regression guard for the CI failure.
-    assert.match(prefix, /ulimit -u \d+ 2>\/dev\/null/);
     assert.match(prefix, /ulimit -c \d+ 2>\/dev\/null/);
+    // Each limit must be its OWN error-guarded statement so an unsupported flag
+    // can't abort the others — regression guard for the dash `-u` CI failure.
     assert.ok(!/ulimit -t \d+ -/.test(prefix), "limits must not be combined into one ulimit call");
     assert.match(prefix, /2>\/dev\/null; $/);
+    // ulimit -u is OFF by default (per-UID starvation on macOS + dash rejects
+    // it); it must be absent unless explicitly requested, and present when it is.
+    assert.ok(!/ulimit -u/.test(prefix), "maxProcs (-u) must be off by default");
+    assert.match(buildRlimitPrefix(20000, { maxProcs: 200 }), /ulimit -u 200 2>\/dev\/null/);
   } else {
     assert.equal(prefix, "");
   }
@@ -335,6 +338,33 @@ test("#6 macOS sandbox-exec profile confines network to loopback", { skip: proce
   const profile = argv[argv.indexOf("-p") + 1];
   assert.match(profile, /\(deny network\*\)/);
   assert.match(profile, /allow network-outbound \(remote ip "localhost:\*"\)/);
+});
+
+// Runtime coverage of the real wrapper: the profile must DENY non-loopback
+// egress at the OS boundary (a raw-socket exfil that ignores the proxy env vars)
+// while NOT severing loopback (the capture proxy). Distinguishes an SBPL block
+// (EPERM) from "allowed but nothing listening" (ECONNREFUSED/timeout), so it's
+// independent of whether any external network is reachable in the test env.
+test("#6 macOS sandbox-exec denies external egress but permits loopback (runtime)", { skip: process.platform !== "darwin" }, () => {
+  const info = detectSandboxWrapper("/tmp/pkgxray-net-rt");
+  if (info.level !== "sandbox-exec") return;
+  const { spawnSync } = require("node:child_process");
+  const run = (js) => {
+    const argv = info.wrap(["node", "-e", js]);
+    return spawnSync(argv[0], argv.slice(1), { encoding: "utf8", timeout: 8000 });
+  };
+  const probe = (port, host) =>
+    `const s=require('net').connect(${port},'${host}');` +
+    `s.on('error',e=>{console.log('CODE:'+e.code);process.exit(0)});` +
+    `s.on('connect',()=>{console.log('CODE:CONNECTED');s.destroy();process.exit(0)});` +
+    `setTimeout(()=>{console.log('CODE:TIMEOUT');process.exit(0)},4000);`;
+  // External (TEST-NET-3, non-loopback) → the OS profile must EPERM-deny it.
+  const ext = run(probe(80, "203.0.113.1"));
+  assert.match(ext.stdout || "", /CODE:EPERM/, `external egress should be OS-denied (EPERM): ${ext.stdout} ${ext.stderr}`);
+  // Loopback (nothing listening) → must NOT be EPERM (ECONNREFUSED/timeout ok).
+  // An EPERM here would mean the profile severed the capture proxy.
+  const loop = run(probe(59999, "127.0.0.1"));
+  assert.doesNotMatch(loop.stdout || "", /CODE:EPERM/, `loopback to the proxy must not be OS-denied: ${loop.stdout} ${loop.stderr}`);
 });
 
 test("#6 --require-sandbox fails closed when no OS sandbox wrapper is available", async () => {

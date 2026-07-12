@@ -155,6 +155,17 @@ function startCaptureProxy(tokenSet) {
   // the run forever in the teardown await. We force-destroy any lingering
   // sockets on a short timer so close() is guaranteed to complete.
   const sockets = new Set();
+  // Precompute each token's encoded variants ONCE — they depend only on the
+  // token, never the request — so the capture hot path (every HTTP request and
+  // every CONNECT) doesn't re-encode all decoys on every hit.
+  const tokenIndex = Array.from(tokenSet, (token) => ({ token, variants: tokenVariants(token) }));
+  const scan = (haystack) => {
+    const seen = [];
+    for (const { token, variants } of tokenIndex) {
+      if (variants.some((v) => haystack.includes(v))) seen.push(token);
+    }
+    return seen;
+  };
   const server = http.createServer((req, res) => {
     const chunks = [];
     let bodyBytes = 0;
@@ -173,7 +184,7 @@ function startCaptureProxy(tokenSet) {
       // inside an otherwise-binary body survives intact for matchTokens.
       const body = Buffer.concat(chunks).toString("latin1");
       const haystack = `${req.url}\n${JSON.stringify(req.headers)}\n${body}`;
-      const tokensSeen = matchTokens(haystack, tokenSet);
+      const tokensSeen = scan(haystack);
       let host = req.headers.host || "?";
       try {
         host = new URL(req.url).host || host;
@@ -196,7 +207,7 @@ function startCaptureProxy(tokenSet) {
     sockets.add(clientSocket);
     clientSocket.on("close", () => sockets.delete(clientSocket));
     const host = req.url; // host:port
-    const authTokens = matchTokens(host, tokenSet);
+    const authTokens = scan(host);
     hits.push({ transport: "https-connect", method: "CONNECT", host, url: `https://${host}`, tokensSeen: authTokens, bodyBytes: 0 });
     // No MITM: record the intended destination and refuse the tunnel so
     // nothing actually egresses.
@@ -285,11 +296,19 @@ function detectSandboxWrapper(sandboxRoot) {
     // guarantees no sandbox process outlives pkgxray, and --new-session detaches
     // the controlling terminal (blocks TIOCSTI input-injection). All flags are
     // long-standing.
+    // Mask the real home ONLY when it's a normal directory that does not contain
+    // the sandbox root. Guard the edge where os.homedir() is the filesystem root
+    // ("/", e.g. a misconfigured root account or a minimal container): `--tmpfs /`
+    // would shadow the ro-bind of everything — including the staged package — so
+    // the payload couldn't read its own package.json and the run would falsely
+    // read "not-observed" without executing anything.
     const realHome = os.homedir();
-    const maskRealHome =
-      realHome && path.resolve(realHome) !== path.resolve(sandboxRoot) && !sandboxRoot.startsWith(path.resolve(realHome) + path.sep)
-        ? ["--tmpfs", realHome]
-        : [];
+    const resolvedHome = realHome ? path.resolve(realHome) : "";
+    const resolvedRoot = path.resolve(sandboxRoot);
+    const homeIsFsRoot = resolvedHome !== "" && resolvedHome === path.parse(resolvedHome).root;
+    const sandboxUnderHome =
+      resolvedHome !== "" && (resolvedRoot === resolvedHome || resolvedRoot.startsWith(resolvedHome + path.sep));
+    const maskRealHome = resolvedHome !== "" && !homeIsFsRoot && !sandboxUnderHome ? ["--tmpfs", realHome] : [];
     return {
       level: "bwrap",
       netConfined: false,
@@ -345,7 +364,15 @@ async function runLifecycleScripts({ pkgDir, env, timeoutMs, wrapper, rlimits })
 const DEFAULT_RLIMITS = {
   cpuSeconds: null,       // null → derived from timeoutMs (wall-clock) + headroom
   fileSizeBlocks: 524288, // cap single-file writes (~256MB at 512B blocks)
-  maxProcs: 512,          // fork-bomb backstop
+  // maxProcs (ulimit -u) is OFF by default. On macOS/BSD RLIMIT_NPROC is
+  // per-real-UID (it counts ALL the operator's processes, not just the sandbox
+  // subtree), so a low cap on a busy workstation can starve the PAYLOAD's own
+  // shell — no fork → no execution → a false "not-observed" that suppresses the
+  // very detection this sandbox exists for. dash also rejects `-u` entirely.
+  // The wall-clock timeout + process-group SIGKILL already bound a fork bomb in
+  // TIME, so the backstop isn't worth the false-negative risk. Opt in explicitly
+  // (rlimits:{maxProcs:N}) on a host where per-UID semantics are acceptable.
+  maxProcs: null,
   coreDumps: 0            // no core dumps (they can leak the decoy HOME to disk)
 };
 
@@ -612,18 +639,18 @@ async function runCanarySandbox(options = {}) {
       ? "review"
       : "not-observed";
 
-  // On Linux, raw-socket egress can still leave (net is shared to keep the proxy
-  // reachable); on macOS the OS profile denies non-loopback egress. Report the
-  // residual so callers/rendering can be honest about it.
-  const rawSocketEgressPossible = wrapperInfo.netConfined !== true;
-
   return {
     schemaVersion: 2,
     runId,
     isolation: wrapperInfo.level,
     isolationRequired: options.requireSandbox === true,
     netConfined: wrapperInfo.netConfined === true,
-    resourceLimited: options.rlimits !== false && process.platform !== "win32",
+    // Honest about OUTCOME, not just intent: the ulimit caps are injected only by
+    // the default lifecycle runner (`execWithTimeout`). A custom `options.runner`
+    // (the injectable seam) spawns the child itself and applies none, so we
+    // don't claim caps were installed then. Even when true, the caps are
+    // best-effort (a shell may silently reject an unsupported `ulimit`).
+    resourceLimited: !options.runner && options.rlimits !== false && process.platform !== "win32",
     sandboxRoot: options.keepSandbox ? root : null,
     timeoutMs,
     executed: execResult || null,
@@ -649,7 +676,7 @@ async function runCanarySandbox(options = {}) {
           "sandbox-aware malware can hide additional behavior behind environment/time/geo/C2/interaction gates.",
     limits:
       "HTTPS bodies are not inspected (CONNECT destination host recorded, no MITM); plaintext/base64/hex/url-encoded canary tokens are matched but compressed or encrypted exfil bodies are not; " +
-      `${rawSocketEgressPossible ? "raw-socket/dgram/non-proxied egress can still leave (net shared to keep the proxy reachable)" : "non-loopback egress is denied at the OS boundary (raw-socket egress blocked, not just unobserved)"}; ` +
+      `${wrapperInfo.netConfined !== true ? "raw-socket/dgram/non-proxied egress can still leave (net shared to keep the proxy reachable)" : "non-loopback egress is denied at the OS boundary (raw-socket egress blocked, not just unobserved)"}; ` +
       `process isolation level: ${wrapperInfo.level}. Absence of a finding is not evidence of safety.`
   };
 }
