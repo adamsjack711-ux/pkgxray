@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.2 (2026-07-14) — the README shows itself working
+
+**In plain terms:** docs-only release. The package's code is identical to
+1.0.1 — this exists so the npm page picks up the new README, whose old
+screenshots pointed at files that no longer exist in the repo.
+
+### What changed
+- **The hero is now a live recording.** An animated GIF of real `pkgxray
+  guard` runs — `express` clearing, then a trojaned sample (modeled on the
+  2024 `@solana/web3.js` compromise) blocked with cited evidence — replaces
+  the static screenshots, plus a 60-second MP4 walkthrough.
+- **Every capture shares one warm terminal theme,** including the re-captured
+  MCP-proxy and hookshot stills (now unedited live sessions) and the browser
+  extension popup.
+- No code, dependency, or behavior changes of any kind.
+
 ## 1.0.1 (2026-07-12) — a safer "detonation" sandbox
 
 **In plain terms:** pkgxray normally inspects a package *without* running it. The
