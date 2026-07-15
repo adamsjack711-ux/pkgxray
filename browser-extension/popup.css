@@ -1,15 +1,17 @@
 :root {
-  color-scheme: light;
-  --bg: #f7f8fa;
-  --panel: #ffffff;
-  --text: #1f2933;
-  --muted: #657386;
-  --line: #d7dde5;
-  --accent: #256f77;
-  --accent-strong: #134e55;
-  --danger: #b42318;
-  --warn: #9a6700;
-  --ok: #1f7a4d;
+  /* Warm earth-tone palette shared with the CLI demo recordings
+     (stik-latte: coffee / mocha / tan / wheat / cream, rust for alarms). */
+  color-scheme: dark;
+  --bg: #1c1510;
+  --panel: #241b13;
+  --text: #e2c595;
+  --muted: #bfa67e;
+  --line: #4a3826;
+  --accent: #b0875a;
+  --accent-strong: #8a6b4a;
+  --danger: #c76b3f;
+  --warn: #d1a054;
+  --ok: #f2dcb1;
 }
 
 * {
@@ -60,8 +62,8 @@ p {
   border-radius: 999px;
   padding: 4px 9px;
   text-align: center;
-  color: var(--accent-strong);
-  background: #eef8f7;
+  color: var(--text);
+  background: #2b2117;
   font-size: 12px;
   font-weight: 700;
 }
@@ -93,15 +95,15 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px;
-  color: #111827;
-  background: #fbfcfe;
+  color: #f2dcb1;
+  background: #171009;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.45;
 }
 
 textarea:focus {
-  outline: 2px solid rgba(37, 111, 119, 0.25);
+  outline: 2px solid rgba(176, 135, 90, 0.35);
   border-color: var(--accent);
 }
 
@@ -116,24 +118,24 @@ button {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0 12px;
-  background: #ffffff;
+  background: #241b13;
   color: var(--text);
   font-weight: 700;
   cursor: pointer;
 }
 
 button:hover {
-  border-color: #a8b3c2;
+  border-color: #8a6b4a;
 }
 
 #analyzeButton {
   border-color: var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: #1c1510;
 }
 
 #analyzeButton:hover {
-  background: var(--accent-strong);
+  background: #9a744c;
 }
 
 .result {
@@ -161,7 +163,7 @@ button:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px;
-  background: #fbfcfe;
+  background: #221912;
 }
 
 .metric span {
@@ -224,7 +226,7 @@ button:hover {
 .finding {
   border-left: 4px solid var(--line);
   padding: 8px 10px;
-  background: #fbfcfe;
+  background: #221912;
 }
 
 .finding.high {
@@ -236,11 +238,11 @@ button:hover {
 }
 
 .finding.low {
-  border-left-color: #507DBC;
+  border-left-color: #c8a376;
 }
 
 .finding.info {
-  border-left-color: #8492a6;
+  border-left-color: #8a6b4a;
 }
 
 .finding-title {

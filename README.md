@@ -15,7 +15,13 @@ entirely on your machine, never executes untrusted code.
 **Static analysis** · **Supply-chain intelligence** · **Prompt-injection detection** ·
 **MCP security** · **Zero dependencies** · **Evidence-based verdicts** · `SAFE` / `REVIEW` / `BLOCK`
 
-<img src="docs/banner.png" alt="pkgxray — a package under an x-ray scan beam next to the SAFE / REVIEW / BLOCK verdict chips" width="820">
+<img src="docs/demo/hero.gif" alt="pkgxray guard clearing express@4.21.0 with a SAFE A+ verdict, then blocking a trojaned sample with a BLOCK F verdict and a HIGH credential-access finding citing the wallet-read and exfiltration code" width="820">
+
+<sub>Real runs, recorded live: `guard` clears `express@4.21.0` (with the npm ↔ GitHub
+cross-check), then blocks a malicious sample from the [calibration corpus](benchmark/)
+modeled on the 2024 `@solana/web3.js` compromise.
+**[▶ Watch the 60-second walkthrough (MP4)](docs/demo/pkgxray-demo.mp4)** ·
+[how these were made](docs/demo/README.md)</sub>
 
 </div>
 
@@ -53,14 +59,9 @@ Point it at a package, get a `SAFE` / `REVIEW` / `BLOCK` verdict with cited
 evidence — before a single line of that package runs. The guard flow stages
 the package in a sandboxed quarantine, audits the staged copy, and only
 promotes it when policy allows. It never runs `npm install`, lifecycle
-scripts, build steps, or package code.
-
-<img src="docs/screenshots/cli-guard-block.png" alt="pkgxray guard blocking a malicious sample: BLOCK verdict, grade F, HIGH credential-access finding citing a wallet read exfiltrated to an attacker endpoint, exit code 2" width="820">
-
-<sub>`guard` blocking a malicious sample from the [calibration corpus](benchmark/)
-(modeled on the 2024 `@solana/web3.js` compromise) — the HIGH finding cites the
-exact wallet-read + exfiltration code. Real run; see
-[how each screenshot was made](docs/screenshots/README.md).</sub>
+scripts, build steps, or package code. The hero recording above shows both
+sides of that flow — `express` clearing, and a trojaned package blocked with
+the HIGH finding citing the exact wallet-read + exfiltration code.
 
 ## Why pkgxray?
 
@@ -291,11 +292,10 @@ Precedence, the `mute` / `mcp` blocks, and the enforced invariants:
 ## Screenshots
 
 All captures are real runs — reproduction steps for each are in
-[`docs/screenshots/`](docs/screenshots/README.md).
-
-**CLI — `pkgxray guard` clearing `express`, with the npm↔GitHub cross-check**
-
-<img src="docs/screenshots/cli-guard-safe.png" alt="pkgxray guard on express@4.21.0: SAFE verdict, grade A+, npm tarball matches the linked GitHub repo, per-parameter grades" width="820">
+[`docs/screenshots/`](docs/screenshots/README.md). The CLI `guard` flow is
+shown live in the hero recording at the top of this README and in the
+[60-second MP4 walkthrough](docs/demo/pkgxray-demo.mp4)
+([how those were made](docs/demo/README.md)).
 
 **MCP proxy — a live session against a malicious demo server**
 

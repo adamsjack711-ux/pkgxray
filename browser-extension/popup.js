@@ -116,3 +116,10 @@ document.getElementById("sampleButton").addEventListener("click", () => {
 document.getElementById("analyzeButton").addEventListener("click", analyze);
 
 input.value = JSON.stringify(sampleEvidence, null, 2);
+
+// `popup.html?sample` auto-loads and analyzes the risky sample — used by the
+// headless render for docs/screenshots/browser-extension.png.
+if (new URLSearchParams(location.search).has("sample")) {
+  input.value = JSON.stringify(riskySample, null, 2);
+  analyze();
+}
