@@ -9,9 +9,9 @@ Set Shell bash
 # than ~10 fps, and when it falls behind the output plays several times too
 # fast (a 17 s session came out as 3 s at the default framerate).
 Set Framerate 8
-Set FontSize 16
+Set FontSize 24
 Set Width 1640
-Set Height 1060
+Set Height 1500
 Set Padding 24
 # Warm earth-tone theme built from the stik-cli "latte" palette
 # (coffee / mocha / tan / wheat / cream, rust for alarms).
