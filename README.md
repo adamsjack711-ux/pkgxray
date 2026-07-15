@@ -20,7 +20,7 @@ entirely on your machine, never executes untrusted code.
 <sub>Real runs, recorded live: `guard` clears `express@4.21.0` (with the npm ↔ GitHub
 cross-check), then blocks a malicious sample from the [calibration corpus](benchmark/)
 modeled on the 2024 `@solana/web3.js` compromise.
-**[▶ Watch the 60-second walkthrough (MP4)](docs/demo/pkgxray-demo.mp4)** ·
+**[▶ Watch the 60-second walkthrough](#screenshots)** ·
 [how these were made](docs/demo/README.md)</sub>
 
 </div>
@@ -293,9 +293,15 @@ Precedence, the `mute` / `mcp` blocks, and the enforced invariants:
 
 All captures are real runs — reproduction steps for each are in
 [`docs/screenshots/`](docs/screenshots/README.md). The CLI `guard` flow is
-shown live in the hero recording at the top of this README and in the
-[60-second MP4 walkthrough](docs/demo/pkgxray-demo.mp4)
-([how those were made](docs/demo/README.md)).
+shown live in the hero recording at the top of this README, and the full
+60-second walkthrough — the SAFE run, the blocked trojan with its exit code,
+then a lockfile audit — plays right here:
+
+https://github.com/user-attachments/assets/b5a323b1-a9ec-4676-9601-1b284df81b6b
+
+<sub>Same recording as [`docs/demo/pkgxray-demo.mp4`](docs/demo/pkgxray-demo.mp4)
+(the committed source of truth), rehosted as a GitHub attachment so it plays
+inline. [How it was made](docs/demo/README.md).</sub>
 
 **MCP proxy — a live session against a malicious demo server**
 

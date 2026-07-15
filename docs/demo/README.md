@@ -45,6 +45,13 @@ sample (its one-line source `cat`-ed first, then blocked, then `echo $?`
 showing exit code 2), and `pkgxray audit package-lock.json` catching the
 vulnerable `lodash` pin via OSV.
 
+The README embeds a copy rehosted as a GitHub attachment (a bare
+`github.com/user-attachments/assets/…` URL is the only form GitHub renders as
+an inline player — committed files, release assets, and `<video>` tags all
+render as plain links). After re-recording, re-upload by dragging the new
+`.mp4` into any GitHub markdown box (an unsubmitted issue comment works),
+copy the inserted URL, and swap it into README.md.
+
 ## Gotcha: `Set Framerate 8`
 
 Both tapes pin `Set Framerate 8`. At this window size (1640×1060) vhs can only
