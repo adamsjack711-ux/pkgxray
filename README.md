@@ -69,6 +69,26 @@ AI coding assistants increasingly install packages automatically, often
 without a human ever reading the code. Traditional antivirus inspects what
 *executes*; **pkgxray inspects what gets *installed***.
 
+**By the numbers (2025):**
+
+- npm served **~7.97 trillion downloads in 2025** — about **22 billion a day**,
+  up 65% year over year.
+  ([Sonatype, 2026 State of the Software Supply Chain](https://www.sonatype.com/state-of-the-software-supply-chain/2026/software-infrastructure-growth))
+- **Over 99% of all open-source malware targets npm.** Roughly **455,000 malicious
+  npm packages were published in 2025 alone**; by Q4 the rate reached one new
+  malicious package roughly **every 20 seconds**.
+  ([Sonatype OSS Malware Index, Q4 2025](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems) ·
+  [Infosecurity Magazine](https://www.infosecurity-magazine.com/news/454000-malicious-open-source/))
+- That is **roughly 1 in 25 packages published to npm in 2025** — ~455K malicious
+  against ~11.2M new releases.
+- The **Model Context Protocol ecosystem has 10,000+ public servers**, yet **only
+  8.5% use OAuth**, 15% ship no public source, and one marketplace found **~20% of
+  listed skills malicious**.
+  ([NimbleBrain, State of MCP Security 2026](https://nimblebrain.ai/blog/state-of-mcp-security-2026/))
+
+`pkgxray` scans what you install (`pkgxray guard`) and gates what your agent
+connects to (`pkgxray mcp` / `mcp-proxy`) — *before* a single line runs.
+
 Vulnerability scanners like `npm audit` and OSV-Scanner answer an essential
 question — *does this package have a known CVE?* — and pkgxray asks it too
 (via OSV, before anything downloads). But a freshly trojaned package has no
