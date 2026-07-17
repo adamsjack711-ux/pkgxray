@@ -21,9 +21,19 @@
 //   - OnAfterFileEdit: when the agent edits an MCP config file (.mcp.json,
 //     mcp.json, mcp_config.json, claude_desktop_config.json), gates the
 //     added/changed server entries exactly like an `mcp add` command — closing
-//     the write-the-config-directly bypass (on by default). When the agent
-//     edits package.json or a lockfile, runs `pkgxray audit` on it and feeds
-//     the verdict back as context (opt-in).
+//     the write-the-config-directly bypass (on by default). Once the gate
+//     clears, the vetted stdio entries are auto-wrapped IN PLACE to launch
+//     through `pkgxray mcp-proxy`: unlike a command, a config file is shared
+//     state the hook can rewrite, so no agent round-trip is needed
+//     (PKGXRAY_HOOK_MCP_WRAP=0 to disable). When the agent edits package.json
+//     or a lockfile, runs `pkgxray audit` on it and feeds the verdict back as
+//     context (opt-in).
+//
+// Out-of-band subcommands (invoked directly, not via a hook event):
+//
+//	pkgxray-guard recheck [lockfile]   re-evaluate installed deps vs. fresh intel
+//	pkgxray-guard wrap-config <file>…  wrap every unwrapped stdio server in an
+//	                                   existing MCP config behind `pkgxray mcp-proxy`
 //
 // Configuration (environment variables):
 //
@@ -35,7 +45,8 @@
 //	PKGXRAY_HOOK_MCP_PROBE  set to "0" to skip probing HTTP MCP servers on
 //	                        `mcp add` (they then surface as REVIEW, not probed)
 //	PKGXRAY_HOOK_MCP_WRAP   set to "0" to stop auto-wrapping vetted stdio
-//	                        `mcp add` launchers in `pkgxray mcp-proxy`
+//	                        servers (both `mcp add` launchers and config entries)
+//	                        behind `pkgxray mcp-proxy`
 //
 // Build:   go build -o pkgxray-guard .
 // Install: hookshot install --binary ./pkgxray-guard
@@ -62,6 +73,13 @@ func main() {
 	// invokes: `pkgxray-guard recheck [lockfile]`. See README "Out-of-band recheck".
 	if len(os.Args) > 1 && os.Args[1] == "recheck" {
 		os.Exit(runRecheck(loadConfig(), os.Args[2:]))
+	}
+	// Out-of-band `wrap-config` subcommand: retrofit the runtime gate onto MCP
+	// config files already on disk (servers registered before this hook was
+	// installed). Same rewrite as the OnAfterFileEdit auto-wrap, applied to
+	// every unwrapped stdio entry rather than just the newly-added ones.
+	if len(os.Args) > 1 && os.Args[1] == "wrap-config" {
+		os.Exit(runWrapConfig(loadConfig(), os.Args[2:]))
 	}
 
 	cfg := loadConfig()
@@ -274,6 +292,43 @@ func runRecheck(cfg config, args []string) int {
 	}
 }
 
+// runWrapConfig implements `pkgxray-guard wrap-config <file>…`: it rewrites
+// every unwrapped stdio server in each named MCP config file to launch through
+// `pkgxray mcp-proxy` — the same rewrite the OnAfterFileEdit hook applies to
+// newly-added entries, applied instead to entries already on disk. Returns 2 if
+// any file could not be wrapped (missing, or not strict JSON), 0 otherwise.
+func runWrapConfig(cfg config, args []string) int {
+	var files []string
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			files = append(files, a)
+		}
+	}
+	if len(files) == 0 {
+		os.Stderr.WriteString("pkgxray-guard wrap-config: no config file given\n" +
+			"usage: pkgxray-guard wrap-config <.mcp.json | mcp.json | mcp_config.json | …>\n")
+		return 2
+	}
+	failed := false
+	for _, f := range files {
+		wrapped, err := pkgxrayguard.WrapMcpConfigFile(f, nil, string(cfg.policy))
+		switch {
+		case err != nil:
+			os.Stderr.WriteString("pkgxray-guard wrap-config: " + f + ": " + err.Error() + "\n")
+			failed = true
+		case len(wrapped) == 0:
+			os.Stdout.WriteString(f + ": no unwrapped stdio servers\n")
+		default:
+			os.Stdout.WriteString(f + ": wrapped " + joinNames(wrapped) +
+				" behind `pkgxray mcp-proxy --policy " + string(cfg.policy) + "`\n")
+		}
+	}
+	if failed {
+		return 2
+	}
+	return 0
+}
+
 // resolveLockfile takes an explicit path argument or auto-detects the project
 // lockfile in the current directory, preferring the most precise (a real
 // lockfile) over package.json.
@@ -357,23 +412,50 @@ func auditManifestEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdi
 // entries and runs each through the same gate as an `mcp add` command —
 // launcher packages get the static scan, http(s) URLs get the `pkgxray mcp`
 // probe, unreadable entries surface as review-worthy. An edit that adds no
-// server (formatting, env tweak) triages nothing.
+// server (formatting, env tweak) triages nothing. Once the gate clears, the
+// vetted stdio entries are wrapped in place behind `pkgxray mcp-proxy` — a
+// config file is shared state the hook can rewrite, so the runtime gate is
+// adopted without an agent round-trip (see configwrap.go).
 func decideMcpConfigEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdit) hookshot.FileEditDecision {
 	specs := pkgxrayguard.McpConfigAddedSpecs(edits)
 	if len(specs) == 0 {
 		return hookshot.FileEditOK()
 	}
-	return decideManifestSpecs(cfg, filePath, specs)
+	action, results := gateAddedSpecs(cfg, specs)
+	base := filepath.Base(filePath)
+	if action == pkgxrayguard.Deny {
+		// A blocked server is being rejected outright — never rewrite it to
+		// launch, not even behind the proxy.
+		return hookshot.FileEditBlock("pkgxray flagged an MCP server added to " + base + ":" + evidenceLines(results))
+	}
+
+	var notes []string
+	if action == pkgxrayguard.Ask {
+		notes = append(notes, "pkgxray: review recommended for an MCP server added to "+base+":"+evidenceLines(results))
+	}
+	if cfg.mcpWrap {
+		switch wrapped, err := pkgxrayguard.WrapMcpConfigFile(filePath, edits, string(cfg.policy)); {
+		case err != nil:
+			// A config the hook could not parse (comments, trailing commas) is
+			// left untouched; the gate already ran, so surface the skip.
+			notes = append(notes, "pkgxray: could not auto-wrap "+base+" ("+err.Error()+") — server(s) registered unwrapped")
+		case len(wrapped) > 0:
+			notes = append(notes, mcpConfigWrapMessage(base, wrapped, cfg.policy))
+		}
+	}
+	if len(notes) == 0 {
+		return hookshot.FileEditOK()
+	}
+	return hookshot.FileEditAddContext(strings.Join(notes, "\n\n"))
 }
 
 // decideManifestSpecs guards the added deps and maps the worst decision onto a
 // file-edit outcome. A post-edit hook can't undo the write, so a Deny becomes
 // FileEditBlock (honored by Claude) and an Ask becomes added context.
 func decideManifestSpecs(cfg config, filePath string, specs []pkgxrayguard.InstallSpec) hookshot.FileEditDecision {
-	ctx := context.Background()
-	results := pkgxrayguard.CheckAll(ctx, cfg.checker, specs, cfg.guardWorkers)
+	action, results := gateAddedSpecs(cfg, specs)
 	base := filepath.Base(filePath)
-	switch pkgxrayguard.DecideAll(cfg.policy, results) {
+	switch action {
 	case pkgxrayguard.Deny:
 		return hookshot.FileEditBlock("pkgxray flagged a dependency added to " + base + ":" + evidenceLines(results))
 	case pkgxrayguard.Ask:
@@ -381,6 +463,35 @@ func decideManifestSpecs(cfg config, filePath string, specs []pkgxrayguard.Insta
 	default:
 		return hookshot.FileEditOK()
 	}
+}
+
+// gateAddedSpecs guards the added specs concurrently and returns the strongest
+// policy action plus the per-spec results, so a caller can both decide the
+// file-edit outcome and (for a config file it may rewrite) branch on a non-Deny
+// clearance.
+func gateAddedSpecs(cfg config, specs []pkgxrayguard.InstallSpec) (pkgxrayguard.Action, []pkgxrayguard.Result) {
+	results := pkgxrayguard.CheckAll(context.Background(), cfg.checker, specs, cfg.guardWorkers)
+	return pkgxrayguard.DecideAll(cfg.policy, results), results
+}
+
+// mcpConfigWrapMessage reports the in-place config rewrite back to the agent as
+// added context — the config-file counterpart to wrapMessage, but the rewrite
+// has already landed, so it is a notice, not an instruction to re-run.
+func mcpConfigWrapMessage(base string, wrapped []string, policy pkgxrayguard.Policy) string {
+	return "pkgxray: wrapped " + joinNames(wrapped) + " in " + base + " to launch behind " +
+		"`pkgxray mcp-proxy --policy " + string(policy) + "` (per-call runtime gate: audits every " +
+		"tools/call, re-checks the manifest on tools/list_changed, screens results for injection). " +
+		"Requires pkgxray >= 0.17 on PATH at server launch time. Set PKGXRAY_HOOK_MCP_WRAP=0 to " +
+		"register servers unwrapped."
+}
+
+// joinNames renders wrapped server names as a readable, quoted list.
+func joinNames(names []string) string {
+	quoted := make([]string, len(names))
+	for i, n := range names {
+		quoted[i] = "`" + n + "`"
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // evidenceLines renders the non-safe results as indented bullet lines, reusing
