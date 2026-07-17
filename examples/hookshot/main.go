@@ -418,21 +418,25 @@ func auditManifestEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdi
 // adopted without an agent round-trip (see configwrap.go).
 func decideMcpConfigEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdit) hookshot.FileEditDecision {
 	specs := pkgxrayguard.McpConfigAddedSpecs(edits)
-	if len(specs) == 0 {
-		return hookshot.FileEditOK()
-	}
-	action, results := gateAddedSpecs(cfg, specs)
 	base := filepath.Base(filePath)
-	if action == pkgxrayguard.Deny {
-		// A blocked server is being rejected outright — never rewrite it to
-		// launch, not even behind the proxy.
-		return hookshot.FileEditBlock("pkgxray flagged an MCP server added to " + base + ":" + evidenceLines(results))
-	}
-
 	var notes []string
-	if action == pkgxrayguard.Ask {
-		notes = append(notes, "pkgxray: review recommended for an MCP server added to "+base+":"+evidenceLines(results))
+	if len(specs) > 0 {
+		action, results := gateAddedSpecs(cfg, specs)
+		if action == pkgxrayguard.Deny {
+			// A blocked server is being rejected outright — never rewrite it
+			// to launch, not even behind the proxy.
+			return hookshot.FileEditBlock("pkgxray flagged an MCP server added to " + base + ":" + evidenceLines(results))
+		}
+		if action == pkgxrayguard.Ask {
+			notes = append(notes, "pkgxray: review recommended for an MCP server added to "+base+":"+evidenceLines(results))
+		}
 	}
+	// No gate-able spec does NOT mean no wrap: a local binary or script
+	// launcher ("python3 server.py") yields nothing pkgxray can statically
+	// scan, which is exactly where the runtime gate matters most — mirror of
+	// the command-path wrap firing on spec-less `mcp add` registrations. An
+	// edit that added no stdio entry produces no wrap targets, so the call
+	// below is a no-op for formatting/env-only changes.
 	if cfg.mcpWrap {
 		switch wrapped, err := pkgxrayguard.WrapMcpConfigFile(filePath, edits, string(cfg.policy)); {
 		case err != nil:
