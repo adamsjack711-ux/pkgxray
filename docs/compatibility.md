@@ -99,15 +99,18 @@ checklist to get there:
       own supply-chain `guard`, then ships with `npm publish --provenance` (SLSA
       attestation). *(landed — live on npm with a verified SLSA provenance
       attestation and registry signature.)*
-- [x] **"0 false blocks" proven at scale** — the
-      [top-1000 validation harness](../validation/) runs `pkgxray guard` over the
-      1,000 most-depended-upon npm packages and gates on **0 heuristic false
-      blocks**. The first run found 22 false blocks across ~7 detectors; each was
-      calibrated and captured as a benign benchmark fixture, and the run now
-      reports **0 heuristic false blocks** (26 correct known-CVE blocks; `pm2` is
-      a documented defensible block — it really installs boot persistence). *(landed
-      — see [validation/results/report.md](../validation/results/report.md); re-run
-      with `node scripts/validate-at-scale.js`)*
+- [x] **"0 heuristic false blocks on the top-1000 most-downloaded" proven at
+      scale** — the [top-1000 validation harness](../validation/) gates on **0
+      heuristic false blocks**. Revalidated 2026-07-19 against a list ranked by
+      **real download counts** (not the earlier depended-upon snapshot): **0
+      heuristic false blocks**, 3 correct known-CVE blocks. That fresh run first
+      surfaced one FP — `registry-url` (`.npmrc`→registry-URL read) missing from
+      the older list — which was narrowed and committed as a benign fixture.
+      **Scope:** this claim is about the most-installed set only; a 2026-07-19 MCP
+      scan found the heuristics over-block that newer ecosystem, tracked as
+      calibration debt, **not** covered by this claim. *(landed — see
+      [validation/README.md](../validation/README.md) and
+      [docs/benchmark.md](benchmark.md#scope-of-the-claim-read-this-first))*
 - [x] **Supported Node range** — the [test workflow](../.github/workflows/pkgxray-test.yml)
       runs `node --test` across `18 · 20 · 22 · 24`, proving the `engines.node`
       (`>=18`) floor and current lines. *(landed)*

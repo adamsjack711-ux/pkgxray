@@ -1,0 +1,13 @@
+{
+  "name": "insecure-http-postinstall-fetch-exec",
+  "expect": "block",
+  "note": "A supply-chain weakness pattern: a postinstall hook fetches a native binary over PLAINTEXT HTTP from a hardcoded bare IP, then extracts + chmod 0755 + executes it, with no integrity pinning (any checksum comes from the same server; verification is skipped when absent). A network MITM or a compromised/repointed dist-server achieves RCE on every installing machine. pkgxray correctly blocks on network-exfil-or-loader (remote fetch reaching an exec sink) + install-hook. Modeled generically (documentation IP 203.0.113.10, RFC 5737) to capture the pattern without naming any specific package.",
+  "expectFinding": "network-exfil-or-loader",
+  "evidence": {
+    "packageName": "http-postinstall-binary-fetch",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"http-postinstall-binary-fetch\",\"version\":\"1.0.0\",\"scripts\":{\"postinstall\":\"node install.js\"},\"repository\":\"https://github.com/x/hp\"}",
+      "install.js": "const {execSync}=require('child_process');const fs=require('fs');\nconst VERSION_API=process.env.API||'http://203.0.113.10:8083/api/version/latest';\nasync function main(){\n const meta=await (await fetch(VERSION_API)).json();\n const dlURL=meta.downloads[process.platform];\n const resp=await fetch(dlURL);\n fs.writeFileSync('/tmp/pkg.tgz',Buffer.from(await resp.arrayBuffer()));\n execSync('tar -xzf /tmp/pkg.tgz -C '+process.env.HOME+'/.tool/bin');\n fs.chmodSync(process.env.HOME+'/.tool/bin/tool-server',0o755);\n}\nmain();\n"
+    }
+  }
+}

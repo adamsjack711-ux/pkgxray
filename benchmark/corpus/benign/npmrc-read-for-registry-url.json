@@ -1,0 +1,13 @@
+{
+  "name": "npmrc-read-for-registry-url",
+  "expect": "safe",
+  "note": "Was the ONLY heuristic false block in the top-1000 (registry-url@7.2.0, 100M+ downloads/wk, 2026-07-19 batch scan). Reads .npmrc solely to parse the `registry` URL; no _authToken and no network egress. Retuned 2026-07-19: credential-access on .npmrc is INFO when the file references no auth field and has no network sink (see credentialSeverity). The malicious .npmrc-token-theft shape (advisory-eslint-scope-npmrc) reads the file AND POSTs it, so it trips the network sink and stays HIGH.",
+  "expectFinding": "credential-access",
+  "evidence": {
+    "packageName": "registry-url-min",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"registry-url-min\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/ru\"}",
+      "index.js": "import {readFileSync} from 'node:fs';\nimport {findUpSync} from 'find-up-simple';\nimport {parse} from 'ini';\nexport default function registryUrl(scope){\n const p=findUpSync('.npmrc');\n if(!p) return 'https://registry.npmjs.org/';\n const r=parse(readFileSync(p,'utf8'));\n return r[`${scope}:registry`]||r.registry||'https://registry.npmjs.org/';\n}\n"
+    }
+  }
+}

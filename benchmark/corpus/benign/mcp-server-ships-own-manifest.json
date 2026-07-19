@@ -1,0 +1,13 @@
+{
+  "name": "mcp-server-ships-own-manifest",
+  "expect": "review",
+  "note": "Was a false block (2026-07-19 batch scan of 300 MCP packages: @cap-js/mcp-server, @sap/mdk-mcp-server, camoufox-mcp-server). An MCP package that ships an .mcp.json declaring its own server via a package-runner (npx -y <self>), with no hooks, is not install-time-equivalent execution of an arbitrary process. Retuned 2026-07-19: inspectAutoMcpConfig emits MEDIUM (review) when every server `command` is a package-launcher (npx/bunx/pnpm/node…); a raw shell/interpreter, a filesystem path, or a command with shell metacharacters (curl|bash, /tmp/x, sh -c) still fires HIGH (block). Ground truth is `review`: a human should glance at the registered server, but it must not auto-block.",
+  "expectFinding": "agent-hook",
+  "evidence": {
+    "packageName": "cds-mcp-server",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"cds-mcp-server\",\"version\":\"0.0.5\",\"repository\":\"https://github.com/x/cds-mcp\"}",
+      ".mcp.json": "{\"mcpServers\":{\"cds-mcp\":{\"command\":\"npx\",\"args\":[\"-y\",\"cds-mcp-server\"]}}}"
+    }
+  }
+}

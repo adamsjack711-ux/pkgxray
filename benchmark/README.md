@@ -25,6 +25,17 @@ the outcome:
 | `MISS` | malicious (`block`) fixture came back `safe` | **hard fail** |
 | `OVER_FLAG` | `safe` fixture came back `review` (stricter than needed) | warn |
 | `UNDER_FLAG` | caught but under-classified (e.g. `block` → `review`) | warn |
+| `XFAIL` | a `knownFalsePositive` fixture that still mis-verdicts (documented misfire, not yet retuned) | tracked, **non-gating** |
+| `XPASS` | a `knownFalsePositive` fixture that now behaves correctly → drop the marker | reported |
+
+A fixture marked `"knownFalsePositive": true` is a confirmed heuristic misfire — a
+benign shape the engine wrongly blocks/over-flags today, captured so it is never
+lost, but **without** hard-failing unrelated CI. It shows as `XFAIL` until the
+responsible heuristic is deliberately retuned; when the fix lands it becomes
+`XPASS`, and the marker (and this exemption) should be removed so the case is
+enforced by the hard gate like any other benign fixture. This keeps known-FP debt
+visible and honest rather than either breaking the gate or silently relabelling
+the sample as `safe`.
 
 The gate deliberately fails on only the two outcomes that carry real cost — a
 false block (the reputational risk pkgxray is built to avoid) and a full miss
@@ -53,6 +64,7 @@ Each file is one case:
   "name": "env-exfil-to-webhook",
   "expect": "block",                       // security-correct verdict for this input
   "expectFinding": "network-exfil-or-loader", // optional: a finding category that must be present
+  "knownFalsePositive": true,                 // optional: documented misfire → XFAIL, non-gating (benign only)
   "note": "process.env POSTed to a hardcoded webhook",
   "evidence": {                            // passed verbatim to auditEvidence()
     "packageName": "helper-utils",

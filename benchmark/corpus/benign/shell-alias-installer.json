@@ -1,0 +1,14 @@
+{
+  "name": "shell-alias-installer",
+  "expect": "review",
+  "knownFalsePositive": true,
+  "note": "FALSE POSITIVE from the 2026-07-19 MCP scan (aiwg@2026.7.13). A banner-delimited installer that appends shell ALIASES (not just `export PATH`) to a shell rc — the documented convenience installer idiom, adjacent to the shell-completion and PATH-append cases already handled. pkgxray fires persistence HIGH. RETUNE DEFERRED: the current PATH-install downgrade (see inspectPersistence) only covers `export PATH`; extending the same 'benign-if-no-exec/download-payload' rule to banner-delimited `alias`/`function` blocks is a straightforward next step, deferred so it can be reviewed on its own. Ground truth `review` (a rc write is worth a glance). Remove knownFalsePositive once inspectPersistence's soft-context covers alias installers.",
+  "expectFinding": "persistence",
+  "evidence": {
+    "packageName": "alias-install-min",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"alias-install-min\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/ai\"}",
+      "install.sh": "#!/usr/bin/env bash\nrc=\"$HOME/.zshrc\"\nif ! grep -qF '# --- mytool aliases (begin) ---' \"$rc\" 2>/dev/null; then\n  echo '# --- mytool aliases (begin) ---' >> \"$rc\"\n  echo 'alias mt=\"mytool\"' >> \"$rc\"\n  echo 'alias mtl=\"mytool list\"' >> \"$rc\"\n  echo '# --- mytool aliases (end) ---' >> \"$rc\"\nfi\n"
+    }
+  }
+}
