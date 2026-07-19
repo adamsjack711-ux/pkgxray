@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.3 (2026-07-18) — a shorter, sharper README
+
+**In plain terms:** docs-only release. The package's code is identical to
+1.0.2 — this exists so the npm page picks up the condensed README.
+
+### What changed
+- **The README is ~40% shorter** (458 → 277 lines) with nothing lost: the
+  statistics essay became one sentence, six feature subsections merged into
+  the "What it catches" table plus a short "Beyond detection" list, and
+  everything cut is still one link away in `docs/`.
+- **npm renders it correctly now.** GitHub-only `[!NOTE]` alert boxes — which
+  show up as literal `[!NOTE]` text on npm — were rewritten as plain prose,
+  and a dead in-page link to the comparison table was fixed.
+- The project website's source now lives in the repo (`website/`), with
+  social-share card images. This doesn't affect the npm package contents.
+- No code, dependency, or behavior changes of any kind.
+
 ## 1.0.2 (2026-07-14) — the README shows itself working
 
 **In plain terms:** docs-only release. The package's code is identical to
