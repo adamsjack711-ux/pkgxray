@@ -13,15 +13,12 @@ entirely on your machine, never executes untrusted code.
 [![license: MIT](https://img.shields.io/npm/l/pkgxray)](LICENSE)
 
 **Static analysis** · **Supply-chain intelligence** · **Prompt-injection detection** ·
-**MCP security** · **Zero dependencies** · **Evidence-based verdicts** · `SAFE` / `REVIEW` / `BLOCK`
+**MCP security** · `SAFE` / `REVIEW` / `BLOCK`
 
 <img src="docs/demo/hero.gif" alt="pkgxray guard clearing express@4.21.0 with a SAFE A+ verdict, then blocking a trojaned sample with a BLOCK F verdict and a HIGH credential-access finding citing the wallet-read and exfiltration code" width="820">
 
-<sub>Real runs, recorded live: `guard` clears `express@4.21.0` (with the npm ↔ GitHub
-cross-check), then blocks a malicious sample from the [calibration corpus](benchmark/)
-modeled on the 2024 `@solana/web3.js` compromise.
-**[▶ Watch the 60-second walkthrough](#screenshots)** ·
-[how these were made](docs/demo/README.md)</sub>
+<sub>Real runs: `guard` clears `express@4.21.0`, then blocks a sample modeled on
+the 2024 `@solana/web3.js` compromise. **[▶ 60-second walkthrough](#demo)**</sub>
 
 </div>
 
@@ -35,8 +32,6 @@ pkgxray guard npm:express@4.21.0
 
 ```text
 Decision: **SAFE**
-
-Verdict: **SAFE**
 Grade: **A+** (99/100)
 
 No high- or medium-risk indicators were found in the provided evidence.
@@ -44,253 +39,136 @@ No high- or medium-risk indicators were found in the provided evidence.
 Notes:
 - **INFO npm-vs-github-clean** — npm tarball matches the linked GitHub repo
   at the published version. (15/16 files match GitHub @4.21.0)
-
-Parameter grades:
-- `knownVulnerabilities`: A+ (100/100)   - `provenance`: A+ (100/100)
-- `dataAccess`: A+ (100/100)             - `persistence`: A+ (100/100)
-- `obfuscation`: A+ (100/100)            - `injectionResistance`: A+ (100/100)
 …
 ```
 
 <sub>Real output, abridged. A `BLOCK` verdict instead lists every finding with
 the file and evidence that produced it.</sub>
 
-Point it at a package, get a `SAFE` / `REVIEW` / `BLOCK` verdict with cited
-evidence — before a single line of that package runs. The guard flow stages
-the package in a sandboxed quarantine, audits the staged copy, and only
-promotes it when policy allows. It never runs `npm install`, lifecycle
-scripts, build steps, or package code. The hero recording above shows both
-sides of that flow — `express` clearing, and a trojaned package blocked with
-the HIGH finding citing the exact wallet-read + exfiltration code.
+Point it at a package, get a verdict with cited evidence — before a single
+line of that package runs. `guard` stages the package in a sandboxed
+quarantine, audits the staged copy, and only promotes it when policy allows.
+It never runs `npm install`, lifecycle scripts, build steps, or package code.
 
 ## Why pkgxray?
 
-AI coding assistants increasingly install packages automatically, often
-without a human ever reading the code. Traditional antivirus inspects what
-*executes*; **pkgxray inspects what gets *installed***.
+AI coding assistants install packages and connect to MCP servers at machine
+speed, often without a human ever reading the code — and the registry they
+pull from is under industrial-scale attack: roughly **455,000 malicious npm
+packages were published in 2025**, one every ~20 seconds by Q4
+([Sonatype](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems)).
+Traditional antivirus inspects what *executes*; **pkgxray inspects what gets
+*installed***.
 
-**By the numbers (2025):**
+`npm audit` and OSV-Scanner answer an essential question — *does this package
+have a known CVE?* — and pkgxray asks it too (via OSV, before anything
+downloads). But a freshly trojaned package has no CVE yet, so pkgxray also
+analyzes **trust**: what the code actually does, whether the published npm
+artifact matches the tagged GitHub source, whether the provenance attestation
+is consistent with the claimed repository, and whether the docs carry a
+prompt-injection payload aimed at the agent reading them.
 
-- npm served **~7.97 trillion downloads in 2025** — about **22 billion a day**,
-  up 65% year over year.
-  ([Sonatype, 2026 State of the Software Supply Chain](https://www.sonatype.com/state-of-the-software-supply-chain/2026/software-infrastructure-growth))
-- **Over 99% of all open-source malware targets npm.** Roughly **455,000 malicious
-  npm packages were published in 2025 alone**; by Q4 the rate reached one new
-  malicious package roughly **every 20 seconds**.
-  ([Sonatype OSS Malware Index, Q4 2025](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems) ·
-  [Infosecurity Magazine](https://www.infosecurity-magazine.com/news/454000-malicious-open-source/))
-- That is **roughly 1 in 25 packages published to npm in 2025** — ~455K malicious
-  against ~11.2M new releases.
-- The **Model Context Protocol ecosystem has 10,000+ public servers**, yet **only
-  8.5% use OAuth**, 15% ship no public source, and one marketplace found **~20% of
-  listed skills malicious**.
-  ([NimbleBrain, State of MCP Security 2026](https://nimblebrain.ai/blog/state-of-mcp-security-2026/))
-
-`pkgxray` scans what you install (`pkgxray guard`) and gates what your agent
-connects to (`pkgxray mcp` / `mcp-proxy`) — *before* a single line runs.
-
-Vulnerability scanners like `npm audit` and OSV-Scanner answer an essential
-question — *does this package have a known CVE?* — and pkgxray asks it too
-(via OSV, before anything downloads). But a freshly trojaned package has no
-CVE yet. So pkgxray also analyzes **trust**:
-
-- What does the code actually *do* — read credentials? persist? phone home?
-- Does the published npm artifact match the tagged GitHub source?
-- Is the provenance attestation consistent with the claimed repository?
-- Is there a prompt-injection payload aimed at the AI agent reading the docs?
-
-It is intentionally conservative: it only reports evidence it can cite, its
-verdicts come from deterministic heuristics (no LLM in the verdict path, so
-injected text can't steer them), and its zero-false-block calibration is
+It is intentionally conservative: verdicts come from deterministic heuristics
+(no LLM in the verdict path, so injected text can't steer them), only
+citable evidence is reported, and the zero-false-block calibration is
 [regression-gated in CI](docs/benchmark.md).
 
-> [!NOTE]
-> pkgxray is designed to run *alongside* `npm audit` and OSV-Scanner, not
-> replace them. See the [comparison table](#-comparison) below.
+## What it catches
 
-## Key features
+| Threat | Coverage | How pkgxray sees it |
+|---|:-:|---|
+| Credential theft | ✅ | reads of `.ssh` / `.aws` / `.npmrc` / `.env` / keychains / wallets, incl. split-fragment paths (`".s"+"sh"`) |
+| Prompt injection | ✅ | tiered detection in docs, comments, metadata; deterministic verdict path can't be steered |
+| Unicode smuggling | ✅ | invisible tag-block characters + Trojan Source bidi / zero-width |
+| Base64 payloads | ✅ | encoded envelopes in docs/comments; blobs decoded into computed-arg `eval` / `new Function` / `child_process` |
+| Exfiltration & loaders | ✅ | cross-file correlation: stage-2 loaders, `curl \| sh`, `process.env` harvesting near a network sink, EtherHiding |
+| Persistence | ✅ | writes to shell rc files, cron, launch agents |
+| Obfuscation | ✅ | packed blob + computed-arg execution; minification alone is deliberately *not* flagged |
+| Known CVEs | ✅ | OSV batch pre-check before download; never mutable by config |
+| Trojaned updates / maintainer takeover | ✅ | `recheck` verdict-drift + version-drift monitoring |
+| Artifact divergence | ✅ | published npm tarball diffed against the tagged GitHub source |
+| MCP capability abuse | ✅ | capability-surface mismatch in the manifest audit (a `get_weather` that also takes a `command`) |
+| Runtime tool drift | ✅ | `mcp-proxy` re-audits on `tools/list_changed`; pinned-manifest drift is denied |
+| Dependency confusion / typosquats | ◑ | callback beacons, repo-mismatch and provenance-mismatch signals; no name-similarity heuristic |
 
-### Supply-chain intelligence
+<sub>✅ detected · ◑ partial / indirect</sub>
 
-- **Known-CVE pre-check** — batch OSV query that blocks *before* download
-- **Provenance verification** — sigstore / SLSA attestations, cross-checked
-  against the claimed repository
-- **Artifact divergence** — the published npm tarball diffed against the
-  tagged GitHub source
-- **Registry metadata signals** — nonexistent or mismatched repos,
-  attestation/repo inconsistencies (typosquat and impersonation indicators)
+**Known blind spot:** pkgxray reasons about bytes in the tarball. A package
+that downloads its real payload *after* install can ship a clean tree —
+pkgxray flags the capability when its shape is unambiguous, but pair it with
+runtime sandboxing when that risk matters. Full analysis:
+[docs/threat-model.md](docs/threat-model.md).
+
+## Beyond detection
+
 - **Continuous monitoring** — [`pkgxray recheck`](docs/reference.md#monitoring-pkgxray-recheck)
-  diffs installed deps against a stored verdict baseline and pre-vets newer
-  versions, catching the maintainer-takeover / trojaned-update case
-
-### Static behavior analysis
-
-- **Credential & secret access** — `.ssh`, `.aws`, `.npmrc`, `.env`,
-  keychains, wallets — including paths assembled from split fragments
-  (`".s"+"sh"`)
-- **Persistence** — writes to shell rc files, cron, launch agents
-- **Obfuscation + execution** — a packed blob decoded into `eval` /
-  `new Function` / `vm`
-- **Behavioral correlation** — cross-file exfiltration, stage-2 loaders,
-  download→execute (`curl | sh`), `process.env` harvesting near a network
-  sink, on-chain command channels (EtherHiding), hidden self-`node -e`
-- **Trojan Source** — bidi / zero-width Unicode attacks
-- **Opt-in behavioral canary** — [`pkgxray canary`](docs/canary-threat-model.md)
-  executes a package's lifecycle scripts in an OS sandbox with decoy
-  credentials. It can *confirm* malice; by design it never *clears* a package.
-
-### Prompt-injection detection
-
-- **Tiered detection** in docs, code comments, and `package.json` metadata
-- **Delivery-envelope matching** — instructions smuggled in invisible Unicode
-  tag characters ("ASCII smuggling") or base64-encoded in docs/comments.
-  Detecting the *envelope*, not the wording, generalizes past rewording.
-- **Injection-proof by construction** — verdicts are deterministic; no model
-  reads the package, so injected text can't steer the scanner. Full stance:
-  [threat model — on prompt injection](docs/threat-model.md#on-prompt-injection).
-
-### MCP security
-
-- **MCP server** — `pkgxray-mcp` gives any MCP-capable agent four audit tools
-- **Connect-time vetting** — `pkgxray mcp` performs a read-only handshake and
-  audits the tool manifest: injection in tool descriptions, concealed
-  envelopes, and **capability-surface mismatch** (a `get_weather` that also
-  takes a `command`)
-- **Pin & recheck** — `--pin` fingerprints an approved manifest;
-  `--recheck` catches the rug-pull
-
-### Runtime protection
-
-- **Per-call gate** — [`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy)
-  wraps a live MCP server on the wire: denied tools stripped from listings,
-  ~0.05 µs per-call verdict lookup, immediate re-audit on manifest change,
-  injection scan of tool *results*, drift-after-pin denial
+  diffs installed deps against a stored verdict baseline and pre-vets newer versions
+- **MCP vetting** — `pkgxray mcp` audits a server's tool manifest before you
+  connect; `--pin` / `--recheck` catch the rug-pull; `pkgxray-mcp` gives any
+  agent the audit tools directly
+- **Runtime gate** — [`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy)
+  wraps a live MCP server on the wire: denied tools stripped, ~0.05 µs per-call
+  verdict, injection scan of tool results
 - **Install gate** — a [hookshot](https://github.com/CorridorSecurity/hookshot)
-  hook binary intercepts an agent's shell command and runs `pkgxray guard` on
-  every package about to be installed, across Claude Code, Cursor, Windsurf
-  Cascade, Factory Droid, and OpenAI Codex
-  ([`examples/hookshot/`](examples/hookshot/))
-
-### Policy engine
-
-- **One policy file, every surface** — the CLI, MCP server, and proxy read the
-  same `.pkgxray.json` through the same loader; policy can't drift
-- **Tighten freely, loosen loudly** — stricter without limit; every loosening
-  is explicit and printed in the report
-- **Enforced invariants** — an `allow` must be pinned to `name@version` +
-  `sha256`; a published CVE can never be muted or allowed away
-- **Fail closed** — zero config means maximum strictness; a scan that errors
-  becomes `review`, never `safe`
-
-## Architecture
-
-<img src="docs/architecture.svg" alt="pkgxray architecture: inputs flow through the acquisition, quarantine, static-analysis and policy engines to a SAFE / REVIEW / BLOCK verdict" width="820">
-
-<!-- Architecture diagram -->
-
-Acquisition (OSV pre-check → fetch) → sandboxed quarantine → static analysis →
-policy → verdict. The same engine backs every surface: CLI, MCP server,
-runtime proxy, install hook, browser extension, and CI cache server.
-
-**Design principles:** never execute untrusted code · report only citable
-evidence · explainability over black-box scoring · minimize false positives ·
-operate offline whenever possible · zero runtime dependencies.
-
-Details: [docs/architecture.md](docs/architecture.md) ·
-[docs/design.md](docs/design.md)
+  hook runs `guard` on every package an agent tries to install, across Claude
+  Code, Cursor, Windsurf, Factory Droid, and Codex ([`examples/hookshot/`](examples/hookshot/))
+- **Policy engine** — one `.pkgxray.json` read by every surface; tighten
+  freely, every loosening is printed; CVEs can never be allowed away; fail closed
+- **Opt-in behavioral canary** — [`pkgxray canary`](docs/canary-threat-model.md)
+  runs lifecycle scripts in an OS sandbox with decoy credentials; it can
+  *confirm* malice, never *clear* a package
 
 ## Verdicts
 
-Every signal resolves to one of three verdicts:
-
 | Verdict | Meaning | You should |
 |---|---|---|
-| 🟢 `SAFE` | No high- or medium-risk indicators. | Install. (Only `safe` promotes out of quarantine by default.) |
-| 🟡 `REVIEW` | Incomplete evidence, or a privileged capability that needs a human — install scripts, computed `eval`, a lone callback domain, npm↔GitHub divergence. | Inspect the quarantined copy before promoting. `--policy allow-review` promotes review-grade if you accept that. |
-| 🔴 `BLOCK` | High-severity, cited evidence — prompt injection, credential access, persistence, obfuscation + execution, likely exfiltration, or a known CVE. | Do not install. Every finding names the file and evidence. |
+| 🟢 `SAFE` | No high- or medium-risk indicators. | Install. Only `safe` promotes out of quarantine by default. |
+| 🟡 `REVIEW` | Incomplete evidence, or a privileged capability that needs a human. | Inspect the quarantined copy before promoting. |
+| 🔴 `BLOCK` | High-severity, cited evidence. | Do not install. Every finding names the file and evidence. |
 
 Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
-**`3`** review. The exact mapping of every signal to `block` / `review` /
-`info` is specified in the [severity policy](docs/reference.md#severity-policy-what-lands-in-block--review--info).
+**`3`** review. The full signal-to-severity mapping is in the
+[severity policy](docs/reference.md#severity-policy-what-lands-in-block--review--info).
 
-## Who is this for?
+## Usage
 
-- **AI developers** — building agents that install packages or connect to MCP
-  servers
-- **Security engineers** — vetting third-party code with citable evidence
-- **DevSecOps** — enforcing supply-chain policy in CI with stable exit codes
-  and additive-only JSON
-- **Open-source maintainers** — verifying their own dependency trees and
-  release provenance
-- **Organizations adopting AI coding assistants** — putting a deterministic
-  gate between the agent and the registry
-
-## Use cases
-
-### Vet an npm package before installing
+**Vet an npm package before installing**
 
 ```bash
-pkgxray guard npm:some-package@1.2.3
-pkgxray guard npm:some-package@1.2.3 --format json
-
-# Guard a local extension and promote it only if policy allows
-pkgxray guard ./ext --promote-to ./approved/ext
+pkgxray guard npm:some-package@1.2.3 [--format json]
+pkgxray guard ./ext --promote-to ./approved/ext   # local dir, promote if policy allows
 ```
 
-### Vet an MCP server before connecting
+**Vet an MCP server before connecting** — full guide: [docs/mcp.md](docs/mcp.md)
 
 ```bash
-# Static package scan FIRST, then read-only manifest audit
 pkgxray mcp --package npm:some-mcp-server@1.4.2 npx some-mcp-server
-
-pkgxray mcp https://mcp.example.com/mcp     # HTTP server
-pkgxray mcp --pin --package npm:some-mcp-server@1.4.2 npx some-mcp-server
 pkgxray mcp --recheck npx some-mcp-server   # catch the rug-pull
 ```
 
-Full MCP guide (server, adapter, runtime proxy): [docs/mcp.md](docs/mcp.md)
-
-### Enforce in CI/CD
+**Enforce in CI/CD**
 
 ```bash
-pkgxray audit package-lock.json           # also: yarn.lock, pnpm-lock.yaml, package.json
-pkgxray audit package-lock.json --deep    # full static/GitHub layer on each blocked dep
-
-# Scheduled: has anything I already depend on become unsafe since install?
-npx pkgxray recheck package-lock.json --format json
+pkgxray audit package-lock.json [--deep]    # also: yarn.lock, pnpm-lock.yaml, package.json
+npx pkgxray recheck package-lock.json       # scheduled: exits non-zero only on a regression
 ```
 
-`recheck` exits non-zero only on a *regression* (a dep whose verdict got
-worse), which makes it a clean scheduled job — a ready-made GitHub Actions
-workflow is in the [reference](docs/reference.md#monitoring-pkgxray-recheck).
-Point `PKGXRAY_CACHE_URL` at the
-[self-hostable cache server](docs/reference.md#self-hostable-cache-server) to
-collapse duplicate fetches across runners.
+A ready-made GitHub Actions workflow and the self-hostable cache server
+(`PKGXRAY_CACHE_URL`) are in the [reference](docs/reference.md#monitoring-pkgxray-recheck).
 
-### Guard AI coding agents
+**Guard AI coding agents**
 
 ```json
 { "mcpServers": { "pkgxray": { "command": "pkgxray-mcp" } } }
 ```
 
-Give the agent the audit tools directly (above), gate its installs with the
-[hookshot integration](examples/hookshot/), and wrap its MCP servers with
-[`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy).
-
-### Security reviews
-
-```bash
-pkgxray --file examples/evidence.json --format json   # audit supplied evidence
-```
-
-Every verdict is a structured, citable report (`schemaVersion: 1`,
-additive-only — [schema](docs/json-schema.md)), and the quarantined copy is
-left on disk for manual inspection on `review`.
+Gate installs with the [hookshot integration](examples/hookshot/) and wrap MCP
+servers with [`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy).
 
 ## Configuration
 
-One optional `.pkgxray.json`, read by every surface. Zero config is fully
-safe — an absent file means maximum strictness.
+One optional `.pkgxray.json`, read by every surface. Zero config means
+maximum strictness.
 
 ```jsonc
 {
@@ -305,45 +183,26 @@ safe — an absent file means maximum strictness.
 }
 ```
 
-Precedence, the `mute` / `mcp` blocks, and the enforced invariants:
+Precedence, `mute` / `mcp` blocks, and enforced invariants:
 [docs/configuration.md](docs/configuration.md) ·
 [`.pkgxray.example.json`](.pkgxray.example.json)
 
-## Screenshots
+## Demo
 
-All captures are real runs — reproduction steps for each are in
-[`docs/screenshots/`](docs/screenshots/README.md). The CLI `guard` flow is
-shown live in the hero recording at the top of this README, and the full
-60-second walkthrough — the SAFE run, the blocked trojan with its exit code,
-then a lockfile audit — plays right here:
+The 60-second walkthrough — the SAFE run, the blocked trojan with its exit
+code, then a lockfile audit:
 
 https://github.com/user-attachments/assets/b5a323b1-a9ec-4676-9601-1b284df81b6b
 
-<sub>Same recording as [`docs/demo/pkgxray-demo.mp4`](docs/demo/pkgxray-demo.mp4)
-(the committed source of truth), rehosted as a GitHub attachment so it plays
-inline. [How it was made](docs/demo/README.md).</sub>
-
-**MCP proxy — a live session against a malicious demo server**
-
-<img src="docs/screenshots/mcp-proxy.png" alt="pkgxray mcp-proxy stripping two tools from tools/list (capability mismatch and injection in the description) and denying a tools/call with an isError result" width="820">
-
-<sub>Two tools stripped at `tools/list` — one for capability-surface mismatch,
-one for injection in its description; the denied `tools/call` never reaches the
-server.</sub>
-
-**hookshot install gate — an agent's `npm install` denied with cited evidence**
-
-<img src="docs/screenshots/hookshot.png" alt="the hookshot guard hook answering a Claude Code PreToolUse event for npm install lodash@4.17.11 with permissionDecision deny and pkgxray's cited known-vulnerability evidence" width="820">
-
-**Browser extension — the local MV3 popup blocking a risky sample**
-
-<img src="docs/screenshots/browser-extension.png" alt="the Supply Chain Auditor extension popup showing a BLOCK verdict, grade F, per-parameter grades, and HIGH injection-attempt and network-exfil-or-loader findings" width="640">
+<sub>All captures are real runs — reproduction steps in
+[`docs/screenshots/`](docs/screenshots/README.md), which also shows the
+MCP proxy, hookshot install gate, and browser extension in action.</sub>
 
 ## Comparison
 
-`npm audit` and [OSV-Scanner](https://google.github.io/osv-scanner/) are
-excellent at what they target — matching your dependencies against known
-vulnerabilities. pkgxray overlaps with them on that layer and adds the layers
+Designed to run *alongside* `npm audit` and
+[OSV-Scanner](https://google.github.io/osv-scanner/), not replace them — they
+match dependencies against known vulnerabilities; pkgxray adds the layers
 they don't attempt:
 
 | Capability | npm audit | OSV-Scanner | pkgxray |
@@ -358,82 +217,48 @@ they don't attempt:
 | Verdict-drift monitoring vs. a stored baseline | — | — | ✅ |
 | MCP server vetting & per-call runtime gating | — | — | ✅ |
 
-<sub>Scoped to npm supply-chain vetting; based on each tool's public
-documentation at time of writing. OSV-Scanner covers many ecosystems beyond
-npm, which pkgxray does not.</sub>
+<sub>Scoped to npm supply-chain vetting, per each tool's public docs.
+OSV-Scanner covers many ecosystems beyond npm, which pkgxray does not.</sub>
 
-## Threat coverage
+## Architecture
 
-| Threat | Coverage | How pkgxray sees it |
-|---|:-:|---|
-| Credential theft | ✅ | reads of `.ssh` / `.aws` / `.npmrc` / `.env` / keychains / wallets, incl. split-fragment paths |
-| Prompt injection | ✅ | tiered detection in docs, comments, metadata; deterministic verdict path can't be steered by injected text |
-| Unicode smuggling | ✅ | invisible tag-block characters ("ASCII smuggling") + Trojan Source bidi / zero-width |
-| Base64 payloads | ✅ | encoded envelopes in docs/comments; blobs decoded into computed-arg `eval` / `new Function` / `child_process` |
-| Persistence | ✅ | writes to shell rc files, cron, launch agents |
-| Obfuscation | ✅ | packed blob + computed-arg execution; minification alone is deliberately *not* flagged |
-| Known CVEs | ✅ | OSV batch pre-check before download; never mutable by config |
-| Trojaned updates / maintainer takeover | ✅ | `recheck` verdict-drift + version-drift monitoring |
-| Artifact divergence | ✅ | published npm tarball diffed against the tagged GitHub source |
-| Dependency confusion | ◑ | the out-of-band callback beacons confusion payloads use are flagged; registry resolution itself belongs to your package manager |
-| Typosquatting | ◑ | surfaced via repo-mismatch (package.json → nonexistent/mismatched repo) and provenance-mismatch signals; no name-similarity heuristic |
-| MCP capability abuse | ✅ | capability-surface mismatch in the manifest audit |
-| Runtime tool drift | ✅ | `mcp-proxy` re-audits on `tools/list_changed`; pinned-manifest drift is denied |
+<img src="docs/architecture.svg" alt="pkgxray architecture: inputs flow through the acquisition, quarantine, static-analysis and policy engines to a SAFE / REVIEW / BLOCK verdict" width="820">
 
-<sub>✅ detected · ◑ partial / indirect</sub>
+Acquisition (OSV pre-check → fetch) → sandboxed quarantine → static analysis →
+policy → verdict. The same engine backs every surface: CLI, MCP server,
+runtime proxy, install hook, browser extension, and CI cache server.
+Principles: never execute untrusted code · citable evidence only ·
+minimize false positives · fail closed · zero runtime dependencies.
 
-> [!IMPORTANT]
-> **Known blind spot:** pkgxray reasons about bytes in the tarball. A package
-> that downloads its real payload *after* install can ship a clean tree.
-> pkgxray flags the *capability* when its shape is unambiguous, but pair it
-> with runtime/install-time sandboxing when that risk matters. Full analysis:
-> [docs/threat-model.md](docs/threat-model.md).
+Details: [docs/architecture.md](docs/architecture.md) ·
+[docs/design.md](docs/design.md)
 
 ## Performance
 
-- **Local static analysis: ~25 ms.** Almost all of `guard`'s wall-clock is
-  network round-trips — a full guard of `express` / `chalk` / `commander` is
-  **~1.3–1.5 s** cold-cache (Apple M1, Node 26).
-- **Known-vulnerable packages block at the OSV pre-check**, before download.
-- **`mcp-proxy` overhead:** ~0.05 µs per `tools/call` decision; a full
-  manifest re-audit (~1 ms per 30 tools) runs only when the manifest changes.
-- Calibration — precision, recall, and the **0-false-block** gate — is
-  measured by a committed benchmark corpus that fails CI when it regresses.
+- **Local static analysis: ~25 ms** — a full guard of `express` is ~1.3–1.5 s
+  cold-cache, almost all network round-trips (Apple M1, Node 26)
+- **Known-vulnerable packages block at the OSV pre-check**, before download
+- **Calibration** (precision, recall, the 0-false-block gate) is measured by a
+  committed [benchmark corpus](benchmark/) that fails CI when it regresses
 
 Full numbers: [docs/reference.md#performance](docs/reference.md#performance) ·
 methodology: [docs/benchmark.md](docs/benchmark.md)
 
-## Roadmap
-
-- [ ] List the MCP server in the public MCP registries
-- [ ] Ship a reusable GitHub Action wrapping `audit` / `recheck`
-- [ ] Publish the browser extension to the Chrome Web Store (today it loads
-      unpacked)
-- [ ] Replay documented known-malicious npm corpora against the engine and
-      publish the results
-- [ ] A `--report` evidence bundle for one-command false-block / missed-threat
-      reports
-
-<!-- Roadmap: additional planned work is tracked in GitHub issues -->
-
-The longer-form plan lives in the [adoption playbook](docs/adoption.md).
-
-## 📖 Documentation
+## Documentation
 
 | Doc | What it covers |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Pipeline, surfaces, design principles, repo layout |
-| [docs/threat-model.md](docs/threat-model.md) | Scope, the known blind spot, false-positive philosophy, prompt-injection stance |
-| [docs/mcp.md](docs/mcp.md) | MCP server, connect-time vetting, per-call runtime proxy |
-| [docs/configuration.md](docs/configuration.md) | `.pkgxray.json` schema, precedence, invariants |
-| [docs/reference.md](docs/reference.md) | Severity policy, `recheck` monitoring, performance, JSON output, browser extension, cache server |
-| [docs/benchmark.md](docs/benchmark.md) | Calibration benchmark & real-world validation |
-| [docs/compatibility.md](docs/compatibility.md) | The 1.0 compatibility contract & stability tiers |
-| [docs/json-schema.md](docs/json-schema.md) | Full `--format json` schema |
-| [docs/canary-threat-model.md](docs/canary-threat-model.md) | Threat model for the opt-in `canary` surface |
-| [docs/design.md](docs/design.md) · [docs/design/](docs/design/) | Design principles & internal working notes |
+| [architecture.md](docs/architecture.md) | Pipeline, surfaces, repo layout |
+| [threat-model.md](docs/threat-model.md) | Scope, blind spots, prompt-injection stance |
+| [mcp.md](docs/mcp.md) | MCP server, connect-time vetting, runtime proxy |
+| [configuration.md](docs/configuration.md) | `.pkgxray.json` schema and invariants |
+| [reference.md](docs/reference.md) | Severity policy, `recheck`, JSON output, cache server |
+| [benchmark.md](docs/benchmark.md) | Calibration benchmark & real-world validation |
+| [compatibility.md](docs/compatibility.md) | The 1.0 compatibility contract |
+| [json-schema.md](docs/json-schema.md) | Full `--format json` schema |
 
-Start at the [documentation index](docs/README.md).
+Start at the [documentation index](docs/README.md). Longer-term plans:
+[adoption playbook](docs/adoption.md) and GitHub issues.
 
 ## Development
 
@@ -441,13 +266,7 @@ Start at the [documentation index](docs/README.md).
 npm test                 # zero-dep node --test suite
 npm run benchmark        # calibration corpus: precision/recall + 0-false-block gate
 npm run build:browser    # build the MV3 browser extension
-npm run audit:evidence -- --file examples/evidence.json
 ```
-
-The [calibration benchmark](benchmark/) runs a labelled corpus of malicious
-and benign fixtures through the real engine and fails on a false block or a
-missed detection. Repo layout is described in
-[docs/architecture.md](docs/architecture.md#repository-layout).
 
 ## Security & license
 
