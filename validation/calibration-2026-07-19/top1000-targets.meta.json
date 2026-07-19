@@ -1,0 +1,7002 @@
+[
+ {
+  "name": "semver",
+  "version": "7.8.5",
+  "downloads_last_week": 745944028,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "minimatch",
+  "version": "10.2.5",
+  "downloads_last_week": 621858263,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ansi-styles",
+  "version": "6.2.3",
+  "downloads_last_week": 616380942,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "debug",
+  "version": "4.4.3",
+  "downloads_last_week": 613651909,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "brace-expansion",
+  "version": "5.0.7",
+  "downloads_last_week": 544371104,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "strip-ansi",
+  "version": "7.2.0",
+  "downloads_last_week": 503111868,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lru-cache",
+  "version": "11.5.2",
+  "downloads_last_week": 475248717,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ms",
+  "version": "2.1.3",
+  "downloads_last_week": 469092302,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ansi-regex",
+  "version": "6.2.2",
+  "downloads_last_week": 468384462,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "string-width",
+  "version": "8.2.2",
+  "downloads_last_week": 459848489,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "chalk",
+  "version": "5.6.2",
+  "downloads_last_week": 433435535,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "supports-color",
+  "version": "10.2.2",
+  "downloads_last_week": 429534333,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "commander",
+  "version": "15.0.0",
+  "downloads_last_week": 420539276,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "picomatch",
+  "version": "4.0.5",
+  "downloads_last_week": 408111653,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "emoji-regex",
+  "version": "10.6.0",
+  "downloads_last_week": 402661230,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "wrap-ansi",
+  "version": "10.0.0",
+  "downloads_last_week": 397053709,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tslib",
+  "version": "2.8.1",
+  "downloads_last_week": 380036426,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "glob",
+  "version": "13.0.6",
+  "downloads_last_week": 353999036,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@types/node",
+  "version": "26.1.1",
+  "downloads_last_week": 350580993,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "balanced-match",
+  "version": "4.0.4",
+  "downloads_last_week": 340751715,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-visitor-keys",
+  "version": "5.0.1",
+  "downloads_last_week": 327855564,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "type-fest",
+  "version": "5.8.0",
+  "downloads_last_week": 324433601,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ajv",
+  "version": "8.20.0",
+  "downloads_last_week": 315469430,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "minipass",
+  "version": "7.1.3",
+  "downloads_last_week": 313248753,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "source-map",
+  "version": "0.7.6",
+  "downloads_last_week": 312966830,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "color-name",
+  "version": "2.1.0",
+  "downloads_last_week": 312827696,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "color-convert",
+  "version": "3.1.3",
+  "downloads_last_week": 308369428,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-is",
+  "version": "19.2.7",
+  "downloads_last_week": 308003368,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "which",
+  "version": "7.0.0",
+  "downloads_last_week": 301358957,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "escape-string-regexp",
+  "version": "5.0.0",
+  "downloads_last_week": 300935578,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "readable-stream",
+  "version": "4.7.0",
+  "downloads_last_week": 298390475,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "glob-parent",
+  "version": "6.0.2",
+  "downloads_last_week": 281596884,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "yallist",
+  "version": "5.0.0",
+  "downloads_last_week": 277269411,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-limit",
+  "version": "7.3.0",
+  "downloads_last_week": 276977952,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "has-flag",
+  "version": "5.0.1",
+  "downloads_last_week": 276125725,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "find-up",
+  "version": "8.0.0",
+  "downloads_last_week": 275216794,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "locate-path",
+  "version": "8.0.0",
+  "downloads_last_week": 268249382,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "json-schema-traverse",
+  "version": "1.0.0",
+  "downloads_last_week": 268222768,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-locate",
+  "version": "7.0.0",
+  "downloads_last_week": 267282020,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "safe-buffer",
+  "version": "5.2.1",
+  "downloads_last_week": 261720146,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ignore",
+  "version": "7.0.6",
+  "downloads_last_week": 258618582,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "iconv-lite",
+  "version": "0.7.3",
+  "downloads_last_week": 254773880,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "isexe",
+  "version": "4.0.0",
+  "downloads_last_week": 254469785,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "signal-exit",
+  "version": "4.1.0",
+  "downloads_last_week": 251268609,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "postcss",
+  "version": "8.5.20",
+  "downloads_last_week": 247984248,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "uuid",
+  "version": "14.0.1",
+  "downloads_last_week": 247946402,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "js-yaml",
+  "version": "5.2.1",
+  "downloads_last_week": 246381833,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-fullwidth-code-point",
+  "version": "5.1.0",
+  "downloads_last_week": 242044339,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-key",
+  "version": "4.0.0",
+  "downloads_last_week": 239805236,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "entities",
+  "version": "8.0.0",
+  "downloads_last_week": 237219164,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "globals",
+  "version": "17.7.0",
+  "downloads_last_week": 230731562,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "agent-base",
+  "version": "9.0.0",
+  "downloads_last_week": 227564965,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mime-db",
+  "version": "1.54.0",
+  "downloads_last_week": 226348535,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "argparse",
+  "version": "3.0.0",
+  "downloads_last_week": 221753917,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "typescript",
+  "version": "7.0.2",
+  "downloads_last_week": 219954956,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "isarray",
+  "version": "2.0.5",
+  "downloads_last_week": 217475237,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "string_decoder",
+  "version": "1.3.0",
+  "downloads_last_week": 216729249,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "https-proxy-agent",
+  "version": "9.1.0",
+  "downloads_last_week": 216468448,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ws",
+  "version": "8.21.1",
+  "downloads_last_week": 216214146,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mime-types",
+  "version": "3.0.2",
+  "downloads_last_week": 216150614,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cross-spawn",
+  "version": "7.0.6",
+  "downloads_last_week": 214374740,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "acorn",
+  "version": "8.17.0",
+  "downloads_last_week": 214196435,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "yargs",
+  "version": "18.0.0",
+  "downloads_last_week": 211332096,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "yargs-parser",
+  "version": "22.0.0",
+  "downloads_last_week": 211070271,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "resolve",
+  "version": "1.22.12",
+  "downloads_last_week": 209580278,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "nanoid",
+  "version": "6.0.0",
+  "downloads_last_week": 209227069,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "resolve-from",
+  "version": "5.0.0",
+  "downloads_last_week": 207279845,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "js-tokens",
+  "version": "10.0.0",
+  "downloads_last_week": 201798831,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "shebang-command",
+  "version": "2.0.0",
+  "downloads_last_week": 201404424,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "shebang-regex",
+  "version": "4.0.0",
+  "downloads_last_week": 201310681,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "estraverse",
+  "version": "5.3.0",
+  "downloads_last_week": 199172021,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cliui",
+  "version": "9.0.1",
+  "downloads_last_week": 196592575,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/types",
+  "version": "8.0.4",
+  "downloads_last_week": 194516678,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-exists",
+  "version": "5.0.0",
+  "downloads_last_week": 193701938,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "json5",
+  "version": "2.2.3",
+  "downloads_last_week": 193181873,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/parser",
+  "version": "8.0.4",
+  "downloads_last_week": 191345881,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "chokidar",
+  "version": "5.0.0",
+  "downloads_last_week": 185937308,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fs-extra",
+  "version": "11.3.6",
+  "downloads_last_week": 185761126,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pretty-format",
+  "version": "30.4.1",
+  "downloads_last_week": 185013791,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "punycode",
+  "version": "2.3.1",
+  "downloads_last_week": 184177691,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webidl-conversions",
+  "version": "8.0.1",
+  "downloads_last_week": 184148128,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "convert-source-map",
+  "version": "2.0.0",
+  "downloads_last_week": 183912640,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "whatwg-url",
+  "version": "17.1.0",
+  "downloads_last_week": 181179630,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-scope",
+  "version": "9.1.2",
+  "downloads_last_week": 180796784,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "readdirp",
+  "version": "5.0.0",
+  "downloads_last_week": 179591296,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "strip-json-comments",
+  "version": "5.0.3",
+  "downloads_last_week": 179152237,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-to-regexp",
+  "version": "8.4.2",
+  "downloads_last_week": 178092616,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "graceful-fs",
+  "version": "4.2.11",
+  "downloads_last_week": 176570340,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "negotiator",
+  "version": "1.0.0",
+  "downloads_last_week": 174508589,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "get-stream",
+  "version": "9.0.1",
+  "downloads_last_week": 171600797,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "function-bind",
+  "version": "1.1.2",
+  "downloads_last_week": 170790906,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "inherits",
+  "version": "2.0.4",
+  "downloads_last_week": 169347096,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-deep-equal",
+  "version": "3.1.3",
+  "downloads_last_week": 168691058,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "caniuse-lite",
+  "version": "1.0.30001806",
+  "downloads_last_week": 168381707,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cookie",
+  "version": "2.0.1",
+  "downloads_last_week": 166143853,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "browserslist",
+  "version": "4.28.6",
+  "downloads_last_week": 163433040,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "yaml",
+  "version": "2.9.0",
+  "downloads_last_week": 162137931,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-stream",
+  "version": "4.0.1",
+  "downloads_last_week": 161780507,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-glob",
+  "version": "4.0.3",
+  "downloads_last_week": 161724539,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/traverse",
+  "version": "8.0.4",
+  "downloads_last_week": 161340328,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "qs",
+  "version": "6.15.3",
+  "downloads_last_week": 157556736,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "statuses",
+  "version": "2.0.2",
+  "downloads_last_week": 157024535,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-number",
+  "version": "7.0.0",
+  "downloads_last_week": 156362597,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "node-fetch",
+  "version": "3.3.2",
+  "downloads_last_week": 156216439,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "detect-libc",
+  "version": "2.1.2",
+  "downloads_last_week": 156022809,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "form-data",
+  "version": "4.0.6",
+  "downloads_last_week": 155865820,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "camelcase",
+  "version": "9.0.0",
+  "downloads_last_week": 155213771,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "magic-string",
+  "version": "1.0.0",
+  "downloads_last_week": 154180379,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/runtime",
+  "version": "8.0.0",
+  "downloads_last_week": 153423112,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "has-symbols",
+  "version": "1.1.0",
+  "downloads_last_week": 153405875,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "onetime",
+  "version": "8.0.0",
+  "downloads_last_week": 152055034,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/core",
+  "version": "8.0.1",
+  "downloads_last_week": 151740473,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-extglob",
+  "version": "2.1.1",
+  "downloads_last_week": 151465036,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsesc",
+  "version": "3.1.0",
+  "downloads_last_week": 151458441,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "braces",
+  "version": "3.0.3",
+  "downloads_last_week": 151136712,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fill-range",
+  "version": "7.1.1",
+  "downloads_last_week": 150580367,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash",
+  "version": "4.18.1",
+  "downloads_last_week": 149517531,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "scheduler",
+  "version": "0.27.0",
+  "downloads_last_week": 147583635,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "y18n",
+  "version": "5.0.8",
+  "downloads_last_week": 147390922,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react",
+  "version": "19.2.7",
+  "downloads_last_week": 146084556,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "universalify",
+  "version": "2.0.1",
+  "downloads_last_week": 144909900,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "micromatch",
+  "version": "4.0.8",
+  "downloads_last_week": 144820833,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dotenv",
+  "version": "17.4.2",
+  "downloads_last_week": 144816352,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "to-regex-range",
+  "version": "5.0.1",
+  "downloads_last_week": 143897295,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "imurmurhash",
+  "version": "0.1.4",
+  "downloads_last_week": 142933337,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object-assign",
+  "version": "4.1.1",
+  "downloads_last_week": 142650709,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "safer-buffer",
+  "version": "2.1.2",
+  "downloads_last_week": 142418204,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "buffer",
+  "version": "6.0.3",
+  "downloads_last_week": 142147160,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "espree",
+  "version": "11.2.0",
+  "downloads_last_week": 142126919,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "http-errors",
+  "version": "2.0.1",
+  "downloads_last_week": 141916985,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "estree-walker",
+  "version": "3.0.3",
+  "downloads_last_week": 139566867,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "rimraf",
+  "version": "6.1.3",
+  "downloads_last_week": 138489565,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-dom",
+  "version": "19.2.7",
+  "downloads_last_week": 137787976,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "content-type",
+  "version": "2.0.0",
+  "downloads_last_week": 137374699,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "execa",
+  "version": "10.0.0",
+  "downloads_last_week": 137076062,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eventemitter3",
+  "version": "5.0.4",
+  "downloads_last_week": 136005116,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-glob",
+  "version": "3.3.3",
+  "downloads_last_week": 134683440,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "util-deprecate",
+  "version": "1.0.2",
+  "downloads_last_week": 134676967,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint",
+  "version": "10.7.0",
+  "downloads_last_week": 134337785,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "csstype",
+  "version": "3.2.3",
+  "downloads_last_week": 133878690,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "concat-map",
+  "version": "0.0.2",
+  "downloads_last_week": 132799296,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "callsites",
+  "version": "4.2.0",
+  "downloads_last_week": 132658869,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "esutils",
+  "version": "2.0.3",
+  "downloads_last_week": 132516420,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-json-stable-stringify",
+  "version": "2.1.0",
+  "downloads_last_week": 131583902,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "postcss-selector-parser",
+  "version": "7.1.4",
+  "downloads_last_week": 131329967,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "import-fresh",
+  "version": "4.0.0",
+  "downloads_last_week": 130575056,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/helper-plugin-utils",
+  "version": "8.0.1",
+  "downloads_last_week": 129481093,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "uri-js",
+  "version": "4.4.1",
+  "downloads_last_week": 128840748,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "strip-bom",
+  "version": "5.0.0",
+  "downloads_last_week": 128786369,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "minimist",
+  "version": "1.2.8",
+  "downloads_last_week": 128737315,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "flatted",
+  "version": "3.4.2",
+  "downloads_last_week": 128724118,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "once",
+  "version": "1.4.0",
+  "downloads_last_week": 128073804,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mime",
+  "version": "4.1.0",
+  "downloads_last_week": 128014053,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@types/react",
+  "version": "19.2.17",
+  "downloads_last_week": 127962586,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "optionator",
+  "version": "0.9.4",
+  "downloads_last_week": 126264058,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "normalize-path",
+  "version": "3.0.0",
+  "downloads_last_week": 126153356,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mkdirp",
+  "version": "3.0.1",
+  "downloads_last_week": 126021311,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "make-dir",
+  "version": "5.1.0",
+  "downloads_last_week": 124956287,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prelude-ls",
+  "version": "1.2.1",
+  "downloads_last_week": 124903366,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "levn",
+  "version": "0.4.1",
+  "downloads_last_week": 124860592,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "type-check",
+  "version": "0.4.0",
+  "downloads_last_week": 124814663,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "wrappy",
+  "version": "1.0.2",
+  "downloads_last_week": 124465770,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "parse5",
+  "version": "8.0.1",
+  "downloads_last_week": 123777830,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "depd",
+  "version": "2.0.0",
+  "downloads_last_week": 123721496,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "encodeurl",
+  "version": "2.0.0",
+  "downloads_last_week": 123376027,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ini",
+  "version": "7.0.0",
+  "downloads_last_week": 123195790,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "esquery",
+  "version": "1.7.0",
+  "downloads_last_week": 122592573,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-parse",
+  "version": "1.0.7",
+  "downloads_last_week": 122475600,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-levenshtein",
+  "version": "3.0.0",
+  "downloads_last_week": 121619652,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "parent-module",
+  "version": "3.2.0",
+  "downloads_last_week": 121294765,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "esrecurse",
+  "version": "4.3.0",
+  "downloads_last_week": 121263753,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "finalhandler",
+  "version": "2.1.1",
+  "downloads_last_week": 121035218,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "slash",
+  "version": "5.1.0",
+  "downloads_last_week": 121006829,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@typescript-eslint/parser",
+  "version": "8.64.0",
+  "downloads_last_week": 120760638,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "diff",
+  "version": "9.0.0",
+  "downloads_last_week": 119660552,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "acorn-jsx",
+  "version": "5.3.2",
+  "downloads_last_week": 119456912,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsonfile",
+  "version": "6.2.1",
+  "downloads_last_week": 118957478,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "raw-body",
+  "version": "4.0.0",
+  "downloads_last_week": 118513123,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "accepts",
+  "version": "1.3.8",
+  "downloads_last_week": 118399138,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mimic-fn",
+  "version": "5.0.0",
+  "downloads_last_week": 117533680,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "body-parser",
+  "version": "2.3.0",
+  "downloads_last_week": 117487581,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "send",
+  "version": "1.2.1",
+  "downloads_last_week": 117293362,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pify",
+  "version": "6.1.0",
+  "downloads_last_week": 117239662,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "type-is",
+  "version": "2.1.0",
+  "downloads_last_week": 117022932,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@typescript-eslint/eslint-plugin",
+  "version": "8.64.0",
+  "downloads_last_week": 116771758,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "rollup",
+  "version": "4.62.2",
+  "downloads_last_week": 116583543,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "content-disposition",
+  "version": "2.0.1",
+  "downloads_last_week": 116471520,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ci-info",
+  "version": "4.4.0",
+  "downloads_last_week": 116048706,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "source-map-support",
+  "version": "0.5.21",
+  "downloads_last_week": 116013364,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "parse-json",
+  "version": "8.3.0",
+  "downloads_last_week": 115892079,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "media-typer",
+  "version": "2.0.0",
+  "downloads_last_week": 114068734,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "base64-js",
+  "version": "1.5.1",
+  "downloads_last_week": 113880906,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "serve-static",
+  "version": "2.2.1",
+  "downloads_last_week": 113312105,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "word-wrap",
+  "version": "1.2.5",
+  "downloads_last_week": 113307039,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cosmiconfig",
+  "version": "9.0.2",
+  "downloads_last_week": 113295584,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "open",
+  "version": "11.0.0",
+  "downloads_last_week": 113187438,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "get-caller-file",
+  "version": "2.0.5",
+  "downloads_last_week": 112963168,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "enhanced-resolve",
+  "version": "5.24.2",
+  "downloads_last_week": 112846055,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prettier",
+  "version": "3.9.5",
+  "downloads_last_week": 112621602,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "on-finished",
+  "version": "2.4.1",
+  "downloads_last_week": 112563291,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "kind-of",
+  "version": "6.0.3",
+  "downloads_last_week": 111781541,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cookie-signature",
+  "version": "1.2.2",
+  "downloads_last_week": 111779734,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tapable",
+  "version": "2.3.3",
+  "downloads_last_week": 110684065,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fresh",
+  "version": "0.5.2",
+  "downloads_last_week": 110653632,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "run-parallel",
+  "version": "1.2.0",
+  "downloads_last_week": 110121772,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ansi-escapes",
+  "version": "7.3.0",
+  "downloads_last_week": 109861676,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "express",
+  "version": "5.2.1",
+  "downloads_last_week": 109598090,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ipaddr.js",
+  "version": "2.4.0",
+  "downloads_last_week": 109263289,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "schema-utils",
+  "version": "4.3.3",
+  "downloads_last_week": 108681227,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "anymatch",
+  "version": "3.1.3",
+  "downloads_last_week": 108483954,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "proxy-from-env",
+  "version": "2.1.0",
+  "downloads_last_week": 108331180,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.merge",
+  "version": "4.6.2",
+  "downloads_last_week": 107899994,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "setprototypeof",
+  "version": "1.2.0",
+  "downloads_last_week": 107788025,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bytes",
+  "version": "3.1.2",
+  "downloads_last_week": 107620044,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "merge2",
+  "version": "1.4.1",
+  "downloads_last_week": 107273527,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "doctrine",
+  "version": "3.0.0",
+  "downloads_last_week": 107074711,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-arrayish",
+  "version": "0.3.4",
+  "downloads_last_week": 107054864,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-wsl",
+  "version": "3.1.1",
+  "downloads_last_week": 106265015,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "chownr",
+  "version": "3.0.0",
+  "downloads_last_week": 105712273,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "axios",
+  "version": "1.18.1",
+  "downloads_last_week": 105583993,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "loose-envify",
+  "version": "1.4.0",
+  "downloads_last_week": 105567685,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-plain-obj",
+  "version": "4.1.0",
+  "downloads_last_week": 104883030,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tough-cookie",
+  "version": "6.0.2",
+  "downloads_last_week": 104622163,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "require-from-string",
+  "version": "2.0.2",
+  "downloads_last_week": 104542845,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "require-directory",
+  "version": "2.1.1",
+  "downloads_last_week": 103868840,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "clsx",
+  "version": "2.1.1",
+  "downloads_last_week": 103409803,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "delayed-stream",
+  "version": "1.0.0",
+  "downloads_last_week": 103407685,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "combined-stream",
+  "version": "1.0.8",
+  "downloads_last_week": 103228998,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "asynckit",
+  "version": "0.5.0",
+  "downloads_last_week": 102862116,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "merge-descriptors",
+  "version": "2.0.0",
+  "downloads_last_week": 102723565,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "range-parser",
+  "version": "1.3.0",
+  "downloads_last_week": 102220287,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "indent-string",
+  "version": "5.0.0",
+  "downloads_last_week": 102092533,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cli-cursor",
+  "version": "5.0.0",
+  "downloads_last_week": 101936488,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "restore-cursor",
+  "version": "5.1.0",
+  "downloads_last_week": 101836296,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "retry",
+  "version": "0.13.1",
+  "downloads_last_week": 100980670,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "whatwg-mimetype",
+  "version": "5.0.0",
+  "downloads_last_week": 100225965,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "toidentifier",
+  "version": "1.0.1",
+  "downloads_last_week": 96315989,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "esprima",
+  "version": "4.0.1",
+  "downloads_last_week": 96129843,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ieee754",
+  "version": "1.2.1",
+  "downloads_last_week": 95367671,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "arg",
+  "version": "5.0.2",
+  "downloads_last_week": 94828153,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "escape-html",
+  "version": "1.0.3",
+  "downloads_last_week": 94040334,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "core-util-is",
+  "version": "1.0.3",
+  "downloads_last_week": 92576257,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "follow-redirects",
+  "version": "1.16.0",
+  "downloads_last_week": 92451527,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prop-types",
+  "version": "15.8.1",
+  "downloads_last_week": 92178824,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "buffer-from",
+  "version": "1.1.2",
+  "downloads_last_week": 91485311,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "binary-extensions",
+  "version": "3.1.0",
+  "downloads_last_week": 91121015,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "async",
+  "version": "3.2.6",
+  "downloads_last_week": 90975862,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pako",
+  "version": "3.0.1",
+  "downloads_last_week": 90825212,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "css-tree",
+  "version": "3.2.1",
+  "downloads_last_week": 90530501,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "domutils",
+  "version": "4.0.2",
+  "downloads_last_week": 90372126,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ee-first",
+  "version": "1.1.1",
+  "downloads_last_week": 90200069,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "unpipe",
+  "version": "1.0.0",
+  "downloads_last_week": 90023530,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "vary",
+  "version": "1.1.2",
+  "downloads_last_week": 89980609,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "postcss-value-parser",
+  "version": "4.2.0",
+  "downloads_last_week": 89705156,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "etag",
+  "version": "1.8.1",
+  "downloads_last_week": 89576813,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "write-file-atomic",
+  "version": "8.0.0",
+  "downloads_last_week": 89458085,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "parseurl",
+  "version": "1.3.3",
+  "downloads_last_week": 89400026,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "rxjs",
+  "version": "7.8.2",
+  "downloads_last_week": 89252787,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-type",
+  "version": "6.0.0",
+  "downloads_last_week": 89157191,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "domhandler",
+  "version": "6.0.1",
+  "downloads_last_week": 88690432,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sprintf-js",
+  "version": "1.1.3",
+  "downloads_last_week": 88327941,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-binary-path",
+  "version": "3.0.0",
+  "downloads_last_week": 88158738,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dom-serializer",
+  "version": "3.1.1",
+  "downloads_last_week": 87983831,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-regex",
+  "version": "1.2.1",
+  "downloads_last_week": 87611479,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "node-addon-api",
+  "version": "8.9.0",
+  "downloads_last_week": 87578583,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "chai",
+  "version": "6.2.2",
+  "downloads_last_week": 87117968,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tar",
+  "version": "7.5.20",
+  "downloads_last_week": 87077885,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "hosted-git-info",
+  "version": "10.1.1",
+  "downloads_last_week": 86730297,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "log-symbols",
+  "version": "7.0.1",
+  "downloads_last_week": 86645294,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-map",
+  "version": "7.0.5",
+  "downloads_last_week": 86277353,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "date-fns",
+  "version": "4.4.0",
+  "downloads_last_week": 85983264,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-callable",
+  "version": "1.2.7",
+  "downloads_last_week": 85766353,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-try",
+  "version": "3.0.0",
+  "downloads_last_week": 85162497,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "for-each",
+  "version": "0.3.5",
+  "downloads_last_week": 85139538,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object-keys",
+  "version": "1.1.1",
+  "downloads_last_week": 84942812,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "define-properties",
+  "version": "1.2.1",
+  "downloads_last_week": 84522876,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-plugin-react-hooks",
+  "version": "7.1.1",
+  "downloads_last_week": 83068501,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ip-address",
+  "version": "10.2.0",
+  "downloads_last_week": 83061211,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "globby",
+  "version": "16.2.2",
+  "downloads_last_week": 82884824,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "forwarded",
+  "version": "0.2.0",
+  "downloads_last_week": 82863904,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "proxy-addr",
+  "version": "2.0.7",
+  "downloads_last_week": 82740370,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-is-absolute",
+  "version": "2.0.0",
+  "downloads_last_week": 82717916,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "end-of-stream",
+  "version": "1.4.5",
+  "downloads_last_week": 82445865,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tar-stream",
+  "version": "3.2.0",
+  "downloads_last_week": 82149453,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fs.realpath",
+  "version": "1.0.0",
+  "downloads_last_week": 81935572,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "inflight",
+  "version": "1.0.6",
+  "downloads_last_week": 81590830,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "env-paths",
+  "version": "4.0.0",
+  "downloads_last_week": 81472457,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object.assign",
+  "version": "4.1.7",
+  "downloads_last_week": 81206251,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "es-abstract",
+  "version": "1.24.2",
+  "downloads_last_week": 81014777,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "minizlib",
+  "version": "3.1.0",
+  "downloads_last_week": 80501211,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pkg-dir",
+  "version": "9.0.0",
+  "downloads_last_week": 80093339,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ajv-keywords",
+  "version": "5.1.0",
+  "downloads_last_week": 80048359,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "merge-stream",
+  "version": "2.0.0",
+  "downloads_last_week": 79270678,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "htmlparser2",
+  "version": "12.0.0",
+  "downloads_last_week": 79227691,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "deepmerge",
+  "version": "4.3.1",
+  "downloads_last_week": 79111708,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mute-stream",
+  "version": "4.0.0",
+  "downloads_last_week": 78861778,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cssesc",
+  "version": "3.0.0",
+  "downloads_last_week": 78523921,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-array",
+  "version": "3.2.4",
+  "downloads_last_week": 78374513,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "nopt",
+  "version": "10.0.1",
+  "downloads_last_week": 78114632,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "kleur",
+  "version": "4.1.5",
+  "downloads_last_week": 77956578,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "events",
+  "version": "3.3.0",
+  "downloads_last_week": 77732961,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "domelementtype",
+  "version": "3.0.0",
+  "downloads_last_week": 77488600,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-generator-function",
+  "version": "1.1.2",
+  "downloads_last_week": 77156247,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pump",
+  "version": "3.0.4",
+  "downloads_last_week": 76862440,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsdom",
+  "version": "29.1.1",
+  "downloads_last_week": 76407303,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "extend",
+  "version": "3.0.2",
+  "downloads_last_week": 75674933,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "strip-indent",
+  "version": "4.1.1",
+  "downloads_last_week": 75303626,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ora",
+  "version": "9.4.1",
+  "downloads_last_week": 74279664,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "assertion-error",
+  "version": "2.0.1",
+  "downloads_last_week": 74166550,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-string",
+  "version": "1.1.1",
+  "downloads_last_week": 74166377,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-xml-parser",
+  "version": "5.10.1",
+  "downloads_last_week": 73934643,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sax",
+  "version": "1.6.0",
+  "downloads_last_week": 73538866,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-shape",
+  "version": "3.2.0",
+  "downloads_last_week": 73433132,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-path",
+  "version": "3.1.0",
+  "downloads_last_week": 73170535,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tiny-invariant",
+  "version": "1.3.3",
+  "downloads_last_week": 72916482,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "abbrev",
+  "version": "5.0.0",
+  "downloads_last_week": 72239369,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "gaxios",
+  "version": "7.2.0",
+  "downloads_last_week": 72141854,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fs-minipass",
+  "version": "3.0.3",
+  "downloads_last_week": 71826101,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "xml-name-validator",
+  "version": "5.0.0",
+  "downloads_last_week": 71638708,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "long",
+  "version": "5.3.2",
+  "downloads_last_week": 71310611,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "xtend",
+  "version": "4.0.2",
+  "downloads_last_week": 70832370,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "string.prototype.trim",
+  "version": "1.2.11",
+  "downloads_last_week": 70441359,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bl",
+  "version": "7.0.6",
+  "downloads_last_week": 69850120,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "clone",
+  "version": "2.1.2",
+  "downloads_last_week": 69612810,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "css-select",
+  "version": "7.0.0",
+  "downloads_last_week": 68984961,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jws",
+  "version": "4.0.1",
+  "downloads_last_week": 68513616,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sharp",
+  "version": "0.35.3",
+  "downloads_last_week": 67888271,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tmp",
+  "version": "0.2.7",
+  "downloads_last_week": 67761405,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-plain-object",
+  "version": "5.0.0",
+  "downloads_last_week": 67520744,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "protobufjs",
+  "version": "8.7.1",
+  "downloads_last_week": 67305709,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "split2",
+  "version": "4.2.0",
+  "downloads_last_week": 67237403,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "terser",
+  "version": "5.49.0",
+  "downloads_last_week": 67130469,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "colorette",
+  "version": "2.0.20",
+  "downloads_last_week": 66737589,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "decimal.js",
+  "version": "10.6.0",
+  "downloads_last_week": 66593024,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-interpolate",
+  "version": "3.0.1",
+  "downloads_last_week": 65821665,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "figures",
+  "version": "6.1.0",
+  "downloads_last_week": 65686714,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-color",
+  "version": "3.1.0",
+  "downloads_last_week": 65184142,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-format",
+  "version": "3.1.2",
+  "downloads_last_week": 64841938,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object-hash",
+  "version": "3.0.0",
+  "downloads_last_week": 64651009,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "xmlbuilder",
+  "version": "15.1.1",
+  "downloads_last_week": 64598470,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-promise",
+  "version": "4.0.0",
+  "downloads_last_week": 64444561,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-time",
+  "version": "3.1.0",
+  "downloads_last_week": 64440299,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-timer",
+  "version": "3.0.1",
+  "downloads_last_week": 64297007,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "google-auth-library",
+  "version": "10.9.0",
+  "downloads_last_week": 64214775,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "extend-shallow",
+  "version": "3.0.2",
+  "downloads_last_week": 63980137,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cli-width",
+  "version": "4.1.0",
+  "downloads_last_week": 63737192,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cli-spinners",
+  "version": "3.4.0",
+  "downloads_last_week": 63611834,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "shell-quote",
+  "version": "1.10.0",
+  "downloads_last_week": 63398280,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "whatwg-encoding",
+  "version": "3.1.1",
+  "downloads_last_week": 63165514,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@types/chai",
+  "version": "5.2.3",
+  "downloads_last_week": 63150391,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-time-format",
+  "version": "4.1.0",
+  "downloads_last_week": 62841157,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-ease",
+  "version": "3.0.1",
+  "downloads_last_week": 62408103,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mimic-response",
+  "version": "4.0.0",
+  "downloads_last_week": 61860240,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cors",
+  "version": "2.8.6",
+  "downloads_last_week": 61821270,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "css-what",
+  "version": "8.0.0",
+  "downloads_last_week": 61706333,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-scale",
+  "version": "4.0.2",
+  "downloads_last_week": 61503869,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "regenerator-runtime",
+  "version": "0.14.1",
+  "downloads_last_week": 60995626,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "array-includes",
+  "version": "3.1.9",
+  "downloads_last_week": 60752257,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.isplainobject",
+  "version": "4.0.6",
+  "downloads_last_week": 60669302,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bn.js",
+  "version": "5.2.5",
+  "downloads_last_week": 60652173,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object.values",
+  "version": "1.2.1",
+  "downloads_last_week": 60606969,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "destroy",
+  "version": "1.2.0",
+  "downloads_last_week": 60004809,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "nth-check",
+  "version": "3.0.1",
+  "downloads_last_week": 59528222,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "core-js",
+  "version": "3.49.0",
+  "downloads_last_week": 59525536,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "decamelize",
+  "version": "6.0.1",
+  "downloads_last_week": 59198946,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "buffer-crc32",
+  "version": "1.0.0",
+  "downloads_last_week": 58971024,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "normalize-package-data",
+  "version": "9.0.0",
+  "downloads_last_week": 58478445,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-config-prettier",
+  "version": "10.1.8",
+  "downloads_last_week": 58057663,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-path-inside",
+  "version": "4.0.0",
+  "downloads_last_week": 58050092,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "utils-merge",
+  "version": "1.0.1",
+  "downloads_last_week": 58012331,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dedent",
+  "version": "1.7.2",
+  "downloads_last_week": 57822406,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "autoprefixer",
+  "version": "10.5.4",
+  "downloads_last_week": 57493844,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "any-promise",
+  "version": "1.3.0",
+  "downloads_last_week": 57222974,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object.fromentries",
+  "version": "2.0.8",
+  "downloads_last_week": 57060643,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "methods",
+  "version": "1.1.2",
+  "downloads_last_week": 57038637,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "redent",
+  "version": "4.0.0",
+  "downloads_last_week": 56779435,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@types/express",
+  "version": "5.0.6",
+  "downloads_last_week": 56734459,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "neo-async",
+  "version": "2.6.2",
+  "downloads_last_week": 56725130,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "clean-stack",
+  "version": "6.0.0",
+  "downloads_last_week": 56571799,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dayjs",
+  "version": "1.11.21",
+  "downloads_last_week": 56495950,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ast-types",
+  "version": "0.14.2",
+  "downloads_last_week": 56412982,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "type-detect",
+  "version": "4.1.0",
+  "downloads_last_week": 56305030,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "array-union",
+  "version": "3.0.1",
+  "downloads_last_week": 56276172,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "expect",
+  "version": "30.4.1",
+  "downloads_last_week": 56084577,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webpack-sources",
+  "version": "3.5.1",
+  "downloads_last_week": 55654899,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "define-property",
+  "version": "2.0.2",
+  "downloads_last_week": 55478998,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-extendable",
+  "version": "1.0.1",
+  "downloads_last_week": 55216594,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object.entries",
+  "version": "1.1.9",
+  "downloads_last_week": 54834834,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "event-target-shim",
+  "version": "6.0.2",
+  "downloads_last_week": 54713977,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "boolbase",
+  "version": "2.0.0",
+  "downloads_last_week": 54585276,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "isobject",
+  "version": "4.0.0",
+  "downloads_last_week": 54051596,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sisteransi",
+  "version": "2.0.0",
+  "downloads_last_week": 53980727,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "loader-utils",
+  "version": "3.3.1",
+  "downloads_last_week": 53740140,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@grpc/proto-loader",
+  "version": "0.8.1",
+  "downloads_last_week": 53678569,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "thenify",
+  "version": "3.3.1",
+  "downloads_last_week": 53649059,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "thenify-all",
+  "version": "1.6.0",
+  "downloads_last_week": 53622202,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "leven",
+  "version": "4.1.0",
+  "downloads_last_week": 53601628,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mz",
+  "version": "2.7.0",
+  "downloads_last_week": 53595215,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "postcss-load-config",
+  "version": "6.0.1",
+  "downloads_last_week": 53099918,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "array-flatten",
+  "version": "3.0.0",
+  "downloads_last_week": 52574327,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "marked",
+  "version": "18.0.6",
+  "downloads_last_week": 52527651,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "min-indent",
+  "version": "1.0.1",
+  "downloads_last_week": 52258372,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-module-utils",
+  "version": "2.14.0",
+  "downloads_last_week": 52006466,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dom-helpers",
+  "version": "6.0.1",
+  "downloads_last_week": 51635622,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-plugin-import",
+  "version": "2.32.0",
+  "downloads_last_week": 51330539,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "escodegen",
+  "version": "2.1.0",
+  "downloads_last_week": 51308223,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ansi-colors",
+  "version": "4.1.3",
+  "downloads_last_week": 51179012,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-import-resolver-node",
+  "version": "0.4.0",
+  "downloads_last_week": 51142651,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "chardet",
+  "version": "2.2.0",
+  "downloads_last_week": 50991246,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "unist-util-is",
+  "version": "6.0.1",
+  "downloads_last_week": 50853603,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "aggregate-error",
+  "version": "5.0.0",
+  "downloads_last_week": 50808414,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-transition-group",
+  "version": "4.4.5",
+  "downloads_last_week": 50807781,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "unist-util-visit-parents",
+  "version": "6.0.2",
+  "downloads_last_week": 50465357,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tar-fs",
+  "version": "3.1.3",
+  "downloads_last_week": 50371760,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "unist-util-visit",
+  "version": "5.1.0",
+  "downloads_last_week": 50139899,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "process",
+  "version": "0.11.10",
+  "downloads_last_week": 50115038,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "immer",
+  "version": "11.1.15",
+  "downloads_last_week": 50089070,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-plugin-react",
+  "version": "7.37.5",
+  "downloads_last_week": 50037994,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dir-glob",
+  "version": "3.0.1",
+  "downloads_last_week": 49987309,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsx-ast-utils",
+  "version": "3.3.5",
+  "downloads_last_week": 49335938,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webpack",
+  "version": "5.108.4",
+  "downloads_last_week": 48815184,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsonwebtoken",
+  "version": "9.0.3",
+  "downloads_last_week": 48375439,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prompts",
+  "version": "2.4.2",
+  "downloads_last_week": 48360531,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "file-type",
+  "version": "22.0.1",
+  "downloads_last_week": 48343022,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "read-pkg",
+  "version": "10.1.0",
+  "downloads_last_week": 48062924,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "setimmediate",
+  "version": "1.0.5",
+  "downloads_last_week": 48058974,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-obj",
+  "version": "3.0.0",
+  "downloads_last_week": 47702293,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bluebird",
+  "version": "3.7.2",
+  "downloads_last_week": 47616436,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "consola",
+  "version": "3.4.2",
+  "downloads_last_week": 47614009,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "babel-jest",
+  "version": "30.4.1",
+  "downloads_last_week": 47550035,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "spdx-expression-parse",
+  "version": "5.0.0",
+  "downloads_last_week": 47487969,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "rfdc",
+  "version": "1.4.1",
+  "downloads_last_week": 47219682,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bignumber.js",
+  "version": "11.1.5",
+  "downloads_last_week": 46750981,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "requires-port",
+  "version": "1.0.0",
+  "downloads_last_week": 46706668,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "node-gyp",
+  "version": "13.0.1",
+  "downloads_last_week": 46663361,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "deep-eql",
+  "version": "5.0.2",
+  "downloads_last_week": 46450127,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-router",
+  "version": "8.2.0",
+  "downloads_last_week": 46261364,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "color-string",
+  "version": "2.1.4",
+  "downloads_last_week": 45995841,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "node-int64",
+  "version": "0.4.0",
+  "downloads_last_week": 45920685,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-buffer",
+  "version": "2.0.5",
+  "downloads_last_week": 45912006,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "serialize-javascript",
+  "version": "7.0.7",
+  "downloads_last_week": 45811119,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "color",
+  "version": "5.0.3",
+  "downloads_last_week": 45726669,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-diff",
+  "version": "1.3.0",
+  "downloads_last_week": 45651348,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "string-length",
+  "version": "7.0.1",
+  "downloads_last_week": 45647325,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pg-types",
+  "version": "4.1.0",
+  "downloads_last_week": 45475460,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "check-error",
+  "version": "2.1.3",
+  "downloads_last_week": 45089662,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "postcss-import",
+  "version": "16.1.1",
+  "downloads_last_week": 45002217,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.isstring",
+  "version": "4.0.1",
+  "downloads_last_week": 44922294,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lie",
+  "version": "3.3.0",
+  "downloads_last_week": 44570457,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "defaults",
+  "version": "3.0.0",
+  "downloads_last_week": 44566808,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pathval",
+  "version": "2.0.1",
+  "downloads_last_week": 44465963,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "decompress-response",
+  "version": "10.0.0",
+  "downloads_last_week": 44391550,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "make-error",
+  "version": "1.3.6",
+  "downloads_last_week": 44362673,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.camelcase",
+  "version": "4.3.0",
+  "downloads_last_week": 44292653,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bowser",
+  "version": "2.14.1",
+  "downloads_last_week": 43967945,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "through2",
+  "version": "5.0.5",
+  "downloads_last_week": 43910125,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cssom",
+  "version": "0.5.0",
+  "downloads_last_week": 43905132,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "progress",
+  "version": "2.0.3",
+  "downloads_last_week": 43730111,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "terser-webpack-plugin",
+  "version": "5.6.1",
+  "downloads_last_week": 43407125,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pngjs",
+  "version": "7.0.0",
+  "downloads_last_week": 43325171,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "unified",
+  "version": "11.0.5",
+  "downloads_last_week": 43001490,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "inquirer",
+  "version": "14.0.2",
+  "downloads_last_week": 42917603,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "arrify",
+  "version": "3.0.0",
+  "downloads_last_week": 42908950,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ts-node",
+  "version": "10.9.2",
+  "downloads_last_week": 42899276,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "immediate",
+  "version": "3.3.0",
+  "downloads_last_week": 42782815,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "wordwrap",
+  "version": "1.0.0",
+  "downloads_last_week": 42669607,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "find-cache-dir",
+  "version": "6.0.0",
+  "downloads_last_week": 42635169,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "through",
+  "version": "2.3.8",
+  "downloads_last_week": 42613552,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.debounce",
+  "version": "4.0.8",
+  "downloads_last_week": 42609512,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eventsource",
+  "version": "4.1.0",
+  "downloads_last_week": 42311024,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "yauzl",
+  "version": "3.4.0",
+  "downloads_last_week": 42268715,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "archiver-utils",
+  "version": "5.0.2",
+  "downloads_last_week": 41975880,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "on-headers",
+  "version": "1.1.0",
+  "downloads_last_week": 41858820,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "set-blocking",
+  "version": "2.0.0",
+  "downloads_last_week": 41782666,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dot-prop",
+  "version": "10.1.0",
+  "downloads_last_week": 41735859,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "regexpu-core",
+  "version": "6.4.0",
+  "downloads_last_week": 41686905,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "wcwidth",
+  "version": "1.0.1",
+  "downloads_last_week": 41490388,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "stylis",
+  "version": "4.4.0",
+  "downloads_last_week": 41442621,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "detect-newline",
+  "version": "4.0.1",
+  "downloads_last_week": 41436337,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.includes",
+  "version": "4.3.0",
+  "downloads_last_week": 41411491,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "node-gyp-build",
+  "version": "4.8.4",
+  "downloads_last_week": 41288665,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jest",
+  "version": "30.4.2",
+  "downloads_last_week": 41223280,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "uglify-js",
+  "version": "3.19.3",
+  "downloads_last_week": 41133291,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "log-update",
+  "version": "8.0.0",
+  "downloads_last_week": 41040164,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@types/lodash",
+  "version": "4.17.24",
+  "downloads_last_week": 40819102,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "graphql",
+  "version": "17.0.2",
+  "downloads_last_week": 40765040,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jest-cli",
+  "version": "30.4.2",
+  "downloads_last_week": 40667248,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "normalize-url",
+  "version": "9.0.1",
+  "downloads_last_week": 40657353,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-router-dom",
+  "version": "7.18.1",
+  "downloads_last_week": 40437405,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pg-connection-string",
+  "version": "2.14.0",
+  "downloads_last_week": 40314162,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "deep-extend",
+  "version": "0.6.0",
+  "downloads_last_week": 40105826,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "remark-parse",
+  "version": "11.0.0",
+  "downloads_last_week": 40016815,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-arguments",
+  "version": "1.2.0",
+  "downloads_last_week": 39985301,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tree-kill",
+  "version": "1.2.2",
+  "downloads_last_week": 39877250,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "util",
+  "version": "0.12.5",
+  "downloads_last_week": 39827630,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "quick-lru",
+  "version": "7.3.0",
+  "downloads_last_week": 39644358,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "immutable",
+  "version": "5.1.9",
+  "downloads_last_week": 39534752,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-plugin-prettier",
+  "version": "5.5.6",
+  "downloads_last_week": 39455375,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "co",
+  "version": "4.6.0",
+  "downloads_last_week": 39403084,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "asap",
+  "version": "2.0.6",
+  "downloads_last_week": 39243443,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-timeout",
+  "version": "7.0.1",
+  "downloads_last_week": 39221147,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "minimalistic-assert",
+  "version": "1.0.1",
+  "downloads_last_week": 39200268,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "psl",
+  "version": "1.15.0",
+  "downloads_last_week": 39092226,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/preset-env",
+  "version": "8.0.2",
+  "downloads_last_week": 38756583,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "json-bigint",
+  "version": "1.0.0",
+  "downloads_last_week": 38722708,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash-es",
+  "version": "4.18.1",
+  "downloads_last_week": 38229311,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cac",
+  "version": "7.0.0",
+  "downloads_last_week": 38161089,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "concat-stream",
+  "version": "2.0.0",
+  "downloads_last_week": 37854387,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prettier-linter-helpers",
+  "version": "1.0.1",
+  "downloads_last_week": 37683841,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "rc",
+  "version": "1.2.8",
+  "downloads_last_week": 37673123,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-plugin-jsx-a11y",
+  "version": "6.10.2",
+  "downloads_last_week": 37629834,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "text-table",
+  "version": "0.2.0",
+  "downloads_last_week": 37589079,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "encoding",
+  "version": "0.1.13",
+  "downloads_last_week": 37567456,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "xml2js",
+  "version": "0.6.2",
+  "downloads_last_week": 37550537,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "promise-retry",
+  "version": "2.0.1",
+  "downloads_last_week": 37533082,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ast-types-flow",
+  "version": "0.0.8",
+  "downloads_last_week": 37491420,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "require-main-filename",
+  "version": "2.0.0",
+  "downloads_last_week": 37475296,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "he",
+  "version": "1.2.0",
+  "downloads_last_week": 37398670,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-safe-stringify",
+  "version": "2.1.1",
+  "downloads_last_week": 37317854,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "meow",
+  "version": "14.1.0",
+  "downloads_last_week": 37086838,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "which-module",
+  "version": "2.0.1",
+  "downloads_last_week": 37069021,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pino",
+  "version": "10.3.1",
+  "downloads_last_week": 37067217,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "crc-32",
+  "version": "1.2.2",
+  "downloads_last_week": 37065710,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "reselect",
+  "version": "5.2.0",
+  "downloads_last_week": 36980229,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "validate-npm-package-name",
+  "version": "8.0.0",
+  "downloads_last_week": 36910676,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "handlebars",
+  "version": "4.7.9",
+  "downloads_last_week": 36857139,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "json-schema",
+  "version": "0.4.0",
+  "downloads_last_week": 36804064,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lower-case",
+  "version": "3.0.0",
+  "downloads_last_week": 36782586,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "no-case",
+  "version": "4.0.0",
+  "downloads_last_week": 36682205,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pend",
+  "version": "1.2.0",
+  "downloads_last_week": 36571105,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@types/uuid",
+  "version": "11.0.0",
+  "downloads_last_week": 36531907,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pg",
+  "version": "8.22.0",
+  "downloads_last_week": 36283451,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tunnel-agent",
+  "version": "0.6.0",
+  "downloads_last_week": 36139319,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "url-parse",
+  "version": "1.5.10",
+  "downloads_last_week": 36125656,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "json-stringify-safe",
+  "version": "5.0.1",
+  "downloads_last_week": 36030013,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "commondir",
+  "version": "1.0.1",
+  "downloads_last_week": 36029467,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "querystringify",
+  "version": "2.2.0",
+  "downloads_last_week": 35910782,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jszip",
+  "version": "3.10.1",
+  "downloads_last_week": 35746493,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "run-async",
+  "version": "4.0.6",
+  "downloads_last_week": 35535260,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "redux",
+  "version": "5.0.1",
+  "downloads_last_week": 35534118,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "validate-npm-package-license",
+  "version": "3.0.4",
+  "downloads_last_week": 35215870,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "compression",
+  "version": "1.8.1",
+  "downloads_last_week": 35207744,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "read-pkg-up",
+  "version": "11.0.0",
+  "downloads_last_week": 35163051,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "node-forge",
+  "version": "1.4.0",
+  "downloads_last_week": 35030224,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dotenv-expand",
+  "version": "13.0.0",
+  "downloads_last_week": 34871013,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "hoist-non-react-statics",
+  "version": "3.3.2",
+  "downloads_last_week": 34666339,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "compressible",
+  "version": "2.0.18",
+  "downloads_last_week": 34621769,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pg-pool",
+  "version": "3.14.0",
+  "downloads_last_week": 34590123,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lowercase-keys",
+  "version": "4.0.1",
+  "downloads_last_week": 34500814,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "reflect-metadata",
+  "version": "0.2.2",
+  "downloads_last_week": 34498477,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@emotion/memoize",
+  "version": "0.9.0",
+  "downloads_last_week": 34097508,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "got",
+  "version": "15.1.0",
+  "downloads_last_week": 34084317,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "html-entities",
+  "version": "2.6.0",
+  "downloads_last_week": 34082497,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.memoize",
+  "version": "4.1.2",
+  "downloads_last_week": 34038201,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ejs",
+  "version": "6.0.1",
+  "downloads_last_week": 33454313,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "randombytes",
+  "version": "2.1.0",
+  "downloads_last_week": 33447028,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cross-fetch",
+  "version": "4.1.0",
+  "downloads_last_week": 33183115,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "svgo",
+  "version": "4.0.2",
+  "downloads_last_week": 32999676,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "moment",
+  "version": "2.30.1",
+  "downloads_last_week": 32837667,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pgpass",
+  "version": "1.0.6",
+  "downloads_last_week": 32751208,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "typedarray",
+  "version": "0.0.7",
+  "downloads_last_week": 32697149,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "duplexify",
+  "version": "4.1.3",
+  "downloads_last_week": 32664847,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "luxon",
+  "version": "3.7.2",
+  "downloads_last_week": 32286018,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "map-obj",
+  "version": "6.0.0",
+  "downloads_last_week": 32137765,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-windows",
+  "version": "1.0.2",
+  "downloads_last_week": 32045372,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-typedarray",
+  "version": "1.0.0",
+  "downloads_last_week": 31996014,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "zip-stream",
+  "version": "7.0.5",
+  "downloads_last_week": 31879881,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "archiver",
+  "version": "8.0.0",
+  "downloads_last_week": 31609846,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "performance-now",
+  "version": "2.1.0",
+  "downloads_last_week": 31565833,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-cancelable",
+  "version": "4.0.1",
+  "downloads_last_week": 31553982,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "image-size",
+  "version": "2.0.2",
+  "downloads_last_week": 31289363,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "big.js",
+  "version": "7.0.1",
+  "downloads_last_week": 31135283,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "recast",
+  "version": "0.23.12",
+  "downloads_last_week": 31059138,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pluralize",
+  "version": "8.0.0",
+  "downloads_last_week": 30843553,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fsevents",
+  "version": "2.3.3",
+  "downloads_last_week": 30700434,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-finally",
+  "version": "3.0.0",
+  "downloads_last_week": 30662199,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tweetnacl",
+  "version": "1.0.3",
+  "downloads_last_week": 30613186,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pretty-ms",
+  "version": "9.3.0",
+  "downloads_last_week": 30581409,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "memoize-one",
+  "version": "6.0.0",
+  "downloads_last_week": 30403881,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "parse-ms",
+  "version": "4.0.0",
+  "downloads_last_week": 30372483,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "husky",
+  "version": "9.1.7",
+  "downloads_last_week": 29966942,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fd-slicer",
+  "version": "1.1.0",
+  "downloads_last_week": 29962198,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "interpret",
+  "version": "3.1.1",
+  "downloads_last_week": 29946099,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cacheable-request",
+  "version": "13.0.19",
+  "downloads_last_week": 29927829,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "component-emitter",
+  "version": "2.0.0",
+  "downloads_last_week": 29546980,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@emotion/unitless",
+  "version": "0.10.0",
+  "downloads_last_week": 29447449,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ret",
+  "version": "0.5.0",
+  "downloads_last_week": 29373723,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "deep-equal",
+  "version": "2.2.3",
+  "downloads_last_week": 29305222,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "enquirer",
+  "version": "2.4.1",
+  "downloads_last_week": 29260813,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cli-table3",
+  "version": "0.6.5",
+  "downloads_last_week": 29223912,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.uniq",
+  "version": "4.5.0",
+  "downloads_last_week": 28992072,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "camel-case",
+  "version": "5.0.0",
+  "downloads_last_week": 28874126,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "denque",
+  "version": "2.1.0",
+  "downloads_last_week": 28805760,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-redux",
+  "version": "9.3.0",
+  "downloads_last_week": 28770040,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsbn",
+  "version": "1.1.0",
+  "downloads_last_week": 28762892,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "flat",
+  "version": "6.0.1",
+  "downloads_last_week": 28640873,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "global-prefix",
+  "version": "4.0.0",
+  "downloads_last_week": 28622911,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "nan",
+  "version": "2.28.0",
+  "downloads_last_week": 28567174,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "promise",
+  "version": "8.3.0",
+  "downloads_last_week": 28440256,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "p-queue",
+  "version": "9.3.1",
+  "downloads_last_week": 28411714,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "object-is",
+  "version": "1.1.6",
+  "downloads_last_week": 28370324,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "invariant",
+  "version": "2.2.4",
+  "downloads_last_week": 28340950,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "linkify-it",
+  "version": "6.0.0",
+  "downloads_last_week": 28336056,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "streamsearch",
+  "version": "1.1.0",
+  "downloads_last_week": 28327001,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sass",
+  "version": "1.101.0",
+  "downloads_last_week": 28321239,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "exit",
+  "version": "0.1.2",
+  "downloads_last_week": 28016006,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "param-case",
+  "version": "4.0.0",
+  "downloads_last_week": 28013675,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "babel-plugin-macros",
+  "version": "3.1.0",
+  "downloads_last_week": 27868612,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "simple-swizzle",
+  "version": "0.2.4",
+  "downloads_last_week": 27819715,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "websocket-driver",
+  "version": "0.7.5",
+  "downloads_last_week": 27743022,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "faye-websocket",
+  "version": "0.11.4",
+  "downloads_last_week": 27652940,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pretty-bytes",
+  "version": "7.1.1",
+  "downloads_last_week": 27551640,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "busboy",
+  "version": "1.6.0",
+  "downloads_last_week": 27546806,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "npm-package-arg",
+  "version": "14.0.0",
+  "downloads_last_week": 27543114,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "csso",
+  "version": "5.0.5",
+  "downloads_last_week": 27383637,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "css-loader",
+  "version": "7.1.4",
+  "downloads_last_week": 27381262,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ua-parser-js",
+  "version": "2.0.10",
+  "downloads_last_week": 27308402,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "asn1",
+  "version": "0.2.6",
+  "downloads_last_week": 27122592,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "classnames",
+  "version": "2.5.1",
+  "downloads_last_week": 26992413,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "big-integer",
+  "version": "1.6.52",
+  "downloads_last_week": 26983741,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "uc.micro",
+  "version": "2.1.0",
+  "downloads_last_week": 26797005,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "global-modules",
+  "version": "2.0.0",
+  "downloads_last_week": 26743739,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@hapi/hoek",
+  "version": "11.0.7",
+  "downloads_last_week": 26711307,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.defaults",
+  "version": "4.2.0",
+  "downloads_last_week": 26583112,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dateformat",
+  "version": "5.0.3",
+  "downloads_last_week": 26502710,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cli-boxes",
+  "version": "4.0.1",
+  "downloads_last_week": 26335244,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "proxy-agent",
+  "version": "8.0.2",
+  "downloads_last_week": 26272218,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/plugin-transform-runtime",
+  "version": "8.0.1",
+  "downloads_last_week": 26215309,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mitt",
+  "version": "3.0.1",
+  "downloads_last_week": 26201774,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "change-case",
+  "version": "5.4.4",
+  "downloads_last_week": 26102580,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "highlight.js",
+  "version": "11.11.1",
+  "downloads_last_week": 26012569,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "js-cookie",
+  "version": "3.0.8",
+  "downloads_last_week": 25655036,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-dispatch",
+  "version": "3.0.1",
+  "downloads_last_week": 25635055,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pascal-case",
+  "version": "4.0.0",
+  "downloads_last_week": 25622260,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "crypto-random-string",
+  "version": "5.0.0",
+  "downloads_last_week": 25405287,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-markdown",
+  "version": "10.1.0",
+  "downloads_last_week": 25389709,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cheerio",
+  "version": "1.2.0",
+  "downloads_last_week": 25206180,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "extsprintf",
+  "version": "1.4.1",
+  "downloads_last_week": 25171847,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mdurl",
+  "version": "2.0.0",
+  "downloads_last_week": 25154384,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "unique-string",
+  "version": "3.0.0",
+  "downloads_last_week": 25110768,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "emojis-list",
+  "version": "3.0.0",
+  "downloads_last_week": 25070239,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "serialize-error",
+  "version": "13.0.1",
+  "downloads_last_week": 25050187,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@szmarczak/http-timer",
+  "version": "5.0.1",
+  "downloads_last_week": 25023227,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "boxen",
+  "version": "8.0.1",
+  "downloads_last_week": 24964769,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "clone-deep",
+  "version": "4.0.1",
+  "downloads_last_week": 24576004,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "stack-trace",
+  "version": "1.0.0",
+  "downloads_last_week": 24574076,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "http-proxy-middleware",
+  "version": "4.2.0",
+  "downloads_last_week": 24514447,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-selection",
+  "version": "3.0.0",
+  "downloads_last_week": 24483881,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bcrypt-pbkdf",
+  "version": "1.0.2",
+  "downloads_last_week": 24424915,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "redux-thunk",
+  "version": "3.1.0",
+  "downloads_last_week": 24414249,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "decode-uri-component",
+  "version": "0.5.0",
+  "downloads_last_week": 24383263,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "file-uri-to-path",
+  "version": "2.0.0",
+  "downloads_last_week": 24371751,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "detect-node",
+  "version": "2.1.0",
+  "downloads_last_week": 24334344,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "winston",
+  "version": "3.19.0",
+  "downloads_last_week": 24321208,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "colors",
+  "version": "1.4.0",
+  "downloads_last_week": 24296731,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "markdown-it",
+  "version": "14.3.0",
+  "downloads_last_week": 24290535,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ts-jest",
+  "version": "29.4.11",
+  "downloads_last_week": 24138500,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prismjs",
+  "version": "1.30.0",
+  "downloads_last_week": 24093684,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.clonedeep",
+  "version": "4.5.0",
+  "downloads_last_week": 24019482,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "extract-zip",
+  "version": "2.0.1",
+  "downloads_last_week": 24015640,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "icss-utils",
+  "version": "5.1.0",
+  "downloads_last_week": 23924755,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "underscore",
+  "version": "1.13.8",
+  "downloads_last_week": 23906154,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "http-proxy",
+  "version": "1.18.1",
+  "downloads_last_week": 23876252,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "error-stack-parser",
+  "version": "2.1.4",
+  "downloads_last_week": 23814937,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "preact",
+  "version": "10.29.7",
+  "downloads_last_week": 23743682,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webpack-dev-middleware",
+  "version": "8.0.3",
+  "downloads_last_week": 23694112,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "domexception",
+  "version": "4.0.0",
+  "downloads_last_week": 23621070,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bindings",
+  "version": "1.5.0",
+  "downloads_last_week": 23560233,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.isequal",
+  "version": "4.5.0",
+  "downloads_last_week": 23559071,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-drag",
+  "version": "3.0.0",
+  "downloads_last_week": 23383907,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-transition",
+  "version": "3.0.1",
+  "downloads_last_week": 23339433,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "babel-loader",
+  "version": "10.1.1",
+  "downloads_last_week": 23325460,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "simple-get",
+  "version": "4.0.1",
+  "downloads_last_week": 23284177,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "validator",
+  "version": "13.15.35",
+  "downloads_last_week": 23205286,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "assert-plus",
+  "version": "1.0.0",
+  "downloads_last_week": 23193038,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "duplexer",
+  "version": "0.1.2",
+  "downloads_last_week": 23112081,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "os-tmpdir",
+  "version": "2.0.0",
+  "downloads_last_week": 23014114,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "url",
+  "version": "0.11.4",
+  "downloads_last_week": 22947941,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-regexp",
+  "version": "3.1.0",
+  "downloads_last_week": 22797367,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "whatwg-fetch",
+  "version": "3.6.20",
+  "downloads_last_week": 22766439,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "abab",
+  "version": "2.0.6",
+  "downloads_last_week": 22740189,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "load-json-file",
+  "version": "7.0.1",
+  "downloads_last_week": 22730010,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "aws4",
+  "version": "1.13.2",
+  "downloads_last_week": 22559064,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "winston-transport",
+  "version": "4.9.0",
+  "downloads_last_week": 22553377,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "logform",
+  "version": "2.7.0",
+  "downloads_last_week": 22495414,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "snake-case",
+  "version": "4.0.0",
+  "downloads_last_week": 22449720,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "detect-indent",
+  "version": "7.0.2",
+  "downloads_last_week": 22334320,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "socket.io-parser",
+  "version": "4.2.7",
+  "downloads_last_week": 22332813,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "typedarray-to-buffer",
+  "version": "4.0.0",
+  "downloads_last_week": 22306030,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fecha",
+  "version": "4.2.3",
+  "downloads_last_week": 22252553,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ioredis",
+  "version": "5.11.1",
+  "downloads_last_week": 22212819,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "formidable",
+  "version": "3.5.4",
+  "downloads_last_week": 22051028,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.sortby",
+  "version": "4.7.0",
+  "downloads_last_week": 22029787,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "agentkeepalive",
+  "version": "4.6.0",
+  "downloads_last_week": 21907768,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "triple-beam",
+  "version": "1.4.1",
+  "downloads_last_week": 21828407,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-fast-compare",
+  "version": "3.2.2",
+  "downloads_last_week": 21783850,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "find-root",
+  "version": "1.1.0",
+  "downloads_last_week": 21471438,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "verror",
+  "version": "1.10.1",
+  "downloads_last_week": 21384867,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "common-tags",
+  "version": "1.8.2",
+  "downloads_last_week": 21357843,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "defer-to-connect",
+  "version": "2.0.1",
+  "downloads_last_week": 21222473,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "joi",
+  "version": "18.2.3",
+  "downloads_last_week": 21102578,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "base64-arraybuffer",
+  "version": "1.0.2",
+  "downloads_last_week": 21060661,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "get-port",
+  "version": "7.2.0",
+  "downloads_last_week": 20993164,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "debounce",
+  "version": "3.0.0",
+  "downloads_last_week": 20961801,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webpack-merge",
+  "version": "6.0.1",
+  "downloads_last_week": 20911744,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "duplexer2",
+  "version": "0.1.4",
+  "downloads_last_week": 20864090,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "query-string",
+  "version": "9.4.1",
+  "downloads_last_week": 20760592,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "superagent",
+  "version": "10.3.0",
+  "downloads_last_week": 20689621,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "hash-base",
+  "version": "3.1.2",
+  "downloads_last_week": 20649175,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "asn1.js",
+  "version": "5.4.1",
+  "downloads_last_week": 20639132,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "external-editor",
+  "version": "3.1.0",
+  "downloads_last_week": 20599857,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "clean-css",
+  "version": "5.3.3",
+  "downloads_last_week": 20569593,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "enabled",
+  "version": "2.0.0",
+  "downloads_last_week": 20535871,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "http-signature",
+  "version": "1.4.0",
+  "downloads_last_week": 20531423,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "kuler",
+  "version": "2.0.0",
+  "downloads_last_week": 20500307,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "one-time",
+  "version": "1.0.0",
+  "downloads_last_week": 20440067,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "style-loader",
+  "version": "4.0.0",
+  "downloads_last_week": 20323225,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "caseless",
+  "version": "0.12.0",
+  "downloads_last_week": 20318931,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "symbol-observable",
+  "version": "4.0.0",
+  "downloads_last_week": 20310618,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cross-env",
+  "version": "10.1.0",
+  "downloads_last_week": 20288379,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "repeat-string",
+  "version": "1.6.1",
+  "downloads_last_week": 20088063,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sha.js",
+  "version": "2.4.12",
+  "downloads_last_week": 20036382,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "stringify-object",
+  "version": "7.0.0",
+  "downloads_last_week": 20018247,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "humanize-ms",
+  "version": "2.0.0",
+  "downloads_last_week": 19994644,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-geo",
+  "version": "3.1.1",
+  "downloads_last_week": 19990612,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fn.name",
+  "version": "1.1.0",
+  "downloads_last_week": 19969692,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "redis-parser",
+  "version": "3.0.0",
+  "downloads_last_week": 19856500,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "camelcase-keys",
+  "version": "10.0.2",
+  "downloads_last_week": 19815390,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dezalgo",
+  "version": "1.0.4",
+  "downloads_last_week": 19752953,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "config-chain",
+  "version": "1.1.13",
+  "downloads_last_week": 19704602,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "libphonenumber-js",
+  "version": "1.13.9",
+  "downloads_last_week": 19686972,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsonparse",
+  "version": "1.3.1",
+  "downloads_last_week": 19596476,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "google-gax",
+  "version": "5.0.7",
+  "downloads_last_week": 19560400,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "hash.js",
+  "version": "1.1.7",
+  "downloads_last_week": 19494945,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "table",
+  "version": "6.9.0",
+  "downloads_last_week": 19420506,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "redis-errors",
+  "version": "1.2.0",
+  "downloads_last_week": 19419070,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "delegates",
+  "version": "1.0.0",
+  "downloads_last_week": 19399033,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "aproba",
+  "version": "2.1.0",
+  "downloads_last_week": 19374231,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sshpk",
+  "version": "1.18.0",
+  "downloads_last_week": 19370480,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "isstream",
+  "version": "0.1.2",
+  "downloads_last_week": 19318300,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prebuild-install",
+  "version": "7.1.3",
+  "downloads_last_week": 19258469,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsprim",
+  "version": "2.0.2",
+  "downloads_last_week": 19138564,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "loglevel",
+  "version": "1.9.2",
+  "downloads_last_week": 19108056,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "builtin-modules",
+  "version": "5.3.0",
+  "downloads_last_week": 18843478,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "temp-dir",
+  "version": "3.0.0",
+  "downloads_last_week": 18744409,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "gauge",
+  "version": "5.0.2",
+  "downloads_last_week": 18705088,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "npmlog",
+  "version": "7.0.1",
+  "downloads_last_week": 18604379,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dashdash",
+  "version": "2.0.0",
+  "downloads_last_week": 18591811,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "i18next",
+  "version": "26.3.6",
+  "downloads_last_week": 18574269,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "are-we-there-yet",
+  "version": "4.0.2",
+  "downloads_last_week": 18545681,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-ci",
+  "version": "4.1.0",
+  "downloads_last_week": 18538170,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "url-join",
+  "version": "5.0.0",
+  "downloads_last_week": 18515851,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "void-elements",
+  "version": "3.1.0",
+  "downloads_last_week": 18511328,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "postcss-loader",
+  "version": "8.2.1",
+  "downloads_last_week": 18505836,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pdfjs-dist",
+  "version": "6.1.200",
+  "downloads_last_week": 18466980,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "traverse",
+  "version": "0.6.11",
+  "downloads_last_week": 18449232,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "basic-auth",
+  "version": "2.0.1",
+  "downloads_last_week": 18398670,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "aws-sign2",
+  "version": "0.7.0",
+  "downloads_last_week": 18365832,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@babel/plugin-syntax-dynamic-import",
+  "version": "7.8.3",
+  "downloads_last_week": 18328691,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mri",
+  "version": "1.2.0",
+  "downloads_last_week": 18321295,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "gzip-size",
+  "version": "7.0.0",
+  "downloads_last_week": 18305472,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tsutils",
+  "version": "3.21.0",
+  "downloads_last_week": 18062977,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "adm-zip",
+  "version": "0.6.0",
+  "downloads_last_week": 17877859,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "forever-agent",
+  "version": "0.6.1",
+  "downloads_last_week": 17839298,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-hierarchy",
+  "version": "3.1.2",
+  "downloads_last_week": 17693858,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.get",
+  "version": "4.4.2",
+  "downloads_last_week": 17665031,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cookiejar",
+  "version": "2.1.4",
+  "downloads_last_week": 17600462,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "multer",
+  "version": "2.2.0",
+  "downloads_last_week": 17595377,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tiny-inflate",
+  "version": "1.0.3",
+  "downloads_last_week": 17586995,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bplist-parser",
+  "version": "0.3.2",
+  "downloads_last_week": 17525828,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "xml",
+  "version": "1.0.1",
+  "downloads_last_week": 17489195,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tunnel",
+  "version": "0.0.6",
+  "downloads_last_week": 17464103,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-utils",
+  "version": "3.0.0",
+  "downloads_last_week": 17406987,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "color-support",
+  "version": "1.1.3",
+  "downloads_last_week": 17336281,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "remove-trailing-separator",
+  "version": "1.1.0",
+  "downloads_last_week": 17299456,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "opener",
+  "version": "1.5.2",
+  "downloads_last_week": 17223651,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "registry-url",
+  "version": "7.2.0",
+  "downloads_last_week": 17197453,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "crypto-js",
+  "version": "4.2.0",
+  "downloads_last_week": 17159429,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "strict-uri-encode",
+  "version": "2.0.0",
+  "downloads_last_week": 17144318,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "raf",
+  "version": "3.4.1",
+  "downloads_last_week": 17111421,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "qrcode",
+  "version": "1.5.4",
+  "downloads_last_week": 16994591,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "trim-newlines",
+  "version": "5.0.0",
+  "downloads_last_week": 16958145,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webpack-dev-server",
+  "version": "6.0.0",
+  "downloads_last_week": 16954924,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "xdg-basedir",
+  "version": "5.1.0",
+  "downloads_last_week": 16893777,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "to-fast-properties",
+  "version": "4.0.0",
+  "downloads_last_week": 16848782,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jwt-decode",
+  "version": "4.0.0",
+  "downloads_last_week": 16847635,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-quadtree",
+  "version": "3.0.1",
+  "downloads_last_week": 16825097,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mini-css-extract-plugin",
+  "version": "2.10.2",
+  "downloads_last_week": 16823313,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "upper-case",
+  "version": "3.0.0",
+  "downloads_last_week": 16763444,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "connect-history-api-fallback",
+  "version": "2.0.0",
+  "downloads_last_week": 16726757,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "moment-timezone",
+  "version": "0.6.3",
+  "downloads_last_week": 16699520,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cssnano",
+  "version": "8.0.2",
+  "downloads_last_week": 16691923,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "katex",
+  "version": "0.18.1",
+  "downloads_last_week": 16683904,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "nodemailer",
+  "version": "9.0.3",
+  "downloads_last_week": 16640585,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "assert",
+  "version": "2.1.0",
+  "downloads_last_week": 16603235,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.flatten",
+  "version": "4.4.0",
+  "downloads_last_week": 16545787,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "expand-tilde",
+  "version": "2.0.2",
+  "downloads_last_week": 16496442,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-force",
+  "version": "3.0.0",
+  "downloads_last_week": 16447959,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "relateurl",
+  "version": "0.2.7",
+  "downloads_last_week": 16417069,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "for-in",
+  "version": "1.0.2",
+  "downloads_last_week": 16379853,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "warning",
+  "version": "4.0.3",
+  "downloads_last_week": 16341473,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "es6-promise",
+  "version": "4.2.8",
+  "downloads_last_week": 16302389,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "wide-align",
+  "version": "1.1.5",
+  "downloads_last_week": 16299283,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sass-loader",
+  "version": "17.0.0",
+  "downloads_last_week": 16260655,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "functional-red-black-tree",
+  "version": "1.0.1",
+  "downloads_last_week": 16254717,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "import-lazy",
+  "version": "4.0.0",
+  "downloads_last_week": 16139601,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "serve-index",
+  "version": "1.9.2",
+  "downloads_last_week": 15982170,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cron-parser",
+  "version": "5.6.2",
+  "downloads_last_week": 15962894,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "parse-passwd",
+  "version": "1.0.0",
+  "downloads_last_week": 15821915,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jquery",
+  "version": "4.0.0",
+  "downloads_last_week": 15814034,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "shallowequal",
+  "version": "1.1.0",
+  "downloads_last_week": 15744708,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "homedir-polyfill",
+  "version": "1.0.3",
+  "downloads_last_week": 15710431,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "connect",
+  "version": "3.7.0",
+  "downloads_last_week": 15657911,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "batch",
+  "version": "0.6.1",
+  "downloads_last_week": 15618418,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "node-emoji",
+  "version": "2.2.0",
+  "downloads_last_week": 15580929,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "console-control-strings",
+  "version": "1.1.0",
+  "downloads_last_week": 15556039,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "toml",
+  "version": "5.0.0",
+  "downloads_last_week": 15525440,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "untildify",
+  "version": "6.0.0",
+  "downloads_last_week": 15500947,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "unzipper",
+  "version": "0.12.5",
+  "downloads_last_week": 15448407,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-dsv",
+  "version": "3.0.1",
+  "downloads_last_week": 15364628,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "es6-error",
+  "version": "4.1.1",
+  "downloads_last_week": 15347144,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "csv-parse",
+  "version": "7.0.1",
+  "downloads_last_week": 15233634,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "intl-messageformat",
+  "version": "11.2.12",
+  "downloads_last_week": 15233621,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "socket.io",
+  "version": "4.8.3",
+  "downloads_last_week": 15206981,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "throttleit",
+  "version": "3.0.0",
+  "downloads_last_week": 15148062,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "supertest",
+  "version": "7.2.2",
+  "downloads_last_week": 15128820,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eventemitter2",
+  "version": "6.4.9",
+  "downloads_last_week": 15052459,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mustache",
+  "version": "4.2.0",
+  "downloads_last_week": 15019744,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "engine.io",
+  "version": "6.6.9",
+  "downloads_last_week": 15004624,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "get-stdin",
+  "version": "10.0.0",
+  "downloads_last_week": 14991021,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "shimmer",
+  "version": "1.2.1",
+  "downloads_last_week": 14984964,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "filesize",
+  "version": "11.0.22",
+  "downloads_last_week": 14977907,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "arr-diff",
+  "version": "4.0.0",
+  "downloads_last_week": 14950660,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "js-base64",
+  "version": "3.9.1",
+  "downloads_last_week": 14940180,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "type",
+  "version": "2.7.3",
+  "downloads_last_week": 14880634,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "configstore",
+  "version": "8.0.0",
+  "downloads_last_week": 14864174,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3-axis",
+  "version": "3.0.0",
+  "downloads_last_week": 14798570,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "thunky",
+  "version": "1.1.0",
+  "downloads_last_week": 14755314,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d3",
+  "version": "7.9.0",
+  "downloads_last_week": 14755266,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "upper-case-first",
+  "version": "3.0.0",
+  "downloads_last_week": 14710349,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prosemirror-model",
+  "version": "1.25.11",
+  "downloads_last_week": 14686020,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "html-webpack-plugin",
+  "version": "5.6.7",
+  "downloads_last_week": 14673242,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "split-on-first",
+  "version": "4.0.0",
+  "downloads_last_week": 14673239,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "engine.io-client",
+  "version": "6.6.6",
+  "downloads_last_week": 14665511,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.difference",
+  "version": "4.5.0",
+  "downloads_last_week": 14661878,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "socket.io-adapter",
+  "version": "2.5.8",
+  "downloads_last_week": 14632191,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sockjs",
+  "version": "0.3.24",
+  "downloads_last_week": 14631533,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "vscode-languageserver-types",
+  "version": "3.18.0",
+  "downloads_last_week": 14605131,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "has",
+  "version": "1.0.4",
+  "downloads_last_week": 14587122,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "stripe",
+  "version": "22.3.2",
+  "downloads_last_week": 14543303,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "compare-versions",
+  "version": "6.1.1",
+  "downloads_last_week": 14533208,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.isfunction",
+  "version": "3.0.9",
+  "downloads_last_week": 14485624,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "css-line-break",
+  "version": "2.1.0",
+  "downloads_last_week": 14470507,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "charenc",
+  "version": "0.0.2",
+  "downloads_last_week": 14436175,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "crypt",
+  "version": "0.0.2",
+  "downloads_last_week": 14434053,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "md5",
+  "version": "2.3.0",
+  "downloads_last_week": 14419129,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.throttle",
+  "version": "4.1.1",
+  "downloads_last_week": 14340751,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "arr-union",
+  "version": "3.1.0",
+  "downloads_last_week": 14321570,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "limiter",
+  "version": "3.0.0",
+  "downloads_last_week": 14293151,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "resolve-dir",
+  "version": "1.0.1",
+  "downloads_last_week": 14222346,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "eslint-plugin-jest",
+  "version": "29.15.4",
+  "downloads_last_week": 14210325,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "get-value",
+  "version": "4.1.0",
+  "downloads_last_week": 14171208,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sort-keys",
+  "version": "6.0.1",
+  "downloads_last_week": 14164581,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "nice-try",
+  "version": "4.0.2",
+  "downloads_last_week": 14154855,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "querystring",
+  "version": "0.2.1",
+  "downloads_last_week": 14113752,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "array-back",
+  "version": "6.2.3",
+  "downloads_last_week": 14078167,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pretty-error",
+  "version": "4.0.0",
+  "downloads_last_week": 14072587,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "html2canvas",
+  "version": "1.4.1",
+  "downloads_last_week": 14041456,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "orderedmap",
+  "version": "2.1.1",
+  "downloads_last_week": 13981037,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "arch",
+  "version": "3.0.0",
+  "downloads_last_week": 13956250,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "graphql-tag",
+  "version": "2.12.7",
+  "downloads_last_week": 13948110,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "npm-packlist",
+  "version": "11.3.0",
+  "downloads_last_week": 13849576,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bson",
+  "version": "7.3.1",
+  "downloads_last_week": 13830373,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ripemd160",
+  "version": "2.0.3",
+  "downloads_last_week": 13824700,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "plist",
+  "version": "5.0.0",
+  "downloads_last_week": 13751762,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "elliptic",
+  "version": "6.6.1",
+  "downloads_last_week": 13644108,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "isbinaryfile",
+  "version": "6.0.0",
+  "downloads_last_week": 13555158,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "minimist-options",
+  "version": "4.1.0",
+  "downloads_last_week": 13540276,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "atob",
+  "version": "2.1.2",
+  "downloads_last_week": 13535419,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-url",
+  "version": "1.2.4",
+  "downloads_last_week": 13437886,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "prr",
+  "version": "1.0.1",
+  "downloads_last_week": 13394811,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "request",
+  "version": "2.88.2",
+  "downloads_last_week": 13355088,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-property",
+  "version": "1.0.2",
+  "downloads_last_week": 13257418,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "errno",
+  "version": "1.0.0",
+  "downloads_last_week": 13237762,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "url-template",
+  "version": "3.1.1",
+  "downloads_last_week": 13175987,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "npm",
+  "version": "12.0.1",
+  "downloads_last_week": 13161309,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "utila",
+  "version": "0.5.0-dev.1",
+  "downloads_last_week": 13131683,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "generate-function",
+  "version": "2.3.1",
+  "downloads_last_week": 13118278,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "slugify",
+  "version": "1.6.9",
+  "downloads_last_week": 13103546,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mongodb",
+  "version": "7.5.0",
+  "downloads_last_week": 13101882,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "oauth-sign",
+  "version": "0.9.0",
+  "downloads_last_week": 13077656,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "resize-observer-polyfill",
+  "version": "1.5.1",
+  "downloads_last_week": 13056380,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.groupby",
+  "version": "4.6.0",
+  "downloads_last_week": 13029426,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mocha",
+  "version": "11.7.6",
+  "downloads_last_week": 12972988,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "stream-buffers",
+  "version": "3.0.3",
+  "downloads_last_week": 12952225,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "vue",
+  "version": "3.5.40",
+  "downloads_last_week": 12938691,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "chart.js",
+  "version": "4.5.1",
+  "downloads_last_week": 12933797,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "create-hash",
+  "version": "1.2.0",
+  "downloads_last_week": 12900616,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ramda",
+  "version": "0.32.0",
+  "downloads_last_week": 12873269,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fbjs",
+  "version": "3.0.5",
+  "downloads_last_week": 12843238,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "decamelize-keys",
+  "version": "2.0.1",
+  "downloads_last_week": 12834980,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "html-tags",
+  "version": "5.1.0",
+  "downloads_last_week": 12785703,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "json-stable-stringify",
+  "version": "1.3.0",
+  "downloads_last_week": 12712710,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "googleapis-common",
+  "version": "8.0.2",
+  "downloads_last_week": 12710720,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "call-me-maybe",
+  "version": "1.0.2",
+  "downloads_last_week": 12706364,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "har-validator",
+  "version": "5.1.5",
+  "downloads_last_week": 12667767,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "del",
+  "version": "8.0.1",
+  "downloads_last_week": 12663302,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "q",
+  "version": "1.5.1",
+  "downloads_last_week": 12613829,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "camelize",
+  "version": "1.0.1",
+  "downloads_last_week": 12607190,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "portfinder",
+  "version": "1.0.38",
+  "downloads_last_week": 12551338,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pkg-up",
+  "version": "5.0.0",
+  "downloads_last_week": 12534421,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tiny-warning",
+  "version": "1.0.3",
+  "downloads_last_week": 12503664,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "assign-symbols",
+  "version": "2.0.2",
+  "downloads_last_week": 12492206,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "regexp-tree",
+  "version": "0.1.27",
+  "downloads_last_week": 12482187,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "typical",
+  "version": "7.3.0",
+  "downloads_last_week": 12479464,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ts-loader",
+  "version": "9.6.2",
+  "downloads_last_week": 12475348,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "mysql2",
+  "version": "3.23.1",
+  "downloads_last_week": 12469028,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "dataloader",
+  "version": "2.2.3",
+  "downloads_last_week": 12380471,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "source-map-resolve",
+  "version": "0.6.0",
+  "downloads_last_week": 12350554,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "helmet",
+  "version": "8.3.0",
+  "downloads_last_week": 12319046,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "d",
+  "version": "1.0.2",
+  "downloads_last_week": 12318619,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tinycolor2",
+  "version": "1.6.0",
+  "downloads_last_week": 12307832,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "next-tick",
+  "version": "1.1.0",
+  "downloads_last_week": 12298679,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pinkie",
+  "version": "2.0.4",
+  "downloads_last_week": 12271216,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "tsscmp",
+  "version": "1.0.6",
+  "downloads_last_week": 12253496,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "buffers",
+  "version": "0.1.1",
+  "downloads_last_week": 12245113,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pinkie-promise",
+  "version": "2.0.1",
+  "downloads_last_week": 12238929,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "papaparse",
+  "version": "5.5.4",
+  "downloads_last_week": 12236066,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fstream",
+  "version": "1.0.12",
+  "downloads_last_week": 12212502,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "jsonify",
+  "version": "0.0.1",
+  "downloads_last_week": 12206748,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "chainsaw",
+  "version": "0.1.0",
+  "downloads_last_week": 12204047,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@emotion/styled",
+  "version": "11.14.1",
+  "downloads_last_week": 12180851,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "nodemon",
+  "version": "3.1.14",
+  "downloads_last_week": 12132333,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "es6-symbol",
+  "version": "3.1.4",
+  "downloads_last_week": 12089528,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "binary",
+  "version": "0.3.0",
+  "downloads_last_week": 12080690,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "@nestjs/common",
+  "version": "11.1.28",
+  "downloads_last_week": 12053300,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "morgan",
+  "version": "1.11.0",
+  "downloads_last_week": 12031442,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "address",
+  "version": "2.0.3",
+  "downloads_last_week": 12025001,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "css-to-react-native",
+  "version": "3.2.0",
+  "downloads_last_week": 12010196,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "needle",
+  "version": "3.5.0",
+  "downloads_last_week": 11989792,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "es5-ext",
+  "version": "0.10.64",
+  "downloads_last_week": 11987750,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "copy-webpack-plugin",
+  "version": "14.0.0",
+  "downloads_last_week": 11922061,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "cipher-base",
+  "version": "1.0.7",
+  "downloads_last_week": 11905628,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "har-schema",
+  "version": "2.0.0",
+  "downloads_last_week": 11892667,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "pumpify",
+  "version": "2.0.1",
+  "downloads_last_week": 11828060,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "confusing-browser-globals",
+  "version": "1.0.11",
+  "downloads_last_week": 11790735,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "touch",
+  "version": "3.1.1",
+  "downloads_last_week": 11757848,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sourcemap-codec",
+  "version": "1.4.8",
+  "downloads_last_week": 11734258,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "JSONStream",
+  "version": "1.3.5",
+  "downloads_last_week": 11674006,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "es6-iterator",
+  "version": "2.0.3",
+  "downloads_last_week": 11650087,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "yup",
+  "version": "1.7.1",
+  "downloads_last_week": 11631450,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "socket.io-client",
+  "version": "4.8.3",
+  "downloads_last_week": 11628214,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "three",
+  "version": "0.185.1",
+  "downloads_last_week": 11584130,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "findup-sync",
+  "version": "5.0.0",
+  "downloads_last_week": 11581713,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webpack-bundle-analyzer",
+  "version": "5.3.1",
+  "downloads_last_week": 11532405,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.snakecase",
+  "version": "4.1.1",
+  "downloads_last_week": 11519505,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-path-cwd",
+  "version": "4.0.1",
+  "downloads_last_week": 11517765,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fast-csv",
+  "version": "5.0.7",
+  "downloads_last_week": 11517594,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "split",
+  "version": "1.0.1",
+  "downloads_last_week": 11506670,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "md5.js",
+  "version": "1.3.5",
+  "downloads_last_week": 11453561,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "toposort",
+  "version": "2.0.2",
+  "downloads_last_week": 11439670,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "package-json",
+  "version": "10.0.1",
+  "downloads_last_week": 11431403,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "is-nan",
+  "version": "1.3.2",
+  "downloads_last_week": 11393509,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "html-to-text",
+  "version": "10.0.0",
+  "downloads_last_week": 11380433,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "import-from",
+  "version": "4.0.0",
+  "downloads_last_week": 11350788,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "ip-regex",
+  "version": "5.0.0",
+  "downloads_last_week": 11304882,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "create-hmac",
+  "version": "1.1.7",
+  "downloads_last_week": 11238196,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "react-dropzone",
+  "version": "19.1.1",
+  "downloads_last_week": 11209025,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "webpack-cli",
+  "version": "7.2.1",
+  "downloads_last_week": 11164445,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "lodash.mergewith",
+  "version": "4.6.2",
+  "downloads_last_week": 11137237,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-root",
+  "version": "0.1.1",
+  "downloads_last_week": 11092451,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "path-root-regex",
+  "version": "0.1.2",
+  "downloads_last_week": 11078274,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sinon",
+  "version": "22.0.0",
+  "downloads_last_week": 11069874,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bcryptjs",
+  "version": "3.0.3",
+  "downloads_last_week": 10990436,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "regenerator-transform",
+  "version": "0.15.2",
+  "downloads_last_week": 10928361,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fuse.js",
+  "version": "7.5.0",
+  "downloads_last_week": 10904413,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "redis",
+  "version": "6.1.0",
+  "downloads_last_week": 10901070,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "hasha",
+  "version": "7.0.0",
+  "downloads_last_week": 10880794,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "simple-git",
+  "version": "3.36.0",
+  "downloads_last_week": 10789129,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "crypto-browserify",
+  "version": "3.12.1",
+  "downloads_last_week": 10787901,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "file-loader",
+  "version": "6.2.0",
+  "downloads_last_week": 10758593,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "bottleneck",
+  "version": "2.19.5",
+  "downloads_last_week": 10711932,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "xlsx",
+  "version": "0.18.5",
+  "downloads_last_week": 10637530,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "event-emitter",
+  "version": "0.3.5",
+  "downloads_last_week": 10604199,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "sqlstring",
+  "version": "2.3.3",
+  "downloads_last_week": 10466861,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "class-transformer",
+  "version": "0.5.1",
+  "downloads_last_week": 10448050,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "history",
+  "version": "5.3.0",
+  "downloads_last_week": 10438369,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fastify-plugin",
+  "version": "6.0.0",
+  "downloads_last_week": 10424081,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "puppeteer",
+  "version": "25.3.0",
+  "downloads_last_week": 10422380,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "copy-to-clipboard",
+  "version": "4.0.2",
+  "downloads_last_week": 10414339,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "filenamify",
+  "version": "7.0.2",
+  "downloads_last_week": 10375017,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "styled-components",
+  "version": "6.4.4",
+  "downloads_last_week": 10368863,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "hyphenate-style-name",
+  "version": "1.1.0",
+  "downloads_last_week": 10356510,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "fbjs-css-vars",
+  "version": "1.0.2",
+  "downloads_last_week": 10317191,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "less",
+  "version": "4.7.0",
+  "downloads_last_week": 10314614,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "async-limiter",
+  "version": "2.0.0",
+  "downloads_last_week": 10226719,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "v8-compile-cache",
+  "version": "2.4.0",
+  "downloads_last_week": 10136256,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "get-func-name",
+  "version": "3.0.0",
+  "downloads_last_week": 10125360,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "builtins",
+  "version": "5.1.0",
+  "downloads_last_week": 10112960,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ },
+ {
+  "name": "toggle-selection",
+  "version": "2.1.0",
+  "downloads_last_week": 10060553,
+  "list": "top1000",
+  "resolved_date": "2026-07-19"
+ }
+]
