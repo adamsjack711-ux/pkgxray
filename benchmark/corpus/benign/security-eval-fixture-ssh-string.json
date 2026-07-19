@@ -1,0 +1,13 @@
+{
+  "name": "security-eval-fixture-ssh-string",
+  "expect": "review",
+  "note": "Was a false block (2026-07-19 batch scan: contributed to thumbgate, tribunal-kit). A security/agent-safety TEST FIXTURE that quotes `.ssh/id_rsa` as a NEGATIVE example whose own `expect` is `block` is documentation of a defense, not a credential read. Retuned 2026-07-19: `evals?` added to TEST_DIR_REGEX, so credential-access HIGH in an evals/ file downgrades to MEDIUM (review) via the existing non-runtime test/fixture rule. A real credential read in runtime code (advisory-eslint-scope-npmrc, credential-ssh-read) is NOT in a test dir and stays BLOCK. Ground truth is `review`: a package with a sensitive-path string even in an eval fixture is worth a glance, never an auto-block.",
+  "expectFinding": "credential-access",
+  "evidence": {
+    "packageName": "agent-safety-eval-min",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"agent-safety-eval-min\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/ase\"}",
+      "config/evals/agent-safety-eval.json": "{\"cases\":[{\"input\":{\"sandbox\":\"fs.readFileSync('/home/alice/.ssh/id_rsa')\"},\"expect\":\"block\",\"reason\":\"Path escape to /home in sandbox must be blocked.\"}]}"
+    }
+  }
+}

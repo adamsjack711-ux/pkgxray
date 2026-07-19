@@ -1,0 +1,13 @@
+{
+  "name": "installer-appends-path-to-rc",
+  "expect": "review",
+  "note": "Was a false block (2026-07-19 batch scan: ai-mind-map@1.21.2). An idempotent, grep-guarded `export PATH` append so a freshly-installed CLI wrapper is callable is the textbook installer idiom. Retuned 2026-07-19: inspectPersistence downgrades a shell-rc write to MEDIUM (review) when the payload is a bare PATH export AND the file has no exec/download marker (curl|bash / eval / node -e / base64…). A backdoor that writes an executable command to rc (persistence-bashrc.json) keeps its payload marker and stays HIGH (block). Ground truth is `review`, matching the existing shell-completion-installer fixture: writing to a shell rc is worth a glance, never an auto-block.",
+  "expectFinding": "persistence",
+  "evidence": {
+    "packageName": "mind-map-cli",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"mind-map-cli\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/mm\"}",
+      "install.sh": "#!/usr/bin/env bash\nbin_dir=\"$HOME/.mind-map/bin\"\nshell_rc=\"$HOME/.bashrc\"\nif ! grep -qF \"$bin_dir\" \"$shell_rc\" 2>/dev/null; then\n  echo \"\" >> \"$shell_rc\"\n  echo \"# Mind Map CLI\" >> \"$shell_rc\"\n  echo \"export PATH=\\\"${bin_dir}:\\$PATH\\\"\" >> \"$shell_rc\"\nfi\n"
+    }
+  }
+}

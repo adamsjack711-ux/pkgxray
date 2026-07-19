@@ -1,0 +1,14 @@
+{
+  "name": "foreground-child-watchdog",
+  "expect": "safe",
+  "knownFalsePositive": true,
+  "note": "FALSE POSITIVE from the 2026-07-19 MCP scan (xmcp@0.6.13). The `foreground-child` zombie-reaper pattern spawns `node -e <static watchdog>` that kills the child if the parent dies on SIGHUP — a fixed, inlined script with no attacker input, used by many CLIs. pkgxray reads the spawned `node -e` as a silent stage-2 executor. RETUNE DEFERRED (code-execution is a core detector; exempting the foreground-child watchdog needs a signature match on the static watchdog body, done per-case). Remove knownFalsePositive once code-execution recognizes the foreground-child pattern.",
+  "expectFinding": "code-execution",
+  "evidence": {
+    "packageName": "fg-child-min",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"fg-child-min\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/fc\"}",
+      "spawn-process.js": "// Based on https://www.npmjs.com/package/foreground-child\nconst {spawn}=require('child_process');\nfunction watch(child){const watchdogCode=`process.on('SIGHUP',()=>process.kill(${child.pid},'SIGHUP'));`;return spawn(process.execPath,['-e',watchdogCode,String(child.pid)],{stdio:'ignore'});}\nmodule.exports=watch;\n"
+    }
+  }
+}

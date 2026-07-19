@@ -1,7 +1,8 @@
 {
   "name": "curl-pipe-shell",
   "expect": "block",
-  "note": "curl|sh install vector (ground-truth malicious); pkgxray routes a bare curl|sh to an unknown host to review — an intentional under-flag shown by the benchmark",
+  "knownUnderflag": true,
+  "note": "curl|sh install vector (ground-truth malicious); pkgxray routes a bare curl|sh to an unknown host to review — an intentional, audited under-flag (knownUnderflag) by the download-then-execute severity policy, exempt from the recall gate",
   "evidence": {
     "packageName": "quick-setup",
     "sourceFiles": {

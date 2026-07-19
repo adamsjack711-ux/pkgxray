@@ -1,8 +1,9 @@
 {
   "name": "node-ipc-peacenotwar-geobomb",
   "expect": "block",
+  "knownUnderflag": true,
   "expectFinding": "logic-bomb",
-  "note": "modeled on node-ipc/peacenotwar (2022): geolocates the host and overwrites files when it matches a targeted country — a geo-gated destructive op",
+  "note": "modeled on node-ipc/peacenotwar (2022): geolocates the host and overwrites files when it matches a targeted country — a geo-gated destructive op. knownUnderflag: pkgxray routes geo/locale-gated destruction to REVIEW by policy (see severity policy), so this lands on review, not block — an audited, documented under-flag exempt from the recall gate. Note the LIVE node-ipc@11.0.0 blocks (via OSV known-vulnerability); only this minimized reconstruction under-flags.",
   "evidence": {
     "packageName": "node-ipc",
     "sourceFiles": {

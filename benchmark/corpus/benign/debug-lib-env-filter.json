@@ -1,0 +1,14 @@
+{
+  "name": "debug-lib-env-filter",
+  "expect": "safe",
+  "knownFalsePositive": true,
+  "note": "FALSE POSITIVE from the 2026-07-19 MCP scan (contributed to @launchdarkly/mcp-server@0.6.2). The ubiquitous `debug` npm library selects DEBUG_*/`^debug_` env vars (Object.keys(process.env).filter) to configure logging; paired with a normal outbound API call (a Speakeasy-generated SDK hitting its own documented endpoint with a user token), pkgxray reads this as bulk-env-harvest + exfil. It is not: no secret is placed in the request. RETUNE DEFERRED (network-exfil-or-loader is a core malware detector; narrowing needs an allow-list for the `debug` env-filter shape + own-API destinations, done per-case). Remove knownFalsePositive once network-exfil-or-loader distinguishes the debug env-filter from an env harvest.",
+  "expectFinding": "network-exfil-or-loader",
+  "evidence": {
+    "packageName": "debug-env-min",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"debug-env-min\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/de\"}",
+      "index.js": "const inspectOpts=Object.keys(process.env).filter(k=>/^debug_/i.test(k)).reduce((o,k)=>{o[k.slice(6)]=process.env[k];return o},{});\nasync function api(token){return fetch('https://app.example.com/api/flags',{headers:{authorization:token}});}\nmodule.exports={inspectOpts,api};\n"
+    }
+  }
+}
