@@ -39,6 +39,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css?v=scan8" />
+    <link rel="stylesheet" href="./stats/stats.css?v=cal1" />
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
@@ -246,6 +247,39 @@
             <cite>2026 State of the Software Supply Chain</cite>
             and OSS Malware Index; MCP posture from Anthropic’s Dec&nbsp;2025
             update and public registry audits.
+          </p>
+        </div>
+      </section>
+
+      <!-- 2b. Calibration — real numbers, right under the npm threat stats -->
+      <section class="section calibration-band" id="calibration" aria-labelledby="cal-title">
+        <div class="section-inner">
+          <p class="section-eyebrow">Calibration · scanned 2026-07-19</p>
+          <h2 id="cal-title">So how often does it call it right?</h2>
+          <p class="section-lead">
+            We ran the scanner over 1,301 published packages — code only, no
+            execution — read every block by hand, and measured recall against a
+            known-malware corpus.
+          </p>
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-value">1,301</div>
+              <div class="stat-label">packages scanned</div>
+              <div class="stat-sub">published npm + MCP, one static pass</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">0.1%</div>
+              <div class="stat-label">false blocks, top 1,000</div>
+              <div class="stat-sub">1 of the 1,000 most-downloaded</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">90.0%</div>
+              <div class="stat-label">known-malware catch rate</div>
+              <div class="stat-sub">18 of 20 blocked · 0 passed as safe</div>
+            </div>
+          </div>
+          <p class="stats-links">
+            <a href="/stats">Full calibration &amp; methodology →</a>
           </p>
         </div>
       </section>
