@@ -70,8 +70,12 @@ prompt-injection payload aimed at the agent reading them.
 
 It is intentionally conservative: verdicts come from deterministic heuristics
 (no LLM in the verdict path, so injected text can't steer them), only
-citable evidence is reported, and the zero-false-block calibration is
-[regression-gated in CI](docs/benchmark.md).
+citable evidence is reported, and the **zero-heuristic-false-block calibration
+on the top-1000 most-downloaded packages** is
+[regression-gated in CI](docs/benchmark.md). That claim is scoped to the
+most-installed set — it is *not* a claim of zero false blocks on every package;
+the newer MCP/agent-tooling ecosystem is over-blocked and being reconciled
+per-case ([details](docs/benchmark.md#scope-of-the-claim-read-this-first)).
 
 ## What it catches
 
@@ -238,8 +242,9 @@ Details: [docs/architecture.md](docs/architecture.md) ·
 - **Local static analysis: ~25 ms** — a full guard of `express` is ~1.3–1.5 s
   cold-cache, almost all network round-trips (Apple M1, Node 26)
 - **Known-vulnerable packages block at the OSV pre-check**, before download
-- **Calibration** (precision, recall, the 0-false-block gate) is measured by a
-  committed [benchmark corpus](benchmark/) that fails CI when it regresses
+- **Calibration** (precision, recall, the 0-heuristic-false-block gate on the
+  top-1000 most-downloaded — [scope](docs/benchmark.md#scope-of-the-claim-read-this-first))
+  is measured by a committed [benchmark corpus](benchmark/) that fails CI when it regresses
 
 Full numbers: [docs/reference.md#performance](docs/reference.md#performance) ·
 methodology: [docs/benchmark.md](docs/benchmark.md)

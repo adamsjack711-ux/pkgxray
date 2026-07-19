@@ -1,7 +1,43 @@
 # At-scale validation — top-1000 npm packages
 
 The [calibration benchmark](../benchmark/) proves the detection engine on a
-curated corpus of labelled fixtures. This harness proves the **"0 false blocks"**
+curated corpus of labelled fixtures. This harness proves the **"0 heuristic
+false blocks on the top-1000 most-downloaded packages"** claim at scale, against
+real packages nobody wrote as a test. Scope of the claim: [docs/benchmark.md](../docs/benchmark.md#scope-of-the-claim-read-this-first).
+
+## 2026-07-19 revalidation (current)
+
+The earlier run below ranked by **depended-upon count** from a fixed
+[2019-ish gist](https://gist.github.com/anvaka/8e8fa57c7ee1350e3491). A fresh run
+ranked the top-1000 by **real last-week download counts** (npmrank pool →
+`api.npmjs.org/downloads`) as of 2026-07-19:
+
+| metric | result |
+|---|---|
+| packages scanned | 1000 |
+| **heuristic false blocks** | **0** (after the retune below) |
+| correct known-CVE blocks | 3 — `elliptic@6.6.1`, `request@2.88.2`, `xlsx@0.18.5` |
+| review / safe / scan-error | 661 / 334 / 1 |
+
+**One false block was surfaced and fixed.** `registry-url@7.2.0` (100M+
+downloads/wk) blocked on `credential-access` — it reads `.npmrc` **only** to
+parse the `registry` URL, with no `_authToken` reference and no network egress.
+Root cause of the miss: this package was **not in the depended-upon list** the
+earlier validation used, so the `.npmrc` heuristic (which predates that run) was
+never exercised against it. Fix: an `.npmrc` read with no auth-field reference
+and no network sink is now `INFO`, not a block; `registry-url` is a committed
+benign fixture (`benchmark/corpus/benign/npmrc-read-for-registry-url.json`) so
+the gate covers it. **Lesson: rank the validation list by the metric the claim
+is about (downloads), and refresh it — a stale list hides real false blocks.**
+
+The full per-package results for this run live in the batch-scan workspace
+(`~/pkgxray-scan/results/top1000/`) with the calibration writeup at
+`~/pkgxray-scan/reports/calibration.md`.
+
+## Earlier run (2026-07-11, depended-upon snapshot — history)
+
+The [calibration benchmark](../benchmark/) proves the detection engine on a
+curated corpus of labelled fixtures. This harness proves the false-block
 claim at scale, against real packages nobody wrote as a test: it runs
 `pkgxray guard` over the 1,000 most-depended-upon npm packages and reports how
 many get wrongly blocked.
