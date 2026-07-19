@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pkgxray calibration — 2026-07-19</title>
+    <meta name="description" content="Aggregate calibration of pkgxray: 1,301 packages scanned, 0.1% false blocks on the top 1,000, 90.0% known-malware catch rate. Run 2026-07-19." />
+    <meta name="theme-color" content="#1c1510" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://pkgxray.pages.dev/stats/2026-07-19" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../styles.css?v=scan8" />
+    <link rel="stylesheet" href="./stats.css?v=cal1" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <header class="nav is-solid">
+      <a class="nav-brand" href="/" aria-label="pkgxray home">
+        <span class="nav-mark" aria-hidden="true"></span>
+        pkg<span class="xray">xray</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/stats">Calibration</a>
+        <a href="/stats/methodology">Methodology</a>
+        <a class="nav-github" href="https://github.com/adamsjack711-ux/pkgxray" rel="noopener noreferrer">GitHub</a>
+      </nav>
+    </header>
+    <main id="top">
+      <section class="section stats-hero">
+        <div class="section-inner">
+          <p class="section-eyebrow">Calibration · latest run</p>
+          <h1 class="stats-title">How well does pkgxray call it?</h1>
+          <p class="section-lead">
+            An at-scale, code-only static scan of published packages, measured
+            against a committed known-malware corpus. Four numbers, adjudicated
+            by hand, reproducible from the inputs below.
+          </p>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-value">1,301</div>
+              <div class="stat-label">packages scanned</div>
+              <div class="stat-sub">published npm + MCP packages, one static pass</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">0.1%</div>
+              <div class="stat-label">false blocks, top 1,000</div>
+              <div class="stat-sub">1 of the 1,000 most-downloaded packages</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">90.0%</div>
+              <div class="stat-label">known-malware catch rate</div>
+              <div class="stat-sub">18 of 20 corpus samples blocked outright</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">2026-07-19</div>
+              <div class="stat-label">run date</div>
+              <div class="stat-sub">pkgxray 1.0.3 · build 250a3b3</div>
+            </div>
+          </div>
+
+          <p class="stats-links">
+            <a href="/stats/methodology">Methodology &amp; how to reproduce →</a>
+            <span class="dot-sep">·</span>
+            <a href="./2026-07-19.json">Raw JSON</a>
+            <span class="dot-sep">·</span>
+            <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">Target lists</a>
+          </p>
+
+          <p class="stats-note">Aggregate calibration of a one-time at-scale static scan. Catch rate is measured against the committed reconstructed known-malware corpus (npm removes live malware, so live recall is untestable). The one top-1000 false block is the as-measured figure that drove the retune; the full scan was not re-run on the fixed engine. See methodology.</p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-inner">
+          <h2>Corrections</h2>
+          <p class="section-lead">
+            Published runs are immutable. If a number is wrong we publish a new
+            dated run and note it here — we never silently edit a number in place.
+            Contest a figure at
+            <a href="https://github.com/adamsjack711-ux/pkgxray/issues (label: calibration)" rel="noopener noreferrer">the tracker</a>.
+          </p>
+          <p class="corrections-none">No corrections to date.</p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-inner">
+          <h2>Run history</h2>
+          <p class="section-lead">Every published run stays up at a stable URL.</p>
+          <p class="fineprint">This is the first published run.</p>
+          <p class="fineprint">
+            Pinned version: this page is the <code>2026-07-19</code> snapshot at
+            <code>pkgxray 1.0.3 · 250a3b3</code>.
+            <a href="/stats">Latest run →</a>
+          </p>
+        </div>
+      </section>
+        </main>
+    <footer class="footer">
+      <span>pkg<span class="xray">xray</span></span>
+      <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+    </footer>
+  </body>
+</html>

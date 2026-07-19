@@ -1,0 +1,177 @@
+/* pkgxray calibration pages — builds on ../styles.css (:root tokens) */
+
+.section-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--xray-dim);
+  margin: 0 0 0.75rem;
+}
+
+.stats-hero {
+  border-top: none;
+  background:
+    linear-gradient(180deg, rgba(110, 231, 160, 0.06), transparent 60%),
+    var(--bg);
+}
+
+.stats-title {
+  margin: 0 0 0.85rem;
+  font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+/* ——— stat cards ——— */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 2.25rem 0 1.75rem;
+}
+
+.stat-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 1.4rem 1.3rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--xray);
+  opacity: 0.7;
+}
+
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: clamp(1.9rem, 4vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ok-warm);
+  letter-spacing: -0.02em;
+}
+
+.stat-label {
+  margin-top: 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.stat-sub {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ——— links + notes ——— */
+
+.stats-links {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem;
+}
+
+.stats-links .dot-sep {
+  color: var(--line);
+  margin: 0 0.6rem;
+}
+
+.stats-note {
+  max-width: 62ch;
+  font-size: 0.92rem;
+  color: var(--muted);
+  border-left: 2px solid var(--line-soft);
+  padding-left: 1rem;
+  margin: 0;
+}
+
+/* ——— corrections + history ——— */
+
+.corrections-none {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.corrections-log,
+.run-history {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+}
+
+.corrections-log li,
+.run-history li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* ——— prose (methodology) ——— */
+
+.prose h2 {
+  margin: 2.2rem 0 0.6rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.prose h2.coherence {
+  color: var(--warn);
+}
+
+.prose p {
+  margin: 0 0 0.9rem;
+  color: var(--text);
+}
+
+.prose ul {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+  color: var(--text);
+}
+
+.prose li {
+  margin: 0.35rem 0;
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+
+.code-block {
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  margin: 0 0 1rem;
+}
+
+.code-block code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--xray);
+}
