@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pkgxray — Analyze packages before you install them</title>
+    <meta
+      name="description"
+      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. Never executes untrusted code."
+    />
+    <meta name="theme-color" content="#1c1510" />
+    <link rel="canonical" href="https://pkgxray.pages.dev/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://pkgxray.pages.dev/" />
+    <meta property="og:site_name" content="pkgxray" />
+    <meta property="og:title" content="pkgxray — Analyze packages before you install them" />
+    <meta
+      property="og:description"
+      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. Never executes untrusted code."
+    />
+    <meta property="og:image" content="https://pkgxray.pages.dev/assets/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="pkgxray blocking a trojaned package: dataAccess grade F and a HIGH credential-access finding citing wallet-read and exfiltration code"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="pkgxray — Analyze packages before you install them" />
+    <meta
+      name="twitter:description"
+      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. Never executes untrusted code."
+    />
+    <meta name="twitter:image" content="https://pkgxray.pages.dev/assets/og.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=scan8" />
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="nav-brand" href="#top" aria-label="pkgxray home">
+        <span class="nav-mark" aria-hidden="true"></span>
+        pkg<span class="xray">xray</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#why">Why</a>
+        <a href="#scan">Try it</a>
+        <a href="#verdicts">Verdicts</a>
+        <a href="#install">Install</a>
+        <a
+          class="nav-github"
+          href="https://github.com/adamsjack711-ux/pkgxray"
+          rel="noopener noreferrer"
+          >GitHub</a
+        >
+      </nav>
+    </header>
+
+    <main id="top">
+      <!-- 1. Hero: brand + one line + one support + CTA + dominant visual -->
+      <section class="hero" aria-labelledby="hero-brand">
+        <div class="hero-atmosphere" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <h1 id="hero-brand" class="brand">
+            pkg<span class="xray">xray</span>
+          </h1>
+          <p class="headline">Analyze packages before you install them.</p>
+          <p class="support">
+            Zero-dependency · runs locally · never executes untrusted code
+          </p>
+          <div class="cta-row">
+            <button
+              type="button"
+              class="btn btn-primary"
+              data-copy="npx pkgxray guard npm:express@4.21.0"
+              aria-label="Copy install command"
+            >
+              <code>npx pkgxray guard npm:express@4.21.0</code>
+              <span class="btn-hint" data-copy-label>Copy</span>
+            </button>
+            <a class="btn btn-ghost" href="#scan">Try the scan</a>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="scan-stage" id="heroStage">
+            <svg
+              class="pkg-cube"
+              viewBox="0 0 280 280"
+              xmlns="http://www.w3.org/2000/svg"
+              role="img"
+              aria-label="Package cube with an x-ray beam scanning back and forth"
+            >
+              <defs>
+                <linearGradient id="beamGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#6ee7a0" stop-opacity="0" />
+                  <stop offset="0.65" stop-color="#6ee7a0" stop-opacity="0.18" />
+                  <stop offset="1" stop-color="#9af5c0" stop-opacity="0.55" />
+                </linearGradient>
+                <clipPath id="cubeClip">
+                  <path d="M140 36 L220 82 L220 178 L140 224 L60 178 L60 82 Z" />
+                </clipPath>
+              </defs>
+              <g class="cube-shell" stroke="#4a3826" stroke-width="1.6" fill="none">
+                <path d="M140 36 L220 82 L140 128 L60 82 Z" fill="#2a1f16" />
+                <path d="M60 82 L140 128 L140 224 L60 178 Z" fill="#1a140f" />
+                <path d="M140 128 L220 82 L220 178 L140 224 Z" fill="#221911" />
+                <polygon
+                  points="93.9,62.5 106.1,55.5 186.1,101.5 173.9,108.5"
+                  fill="#3a2c1f"
+                  opacity="0.9"
+                />
+              </g>
+              <g clip-path="url(#cubeClip)">
+                <g class="innards" stroke="#6ee7a0" fill="none" opacity="0.75">
+                  <path
+                    stroke-dasharray="3 3"
+                    d="M140 92 L176 113 L140 134 L104 113 Z"
+                  />
+                  <path d="M104 113 L104 153 L140 174 L140 134 Z" />
+                  <path d="M176 113 L176 153 L140 174" />
+                  <path d="M140 174 L140 196" />
+                  <path d="M140 186 L128 186 L128 200" />
+                  <circle cx="128" cy="200" r="2" fill="#6ee7a0" stroke="none" />
+                  <circle
+                    class="finding-dot"
+                    cx="164"
+                    cy="148"
+                    r="4"
+                    fill="#c76b3f"
+                    stroke="none"
+                  />
+                </g>
+                <g class="beam-scanner">
+                  <rect
+                    class="xray-band"
+                    x="60"
+                    y="20"
+                    width="52"
+                    height="230"
+                    fill="#0d1a12"
+                    opacity="0.92"
+                  />
+                  <rect
+                    class="beam-fill"
+                    x="60"
+                    y="20"
+                    width="52"
+                    height="230"
+                    fill="url(#beamGrad)"
+                  />
+                  <line
+                    class="beam-edge"
+                    x1="112"
+                    y1="24"
+                    x2="112"
+                    y2="246"
+                    stroke="#6ee7a0"
+                    stroke-width="2"
+                    opacity="0.85"
+                  />
+                </g>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Why it matters — Sonatype / MCP numbers -->
+      <section class="section why-section" id="why" aria-labelledby="why-title">
+        <div class="section-inner">
+          <h2 id="why-title">npm is where the malware is.</h2>
+          <p class="section-lead">
+            Agents install packages and connect to MCP servers at machine speed.
+            The registry they pull from is under industrial-scale attack.
+          </p>
+
+          <div class="why-board" data-why-board>
+            <div class="why-tabs" role="tablist" aria-label="Supply-chain facts">
+              <button
+                type="button"
+                class="why-tab is-active"
+                role="tab"
+                aria-selected="true"
+                aria-controls="why-panel"
+                data-why="scale"
+              >
+                Scale
+              </button>
+              <button
+                type="button"
+                class="why-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="why-panel"
+                data-why="malware"
+              >
+                Malware
+              </button>
+              <button
+                type="button"
+                class="why-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="why-panel"
+                data-why="blast"
+              >
+                Blast radius
+              </button>
+              <button
+                type="button"
+                class="why-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="why-panel"
+                data-why="mcp"
+              >
+                MCP
+              </button>
+            </div>
+
+            <div
+              class="why-panel"
+              id="why-panel"
+              role="tabpanel"
+              data-why-panel
+            >
+              <!-- filled by app.js -->
+            </div>
+          </div>
+
+          <p class="why-bridge">
+            CVE scanners find known bugs.
+            <strong>pkgxray asks what the code does</strong> — before a single
+            line runs on your machine.
+          </p>
+          <p class="why-sources">
+            Figures from Sonatype’s
+            <cite>2026 State of the Software Supply Chain</cite>
+            and OSS Malware Index; MCP posture from Anthropic’s Dec&nbsp;2025
+            update and public registry audits.
+          </p>
+        </div>
+      </section>
+
+      <!-- 3. Interactive scan demo -->
+      <section class="section scan-section" id="scan" aria-labelledby="scan-title">
+        <div class="section-inner">
+          <h2 id="scan-title">Watch a verdict form</h2>
+          <p class="section-lead">
+            Pick a package. This demo replays real fixtures — it does not download
+            or execute anything in your browser.
+          </p>
+
+          <div class="scan-demo" data-scan-demo>
+            <div class="scan-picks" role="tablist" aria-label="Demo packages">
+              <button
+                type="button"
+                class="pick is-active"
+                role="tab"
+                aria-selected="true"
+                data-demo="express"
+              >
+                <span class="pick-name">express@4.21.0</span>
+                <span class="pick-tag tag-safe">SAFE</span>
+              </button>
+              <button
+                type="button"
+                class="pick"
+                role="tab"
+                aria-selected="false"
+                data-demo="trojan"
+              >
+                <span class="pick-name">trojan sample</span>
+                <span class="pick-tag tag-block">BLOCK</span>
+              </button>
+              <button
+                type="button"
+                class="pick"
+                role="tab"
+                aria-selected="false"
+                data-demo="review"
+              >
+                <span class="pick-name">install scripts</span>
+                <span class="pick-tag tag-review">REVIEW</span>
+              </button>
+            </div>
+
+            <div class="term" aria-live="polite">
+              <div class="term-chrome">
+                <span></span><span></span><span></span>
+                <code class="term-title">pkgxray guard</code>
+              </div>
+              <pre class="term-body" data-term-body></pre>
+            </div>
+
+            <aside class="verdict-panel" data-verdict-panel hidden>
+              <div class="verdict-head">
+                <span class="verdict-pill" data-verdict-pill></span>
+                <span class="verdict-grade" data-verdict-grade></span>
+              </div>
+              <p class="verdict-summary" data-verdict-summary></p>
+              <ul class="findings" data-findings></ul>
+            </aside>
+          </div>
+
+          <figure class="recording">
+            <video
+              class="recording-video"
+              src="./assets/hero.mp4?v=scan8"
+              poster="./assets/poster.jpg"
+              width="1280"
+              height="900"
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="metadata"
+              aria-label="Real recording: pkgxray guard clearing express with SAFE A+, then blocking a trojaned sample"
+            ></video>
+            <figcaption>
+              Real terminal recording — express clears, then a corpus trojan is blocked with cited evidence.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- 4. Verdicts -->
+      <section class="section" id="verdicts" aria-labelledby="verdicts-title">
+        <div class="section-inner">
+          <h2 id="verdicts-title">Three verdicts. Stable exit codes.</h2>
+          <p class="section-lead">
+            Click a verdict to see what it means for install, CI, and agents.
+          </p>
+
+          <div class="verdict-board" data-verdict-board>
+            <button type="button" class="verdict-card is-active" data-v="safe">
+              <span class="dot ok"></span> SAFE
+              <span class="exit">exit 0</span>
+            </button>
+            <button type="button" class="verdict-card" data-v="review">
+              <span class="dot warn"></span> REVIEW
+              <span class="exit">exit 3</span>
+            </button>
+            <button type="button" class="verdict-card" data-v="block">
+              <span class="dot danger"></span> BLOCK
+              <span class="exit">exit 2</span>
+            </button>
+          </div>
+          <div class="verdict-detail" data-verdict-detail>
+            <p>
+              No high- or medium-risk indicators. Default policy promotes out of
+              quarantine. Install.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Surfaces as a flow -->
+      <section class="section surfaces" aria-labelledby="surfaces-title">
+        <div class="section-inner">
+          <h2 id="surfaces-title">One engine. Every surface.</h2>
+          <p class="section-lead">
+            CLI, MCP, install hook, and CI all share the same policy and the same
+            evidence rules.
+          </p>
+          <ol class="flow" data-flow>
+            <li class="flow-step is-lit" data-step="0">
+              <strong>guard</strong>
+              <span>Quarantine a package, audit bytes, promote only if allowed</span>
+            </li>
+            <li class="flow-step" data-step="1">
+              <strong>mcp</strong>
+              <span
+                >Vet a server before connect — most public MCP servers ship with
+                static keys and little verification</span
+              >
+            </li>
+            <li class="flow-step" data-step="2">
+              <strong>hookshot</strong>
+              <span>Intercept agent <code>npm install</code> with cited deny</span>
+            </li>
+            <li class="flow-step" data-step="3">
+              <strong>recheck</strong>
+              <span>Catch trojaned updates against a stored baseline</span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 6. Install -->
+      <section class="section install-section" id="install" aria-labelledby="install-title">
+        <div class="section-inner narrow">
+          <h2 id="install-title">Install</h2>
+          <p class="section-lead">Lowest friction first contact — no global install required.</p>
+
+          <div class="install-blocks">
+            <button
+              type="button"
+              class="install-line"
+              data-copy="npx pkgxray guard npm:express@4.21.0"
+            >
+              <span class="prompt">$</span>
+              <code>npx pkgxray guard npm:express@4.21.0</code>
+              <span class="btn-hint" data-copy-label>Copy</span>
+            </button>
+            <button
+              type="button"
+              class="install-line"
+              data-copy="npm install -g pkgxray"
+            >
+              <span class="prompt">$</span>
+              <code>npm install -g pkgxray</code>
+              <span class="btn-hint" data-copy-label>Copy</span>
+            </button>
+            <button
+              type="button"
+              class="install-line"
+              data-copy='{ "mcpServers": { "pkgxray": { "command": "pkgxray-mcp" } } }'
+            >
+              <span class="prompt">mcp</span>
+              <code>pkgxray-mcp</code>
+              <span class="btn-hint" data-copy-label>Copy config</span>
+            </button>
+          </div>
+
+          <p class="fineprint">
+            MIT · Node ≥ 18 ·
+            <a href="https://github.com/adamsjack711-ux/pkgxray" rel="noopener noreferrer"
+              >Source</a
+            >
+            ·
+            <a
+              href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/README.md"
+              rel="noopener noreferrer"
+              >Docs</a
+            >
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>pkg<span class="xray">xray</span></span>
+      <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+    </footer>
+
+    <script src="./app.js?v=scan8" type="module"></script>
+  </body>
+</html>
