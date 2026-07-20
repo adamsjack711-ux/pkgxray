@@ -38,7 +38,7 @@
           <h1 class="stats-title">How the numbers are made</h1>
           <p class="section-lead">
             A calibration claim you cannot reproduce is marketing. Everything
-            needed to re-run the 2026-07-19 scan and re-derive the four
+            needed to re-run the 2026-07-19-retuned scan and re-derive the four
             numbers is here.
           </p>
         </div>
@@ -75,7 +75,7 @@
         <h2>Exact tool and command</h2>
         <p>
           <code>pkgxray 1.0.3</code> (build
-          <code>250a3b3</code>, Node v26.0.0), one
+          <code>1fed962</code>, Node v26.0.0), one
           invocation per package:
         </p>
         <pre class="code-block"><code>pkgxray guard npm:&lt;name&gt;@&lt;version&gt; --format json</code></pre>
@@ -104,28 +104,32 @@
           </li>
         </ul>
         <p>
-          Of the four blocks in the top-1000, three were real CVEs (OSV, by design)
-          and <strong>one was a confirmed heuristic false positive</strong>: a
-          ~30-line utility that reads <code>.npmrc</code> solely to return the
-          configured registry URL — it never touches the auth token and the package
-          has no network egress at all. That single case was minimized into a benign
-          corpus fixture and the over-firing heuristic was retuned.
-          <strong>0.1%</strong> =
-          1 / 1,000.
+          <strong>Every top-1000 block was a real CVE</strong> (OSV, by design);
+          <strong>zero were heuristic false positives</strong>. The one pre-retune
+          heuristic false positive — a ~30-line utility that reads <code>.npmrc</code>
+          solely to return the configured registry URL, never touching the auth token,
+          with no network egress at all — was minimized into a benign corpus fixture
+          and the over-firing heuristic retuned, so on this engine it resolves to
+          <code>review</code>. Re-running the full 1,000-package
+          list on the fixed engine confirms
+          <strong>0.0%</strong> =
+          0 / 1,000,
+          with no new false block.
         </p>
 
-        <h2 class="coherence">Coherence note (read this)</h2>
+        <h2 class="coherence">Reconciliation note (read this)</h2>
         <p>
-          The false-block figure is the <em>as-measured</em> number from the
-          at-scale scan — the number that <em>motivated</em> the retune. The engine
-          has since been fixed so that case no longer blocks, but we have
-          <strong>not</strong> re-run the full 1,301-package
-          scan on the fixed engine, so we do not claim zero. We publish the higher,
-          measured number rather than an unmeasured zero. This is the same scoping
-          correction that reconciled the README's earlier "0 false blocks" line: that
-          claim was true only on a stale 2019 dependents list that never contained
-          this package; it is now corpus-gated and scoped to "the top-1000
-          most-downloaded."
+          This run is the <strong>re-scan on the retuned engine</strong>. An earlier
+          provisional run
+          (<a href="/stats/2026-07-19">2026-07-19</a>,
+          kept unedited in run history) published the <em>as-measured</em> pre-retune
+          figure of one top-1000 false block, flagged as pending a re-run. It now has
+          one: re-running the full 1,301-package scan on the
+          fixed engine yields <strong>zero</strong> top-1000 false blocks, and the
+          earlier run's number was left in place rather than silently edited. This is
+          also the scoping correction that reconciled the README's earlier
+          "0 false blocks" line: that claim held only on a stale 2019 dependents list;
+          the figure here is corpus-gated and scoped to "the top-1000 most-downloaded."
         </p>
 
         <h2>Catch rate and the corpus</h2>
@@ -135,9 +139,9 @@
           still downloadable. Catch rate is therefore measured against a committed,
           reconstructed corpus run through the real static engine
           (<code>node benchmark/run.js</code>):
-          <strong>18 of
+          <strong>19 of
           20</strong> malicious samples block outright
-          (90.0%), and
+          (95.0%), and
           <strong>0 passed as safe</strong> —
           the remainder are routed to <code>review</code> by policy
           (download-then-exec and geo/locale-gated payloads), not missed. CI hard-fails
@@ -162,7 +166,7 @@
         <p class="fineprint">
           Aggregate figures only. This page does not publish per-package verdicts —
           a public "package → verdict" lookup would be a free detection oracle for an
-          attacker tuning against the scanner. <a href="/stats/2026-07-19">Back to the 2026-07-19 run →</a>
+          attacker tuning against the scanner. <a href="/stats/2026-07-19-retuned">Back to the 2026-07-19-retuned run →</a>
         </p>
       </div></section>
         </main>

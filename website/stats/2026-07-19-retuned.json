@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-07-19-retuned",
+  "runDate": "2026-07-19",
+  "pkgxray": {
+    "version": "1.0.3",
+    "build": "retuned",
+    "commit": "1fed962",
+    "node": "v26.0.0",
+    "command": "pkgxray guard npm:<name>@<version> --format json"
+  },
+  "headline": {
+    "packagesScanned": 1301,
+    "topThousandFalseBlocks": {
+      "count": 0,
+      "of": 1000,
+      "rate": 0.0
+    },
+    "knownMalwareCatchRate": {
+      "blocked": 19,
+      "of": 20,
+      "rate": 0.95,
+      "passedAsSafe": 0
+    }
+  },
+  "methodologyUrl": "/stats/methodology",
+  "reproInputs": "https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19",
+  "corrections": {
+    "contact": "https://github.com/adamsjack711-ux/pkgxray/issues (label: calibration)",
+    "policy": "Versioned runs are immutable. A corrected number is published as a new dated run; corrections are listed on the page, never silently edited.",
+    "log": [
+      {
+        "date": "2026-07-19",
+        "what": "Re-scan of the 2026-07-19 calibration campaign on the retuned engine. Supersedes the provisional 2026-07-19 run, whose top-1000 false-block figure was the as-measured pre-retune number pending a re-run. The full 1,000-package scan was re-run on the fixed engine: the single pre-retune heuristic false block now resolves to review, with no new false block, giving 0 / 1,000."
+      }
+    ]
+  },
+  "notes": "Aggregate calibration of the 2026-07-19 at-scale static scan, RE-RUN on the retuned engine. Catch rate is measured against the committed reconstructed known-malware corpus (npm removes live malware, so live recall is untestable). The top-1000 false-block figure is the coherently re-measured count on the fixed engine \u2014 see methodology."
+}
