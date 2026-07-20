@@ -2,15 +2,23 @@
 
 Marketing site for [pkgxray](https://github.com/adamsjack711-ux/pkgxray),
 served from this directory of the main repo. Live at
-<https://pkgxray.pages.dev>.
+<https://pkgxray.ca/>.
 
 Warm CLI palette (stik-latte) with mint x-ray accents. Static files only — no build step.
 
 ## Local preview
 
 ```bash
+cd website
 python3 -m http.server 8799
 # open http://localhost:8799
+```
+
+Run the zero-dependency site checks (including regenerating calibration pages)
+from the repository root:
+
+```bash
+npm run validate:website
 ```
 
 ## Deploy
@@ -23,6 +31,11 @@ npx wrangler pages deploy . --project-name=pkgxray
 
 Custom domains attach under the project's **Custom domains** tab in the
 Cloudflare dashboard.
+
+The `_headers` CSP keeps scripts and media local and allows only Google Fonts'
+stylesheet and font origins. `img-src data:` is required by the small SVG noise
+texture embedded in `styles.css`; no inline script, `unsafe-inline`, or
+`unsafe-eval` exception is used.
 
 ## Contents
 

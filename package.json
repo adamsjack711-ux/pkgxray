@@ -21,6 +21,7 @@
     "build:browser": "node ./scripts/build-browser-extension.js",
     "test": "node --test",
     "benchmark": "node ./benchmark/run.js",
+    "validate:website": "node ./website/stats/build.mjs && node ./website/validate.mjs",
     "audit:evidence": "node ./bin/audit.js",
     "mcp": "node ./bin/mcp-server.js",
     "cache": "node ./bin/pkgxray-cache.js",
@@ -30,7 +31,7 @@
     "type": "git",
     "url": "git+https://github.com/adamsjack711-ux/pkgxray.git"
   },
-  "homepage": "https://github.com/adamsjack711-ux/pkgxray#readme",
+  "homepage": "https://pkgxray.ca/",
   "bugs": {
     "url": "https://github.com/adamsjack711-ux/pkgxray/issues"
   },

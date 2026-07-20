@@ -124,17 +124,25 @@ const WHY_PANELS = {
     copy:
       "That’s ~21.8 billion downloads every day — over 80% of all traffic across npm, PyPI, Maven Central, and NuGet combined. The registry holds 5.59 million packages and shipped 11.18 million new releases last year.",
     note: "Sonatype 2026 State of the Software Supply Chain. npm downloads up 65% year over year.",
+    source: {
+      label: "Sonatype: software infrastructure growth",
+      url: "https://www.sonatype.com/state-of-the-software-supply-chain/2026/software-infrastructure-growth",
+    },
   },
   malware: {
-    value: 455000,
+    value: 454648,
     decimals: 0,
     unit: "",
-    label: "malicious packages published in 2025",
+    label: "new malicious open-source packages identified in 2025",
     danger: true,
     copy:
-      "Over 99% of open-source malware targets npm. Q4 2025 was the inflection: 394,877 malicious packages in one quarter — a new malicious npm package roughly every 20 seconds.",
+      "Sonatype identified 394,877 malicious packages in Q4 2025; 99.8% of that quarter’s malware originated from npm. The count includes repository abuse and potentially unwanted applications as well as credential theft, loaders, and backdoors.",
     note:
-      "Honest framing: spam campaigns inflate the tail (IndonesianFoods alone published 100,000+ packages). A defensible softer read: 2025’s malware volume equals ~8% of npm’s entire 5.6M-package catalog. Cumulative since 2019: 1.23M+, up 75% YoY.",
+      "The 2025 total is Sonatype’s identified-package count, not an estimate of the chance that a downloaded package is malicious. Automated spam campaigns inflate the tail.",
+    source: {
+      label: "Infosecurity: Sonatype’s 2025 identified-package count",
+      url: "https://www.infosecurity-magazine.com/news/454000-malicious-open-source/",
+    },
   },
   blast: {
     value: 2.6,
@@ -144,7 +152,11 @@ const WHY_PANELS = {
     danger: true,
     copy:
       "Eighteen packages compromised in one maintainer-account incident. A freshly trojaned package often has no CVE yet — which is exactly the gap pkgxray is built for.",
-    note: "Blast radius from the September 2025 chalk/debug compromise (Sonatype OSS Malware Index).",
+    note: "The 2.6 billion figure is combined weekly downloads, not confirmed affected installs.",
+    source: {
+      label: "Palo Alto Networks: September 2025 incident analysis",
+      url: "https://www.paloaltonetworks.com/blog/cloud-security/npm-supply-chain-attack/",
+    },
   },
   mcp: {
     value: 20,
@@ -153,8 +165,12 @@ const WHY_PANELS = {
     label: "of ClawHub skills found malicious",
     danger: true,
     copy:
-      "Anthropic counted 10,000+ active public MCP servers; unofficial directories index 17k–56k+ with minimal verification. Only 8.5% use OAuth, 53% rely on long-lived API keys, and 15.4% have no public source. Seven MCP CVEs landed in the past year — worst a CVSS 9.6 RCE.",
-    note: "Why pkgxray ships mcp + mcp-proxy: agents connect before anyone reads the tool manifest.",
+      "This figure is about malicious ClawHub skills, not MCP servers. Separately, an MCP security review found only 8.5% of servers use OAuth, 53% rely on long-lived static secrets, and 15.4% of official-registry entries have no source repository.",
+    note: "The cited report distinguishes malicious marketplace listings, weak authentication, opaque servers, and known vulnerabilities.",
+    source: {
+      label: "NimbleBrain: State of MCP Security 2026",
+      url: "https://nimblebrain.ai/blog/state-of-mcp-security-2026/",
+    },
   },
 };
 
@@ -200,12 +216,16 @@ function renderWhyPanel(key) {
   const noteHtml = panel.note
     ? `<p class="why-note">${panel.note}</p>`
     : "";
+  const sourceHtml = panel.source
+    ? `<p class="why-note"><a href="${panel.source.url}" rel="noopener noreferrer">Source: ${panel.source.label}</a></p>`
+    : "";
 
   panelEl.innerHTML = `
     <p class="why-stat${panel.danger ? " is-danger" : ""}"><span data-why-value>0</span>${unitHtml}</p>
     <p class="why-label">${panel.label}</p>
     <p class="why-copy">${panel.copy}</p>
     ${noteHtml}
+    ${sourceHtml}
   `;
 
   const valueEl = panelEl.querySelector("[data-why-value]");

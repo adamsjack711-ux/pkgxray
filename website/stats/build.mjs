@@ -23,10 +23,9 @@ import { dirname, join } from "node:path";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA = join(HERE, "data");
 
-// Canonical base is per-site: the private repo serves pkgxray.ca, the public
-// repo serves pkgxray.pages.dev. Read it from stats/site.json so re-rendering in
-// each repo bakes the correct canonical/OG URLs. Default to the pages.dev host.
-let CANON = "https://pkgxray.pages.dev";
+// Read the production origin from stats/site.json so every generated canonical
+// and social URL consistently points at the custom domain.
+let CANON = "https://pkgxray.ca";
 try {
   CANON = JSON.parse(readFileSync(join(HERE, "site.json"), "utf8")).canonicalBase || CANON;
 } catch {}
@@ -60,6 +59,16 @@ function head(title, desc, canonical) {
     <meta name="theme-color" content="#1c1510" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="${esc(canonical)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="pkgxray" />
+    <meta property="og:title" content="${esc(title)}" />
+    <meta property="og:description" content="${esc(desc)}" />
+    <meta property="og:url" content="${esc(canonical)}" />
+    <meta property="og:image" content="${esc(`${CANON}/assets/og.jpg`)}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${esc(title)}" />
+    <meta name="twitter:description" content="${esc(desc)}" />
+    <meta name="twitter:image" content="${esc(`${CANON}/assets/og.jpg`)}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -73,13 +82,13 @@ function head(title, desc, canonical) {
   <body>
     <div class="grain" aria-hidden="true"></div>
     <header class="nav is-solid">
-      <a class="nav-brand" href="/" aria-label="pkgxray home">
+      <a class="nav-brand" href="../" aria-label="pkgxray home">
         <span class="nav-mark" aria-hidden="true"></span>
         pkg<span class="xray">xray</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/stats">Calibration</a>
-        <a href="/stats/methodology">Methodology</a>
+        <a href="./">Calibration</a>
+        <a href="./methodology.html">Methodology</a>
         <a class="nav-github" href="https://github.com/adamsjack711-ux/pkgxray" rel="noopener noreferrer">GitHub</a>
       </nav>
     </header>
@@ -130,7 +139,7 @@ function renderStatsPage(run, { isLatest, allRuns }) {
   const otherRuns = allRuns.filter((r) => r.runId !== run.runId);
   const historyList = otherRuns.length
     ? `<ul class="run-history">${otherRuns
-        .map((r) => `<li><a href="/stats/${r.runId}">${r.runId}</a></li>`)
+        .map((r) => `<li><a href="./${r.runId}.html">${r.runId}</a></li>`)
         .join("")}</ul>`
     : `<p class="fineprint">This is the first published run.</p>`;
 
@@ -141,7 +150,7 @@ function renderStatsPage(run, { isLatest, allRuns }) {
         .map(
           (c) =>
             `<li><strong>${esc(c.date)}</strong> — ${esc(c.what)}${
-              c.newRun ? ` (superseded by <a href="/stats/${esc(c.newRun)}">${esc(c.newRun)}</a>)` : ""
+              c.newRun ? ` (superseded by <a href="./${esc(c.newRun)}.html">${esc(c.newRun)}</a>)` : ""
             }</li>`
         )
         .join("")}</ul>`
@@ -170,14 +179,14 @@ function renderStatsPage(run, { isLatest, allRuns }) {
                 (c) => `<div class="stat-card">
               <div class="stat-value">${esc(c.value)}</div>
               <div class="stat-label">${esc(c.label)}</div>
-              <div class="stat-sub">${esc(c.sub)}</div>
+              <div class="stat-sub">${esc(c.sub)} · <a href="./${run.runId}.json">source data</a></div>
             </div>`
               )
               .join("\n            ")}
           </div>
 
           <p class="stats-links">
-            <a href="/stats/methodology">Methodology &amp; how to reproduce →</a>
+            <a href="./methodology.html">Methodology &amp; how to reproduce →</a>
             <span class="dot-sep">·</span>
             <a href="./${run.runId}.json">Raw JSON</a>
             <span class="dot-sep">·</span>
@@ -209,7 +218,7 @@ function renderStatsPage(run, { isLatest, allRuns }) {
           <p class="fineprint">
             Pinned version: this page is the <code>${run.runId}</code> snapshot at
             <code>pkgxray ${esc(run.pkgxray.version)} · ${esc(run.pkgxray.commit)}</code>.
-            <a href="/stats">Latest run →</a>
+            <a href="./">Latest run →</a>
           </p>
         </div>
       </section>
@@ -330,7 +339,7 @@ function renderMethodology(run) {
           ? `<p>
           This run is the <strong>re-scan on the retuned engine</strong>. An earlier
           provisional run
-          (<a href="/stats/${esc(run.runId.replace(/-retuned$/, ""))}">${esc(run.runDate)}</a>,
+          (<a href="./${esc(run.runId.replace(/-retuned$/, ""))}.html">${esc(run.runDate)}</a>,
           kept unedited in run history) published the <em>as-measured</em> pre-retune
           figure of one top-1000 false block, flagged as pending a re-run. It now has
           one: re-running the full ${commas(h.packagesScanned)}-package scan on the
@@ -387,7 +396,7 @@ function renderMethodology(run) {
         <p class="fineprint">
           Aggregate figures only. This page does not publish per-package verdicts —
           a public "package → verdict" lookup would be a free detection oracle for an
-          attacker tuning against the scanner. <a href="/stats/${run.runId}">Back to the ${run.runId} run →</a>
+          attacker tuning against the scanner. <a href="./${run.runId}.html">Back to the ${run.runId} run →</a>
         </p>
       </div></section>
     ` +
