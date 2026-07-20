@@ -97,6 +97,15 @@ const SHELL_COMPLETION_CONTEXT_REGEX =
 // stage) still BLOCKs.
 const PATH_EXPORT_WRITE_REGEX =
   /(?:export\s+PATH|set\s+-[gx]+\s+PATH|PATH)\s*[:=][^\n]*\$?(?:\{?PATH\}?|PATH)/i;
+// Alias/function installer idiom: an rc write whose payload is shell alias /
+// function DEFINITIONS (`alias mt="mytool"`, `mytool() { ... }`), typically
+// wrapped in `# --- <tool> (begin/end) ---` banner markers so re-runs stay
+// idempotent. Like the PATH-export append this is a documented convenience
+// installer — a shortcut the user opted into, not silent execution — so it is
+// reviewed, not blocked. Gated (below) on the ABSENCE of any exec/download
+// payload, so an alias hiding `curl|bash` / `node -e` still BLOCKs.
+const ALIAS_INSTALL_WRITE_REGEX =
+  /\balias\s+[A-Za-z_][\w-]*\s*=|\b(?:function\s+[A-Za-z_][\w-]*|[A-Za-z_][\w-]*\s*\(\s*\))\s*\{/;
 const RC_PAYLOAD_MARKER_REGEX =
   /\bcurl\b|\bwget\b|\beval\b|\bbase64\b|\bnode\s+-e\b|\bpython3?\s+-c\b|\|\s*(?:sh|bash|zsh)\b|source\s*<\(|<\(\s*curl|\bnc\b|\/dev\/tcp\//i;
 
@@ -217,6 +226,20 @@ const NODE_EVAL_SPAWN_REGEXES = [NODE_EVAL_SPAWN_ARRAY_REGEX, NODE_EVAL_SPAWN_ST
 // hidden stage-2 shape.
 const HIDDEN_SPAWN_OPTS_REGEX =
   /windowsHide\s*:\s*true|detached\s*:\s*true|stdio\s*:\s*(?:["']ignore["']|\[[^\]]*["']ignore["'])/i;
+// The `foreground-child` zombie-reaper idiom (used by npm, node-gyp, tap and many
+// CLIs) spawns `node -e <watchdog>` whose inline script does nothing but forward
+// a signal / reap the child when the parent dies:
+//   process.on('SIGHUP', () => process.kill(child.pid, 'SIGHUP'))
+// The watchdog body is fixed, carries no attacker input, and — unlike a stage-2
+// loader — pulls nothing in and sends nothing out. We recognise it so the common
+// pattern (even with the expected stdio:'ignore') does not read as a hidden
+// executor. The exemption is gated on the ABSENCE of any payload-delivery
+// primitive (network / eval / dynamic require / decode / fs write / download),
+// so a "watchdog" that also fetches or evals still BLOCKs.
+const NODE_REAPER_WATCHDOG_REGEX =
+  /process\.on\s*\(\s*['"`]SIG[A-Z]+['"`][\s\S]{0,80}?process\.kill\s*\(/;
+const NODE_EXEC_STAGE2_PAYLOAD_REGEX =
+  /\bfetch\s*\(|\baxios\b|\bhttps?\.(?:request|get|post)|\beval\s*\(|new\s+Function\s*\(|\bimport\s*\(\s*[^'"`)]|\brequire\s*\(\s*[^'"`)]|\bbase64\b|\batob\s*\(|\bdecode|writeFileSync?\s*\(|\bfs\.(?:write|append)|\/dev\/tcp\/|\bcurl\b|\bwget\b/i;
 
 // --- On-chain command channel (EtherHiding) --------------------------------
 // EtherHiding hides the real payload in blockchain state and ships only a
@@ -1985,7 +2008,17 @@ function looksLikeCredentialRead(content, lower, targetIndex) {
 // escalation when co-located with a sink.
 const BULK_ENV_REGEXES = [
   /JSON\.stringify\s*\(\s*process\.env\b/i,
-  /Object\.(?:entries|keys|values)\s*\(\s*process\.env\b/i,
+  // Object.keys/entries/values(process.env) is a whole-env read UNLESS it is
+  // immediately narrowed by a key-predicate `.filter(...)` — the ubiquitous
+  // `debug` logger idiom `Object.keys(process.env).filter(k => /^debug_/i.test(k))`,
+  // which selects a prefix-scoped subset to configure logging, not the whole
+  // environment. The negative lookahead requires the filter predicate to call a
+  // key-TEST method (`.test`/`.startsWith`/`.includes`/`.match`/`.indexOf`/`.search`),
+  // which is what a real prefix filter does. It deliberately does NOT accept a
+  // bare `/regex/` (a URL path segment like `//host/path` would match that and
+  // wrongly exempt a harvester), so `.filter(()=>true)` followed by a fetch still
+  // reads as a bulk harvest and BLOCKs.
+  /Object\.(?:entries|keys|values)\s*\(\s*process\.env\s*\)(?!\s*\.filter\s*\([\s\S]{0,60}?\.(?:test|startsWith|includes|match|indexOf|search)\s*\()/i,
   /for\s*\(\s*(?:const|let|var)\s+\w+\s+(?:of|in)\s+(?:Object\.(?:keys|values|entries)\s*\(\s*)?process\.env\b/i,
   /json\.dumps\s*\(\s*(?:dict\s*\(\s*)?os\.environ\b/i,
   /dict\s*\(\s*os\.environ\b/i,
@@ -2442,7 +2475,14 @@ function inspectPersistence(file, content, lower, findings) {
   // node -e stage that keeps it HIGH).
   const pathInstallContext =
     PATH_EXPORT_WRITE_REGEX.test(content) && !RC_PAYLOAD_MARKER_REGEX.test(content);
-  const softContext = completionContext || pathInstallContext;
+  // Same rule for an alias/function installer: appends shell shortcuts (commonly
+  // in a `# --- <tool> (begin/end) ---` banner block) with no exec/download
+  // payload in the file — the documented convenience installer, reviewed not
+  // blocked. A backdoor that also carries a curl|bash / node -e stage keeps the
+  // payload marker and stays HIGH.
+  const aliasInstallContext =
+    ALIAS_INSTALL_WRITE_REGEX.test(content) && !RC_PAYLOAD_MARKER_REGEX.test(content);
+  const softContext = completionContext || pathInstallContext || aliasInstallContext;
   for (let i = 0; i < SHELL_RC_PERSISTENCE_COUNT; i++) {
     const match = PERSISTENCE_REGEXES[i].exec(content);
     if (match) {
@@ -2455,7 +2495,9 @@ function inspectPersistence(file, content, lower, findings) {
           ? "References a shell rc file from a shell tab-completion installer (the documented `<tool> completion >> ~/.bashrc` idiom) — a user-invoked convenience rather than silent persistence, so surfaced for review rather than blocked."
           : pathInstallContext
             ? "Appends a `export PATH=<dir>:$PATH` line to a shell rc so a freshly-installed CLI wrapper is callable, with no exec/download payload in the file — the textbook installer idiom, surfaced for review rather than blocked."
-            : "Writes to a shell rc (.bashrc/.zshrc/.profile) persistence location."
+            : aliasInstallContext
+              ? "Appends shell alias/function definitions (typically inside a `# --- <tool> (begin/end) ---` banner block) to a shell rc so a freshly-installed CLI has its convenience shortcuts, with no exec/download payload in the file — the documented installer idiom, surfaced for review rather than blocked."
+              : "Writes to a shell rc (.bashrc/.zshrc/.profile) persistence location."
       });
       return;
     }
@@ -3101,6 +3143,10 @@ function inspectHiddenNodeExec(file, content, findings, normalized, normChanged)
   const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
   const spawnRe = NODE_EVAL_SPAWN_REGEXES.find(testBoth);
   if (!spawnRe) return;
+  // foreground-child zombie-reaper: the inline `-e` script only forwards a signal
+  // / reaps the child, and the file carries no stage-2 payload primitive. That is
+  // the ubiquitous watchdog idiom, not an executor — do not flag.
+  if (testBoth(NODE_REAPER_WATCHDOG_REGEX) && !testBoth(NODE_EXEC_STAGE2_PAYLOAD_REGEX)) return;
   const hidden = testBoth(HIDDEN_SPAWN_OPTS_REGEX);
   const idx = (spawnRe.exec(content) || { index: 0 }).index;
   if (hidden) {

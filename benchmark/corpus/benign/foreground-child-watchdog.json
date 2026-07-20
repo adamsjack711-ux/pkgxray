@@ -1,8 +1,7 @@
 {
   "name": "foreground-child-watchdog",
   "expect": "safe",
-  "knownFalsePositive": true,
-  "note": "FALSE POSITIVE from the 2026-07-19 MCP scan (xmcp@0.6.13). The `foreground-child` zombie-reaper pattern spawns `node -e <static watchdog>` that kills the child if the parent dies on SIGHUP — a fixed, inlined script with no attacker input, used by many CLIs. pkgxray reads the spawned `node -e` as a silent stage-2 executor. RETUNE DEFERRED (code-execution is a core detector; exempting the foreground-child watchdog needs a signature match on the static watchdog body, done per-case). Remove knownFalsePositive once code-execution recognizes the foreground-child pattern.",
+  "note": "Originally a FALSE POSITIVE from the 2026-07-19 MCP scan (xmcp@0.6.13): the `foreground-child` zombie-reaper spawns `node -e <static watchdog>` that kills the child if the parent dies on SIGHUP — a fixed, inlined script with no attacker input, used by many CLIs. pkgxray read the spawned `node -e` (with the expected stdio:'ignore') as a silent stage-2 executor. FIXED: inspectHiddenNodeExec now recognises the reaper signature (NODE_REAPER_WATCHDOG_REGEX: process.on(SIG*) -> process.kill) and exempts it when the file carries no stage-2 payload primitive (NODE_EXEC_STAGE2_PAYLOAD_REGEX: network/eval/dynamic-require/decode/fs-write/download). The child_process.spawn is still surfaced at INFO (code-execution) but no longer gates. A watchdog that also fetches or evals still BLOCKs.",
   "expectFinding": "code-execution",
   "evidence": {
     "packageName": "fg-child-min",
