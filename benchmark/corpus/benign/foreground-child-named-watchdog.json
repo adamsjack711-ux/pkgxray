@@ -1,0 +1,13 @@
+{
+  "name": "foreground-child-named-watchdog",
+  "expect": "safe",
+  "note": "The REAL foreground-child watchdog shape (from xmcp@0.6.13, verbatim from npm `foreground-child`), which the minimized foreground-child-watchdog fixture did NOT cover: the handler is a NAMED function (`bark`) whose `process.kill(pid,'SIGKILL')` sits INSIDE the definition, and `process.on('SIGHUP', bark)` registers it AFTERWARD — so process.kill appears BEFORE process.on. The original single-proximity NODE_REAPER regex required process.on -> process.kill in order and missed this, so xmcp still blocked in the 2026-07-19 full re-scan. FIXED: the reaper signature now requires BOTH signals order-independently (NODE_REAPER_SIGNAL_REGEX + NODE_REAPER_KILL_REGEX), still gated on no stage-2 payload. child_process.spawn remains surfaced at INFO but no longer gates.",
+  "expectFinding": "code-execution",
+  "evidence": {
+    "packageName": "fg-child-named-min",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"fg-child-named-min\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/fcn\"}",
+      "spawn-process.js": "// Based on https://www.npmjs.com/package/foreground-child\nconst { spawn } = require('child_process');\nconst watchdogCode = `\nconst pid = parseInt(process.argv[1], 10)\nprocess.title = 'node (foreground-child watchdog pid=' + pid + ')'\nif (!isNaN(pid)) {\n  let barked = false\n  const interval = setInterval(() => {}, 60000)\n  const bark = () => {\n    clearInterval(interval)\n    if (barked) return\n    barked = true\n    process.removeListener('SIGHUP', bark)\n    setTimeout(() => {\n      try {\n        process.kill(pid, 'SIGKILL')\n        setTimeout(() => process.exit(), 200)\n      } catch (_) {}\n    }, 500)\n  }\n  process.on('SIGHUP', bark)\n}\n`;\nfunction watch(child) {\n  return spawn(process.execPath, ['-e', watchdogCode, String(child.pid)], { stdio: 'ignore' });\n}\nmodule.exports = watch;\n"
+    }
+  }
+}
