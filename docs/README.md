@@ -20,9 +20,13 @@ start, and a tour of the capabilities. Everything deeper lives here.
 | Doc | What it covers |
 |---|---|
 | [compatibility.md](compatibility.md) | The 1.0 compatibility contract: Stable / Experimental / opt-in surface tiers, versioning policy |
+| [project-status.md](project-status.md) | Current supported, experimental, and planned work |
+| [release.md](release.md) | Maintainer release, verification, and supported-release policy |
 | [json-schema.md](json-schema.md) | The full `--format json` schema (`schemaVersion: 1`, additive-only) |
 | [canary-threat-model.md](canary-threat-model.md) | The threat model for `pkgxray canary` — the one opt-in surface that executes code |
 | [../SECURITY.md](../SECURITY.md) | Reporting a vulnerability in pkgxray itself |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development, verdict-reporting, and pull-request guidance |
+| [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community participation standards |
 
 ## Background
 

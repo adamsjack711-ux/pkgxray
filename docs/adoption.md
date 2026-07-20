@@ -5,16 +5,18 @@ real packages so it gets exercised, stress-tested, and calibrated against
 traffic you can't manufacture. Ordered by leverage — the top items unblock the
 ones below them.
 
+Status was reviewed on 2026-07-19. Completed items link to their evidence;
+remaining items are proposals, not release commitments. See
+[project status](project-status.md) for the supported/experimental boundary.
+
 ## 1. Remove every reason not to try it (distribution)
 
 The tool is only tested if trying it is a single command.
 
-- [ ] **Publish to npm with provenance.** The README already says
-      `npm install -g pkgxray`; make that real, and publish with
-      `npm publish --provenance` so pkgxray ships an npm/SLSA attestation — a
-      security tool that can't prove its own supply chain is a hard sell. Bonus:
-      run `pkgxray guard npm:pkgxray@<version>` in release CI so it vets itself.
-- [ ] **Lead with `npx`, not install.** Every doc example should have a
+- [x] **Publish to npm with provenance.** Releases are live on npm and the
+      [release workflow](../.github/workflows/release.yml) gates provenance
+      publication on tests, calibration, and a self-guard.
+- [x] **Lead with `npx`, not install.** The README quick start uses a
       zero-install form: `npx pkgxray guard npm:left-pad@1.3.0`. No global
       install, no commitment — the lowest-friction first contact.
 - [ ] **List the MCP server in the public registries.** Submit to the
@@ -22,10 +24,11 @@ The tool is only tested if trying it is a single command.
       directories agents pull from (Smithery, mcp.so, Glama, PulseMCP,
       Cursor's directory). The one-line config is already in the README; the
       registries are where agent users actually discover servers.
-- [ ] **Ship a GitHub Action / reusable workflow.** The `recheck` cron snippet
-      exists in the README — package it as a marketplace Action
-      (`pkgxray/recheck-action@v1`) so adoption is "add one workflow file,"
-      not "read the docs and wire it up."
+- [x] **Ship a reusable GitHub workflow.** The
+      [workflow and direct-`npx` guide](integrations/github-actions.md) cover
+      pull requests, scheduled rechecks, manifests, and exact packages. A
+      Marketplace/composite action remains deferred until it offers more than
+      the zero-dependency CLI.
 - [ ] **Publish the browser extension** to the Chrome Web Store (currently
       load-unpacked only). Even an unlisted/beta channel lowers the bar from
       "clone the repo" to "click install."
@@ -34,21 +37,17 @@ The tool is only tested if trying it is a single command.
 
 Synthetic fixtures prove the engine works; real traffic proves it's calibrated.
 
-- [ ] **Run it against the npm top-N and publish the results.** Guard the top
-      1,000 (or 10,000) most-downloaded packages, publish the false-block list
-      (should be ~empty) and every `review`. This *is* the "0 false blocks"
-      claim at scale — a public, reproducible run is the single most convincing
-      artifact you can show, and every genuine false positive it turns up
-      becomes a benign benchmark fixture.
-- [ ] **Replay known-malicious corpora.** Point it at the documented npm
-      malware sets (the OpenSSF malicious-packages repo, published advisories
-      for `node-ipc`, `event-stream`, the 2024 xz-style cases) and publish the
-      catch rate. Each real sample, reduced to its smallest tripping source,
-      becomes a `corpus/malicious/` fixture — the [benchmark](../benchmark/)
-      is designed to grow exactly this way.
-- [ ] **Dogfood it in this repo's own CI** on every dependency you add, and in
-      a couple of your other projects, so it runs against packages you actually
-      pull daily.
+- [x] **Run it against the npm top-N and publish the results.** The
+      [2026-07-19 run](https://pkgxray.ca/stats/2026-07-19-retuned) covered the
+      top 1,000 most-downloaded packages and published aggregate false-block and
+      recall results with reproducibility inputs and scope caveats.
+- [x] **Replay known-malicious corpora.** The committed
+      [benchmark corpus](../benchmark/) contains reduced malicious and benign
+      fixtures and gates recall and false blocks in CI. Continue expanding it
+      from responsibly disclosed samples.
+- [x] **Dogfood it in this repo's own CI** through the reusable audit and
+      release self-guard workflows. Continue using it in other projects on
+      packages you actually pull.
 
 ## 3. Get in front of the right rooms (audience)
 
@@ -73,10 +72,11 @@ pkgxray sits at the intersection of two active communities; both are reachable.
 
 Every report should have somewhere to land and, ideally, a test it becomes.
 
-- [ ] **Issue templates for the two reports that matter:** "false block" and
-      "missed detection." Ask for the package ref (or minimal source) so a
-      maintainer can drop it straight into the benchmark corpus. This closes the
-      loop: real-world feedback → a permanent fixture → a CI gate.
+- [x] **Issue templates for incorrect verdicts and private bypass reports.**
+      The public form handles safe-to-share false positives; suspected missed
+      detections, live malware, and bypasses route to private vulnerability
+      reporting. It collects the exact package, command, version, verdict, JSON
+      output, expected result, and reproduction needed for a regression fixture.
 - [ ] **A `--report`/copy-paste evidence bundle.** Let a user turn any verdict
       into a shareable, reproducible `--format json` blob (already exists) with
       a one-line "paste this into a new issue" nudge on `review`/`block`.
@@ -90,19 +90,17 @@ Every report should have somewhere to land and, ideally, a test it becomes.
 
 ## 5. Credibility signals (do these before a big push)
 
-- [ ] Fill in `SECURITY.md` disclosure contact and response expectations.
-- [ ] A 30-second asciinema/GIF of `guard` blocking a real bad package, at the
+- [x] Fill in `SECURITY.md` disclosure contact and response expectations.
+- [x] A 30-second asciinema/GIF of `guard` blocking an inert malicious fixture, at the
       top of the README.
-- [ ] Reach a tagged `1.0.0` with the [compatibility contract](compatibility.md)
+- [x] Reach a tagged `1.0.0` with the [compatibility contract](compatibility.md)
       honored — "it's stable" is a precondition for a security team adopting it.
-- [ ] A short comparison ("how this differs from `npm audit`, Socket, Snyk")
+- [x] A short comparison ("how this differs from `npm audit` and OSV-Scanner")
       that's honest about scope: local, static, zero-dep, agent-aware — not a
       registry-scale reputation service.
 
 ---
 
-**If you do only three things:** publish to npm with provenance (1), run it
-against the npm top-N and publish the false-block list (2), and add the
-false-block / missed-detection issue templates that feed the benchmark (4).
-Those three create the credibility, the proof, and the feedback loop that make
-everything else compound.
+**Current next priorities:** finish MCP registry readiness without weakening its
+local trust boundary, exercise the integration guides against real hosts, and
+keep expanding the benign and malicious calibration corpus.

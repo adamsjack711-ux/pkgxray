@@ -345,7 +345,8 @@ methodology: [docs/benchmark.md](docs/benchmark.md)
 | [json-schema.md](docs/json-schema.md) | Full `--format json` schema |
 
 Start at the [documentation index](docs/README.md). Longer-term plans:
-[adoption playbook](docs/adoption.md) and GitHub issues.
+[project status](docs/project-status.md), [adoption playbook](docs/adoption.md),
+and GitHub issues.
 
 ## Development
 
@@ -354,6 +355,9 @@ npm test                 # zero-dep node --test suite
 npm run benchmark        # calibration corpus: precision/recall + 0-false-block gate
 npm run build:browser    # build the MV3 browser extension
 ```
+
+Contributions are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md) before opening a pull request.
 
 ## Security & license
 

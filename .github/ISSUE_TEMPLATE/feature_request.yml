@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a focused capability or integration.
+title: "feature: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What adoption, security, or workflow problem needs solving?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior and its expected CLI or API contract.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and compatibility impact
+      description: Could this execute code, weaken a gate, add network access, or change a stable output?
+    validations:
+      required: true

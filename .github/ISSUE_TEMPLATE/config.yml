@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability or scanner bypass
+    url: https://github.com/adamsjack711-ux/pkgxray/security/advisories/new
+    about: Use private vulnerability reporting for live malware, credentials, exploitable bypasses, or sensitive evidence.

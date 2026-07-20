@@ -73,6 +73,15 @@ test("documented entry points remain present in CLI help", () => {
   for (const flag of ["--file", "--format json"]) assert.match(help, new RegExp(flag));
 });
 
+test("pkgxray --version reports the package version", () => {
+  const result = spawnSync(process.execPath, [CLI, "--version"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), PACKAGE.version);
+});
+
 test("GitHub Actions documentation covers every supported manifest and package guard", () => {
   for (const target of [
     "package-lock.json",

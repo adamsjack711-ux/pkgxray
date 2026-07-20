@@ -112,8 +112,11 @@ checklist to get there:
       [validation/README.md](../validation/README.md) and
       [docs/benchmark.md](benchmark.md#scope-of-the-claim-read-this-first))*
 - [x] **Supported Node range** — the [test workflow](../.github/workflows/pkgxray-test.yml)
-      runs `node --test` across `18 · 20 · 22 · 24`, proving the `engines.node`
-      (`>=18`) floor and current lines. *(landed)*
+      runs `node --test` across `18 · 20 · 22 · 24 · 26`, proving the
+      `engines.node` (`>=18`) floor, active LTS lines, and current Node.
+      Node 18 is end-of-life upstream; production users should prefer a
+      maintained release, but removing the published floor requires an explicit
+      compatibility decision. *(landed)*
 
-Contributions that move a checkbox are the highest-leverage way to help pkgxray
-reach 1.0.
+The 1.0 checklist is complete. Current priorities and experimental surfaces are
+tracked in [project-status.md](project-status.md).

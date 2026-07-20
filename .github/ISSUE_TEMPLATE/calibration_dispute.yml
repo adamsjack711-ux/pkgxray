@@ -1,0 +1,42 @@
+name: Calibration dispute
+description: Challenge a published aggregate calibration statement with reproducible, safe-to-share calculations.
+title: "calibration: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for aggregate methodology or calculation disputes. Do not publish per-package verdicts, active malware, credentials, or a detection bypass.
+  - type: input
+    id: run
+    attributes:
+      label: Published run URL
+      placeholder: https://pkgxray.ca/stats/2026-07-19-retuned
+    validations:
+      required: true
+  - type: textarea
+    id: statement
+    attributes:
+      label: Disputed statement
+      description: Quote the exact aggregate claim or methodology step.
+    validations:
+      required: true
+  - type: textarea
+    id: calculation
+    attributes:
+      label: Reproducible calculation
+      description: Show inputs and calculations without disclosing per-package verdicts.
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Proposed correction
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Disclosure check
+      options:
+        - label: This report contains no active malware, credentials, private source, bypass details, or per-package verdict list.
+          required: true

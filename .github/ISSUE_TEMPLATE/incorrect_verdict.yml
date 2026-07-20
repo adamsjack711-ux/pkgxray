@@ -1,0 +1,84 @@
+name: Incorrect verdict
+description: Report a suspected false positive, false block, or other incorrect verdict on safe-to-share evidence.
+title: "verdict: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this public form only for evidence that is safe to disclose.
+
+        **Do not attach active malware, credentials, private source, or a working detection bypass.** Report suspected false negatives, live malware, and exploitable evasions privately through [GitHub Security Advisories](https://github.com/adamsjack711-ux/pkgxray/security/advisories/new).
+  - type: input
+    id: package
+    attributes:
+      label: Package and version
+      description: Use an exact registry reference where possible.
+      placeholder: npm:example@1.2.3
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command used
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: pkgxray version
+      description: Output of `pkgxray --version`.
+      placeholder: 1.0.3
+    validations:
+      required: true
+  - type: dropdown
+    id: verdict
+    attributes:
+      label: Verdict received
+      options:
+        - SAFE
+        - REVIEW
+        - BLOCK
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: Explain the expected verdict and why the cited behavior is benign or misclassified.
+    validations:
+      required: true
+  - type: textarea
+    id: json
+    attributes:
+      label: Redacted JSON output
+      description: Run again with `--format json`. Remove credentials, private paths, tokens, and sensitive source.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest safe reproduction and note whether network results are required.
+    validations:
+      required: true
+  - type: dropdown
+    id: live_malware
+    attributes:
+      label: Could this package contain live malware?
+      description: If yes or unsure, stop and use private vulnerability reporting instead.
+      options:
+        - "No — I have verified the shared evidence is benign and safe to publish"
+        - "Unsure — I will not submit this public issue"
+        - "Yes — I will not submit this public issue"
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public disclosure confirmation
+      options:
+        - label: I am not publicly attaching active malware, credentials, private source, or an exploitable bypass.
+          required: true
