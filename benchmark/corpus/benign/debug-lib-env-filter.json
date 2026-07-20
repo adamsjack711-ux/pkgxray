@@ -1,9 +1,8 @@
 {
   "name": "debug-lib-env-filter",
   "expect": "safe",
-  "knownFalsePositive": true,
-  "note": "FALSE POSITIVE from the 2026-07-19 MCP scan (contributed to @launchdarkly/mcp-server@0.6.2). The ubiquitous `debug` npm library selects DEBUG_*/`^debug_` env vars (Object.keys(process.env).filter) to configure logging; paired with a normal outbound API call (a Speakeasy-generated SDK hitting its own documented endpoint with a user token), pkgxray reads this as bulk-env-harvest + exfil. It is not: no secret is placed in the request. RETUNE DEFERRED (network-exfil-or-loader is a core malware detector; narrowing needs an allow-list for the `debug` env-filter shape + own-API destinations, done per-case). Remove knownFalsePositive once network-exfil-or-loader distinguishes the debug env-filter from an env harvest.",
-  "expectFinding": "network-exfil-or-loader",
+  "note": "Originally a FALSE POSITIVE from the 2026-07-19 MCP scan (contributed to @launchdarkly/mcp-server@0.6.2). The ubiquitous `debug` npm library selects DEBUG_*/`^debug_` env vars (Object.keys(process.env).filter) to configure logging; paired with a normal outbound API call (a Speakeasy-generated SDK hitting its own documented endpoint with a user token), pkgxray read this as bulk-env-harvest + exfil. It is not: no secret is placed in the request. FIXED: the bulk-env matcher now treats `Object.keys(process.env).filter(<key predicate>)` as a prefix-scoped SELECTIVE read, not a whole-env harvest (negative lookahead requiring the filter predicate to test the key), so hasBulkEnv is false and the env+network HIGH no longer fires. A real harvest (JSON.stringify(process.env), or a `.filter(()=>true)` that then sends every value) still matches and BLOCKs. The fetch remains surfaced at INFO (network-access).",
+  "expectFinding": "network-access",
   "evidence": {
     "packageName": "debug-env-min",
     "sourceFiles": {

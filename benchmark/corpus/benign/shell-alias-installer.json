@@ -1,8 +1,7 @@
 {
   "name": "shell-alias-installer",
   "expect": "review",
-  "knownFalsePositive": true,
-  "note": "FALSE POSITIVE from the 2026-07-19 MCP scan (aiwg@2026.7.13). A banner-delimited installer that appends shell ALIASES (not just `export PATH`) to a shell rc — the documented convenience installer idiom, adjacent to the shell-completion and PATH-append cases already handled. pkgxray fires persistence HIGH. RETUNE DEFERRED: the current PATH-install downgrade (see inspectPersistence) only covers `export PATH`; extending the same 'benign-if-no-exec/download-payload' rule to banner-delimited `alias`/`function` blocks is a straightforward next step, deferred so it can be reviewed on its own. Ground truth `review` (a rc write is worth a glance). Remove knownFalsePositive once inspectPersistence's soft-context covers alias installers.",
+  "note": "Originally a FALSE POSITIVE from the 2026-07-19 MCP scan (aiwg@2026.7.13): a banner-delimited installer that appends shell ALIASES (not just `export PATH`) to a shell rc — the documented convenience-installer idiom, adjacent to the shell-completion and PATH-append cases. It fired persistence HIGH. FIXED: inspectPersistence now extends the PATH-install soft-context to banner-delimited `alias`/`function` blocks (ALIAS_INSTALL_WRITE_REGEX), gated on the ABSENCE of any exec/download payload, so this downgrades HIGH->review while a backdoor that also carries a curl|bash / node -e stage still BLOCKs. Ground truth `review` (an rc write is worth a glance).",
   "expectFinding": "persistence",
   "evidence": {
     "packageName": "alias-install-min",
