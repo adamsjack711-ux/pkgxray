@@ -4,8 +4,8 @@ name: hookshot guard CI
 #
 # In this repo the module's go.mod has `replace … => ../..` so it builds inside
 # the hookshot fork. Here there is no hookshot parent, so CI drops the replace
-# and resolves the real module from the proxy — which also verifies the
-# integration compiles against the published hookshot API.
+# and resolves a reviewed upstream commit — which also verifies the integration
+# compiles against Hookshot's real API.
 
 on:
   push:
@@ -40,11 +40,10 @@ jobs:
       - name: Resolve the real hookshot module
         run: |
           # Drop both the in-fork `replace` and the placeholder `v0.0.0`
-          # require (valid only under that replace); then pull the real module.
-          # Without droprequire, `go get @latest` fails reading the bogus v0.0.0.
+          # require (valid only under that replace); then pull the pinned module.
           go mod edit -dropreplace github.com/CorridorSecurity/hookshot
           go mod edit -droprequire github.com/CorridorSecurity/hookshot
-          go get github.com/CorridorSecurity/hookshot@latest
+          go get github.com/CorridorSecurity/hookshot@73584ae0e4df38105be9f892130b4c66ea6ce04e
           go mod tidy
 
       - name: Build, vet, and test against real hookshot
@@ -73,7 +72,8 @@ jobs:
           # Compare against the published copy in hookshot. Until the upstream PR
           # that adds examples/pkgxray-guard lands, that dir won't exist — skip
           # rather than fail (the check self-activates once it's upstream).
-          git clone --depth 1 https://github.com/CorridorSecurity/hookshot.git /tmp/hookshot
+          git clone https://github.com/CorridorSecurity/hookshot.git /tmp/hookshot
+          git -C /tmp/hookshot checkout --detach 73584ae0e4df38105be9f892130b4c66ea6ce04e
           if [ ! -d /tmp/hookshot/examples/pkgxray-guard ]; then
             echo "::notice::hookshot upstream has no examples/pkgxray-guard yet — skipping drift check."
             exit 0

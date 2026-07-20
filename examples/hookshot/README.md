@@ -1,10 +1,11 @@
 # pkgxray × hookshot — guard installs before they run
 
 A [hookshot](https://github.com/CorridorSecurity/hookshot) hook binary that runs
-[pkgxray](https://github.com/adamsjack711-ux/pkgxray) supply-chain triage on any
-package an AI coding agent tries to install — **before a single line of it runs**
-— and denies the command on a `BLOCK` verdict, with pkgxray's cited evidence
-handed back to the agent.
+[pkgxray](https://github.com/adamsjack711-ux/pkgxray) supply-chain triage on
+recognized registry package-install commands before they run. It denies the
+command on a `BLOCK` verdict and hands pkgxray's cited evidence back to the
+agent. Conservative parsing has documented gaps; this is defense in depth, not
+proof that every install was intercepted.
 
 hookshot supplies the cross-agent hook surface (Claude Code, Cursor, Windsurf
 Cascade, Factory Droid, OpenAI Codex); pkgxray supplies the detection engine
@@ -103,33 +104,43 @@ The hook shells out to the **pkgxray CLI** and depends on this contract:
 - exit codes `2`=block, `3`=review, `0`=safe (used as the fallback when the JSON
   can't be parsed).
 
-This is stable as of **pkgxray ≥ 0.15.0** (≥ 0.16.0 for the MCP probe) — keep
-the CLI reasonably current.
-pkgxray has no `--version` flag today, so the hook can't probe the version at
-runtime; instead it **degrades safely**: a missing `file` just omits the path,
-and a missing/old/erroring pkgxray yields `UNKNOWN`, which is denied under
-`strict`/`balanced` (never a false allow). Set `PKGXRAY_HOOK_POLICY` accordingly.
+Use **pkgxray 1.0.3 or newer** and verify it with `pkgxray --version`. The hook
+still **degrades safely** across output drift: a missing `file` omits only the
+location, while a missing, old, or erroring pkgxray yields `UNKNOWN`, which is
+denied under `strict`/`balanced` (never a false allow). Set
+`PKGXRAY_HOOK_POLICY` deliberately.
 
 ## Install
 
 ```bash
-# 1. Build the hook binary (from inside the hookshot fork).
+# 1. Check out the reviewed Hookshot revision.
+git clone https://github.com/CorridorSecurity/hookshot.git
+cd hookshot
+git checkout --detach 73584ae0e4df38105be9f892130b4c66ea6ce04e
+
+# 2. Copy this directory into the Hookshot tree, then build it.
+mkdir -p ./examples/pkgxray-guard
+cp -R /absolute/path/to/pkgxray/examples/hookshot/. ./examples/pkgxray-guard/
 cd examples/pkgxray-guard
 go build -o pkgxray-guard .
 
-# 2. Make sure pkgxray is on PATH (or point PKGXRAY_BIN at it).
-npm install -g pkgxray        # or: export PKGXRAY_BIN=/path/to/pkgxray
+# 3. Install an exact pkgxray version for the long-lived hook process.
+npm install --global pkgxray@1.0.3
+pkgxray --version
 
-# 3. Wire it into your agent(s). Either use hookshot's installer…
-hookshot install --binary ./pkgxray-guard
-# …or copy a config from ./configs/ into your agent's settings and set the
-#    absolute path to the built binary (see configs/claude-settings.json etc.).
+# 4. From the Hookshot repository root, build its installer and merge hooks.
+cd ../..
+go build -o hookshot ./cmd/hookshot
+./hookshot install --binary "$PWD/examples/pkgxray-guard/pkgxray-guard"
 ```
 
-> This module ships a `replace github.com/CorridorSecurity/hookshot => ../..`
-> so it builds offline against the parent repo when it lives in the fork at
-> `examples/pkgxray-guard/`. Building it standalone? Drop the `replace` line and
-> `go get github.com/CorridorSecurity/hookshot@latest`.
+Review the resulting host configuration. The installer merges several adapters;
+the files under `configs/` are references for manual setup, not files to replace
+an existing host configuration wholesale.
+
+> This module's `replace github.com/CorridorSecurity/hookshot => ../..` is why
+> it must be copied into the pinned Hookshot tree before building the complete
+> binary. `go test ./pkgxrayguard/...` remains available directly in this repo.
 
 ## Configuration
 
@@ -253,6 +264,36 @@ Two workflows in this repo's [`.github/workflows/`](../../.github/workflows/):
 - **`pkgxray-audit.yml`** audits lockfiles with pkgxray and fails on a `BLOCK`.
   It is reusable; the [GitHub Actions guide](../../docs/integrations/github-actions.md)
   shows how to call it from another repository using a reviewed commit SHA.
+
+## Remove
+
+1. Remove only the commands ending in `pkgxray-guard ...` from the host's hook
+   configuration; preserve unrelated hooks.
+2. Delete the `pkgxray-guard` and local Hookshot installer binaries.
+3. If no other workflow needs it, run `npm uninstall --global pkgxray`.
+4. Restart the agent and verify a harmless shell command no longer invokes the
+   hook.
+
+## Troubleshooting
+
+- Run `pkgxray --version`; use 1.0.3 or newer.
+- Set `PKGXRAY_BIN` to an absolute executable path because GUI agents often have
+  a smaller PATH than an interactive shell.
+- Pipe a captured host event to the matching adapter command shown in
+  [Try it](#try-it), and inspect stderr without adding secrets.
+- `UNKNOWN` means the scanner did not complete. Under strict/balanced this is a
+  denial, not a false positive.
+- A REVIEW may become deny on hosts without an interactive approval response.
+- Run `go test ./pkgxrayguard/...` after changing command parsing or policy.
+
+## Security assumptions
+
+The agent must not be able to edit the hook binary, its host configuration, or
+the `PKGXRAY_*` environment supplied by the operator. The host must honor deny
+responses. `PKGXRAY_HOOK_DISABLE=1` is an explicit fail-open kill switch and
+should not be exposed to agent-controlled commands. The hook invokes registry,
+OSV, and optional GitHub/MCP network endpoints; it does not make untrusted
+package code safe to execute.
 
 ## Notes & limits
 

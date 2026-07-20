@@ -47,12 +47,12 @@ type Guard struct {
 //   - `report.summary` and `report.findings[].{severity,category,rationale,file}`
 //     (`file` drives the location shown in a deny/ask message)
 //
-// This shape is stable as of pkgxray >= 0.15.0. The hook degrades safely against
+// This shape remains available in pkgxray 1.x. The hook degrades safely against
 // drift: a missing `file` just omits the path, and if `decision` is absent it
 // falls back to the exit code — so an older or erroring pkgxray fails toward
-// UNKNOWN (denied under strict/balanced), never a false allow. pkgxray has no
-// `--version` flag today, so there is no runtime version probe; keep the CLI
-// current. See the README "Requirements" section.
+// UNKNOWN (denied under strict/balanced), never a false allow. The hook does not
+// invoke pkgxray's `--version` command at runtime; the operator verifies the
+// pinned CLI during installation. See the README "Requirements" section.
 type guardJSON struct {
 	Decision string `json:"decision"` // allow | review | block
 	Report   struct {
