@@ -1,11 +1,13 @@
 <div align="center">
 
-# pkgxray
+# pkgxray — pre-install security for npm packages, MCP servers, and AI agents
 
-**Supply-chain security for AI agents, npm packages, and Model Context Protocol (MCP) servers.**
+**pkgxray — pre-install security for npm packages, MCP servers, and AI agents.**
 
-Analyze packages *before* you install them. Zero-dependency Node, runs
-entirely on your machine, never executes untrusted code.
+Use local, zero-dependency package static analysis to inspect npm packages and
+Model Context Protocol (MCP) servers before installation or connection. pkgxray
+reports cited `SAFE`, `REVIEW`, or `BLOCK` evidence without executing package
+code during normal scans.
 
 [![npm version](https://img.shields.io/npm/v/pkgxray)](https://www.npmjs.com/package/pkgxray)
 [![tests](https://github.com/adamsjack711-ux/pkgxray/actions/workflows/pkgxray-test.yml/badge.svg)](https://github.com/adamsjack711-ux/pkgxray/actions/workflows/pkgxray-test.yml)
@@ -24,11 +26,16 @@ the 2024 `@solana/web3.js` compromise. **[▶ 60-second walkthrough](#demo)**</s
 
 ## Quick start
 
-```bash
-npm install -g pkgxray        # or zero-install: npx pkgxray …
+### 1. Scan a known-safe package without installing pkgxray
 
-pkgxray guard npm:express@4.21.0
+```bash
+npx --yes pkgxray@1.0.3 guard npm:express@4.21.0
 ```
+
+This downloads pkgxray through npm's temporary `npx` cache, stages the target
+tarball in quarantine, and performs the static and supply-chain checks. It does
+not globally install pkgxray, run `npm install`, execute lifecycle scripts, or
+execute package code.
 
 ```text
 Decision: **SAFE**
@@ -45,18 +52,49 @@ Notes:
 <sub>Real output, abridged. A `BLOCK` verdict instead lists every finding with
 the file and evidence that produced it.</sub>
 
+### 2. Read the verdict
+
 Point it at a package, get a verdict with cited evidence — before a single
 line of that package runs. `guard` stages the package in a sandboxed
 quarantine, audits the staged copy, and only promotes it when policy allows.
 It never runs `npm install`, lifecycle scripts, build steps, or package code.
 
+| Verdict | Exit | Meaning |
+|---|---:|---|
+| `SAFE` | `0` | No high- or medium-risk indicators were found; default policy permits promotion. |
+| `REVIEW` | `3` | Evidence is incomplete or a privileged capability needs human review. |
+| `BLOCK` | `2` | High-severity cited evidence requires rejection or deep investigation. |
+
+`SAFE` is not a proof that a package is harmless; static analysis cannot see a
+payload downloaded only at runtime. See the [threat model](docs/threat-model.md).
+
+### 3. See a BLOCK on the supplied inert fixture
+
+From a repository checkout:
+
+```bash
+npx --yes pkgxray@1.0.3 --file examples/onboarding-malicious.json --format markdown
+```
+
+The fixture contains inert source text that models a split-string SSH-key read
+and network exfiltration. It is never executed. The command returns `BLOCK`
+(exit `2`) and cites the matching file and evidence.
+
+### 4. Add it to your workflow
+
+- [Scan pull requests and schedule dependency rechecks](docs/reference.md#monitoring-pkgxray-recheck).
+- [Expose pkgxray's tools to an MCP-capable coding agent](docs/mcp.md#the-pkgxray-mcp-server).
+- [Evaluate the experimental Hookshot install gate](examples/hookshot/).
+
 ## Why pkgxray?
 
 AI coding assistants install packages and connect to MCP servers at machine
-speed, often without a human ever reading the code — and the registry they
-pull from is under industrial-scale attack: roughly **455,000 malicious npm
-packages were published in 2025**, one every ~20 seconds by Q4
-([Sonatype](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems)).
+speed, often without a human ever reading the code. Sonatype reported
+**454,648 newly identified malicious open-source packages across monitored
+ecosystems in 2025**. Its Q4 report counted 394,877 in that quarter and said
+99.8% of Q4 malware originated from npm
+([annual figure](https://www.infosecurity-magazine.com/news/454000-malicious-open-source/);
+[Q4 scope](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems)).
 Traditional antivirus inspects what *executes*; **pkgxray inspects what gets
 *installed***.
 
