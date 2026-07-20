@@ -1202,12 +1202,43 @@ const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
   "persistence"
 ]);
 
+// Behavioral categories downgraded when they originate from compiled BUILD
+// OUTPUT (a `dist/`/`build/` file no install hook runs). We now scan those dirs
+// (a published tarball's real code frequently lives ONLY under dist/), but a
+// behavioral HIGH there is far lower-confidence than in hand-written source, for
+// a STRUCTURAL reason: a bundler physically concatenates many unrelated modules
+// into one file, so the co-location heuristics that carry these categories
+// ("bulk env harvest AND an outbound call in the same file", hidden `node -e`
+// spawn, computed require) fire on legitimate tooling — rollup's native-binding
+// probe spawns `node -p`, and vite's bundled chunk pairs a config loader's
+// `process.env` read with an unrelated http client. So a non-executed
+// build-output finding in one of these categories is surfaced as REVIEW rather
+// than auto-blocking: never silently SAFE (the guard does not auto-allow
+// review), but a popular build tool isn't false-blocked on its own bundle.
+// Exempt (still block even under dist/): anything a lifecycle script actually
+// executes, and the shapes NOT in this set that no legit bundle ever contains —
+// on-chain (EtherHiding) loaders and HOME-corruption logic bombs. This override
+// DOES apply to keepHighInTests findings, because in a bundle even the env-exfil
+// co-location is more likely a concatenation artifact than one malicious module.
+const DOWNGRADE_IN_BUILD_OUTPUT_CATEGORIES = new Set([
+  ...DOWNGRADE_IN_TEST_CATEGORIES,
+  "code-execution",
+  "remote-code-load",
+  "dynamic-require"
+]);
+
+// A file under a `dist/` or `build/` path segment — compiled build output.
+const BUILD_OUTPUT_SEGMENT_RE = /(?:^|\/)(?:dist|build)\//i;
+function isBuildOutputFile(filePath) {
+  return BUILD_OUTPUT_SEGMENT_RE.test(normalizeRelPath(filePath));
+}
+
 function auditFiles(files, findings, evidence) {
   // Any file a lifecycle script actually runs is RUNTIME, not a test fixture —
   // even if it sits under test/ or examples/. An attacker could hide a payload
   // in `examples/x.js` and wire `postinstall: node examples/x.js`; that file
   // must never get the test-file downgrade or the doc skip below.
-  const runtimePaths = collectLifecycleReferencedPaths(files);
+  const { all: runtimePaths, lifecycle: lifecyclePaths } = collectLifecycleReferencedPaths(files);
 
   // Install-time / auto-execution SURFACES (native build manifests, agent
   // hooks, IDE folderOpen tasks). These are config/build files, scanned once
@@ -1299,12 +1330,36 @@ function auditFiles(files, findings, evidence) {
   // NOT downgraded: findings flagged keepHighInTests (env-harvest exfil — never
   // a legit fixture) and files a lifecycle script actually executes.
   for (const finding of findings) {
+    if (finding.severity !== "high") continue;
+    const rel = normalizeRelPath(finding.file);
+
+    // Build-output downgrade runs FIRST and intentionally overrides
+    // keepHighInTests: in a concatenated bundle the co-location these categories
+    // rely on is unreliable (see DOWNGRADE_IN_BUILD_OUTPUT_CATEGORIES). The ONLY
+    // build-output files exempt are those a LIFECYCLE script actually executes
+    // (install-time run = real threat); a dist file merely reachable from the
+    // main/bin/exports require graph is normal runtime code and IS downgraded
+    // here — otherwise the whole dist tree (reachable from main by definition)
+    // would be exempt and the downgrade would be a no-op.
     if (
-      finding.severity === "high" &&
+      isBuildOutputFile(finding.file) &&
+      DOWNGRADE_IN_BUILD_OUTPUT_CATEGORIES.has(finding.category) &&
+      !lifecyclePaths.has(rel)
+    ) {
+      finding.severity = "medium";
+      finding.rationale +=
+        " (Located in compiled build output (dist/build) that no install hook runs — bundlers concatenate unrelated modules, so co-location heuristics are unreliable here; surfaced as review rather than auto-blocking.)";
+      continue;
+    }
+
+    // Test/fixture downgrade (unchanged policy): a file reachable from the real
+    // runtime surface (runtimePaths) or flagged keepHighInTests (env-harvest
+    // exfil) stays HIGH in a test fixture.
+    if (
       !finding.keepHighInTests &&
       DOWNGRADE_IN_TEST_CATEGORIES.has(finding.category) &&
       isTestOrFixtureFile(finding.file) &&
-      !runtimePaths.has(normalizeRelPath(finding.file))
+      !runtimePaths.has(rel)
     ) {
       finding.severity = "medium";
       finding.rationale +=
@@ -1402,64 +1457,73 @@ function collectEntryStrings(value, out) {
 // examples/ or test/, and must NOT get the test-file downgrade. Bounded in
 // depth and visit count so it stays cheap on large packages.
 function collectLifecycleReferencedPaths(files) {
-  const paths = new Set();
   const fileIndex = new Map();
   for (const file of files) fileIndex.set(normalizeRelPath(file.path), file);
 
-  const seeds = [];
+  // Two seed sets, kept separate because they carry different authority:
+  //  • lifecycleSeeds — files an install/run SCRIPT executes. Reachability from
+  //    here means the file runs at install time — the real supply-chain threat
+  //    surface — so it stays HIGH everywhere, including under dist/.
+  //  • entrySeeds — files reachable from the declared entrypoints (main/bin/
+  //    exports). These are normal runtime code. They still elevate a payload out
+  //    of the test-file downgrade, but for BUILD OUTPUT they must NOT block on
+  //    their own (a dist bundle is reachable from main by definition — see the
+  //    build-output downgrade), so they're tracked separately.
+  const lifecycleSeeds = [];
+  const entrySeeds = [];
   const pkg = findPackageJson(files);
   if (pkg && pkg.json) {
-    // (a) lifecycle/run script files (original behavior).
     if (pkg.json.scripts && typeof pkg.json.scripts === "object") {
       for (const command of Object.values(pkg.json.scripts)) {
         if (typeof command !== "string") continue;
         let m;
         SCRIPT_PATH_TOKEN_REGEX.lastIndex = 0;
         while ((m = SCRIPT_PATH_TOKEN_REGEX.exec(command)) !== null) {
-          const p = normalizeRelPath(m[1]);
-          paths.add(p);
-          seeds.push(p);
+          lifecycleSeeds.push(normalizeRelPath(m[1]));
         }
       }
     }
-    // (b) declared entrypoints: main, bin, exports. These root the require graph.
     const entryStrings = [];
     collectEntryStrings(pkg.json.main, entryStrings);
     collectEntryStrings(pkg.json.bin, entryStrings);
     collectEntryStrings(pkg.json.exports, entryStrings);
     for (const raw of entryStrings) {
       const resolved = resolveRelativeSpec("./", raw.replace(/^\.?\//, "./"), fileIndex);
-      if (resolved) {
-        paths.add(resolved);
-        seeds.push(resolved);
-      }
+      if (resolved) entrySeeds.push(resolved);
     }
   }
 
-  // Walk the require/import graph from the seed set, bounded in depth/visits, so
-  // files one or two levels below a real entrypoint are also treated as runtime.
-  let frontier = [...new Set(seeds)];
-  let visits = 0;
-  for (let depth = 0; depth < REQUIRE_GRAPH_MAX_DEPTH && frontier.length > 0; depth += 1) {
-    const next = [];
-    for (const filePath of frontier) {
-      if (visits >= REQUIRE_GRAPH_MAX_VISITS) break;
-      const file = fileIndex.get(filePath);
-      if (!file || typeof file.content !== "string") continue;
-      visits += 1;
-      let m;
-      LOCAL_REQUIRE_SPEC_REGEX.lastIndex = 0;
-      while ((m = LOCAL_REQUIRE_SPEC_REGEX.exec(file.content)) !== null) {
-        const resolved = resolveRelativeSpec(filePath, m[2], fileIndex);
-        if (resolved && !paths.has(resolved)) {
-          paths.add(resolved);
-          next.push(resolved);
+  // Walk the require/import graph from a seed set, bounded in depth/visits, so
+  // files one or two levels below a seed are also treated as reachable.
+  const walk = (seeds) => {
+    const paths = new Set(seeds);
+    let frontier = [...new Set(seeds)];
+    let visits = 0;
+    for (let depth = 0; depth < REQUIRE_GRAPH_MAX_DEPTH && frontier.length > 0; depth += 1) {
+      const next = [];
+      for (const filePath of frontier) {
+        if (visits >= REQUIRE_GRAPH_MAX_VISITS) break;
+        const file = fileIndex.get(filePath);
+        if (!file || typeof file.content !== "string") continue;
+        visits += 1;
+        let m;
+        LOCAL_REQUIRE_SPEC_REGEX.lastIndex = 0;
+        while ((m = LOCAL_REQUIRE_SPEC_REGEX.exec(file.content)) !== null) {
+          const resolved = resolveRelativeSpec(filePath, m[2], fileIndex);
+          if (resolved && !paths.has(resolved)) {
+            paths.add(resolved);
+            next.push(resolved);
+          }
         }
       }
+      frontier = next;
     }
-    frontier = next;
-  }
-  return paths;
+    return paths;
+  };
+
+  const lifecycle = walk(lifecycleSeeds);
+  const all = walk([...lifecycleSeeds, ...entrySeeds]);
+  return { all, lifecycle };
 }
 
 // --- Install-time / auto-execution surfaces (#1) ---------------------------
@@ -2103,6 +2167,45 @@ function resolveStringArrays(text) {
   return out;
 }
 
+// `['web','hook','.si','te'].join('')` (or `.join('.')`, or a bare `.join()`
+// which defaults to a comma) assembles a split path/domain from an INLINE array
+// literal — the sibling of the named-array + index form resolveStringArrays
+// covers. Fold `[<string literals>].join(<sep>)` to the joined literal so the
+// downstream path/domain regexes see it and foldConcats can splice it onto an
+// adjacent `'https://' + [...]` prefix. Any non-string element (a runtime value)
+// or non-literal separator bails the whole match untouched, so
+// `[a, host].join('')` is left alone.
+const ARRAY_JOIN_CALL_RE = /\[([^[\]]*)\]\s*\.\s*join\s*\(([^)]*)\)/g;
+
+function resolveArrayJoins(text) {
+  if (text.indexOf("join") === -1) return text;
+  return text.replace(ARRAY_JOIN_CALL_RE, (full, inner, sepArg) => {
+    const body = inner.trim();
+    if (!body) return full;
+    const parts = body.split(",").map((s) => s.trim());
+    if (parts.length === 0 || parts.length > MAX_ARRAY_ELEMENTS) return full;
+    const values = [];
+    for (const part of parts) {
+      const lit = part.match(STRING_LITERAL_RE);
+      if (!lit) return full;
+      values.push(lit[2]);
+    }
+    // Separator: an empty arg is `.join()` → the JS default ","; a string
+    // literal is its value; anything else (a variable/expression) bails so we
+    // never guess a runtime separator.
+    const sepTrim = sepArg.trim();
+    let sep;
+    if (sepTrim === "") {
+      sep = ",";
+    } else {
+      const sepLit = sepTrim.match(STRING_LITERAL_RE);
+      if (!sepLit) return full;
+      sep = sepLit[2];
+    }
+    return wrapAsLiteral(values.join(sep));
+  });
+}
+
 function foldConcats(text) {
   let out = text;
   for (let pass = 0; pass < MAX_FOLD_PASSES; pass += 1) {
@@ -2260,7 +2363,7 @@ function normalizeChunk(text) {
   const decoded = resolvePercentDecodes(
     resolveBase64Decodes(resolveFromCharCode(decodeStringEscapes(text)))
   );
-  return foldConcats(resolveStringArrays(decoded));
+  return foldConcats(resolveArrayJoins(resolveStringArrays(decoded)));
 }
 
 function normalizeForDetection(content) {
