@@ -25,8 +25,7 @@ Use an exact npm version from any MCP-capable agent:
         "--yes",
         "--package",
         "pkgxray@1.0.3",
-        "pkgxray",
-        "serve-mcp"
+        "pkgxray-mcp"
       ],
       "env": {
         "PKGXRAY_MCP_ALLOWED_ROOTS": "/absolute/path/to/project"
@@ -36,9 +35,10 @@ Use an exact npm version from any MCP-capable agent:
 }
 ```
 
-If pkgxray is already installed, `"command": "pkgxray-mcp"` remains supported.
-The `serve-mcp` subcommand exists so registries and `npx` can select the MCP
-server from a package that exposes multiple binaries.
+If pkgxray is already installed, `"command": "pkgxray-mcp"` also works. The
+source tree adds `pkgxray serve-mcp` for future Registry releases, but the
+published `pkgxray@1.0.3` package predates that alias; use the verified launcher
+above until a later version is released.
 
 | Tool | Inputs | Output and security consequence |
 |---|---|---|

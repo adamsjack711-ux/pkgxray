@@ -60,3 +60,12 @@ test("registry checklist states the unpublished release blocker", () => {
   assert.match(guide, /mcp-publisher login github/);
   assert.match(guide, /mcp-publisher publish/);
 });
+
+test("public setup uses the launcher actually published in pkgxray 1.0.3", () => {
+  for (const file of ["README.md", "docs/mcp.md"]) {
+    const guide = readFileSync(resolve(ROOT, file), "utf8");
+    assert.match(guide, /pkgxray@1\.0\.3/);
+    assert.match(guide, /pkgxray-mcp/);
+    assert.doesNotMatch(guide, /pkgxray@1\.0\.3[\s\S]{0,80}serve-mcp/);
+  }
+});

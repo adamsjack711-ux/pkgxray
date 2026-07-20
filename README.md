@@ -211,7 +211,7 @@ installed (`pkgxray-mcp`) or zero-install via `npx`:
   "mcpServers": {
     "pkgxray": {
       "command": "npx",
-      "args": ["--yes", "--package", "pkgxray@1.0.3", "pkgxray", "serve-mcp"],
+      "args": ["--yes", "--package", "pkgxray@1.0.3", "pkgxray-mcp"],
       "env": { "PKGXRAY_MCP_ALLOWED_ROOTS": "/absolute/path/to/project" }
     }
   }
