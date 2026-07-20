@@ -827,11 +827,15 @@ if (require.main === module) {
   attachStdin();
 }
 
-// Exported for tests only. The wire behavior is unchanged whether or not these
-// are consumed; they let the offline suite unit-test the config seam.
+// `startStdioServer` is the same entry the `pkgxray-mcp` bin runs on direct
+// invocation; it is exported so `pkgxray mcp-server` (bin/audit.js) can launch
+// this server in-process without a separate package. The rest are exported for
+// tests only — the wire behavior is unchanged whether or not they are consumed;
+// they let the offline suite unit-test the config seam.
 module.exports = {
   applyConfigToGuardResult,
   toolExposed,
   listTools,
-  CONFIG_TOOL_KEY
+  CONFIG_TOOL_KEY,
+  startStdioServer: attachStdin
 };

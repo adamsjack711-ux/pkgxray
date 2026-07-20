@@ -49,6 +49,8 @@ function printUsage() {
       "                     [--policy strict|balanced|permissive]                   #   is checked in-memory (µs), the manifest is re-audited on every",
       "                     [--pin] [--lock <path>] [--no-recheck]                  #   tools/list_changed, drifted tools are denied until re-pinned,",
       "                     [--no-scan-results] [--timing]                          #   and tool RESULTS are scanned for injection (use in host config)",
+      "  pkgxray mcp-server                                                        # run pkgxray ITSELF as a stdio MCP server (for MCP hosts /",
+      "                     # the MCP Registry entry: `npx -y pkgxray mcp-server`)  #   exposes audit/guard/lockfile tools. cf. `mcp` above, which audits.",
       "",
       "Evidence JSON fields:",
       "  packageName, npmMetadata, githubMetadata, webPresence, sourceFiles",
@@ -249,6 +251,22 @@ function readInput(file) {
 }
 
 async function main() {
+  // `pkgxray mcp-server` runs THIS package as a stdio MCP server — the same
+  // server the `pkgxray-mcp` bin exposes — so MCP hosts can launch it with
+  // `npx -y pkgxray mcp-server` (the registry entry) without a separate
+  // package. Intercepted before parseArgs so none of the audit machinery runs.
+  // NOTE: distinct from `pkgxray mcp <target>`, which AUDITS another server.
+  if (process.argv[2] === "mcp-server") {
+    if (process.argv.includes("--help") || process.argv.includes("-h")) {
+      process.stderr.write(
+        "Usage: pkgxray mcp-server   # run pkgxray as a stdio MCP server (for MCP hosts)\n"
+      );
+      return;
+    }
+    require("./mcp-server.js").startStdioServer();
+    return;
+  }
+
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     printUsage();
