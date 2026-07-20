@@ -299,6 +299,15 @@ async function downloadCodeload(url, destination) {
       file.destroy();
       fs.unlink(destination, () => reject(err));
     };
+    // The write stream MUST have an 'error' listener. Without one, a stream error
+    // — including the ERR_STREAM_DESTROYED that fires when `cleanup()` destroys the
+    // file while `response.pipe(file)` is still flowing (size-cap / redirect /
+    // timeout races), or an open-time EACCES/ENOSPC — is emitted as an unhandled
+    // 'error' event and takes the whole process down with exit 1 (the verdict is
+    // already printed, so a scan crashes AFTER succeeding). Route it to cleanup,
+    // which is idempotent, so the download rejects instead of crashing. Mirrors
+    // downloadFromCacheServer and quarantine.downloadFile.
+    file.on("error", cleanup);
     const get = (currentUrl, hops) => {
       if (hops > 5) return cleanup(new Error("Too many redirects"));
       let parsed;
