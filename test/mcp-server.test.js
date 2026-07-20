@@ -358,3 +358,37 @@ test("MCP parses malformed input as -32700 without crashing", async () => {
     // child has exited and stop() returns immediately).
   }
 });
+
+// ---------------------------------------------------------------------------
+// `pkgxray mcp-server` (the CLI subcommand) launches the SAME stdio server the
+// `pkgxray-mcp` bin exposes — this is the launch command the MCP Registry entry
+// uses (`npx -y pkgxray mcp-server`), so a regression here breaks discovery.
+// ---------------------------------------------------------------------------
+
+test("CLI `pkgxray mcp-server` handshakes as the stdio MCP server", async () => {
+  const auditPath = path.join(__dirname, "..", "bin", "audit.js");
+  const child = spawn(process.execPath, [auditPath, "mcp-server"], {
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  let out = "";
+  child.stdout.setEncoding("utf8");
+  const done = new Promise((resolve, reject) => {
+    child.stdout.on("data", (chunk) => {
+      out += chunk;
+      const nl = out.indexOf("\n");
+      if (nl !== -1) resolve(JSON.parse(out.slice(0, nl)));
+    });
+    child.on("error", reject);
+    setTimeout(() => reject(new Error("timeout waiting for initialize response")), 15000);
+  });
+  try {
+    child.stdin.write(
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } }) + "\n"
+    );
+    const res = await done;
+    assert.equal(res.result.serverInfo.name, "pkgxray");
+    assert.equal(res.result.serverInfo.version, require("../package.json").version);
+  } finally {
+    child.kill();
+  }
+});

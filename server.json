@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.adamsjack711-ux/pkgxray",
+  "title": "pkgxray",
+  "description": "Zero-dependency scanner for npm & MCP supply-chain risk: OSV pre-check, sandbox, static heuristics.",
+  "websiteUrl": "https://pkgxray.pages.dev",
+  "repository": {
+    "url": "https://github.com/adamsjack711-ux/pkgxray",
+    "source": "github"
+  },
+  "version": "1.0.4",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "pkgxray",
+      "version": "1.0.4",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp-server"
+        }
+      ]
+    }
+  ]
+}

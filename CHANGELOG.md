@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.4 (2026-07-20) — listed on the MCP Registry
+
+**In plain terms:** pkgxray's built-in MCP server can now be found and
+installed straight from the official Model Context Protocol registry, so any
+AI coding assistant can add it in one step. No scanning behavior changed.
+
+### What changed
+- **Published to the [MCP Registry](https://registry.modelcontextprotocol.io)**
+  as `io.github.adamsjack711-ux/pkgxray`, with a `server.json` describing how
+  to launch it.
+- **New `pkgxray mcp-server` command** runs pkgxray itself as an MCP server.
+  Hosts that prefer zero-install can now start it with
+  `npx -y pkgxray mcp-server` (the locally-installed `pkgxray-mcp` still works
+  exactly as before). This is separate from `pkgxray mcp <target>`, which
+  *audits* someone else's MCP server.
+- No detection, dependency, or verdict changes.
+
 ## 1.0.3 (2026-07-18) — a shorter, sharper README
 
 **In plain terms:** docs-only release. The package's code is identical to

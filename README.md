@@ -162,8 +162,16 @@ A ready-made GitHub Actions workflow and the self-hostable cache server
 
 **Guard AI coding agents**
 
+pkgxray is published on the [MCP Registry](https://registry.modelcontextprotocol.io)
+as `io.github.adamsjack711-ux/pkgxray`. Add it to any MCP client — locally
+installed (`pkgxray-mcp`) or zero-install via `npx`:
+
 ```json
 { "mcpServers": { "pkgxray": { "command": "pkgxray-mcp" } } }
+```
+
+```json
+{ "mcpServers": { "pkgxray": { "command": "npx", "args": ["-y", "pkgxray", "mcp-server"] } } }
 ```
 
 Gate installs with the [hookshot integration](examples/hookshot/) and wrap MCP
