@@ -228,16 +228,20 @@ const HIDDEN_SPAWN_OPTS_REGEX =
   /windowsHide\s*:\s*true|detached\s*:\s*true|stdio\s*:\s*(?:["']ignore["']|\[[^\]]*["']ignore["'])/i;
 // The `foreground-child` zombie-reaper idiom (used by npm, node-gyp, tap and many
 // CLIs) spawns `node -e <watchdog>` whose inline script does nothing but forward
-// a signal / reap the child when the parent dies:
-//   process.on('SIGHUP', () => process.kill(child.pid, 'SIGHUP'))
-// The watchdog body is fixed, carries no attacker input, and — unlike a stage-2
-// loader — pulls nothing in and sends nothing out. We recognise it so the common
-// pattern (even with the expected stdio:'ignore') does not read as a hidden
-// executor. The exemption is gated on the ABSENCE of any payload-delivery
-// primitive (network / eval / dynamic require / decode / fs write / download),
-// so a "watchdog" that also fetches or evals still BLOCKs.
-const NODE_REAPER_WATCHDOG_REGEX =
-  /process\.on\s*\(\s*['"`]SIG[A-Z]+['"`][\s\S]{0,80}?process\.kill\s*\(/;
+// a signal / reap the child when the parent dies. Two forms occur:
+//   inline:  process.on('SIGHUP', () => process.kill(child.pid, 'SIGHUP'))
+//   named:   const bark = () => { ...; process.kill(pid, 'SIGKILL') }
+//            process.on('SIGHUP', bark)               // real foreground-child
+// The named form registers the handler AFTER defining it, so process.kill sits
+// BEFORE process.on — a single proximity regex misses it. We therefore require
+// BOTH signals to be present (order-independent): a `process.on('SIG…')` handler
+// AND a `process.kill(` reap. The watchdog body carries no attacker input and —
+// unlike a stage-2 loader — pulls nothing in and sends nothing out. The exemption
+// is gated on the ABSENCE of any payload-delivery primitive (network / eval /
+// dynamic require / decode / fs write / download), so a "watchdog" that also
+// fetches or evals still BLOCKs.
+const NODE_REAPER_SIGNAL_REGEX = /process\.on\s*\(\s*['"`]SIG[A-Z]+['"`]/;
+const NODE_REAPER_KILL_REGEX = /process\.kill\s*\(/;
 const NODE_EXEC_STAGE2_PAYLOAD_REGEX =
   /\bfetch\s*\(|\baxios\b|\bhttps?\.(?:request|get|post)|\beval\s*\(|new\s+Function\s*\(|\bimport\s*\(\s*[^'"`)]|\brequire\s*\(\s*[^'"`)]|\bbase64\b|\batob\s*\(|\bdecode|writeFileSync?\s*\(|\bfs\.(?:write|append)|\/dev\/tcp\/|\bcurl\b|\bwget\b/i;
 
@@ -3164,9 +3168,16 @@ function inspectHiddenNodeExec(file, content, findings, normalized, normChanged)
   const spawnRe = NODE_EVAL_SPAWN_REGEXES.find(testBoth);
   if (!spawnRe) return;
   // foreground-child zombie-reaper: the inline `-e` script only forwards a signal
-  // / reaps the child, and the file carries no stage-2 payload primitive. That is
-  // the ubiquitous watchdog idiom, not an executor — do not flag.
-  if (testBoth(NODE_REAPER_WATCHDOG_REGEX) && !testBoth(NODE_EXEC_STAGE2_PAYLOAD_REGEX)) return;
+  // / reaps the child (both a process.on('SIG…') handler AND a process.kill reap
+  // present, either order), and the file carries no stage-2 payload primitive.
+  // That is the ubiquitous watchdog idiom, not an executor — do not flag.
+  if (
+    testBoth(NODE_REAPER_SIGNAL_REGEX) &&
+    testBoth(NODE_REAPER_KILL_REGEX) &&
+    !testBoth(NODE_EXEC_STAGE2_PAYLOAD_REGEX)
+  ) {
+    return;
+  }
   const hidden = testBoth(HIDDEN_SPAWN_OPTS_REGEX);
   const idx = (spawnRe.exec(content) || { index: 0 }).index;
   if (hidden) {
