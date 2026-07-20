@@ -2996,6 +2996,14 @@ const RECURSIVE_FLAG_REGEX = /recursive\s*:\s*true/;
 const DIR_WRITE_REGEX = /\.writeFile(?:Sync)?\s*\(/g;
 const DIR_ENUM_REGEX = /\breaddir(?:Sync)?\s*\(/;
 const CORRUPTION_WINDOW = 400;
+// Non-global companions used for the high-confidence escalation window check
+// (DIR_WRITE_REGEX carries /g state, so it must not be reused for a .test()).
+const LOGIC_BOMB_WRITE_REGEX = /\.writeFile(?:Sync)?\s*\(/;
+// The destruction targets the user's HOME / profile directory rather than a
+// package-local cache or os.tmpdir() — the tell that separates node-ipc-style
+// protestware (wipe the victim's home) from a benign locale-gated cache reset.
+const HOME_DIR_TARGET_REGEX =
+  /process\.env\.(?:HOME|USERPROFILE|HOMEPATH)\b|os\.homedir\s*\(|\bhomedir\s*\(|\$HOME\b|%USERPROFILE%/i;
 // High-signal region/locale gates only. Broad timezone/date APIs
 // (getTimezoneOffset, Intl.DateTimeFormat, resolvedOptions().timeZone) are
 // deliberately excluded: they co-occur benignly with cleanup code (a recursive
@@ -3043,13 +3051,25 @@ function inspectLogicBomb(file, content, findings) {
       Math.min(content.length, index + LOGIC_BOMB_WINDOW)
     );
     if (LOGIC_BOMB_GATE_REGEXES.some((gate) => gate.test(window))) {
+      // High-confidence node-ipc "peacenotwar" shape: the destruction is IN-PLACE
+      // CORRUPTION of the user's HOME/profile directory (enumerate HOME, overwrite
+      // every entry) behind the geo gate. Wiping a package-local cache/temp dir by
+      // locale is a plausible benign reset and stays at review; enumerating HOME
+      // and overwriting every file in it has essentially no benign form, so that
+      // specific combination BLOCKs.
+      const homeCorruption =
+        HOME_DIR_TARGET_REGEX.test(window) &&
+        LOGIC_BOMB_WRITE_REGEX.test(window) &&
+        DIR_ENUM_REGEX.test(window);
       findings.push({
-        severity: "medium",
+        severity: homeCorruption ? "high" : "medium",
         category: "logic-bomb",
         file: file.path,
+        keepHighInTests: homeCorruption,
         snippet: clipAround(content, index),
-        rationale:
-          "A forceful destructive filesystem operation is gated on geography / locale / timezone — the geo/locale-gated logic-bomb shape (node-ipc / protestware). Flagged for review."
+        rationale: homeCorruption
+          ? "A geo/locale gate guards IN-PLACE CORRUPTION of the user's home directory — enumerate HOME and overwrite every file behind a country/region check. This is the node-ipc \"peacenotwar\" protestware shape and has essentially no benign form, so it BLOCKs."
+          : "A forceful destructive filesystem operation is gated on geography / locale / timezone — the geo/locale-gated logic-bomb shape (node-ipc / protestware). Flagged for review."
       });
       return;
     }

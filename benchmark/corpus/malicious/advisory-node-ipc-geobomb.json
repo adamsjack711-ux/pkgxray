@@ -1,9 +1,8 @@
 {
   "name": "node-ipc-peacenotwar-geobomb",
   "expect": "block",
-  "knownUnderflag": true,
   "expectFinding": "logic-bomb",
-  "note": "modeled on node-ipc/peacenotwar (2022): geolocates the host and overwrites files when it matches a targeted country — a geo-gated destructive op. knownUnderflag: pkgxray routes geo/locale-gated destruction to REVIEW by policy (see severity policy), so this lands on review, not block — an audited, documented under-flag exempt from the recall gate. Note the LIVE node-ipc@11.0.0 blocks (via OSV known-vulnerability); only this minimized reconstruction under-flags.",
+  "note": "modeled on node-ipc/peacenotwar (2022): geolocates the host and overwrites every file in the victim's HOME when it matches a targeted country. Previously a knownUnderflag (geo/locale-gated destruction routed to REVIEW by policy). NOW BLOCKS: inspectLogicBomb escalates the high-confidence sub-shape to HIGH — in-place CORRUPTION of the user's HOME/profile dir (enumerate HOME + overwrite every entry, HOME_DIR_TARGET_REGEX) behind a country/region gate. A locale-gated rimraf of a package-local cache dir has no HOME target and stays at review. The LIVE node-ipc@11.0.0 also blocks via OSV known-vulnerability.",
   "evidence": {
     "packageName": "node-ipc",
     "sourceFiles": {
