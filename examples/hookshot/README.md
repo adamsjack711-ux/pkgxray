@@ -251,15 +251,8 @@ Two workflows in this repo's [`.github/workflows/`](../../.github/workflows/):
 - **`hookshot-guard-ci.yml`** builds, vets, and tests this module against the
   published hookshot module on every change under `examples/hookshot/`.
 - **`pkgxray-audit.yml`** audits lockfiles with pkgxray and fails on a `BLOCK`.
-  It's reusable — call it from any repo:
-
-  ```yaml
-  jobs:
-    supply-chain:
-      uses: adamsjack711-ux/pkgxray/.github/workflows/pkgxray-audit.yml@main
-      with:
-        fail-on: block   # or "review" to also fail on REVIEW verdicts
-  ```
+  It is reusable; the [GitHub Actions guide](../../docs/integrations/github-actions.md)
+  shows how to call it from another repository using a reviewed commit SHA.
 
 ## Notes & limits
 

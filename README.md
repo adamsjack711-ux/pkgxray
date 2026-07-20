@@ -196,8 +196,9 @@ pkgxray audit package-lock.json [--deep]    # also: yarn.lock, pnpm-lock.yaml, p
 npx pkgxray recheck package-lock.json       # scheduled: exits non-zero only on a regression
 ```
 
-A ready-made GitHub Actions workflow and the self-hostable cache server
-(`PKGXRAY_CACHE_URL`) are in the [reference](docs/reference.md#monitoring-pkgxray-recheck).
+A ready-made [GitHub Actions integration](docs/integrations/github-actions.md)
+and the self-hostable cache server (`PKGXRAY_CACHE_URL`) are documented in the
+[reference](docs/reference.md#monitoring-pkgxray-recheck).
 
 **Guard AI coding agents**
 
