@@ -18,7 +18,11 @@ const SERVER_PATH = path.join(__dirname, "..", "bin", "mcp-server.js");
 
 function startServer() {
   const child = spawn(process.execPath, [SERVER_PATH], {
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      PKGXRAY_MCP_ALLOWED_ROOTS: os.tmpdir()
+    }
   });
   const responses = [];
   let stdoutBuf = "";
@@ -134,10 +138,15 @@ test("MCP tools/list exposes all 4 tools", async () => {
     ]);
 
     for (const t of tools) {
+      assert.equal(typeof t.title, "string");
       assert.equal(typeof t.description, "string");
       assert.ok(t.description.length > 0, `${t.name} has empty description`);
       assert.equal(t.inputSchema.type, "object");
       assert.ok(Array.isArray(t.inputSchema.required), `${t.name} missing required[]`);
+      assert.equal(typeof t.annotations.readOnlyHint, "boolean");
+      assert.equal(typeof t.annotations.destructiveHint, "boolean");
+      assert.equal(typeof t.annotations.idempotentHint, "boolean");
+      assert.equal(typeof t.annotations.openWorldHint, "boolean");
     }
 
     const lockTool = tools.find((t) => t.name === "audit_lockfile_supply_chain");
@@ -158,6 +167,8 @@ test("MCP tools/list exposes all 4 tools", async () => {
       guardTool.inputSchema.properties.deep,
       "deep must appear in guard tool schema"
     );
+    assert.equal(guardTool.annotations.destructiveHint, true);
+    assert.match(guardTool.description, /operator-approved roots/);
 
     // triage tool requires both lockfilePath and auto with strict enum.
     const triageTool = tools.find((t) => t.name === "triage_lockfile_supply_chain");

@@ -207,15 +207,21 @@ as `io.github.adamsjack711-ux/pkgxray`. Add it to any MCP client — locally
 installed (`pkgxray-mcp`) or zero-install via `npx`:
 
 ```json
-{ "mcpServers": { "pkgxray": { "command": "pkgxray-mcp" } } }
+{
+  "mcpServers": {
+    "pkgxray": {
+      "command": "npx",
+      "args": ["--yes", "--package", "pkgxray@1.0.3", "pkgxray", "serve-mcp"],
+      "env": { "PKGXRAY_MCP_ALLOWED_ROOTS": "/absolute/path/to/project" }
+    }
+  }
+}
 ```
 
-```json
-{ "mcpServers": { "pkgxray": { "command": "npx", "args": ["-y", "pkgxray", "mcp-server"] } } }
-```
-
-Gate installs with the [hookshot integration](examples/hookshot/) and wrap MCP
-servers with [`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy).
+The [MCP guide](docs/mcp.md#the-pkgxray-mcp-server) explains the operator-owned
+filesystem boundary. Gate installs with the [hookshot integration](examples/hookshot/)
+and wrap MCP servers with
+[`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy).
 
 ## Configuration
 
@@ -338,6 +344,7 @@ methodology: [docs/benchmark.md](docs/benchmark.md)
 | [architecture.md](docs/architecture.md) | Pipeline, surfaces, repo layout |
 | [threat-model.md](docs/threat-model.md) | Scope, blind spots, prompt-injection stance |
 | [mcp.md](docs/mcp.md) | MCP server, connect-time vetting, runtime proxy |
+| [mcp-registry.md](docs/mcp-registry.md) | Registry readiness and release verification |
 | [configuration.md](docs/configuration.md) | `.pkgxray.json` schema and invariants |
 | [reference.md](docs/reference.md) | Severity policy, `recheck`, JSON output, cache server |
 | [benchmark.md](docs/benchmark.md) | Calibration benchmark & real-world validation |

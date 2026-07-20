@@ -232,10 +232,10 @@ test("HIGH: guard markdown output scrubs control bytes from reference", async ()
         githubMetadata: false,
         githubDiff: false,
         // Markdown is the default but pin it explicitly.
-        outputFormat: "markdown",
-        allowLocalReferences: true // required after fix
+        outputFormat: "markdown"
       }
-    })
+    }),
+    { env: { PKGXRAY_MCP_ALLOWED_ROOTS: tmpRoot } }
   );
   assert.equal(crashed, false);
   const reply = lines.map((l) => JSON.parse(l)).find((r) => r.id === 1);
@@ -280,15 +280,13 @@ test("HIGH: audit markdown output scrubs control bytes from packageName/file", a
 // ---------------------------------------------------------------------------
 // HIGH-5: local-path traversal via `reference` over MCP
 // ---------------------------------------------------------------------------
-test("HIGH: MCP refuses local-path references unless explicitly opted in", async () => {
+test("HIGH: MCP refuses local paths outside operator-approved roots", async () => {
   // Without the guardrail, an MCP caller (or an LLM forwarding hostile
   // tool-call args) could ask to "audit" `/etc/ssh` or `~/.ssh` and the
   // server would happily copy the directory into quarantine, then return
   // the contents as `sourceFiles` over JSON-RPC. That's a remote file-read
-  // primitive. After the fix, references starting with `/`, `~`, `.`, or
-  // `file:` are rejected with a -32602 unless the caller explicitly sets
-  // `allowLocalReferences: true` (CLI-equivalent behaviour preserved by the
-  // pkgxray CLI which is the only legitimate consumer of that switch).
+  // primitive. Filesystem authority now comes only from a server environment
+  // set by the operator; a tool caller cannot expand it.
   const { lines } = await driveServer(
     rpc(1, "tools/call", {
       name: "guard_agent_extension_install",
@@ -330,6 +328,45 @@ test("HIGH: MCP refuses file: references", async () => {
   const reply = lines.map((l) => JSON.parse(l)).find((r) => r.id === 1);
   assert.ok(reply && reply.error, "expected an error reply");
   assert.equal(reply.error.code, -32602);
+});
+
+test("HIGH: caller cannot opt itself into local filesystem access", async () => {
+  const { lines } = await driveServer(
+    rpc(1, "tools/call", {
+      name: "guard_agent_extension_install",
+      arguments: {
+        reference: "/etc",
+        allowLocalReferences: true
+      }
+    })
+  );
+  const reply = lines.map((l) => JSON.parse(l)).find((r) => r.id === 1);
+  assert.ok(reply && reply.error, "expected an error reply");
+  assert.equal(reply.error.code, -32602);
+  assert.match(reply.error.message, /server operator/);
+});
+
+test("HIGH: symlink cannot escape an operator-approved root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-root-"));
+  const escape = path.join(root, "escape");
+  await fs.symlink("/etc", escape);
+
+  const { lines } = await driveServer(
+    rpc(1, "tools/call", {
+      name: "audit_lockfile_supply_chain",
+      arguments: {
+        lockfilePath: path.join(escape, "passwd"),
+        vulnerabilityCheck: false
+      }
+    }),
+    { env: { PKGXRAY_MCP_ALLOWED_ROOTS: root } }
+  );
+  const reply = lines.map((l) => JSON.parse(l)).find((r) => r.id === 1);
+  assert.ok(reply && reply.error, "expected an error reply");
+  assert.equal(reply.error.code, -32602);
+  assert.match(reply.error.message, /operator-approved/);
+
+  await fs.rm(root, { recursive: true, force: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -389,10 +426,10 @@ test("MEDIUM: error messages do not leak absolute filesystem paths", async () =>
         quarantineRoot: path.join(tmpRoot, "q"),
         vulnerabilityCheck: false,
         githubMetadata: false,
-        githubDiff: false,
-        allowLocalReferences: true
+        githubDiff: false
       }
-    })
+    }),
+    { env: { PKGXRAY_MCP_ALLOWED_ROOTS: tmpRoot } }
   );
   const reply = lines.map((l) => JSON.parse(l)).find((r) => r.id === 1);
   assert.ok(reply && reply.error, JSON.stringify(reply));

@@ -67,7 +67,7 @@ test("documented entry points remain present in CLI help", () => {
   });
   assert.equal(result.status, 0, result.stderr);
   const help = `${result.stdout}\n${result.stderr}`;
-  for (const command of ["guard", "audit", "recheck", "mcp", "mcp-proxy"]) {
+  for (const command of ["guard", "audit", "recheck", "mcp", "mcp-proxy", "serve-mcp"]) {
     assert.match(help, new RegExp(`pkgxray ${command.replace("-", "\\-")}`));
   }
   for (const flag of ["--file", "--format json"]) assert.match(help, new RegExp(flag));

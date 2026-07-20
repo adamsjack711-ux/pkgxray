@@ -30,6 +30,7 @@ function printUsage() {
     [
       "Usage:",
       "  pkgxray --version",
+      "  pkgxray serve-mcp                    # run the local stdio MCP server",
       "  pkgxray < evidence.json",
       "  pkgxray --format json < evidence.json",
       "  pkgxray --file evidence.json --format markdown",
@@ -66,6 +67,9 @@ function parseArgs(argv) {
   if (argv[0] === "--version" || argv[0] === "-V") {
     options.command = "version";
     argv = [];
+  } else if (argv[0] === "serve-mcp") {
+    options.command = "serveMcp";
+    argv = argv.slice(1);
   } else if (argv[0] === "guard") {
     options.command = "guard";
     options.reference = argv[1];
@@ -277,6 +281,10 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.command === "version") {
     process.stdout.write(`${PACKAGE_VERSION}\n`);
+    return;
+  }
+  if (options.command === "serveMcp") {
+    require("./mcp-server").attachStdin();
     return;
   }
   if (options.help) {

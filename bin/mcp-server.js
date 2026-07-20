@@ -2,6 +2,8 @@
 "use strict";
 
 const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
 const { auditEvidence, renderMarkdown } = require("../src/auditor");
 const { guardExtension, decisionForReport } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
@@ -62,7 +64,31 @@ const MAX_BUFFER_BYTES = 4 * 1024 * 1024;
 let buffer = "";
 let bufferOverflowed = false;
 
-const HOME_DIR = require("node:os").homedir();
+const HOME_DIR = os.homedir();
+const ALLOWED_ROOTS_ENV = "PKGXRAY_MCP_ALLOWED_ROOTS";
+
+// Filesystem-capable MCP tools are limited by the operator, never by a tool
+// argument an LLM can set. The default is the server's startup directory.
+// Multiple roots use the platform path delimiter (`:` on Unix, `;` on Windows).
+function loadAllowedRoots() {
+  const configured = process.env[ALLOWED_ROOTS_ENV];
+  const values = configured === undefined
+    ? [process.cwd()]
+    : configured.split(path.delimiter).filter(Boolean);
+  const roots = [];
+  for (const value of values) {
+    try {
+      roots.push(fs.realpathSync(path.resolve(value)));
+    } catch {
+      process.stderr.write(
+        `pkgxray: ignoring unreadable ${ALLOWED_ROOTS_ENV} entry\n`
+      );
+    }
+  }
+  return [...new Set(roots)];
+}
+
+const MCP_ALLOWED_ROOTS = loadAllowedRoots();
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -75,8 +101,15 @@ function textContent(text) {
 function auditToolDefinition() {
   return {
     name: AUDIT_TOOL_NAME,
+    title: "Audit supplied package evidence",
     description:
-      "Audit evidence for an AI coding-agent extension, Codex plugin, Claude Code extension, or MCP server and return a conservative supply-chain security verdict. Pure static analysis — accepts caller-supplied npm metadata, GitHub metadata, source files, vulnerability list, and optional npm provenance attestation. Use when you already have evidence in hand; for live npm packages prefer guard_agent_extension_install.",
+      "Statically analyze caller-supplied package source and metadata. Returns a structured SAFE, REVIEW, or BLOCK report with cited findings; it does not read local files, install packages, or execute code. A SAFE result is defense in depth, not proof of harmlessness. For a live npm package, use guard_agent_extension_install.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -132,8 +165,15 @@ function auditToolDefinition() {
 function guardToolDefinition() {
   return {
     name: GUARD_TOOL_NAME,
+    title: "Guard a package before installation",
     description:
-      "Stage an agent extension or npm package in a local quarantine directory, audit it without installing or running it, and optionally promote it if policy allows. Performs OSV vuln pre-check, downloads the tarball, runs static heuristics, cross-checks GitHub metadata, and automatically pulls the npm provenance attestation. Use this for a single live package; for a whole project use audit_lockfile_supply_chain.",
+      "Fetch and stage one package reference (pin an exact version for reproducibility), then return a structured SAFE, REVIEW, or BLOCK report without running lifecycle scripts or package code. It performs network requests to npm, OSV, and optionally GitHub. promoteTo writes files only after policy allows; force may replace an existing destination. Local references and caller-supplied paths are confined to operator-approved roots.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    },
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -141,16 +181,16 @@ function guardToolDefinition() {
         reference: {
           type: "string",
           description:
-            "Extension reference: npm package, npm:name@version, file:path, or local directory path."
+            "Exact package reference, preferably npm:name@version. Local file:path or directory references must resolve under an operator-approved root."
         },
         quarantineRoot: {
           type: "string",
-          description: "Optional quarantine root. Defaults to the OS temp directory."
+          description: "Optional staging root under an operator-approved filesystem root. Omit to use an internally selected OS temporary directory."
         },
         promoteTo: {
           type: "string",
           description:
-            "Optional destination directory. The staged package is copied here only when policy allows."
+            "Optional destination under an operator-approved root. Files are copied only when policy allows; force can replace an existing destination."
         },
         policy: {
           type: "string",
@@ -200,8 +240,15 @@ function guardToolDefinition() {
 function lockfileAuditToolDefinition() {
   return {
     name: LOCKFILE_AUDIT_TOOL_NAME,
+    title: "Audit a dependency manifest",
     description:
-      "Batch-scan every dependency in a package-lock.json, yarn.lock, pnpm-lock.yaml, or package.json against OSV. Returns one decision (safe / review / block) per unique name@version. Pre-existing .pkgxray.lock triage decisions next to the lockfile are honored. Use this to audit a project's full dependency tree in one shot.",
+      "Read a dependency manifest under an operator-approved root and query OSV for each resolved dependency. Returns structured SAFE, REVIEW, or BLOCK decisions and honors a sibling .pkgxray.lock; it does not install dependencies or execute package code. deep/deepAll add npm and GitHub network scans.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    },
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -209,7 +256,7 @@ function lockfileAuditToolDefinition() {
         lockfilePath: {
           type: "string",
           description:
-            "Absolute or relative path to a package-lock.json, npm-shrinkwrap.json, yarn.lock, pnpm-lock.yaml, or package.json. Must exist."
+            "Path to a package-lock.json, npm-shrinkwrap.json, yarn.lock, pnpm-lock.yaml, or package.json under an operator-approved root. Must be a readable regular file."
         },
         deep: {
           type: "boolean",
@@ -241,8 +288,15 @@ function lockfileAuditToolDefinition() {
 function lockfileTriageToolDefinition() {
   return {
     name: LOCKFILE_TRIAGE_TOOL_NAME,
+    title: "Record dependency triage decisions",
     description:
-      "Non-interactive triage of a lockfile — auto-mark every flagged dep as allow or block, persisted to a sibling .pkgxray.lock next to the lockfile. Subsequent audit_lockfile_supply_chain runs respect those decisions. Required for MCP because interactive TTY input is not available; choose mode='block' to record current OSV findings as suppressions or mode='allow' to accept them.",
+      "Read a manifest under an operator-approved root and write bulk allow or block decisions to its sibling .pkgxray.lock. This changes future audit policy for every selected dependency: auto=allow suppresses those findings, while auto=block preserves rejection. MCP has no interactive confirmation, so review the target and mode before calling.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true
+    },
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -250,7 +304,7 @@ function lockfileTriageToolDefinition() {
         lockfilePath: {
           type: "string",
           description:
-            "Absolute or relative path to a package-lock.json, npm-shrinkwrap.json, yarn.lock, pnpm-lock.yaml, or package.json. Must exist."
+            "Path to a package-lock.json, npm-shrinkwrap.json, yarn.lock, pnpm-lock.yaml, or package.json under an operator-approved root. A sibling .pkgxray.lock will be written."
         },
         auto: {
           type: "string",
@@ -307,6 +361,53 @@ function isLocalReference(reference) {
   return false;
 }
 
+function localReferencePath(reference) {
+  let value = reference.startsWith("file:") ? reference.slice(5) : reference;
+  if (value === "~") value = HOME_DIR;
+  else if (value.startsWith("~/")) value = path.join(HOME_DIR, value.slice(2));
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function isWithinAllowedRoot(candidate) {
+  return MCP_ALLOWED_ROOTS.some((root) => {
+    const relative = path.relative(root, candidate);
+    return relative === "" ||
+      (relative !== ".." &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative));
+  });
+}
+
+// Resolve symlinks in the existing prefix. This also handles destinations that
+// do not exist yet without letting a symlinked parent escape an approved root.
+function canonicalPath(candidate, mustExist) {
+  const absolute = path.resolve(candidate);
+  if (mustExist) return fs.realpathSync(absolute);
+
+  let existing = absolute;
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) throw new Error("no readable parent");
+    existing = parent;
+  }
+  const resolvedParent = fs.realpathSync(existing);
+  return path.resolve(resolvedParent, path.relative(existing, absolute));
+}
+
+function resolveOperatorPath(candidate, { mustExist = true } = {}) {
+  try {
+    const resolved = canonicalPath(candidate, mustExist);
+    if (!isWithinAllowedRoot(resolved)) return null;
+    return resolved;
+  } catch {
+    return null;
+  }
+}
+
 // SECURITY: error messages from auditor / quarantine paths can include
 // absolute filesystem paths. The MCP reply goes back to a possibly-hostile
 // caller (an LLM whose context an attacker influenced). Strip absolute paths
@@ -338,15 +439,29 @@ function validateToolCall(toolName, args) {
     if (args.reference.includes("\0")) {
       return "reference must not contain a NUL byte";
     }
-    if (isLocalReference(args.reference) && args.allowLocalReferences !== true) {
-      return "local-path references are disabled over MCP — set allowLocalReferences:true to opt in (intended for trusted CLI bridges only)";
+    if (args.allowLocalReferences !== undefined) {
+      return "allowLocalReferences is not supported; only the server operator can grant filesystem roots";
+    }
+    if (isLocalReference(args.reference)) {
+      const resolved = resolveOperatorPath(localReferencePath(args.reference));
+      if (!resolved) {
+        return "local reference is unreadable or outside the operator-approved filesystem roots";
+      }
+      args.reference = resolved;
     }
     for (const k of ["quarantineRoot", "promoteTo"]) {
       if (args[k] !== undefined && (typeof args[k] !== "string" || args[k].includes("\0"))) {
         return `${k} must be a string without a NUL byte`;
       }
+      if (args[k] !== undefined) {
+        const resolved = resolveOperatorPath(args[k], { mustExist: false });
+        if (!resolved) {
+          return `${k} is outside the operator-approved filesystem roots`;
+        }
+        args[k] = resolved;
+      }
     }
-    for (const k of ["sourceScan", "vulnerabilityCheck", "githubMetadata", "githubDiff", "force", "deep", "allowLocalReferences"]) {
+    for (const k of ["sourceScan", "vulnerabilityCheck", "githubMetadata", "githubDiff", "force", "deep"]) {
       if (args[k] !== undefined && typeof args[k] !== "boolean") {
         return `${k} must be a boolean`;
       }
@@ -371,6 +486,11 @@ function validateToolCall(toolName, args) {
     if (args.lockfilePath.includes("\0")) {
       return "lockfilePath must not contain a NUL byte";
     }
+    const resolved = resolveOperatorPath(args.lockfilePath);
+    if (!resolved) {
+      return "lockfilePath is unreadable or outside the operator-approved filesystem roots";
+    }
+    args.lockfilePath = resolved;
     if (toolName === LOCKFILE_TRIAGE_TOOL_NAME) {
       if (args.auto !== "allow" && args.auto !== "block") {
         return "auto must be 'allow' or 'block' (MCP transport has no TTY for interactive mode)";
@@ -837,5 +957,7 @@ module.exports = {
   toolExposed,
   listTools,
   CONFIG_TOOL_KEY,
-  startStdioServer: attachStdin
+  startStdioServer: attachStdin,
+  attachStdin,
+  resolveOperatorPath
 };
