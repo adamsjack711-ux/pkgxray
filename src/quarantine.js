@@ -51,11 +51,17 @@ const DEFAULT_TARBALL_MAX_BYTES = 256 * 1024 * 1024;
 const DEFAULT_TARBALL_MAX_ENTRIES = 20000;
 const DEFAULT_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
 const DEFAULT_DOWNLOAD_MAX_REDIRECTS = 5;
+// NOTE: `dist` / `build` are deliberately NOT skipped. In a *source repo* those
+// are throwaway build output, but in a *published npm tarball* they are the
+// shipped, executed code — `"main": "dist/index.js"` is ubiquitous, and many
+// packages publish ONLY their compiled `dist/`. Skipping them meant the entire
+// heuristic layer (de-obfuscation, exec/exfil correlation, artifact-diff) never
+// ran on the code that actually runs at install/require time — a trivial evasion
+// (drop the payload in `dist/`, point `main` at it). We keep skipping genuine
+// non-code noise: VCS, vendored deps, framework caches, coverage, py caches.
 const SKIP_DIRS = new Set([
   ".git",
   "node_modules",
-  "dist",
-  "build",
   "coverage",
   ".next",
   ".turbo",
@@ -1561,7 +1567,19 @@ async function collectSourceFiles(root, options = {}) {
         continue;
       }
 
-      if (!entry.isFile() || !looksTextLike(relativePath)) {
+      if (!entry.isFile()) {
+        continue;
+      }
+      let collectThisFile = looksTextLike(relativePath);
+      if (!collectThisFile && !entry.name.includes(".")) {
+        // Extensionless regular file (e.g. bare `install` / `preinstall` /
+        // `configure`): collect it only if it's a shebang script. These carry
+        // no text extension so looksTextLike skips them, yet a lifecycle hook
+        // can run them at install time. The peek is a bounded 2-byte read and
+        // only happens for the handful of extensionless files in a package.
+        collectThisFile = await startsWithShebang(fullPath);
+      }
+      if (!collectThisFile) {
         continue;
       }
 
@@ -1600,6 +1618,24 @@ async function collectSourceFiles(root, options = {}) {
 function looksTextLike(filePath) {
   const normalized = filePath.replace(/\\/g, "/").toLowerCase();
   return TEXT_FILE_PATTERNS.some((pattern) => normalized.endsWith(pattern) || normalized.includes(pattern));
+}
+
+// True if the file's first two bytes are a shebang (`#!`). Used to rescue
+// extensionless executable scripts that looksTextLike skips. Opens with a
+// bounded 2-byte read and never follows a symlink (callers gate on a Dirent
+// isFile() first, and the read targets a plain path).
+async function startsWithShebang(fullPath) {
+  let handle;
+  try {
+    handle = await fsp.open(fullPath, "r");
+    const buf = Buffer.alloc(2);
+    const { bytesRead } = await handle.read(buf, 0, 2, 0);
+    return bytesRead === 2 && buf[0] === 0x23 && buf[1] === 0x21; // "#!"
+  } catch {
+    return false;
+  } finally {
+    if (handle) await handle.close();
+  }
 }
 
 function decisionForReport(report, policy) {
