@@ -39,7 +39,10 @@ const commas = (n) => Number(n).toLocaleString("en-US");
 const pct = (r, dp = 1) => `${(r * 100).toFixed(dp)}%`;
 
 function loadRuns() {
-  const files = readdirSync(DATA).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f));
+  // A run id is a date, optionally with a lowercase suffix for a same-day re-run
+  // (e.g. 2026-07-19-retuned). String sort puts the suffixed run after the bare
+  // date, so a re-scan sorts as the newer/latest run.
+  const files = readdirSync(DATA).filter((f) => /^\d{4}-\d{2}-\d{2}(?:-[a-z0-9-]+)?\.json$/.test(f));
   const runs = files.map((f) => JSON.parse(readFileSync(join(DATA, f), "utf8")));
   runs.sort((a, b) => (a.runId < b.runId ? 1 : -1)); // newest first
   return runs;
@@ -297,7 +300,21 @@ function renderMethodology(run) {
             the reputation-staking calls, and <strong>every one was read by hand.</strong>
           </li>
         </ul>
-        <p>
+        ${h.topThousandFalseBlocks.count === 0
+          ? `<p>
+          <strong>Every top-1000 block was a real CVE</strong> (OSV, by design);
+          <strong>zero were heuristic false positives</strong>. The one pre-retune
+          heuristic false positive — a ~30-line utility that reads <code>.npmrc</code>
+          solely to return the configured registry URL, never touching the auth token,
+          with no network egress at all — was minimized into a benign corpus fixture
+          and the over-firing heuristic retuned, so on this engine it resolves to
+          <code>review</code>. Re-running the full ${commas(h.topThousandFalseBlocks.of)}-package
+          list on the fixed engine confirms
+          <strong>${pct(h.topThousandFalseBlocks.rate)}</strong> =
+          ${h.topThousandFalseBlocks.count} / ${commas(h.topThousandFalseBlocks.of)},
+          with no new false block.
+        </p>`
+          : `<p>
           Of the four blocks in the top-1000, three were real CVEs (OSV, by design)
           and <strong>one was a confirmed heuristic false positive</strong>: a
           ~30-line utility that reads <code>.npmrc</code> solely to return the
@@ -306,10 +323,24 @@ function renderMethodology(run) {
           corpus fixture and the over-firing heuristic was retuned.
           <strong>${pct(h.topThousandFalseBlocks.rate)}</strong> =
           ${h.topThousandFalseBlocks.count} / ${commas(h.topThousandFalseBlocks.of)}.
-        </p>
+        </p>`}
 
-        <h2 class="coherence">Coherence note (read this)</h2>
-        <p>
+        <h2 class="coherence">Reconciliation note (read this)</h2>
+        ${h.topThousandFalseBlocks.count === 0
+          ? `<p>
+          This run is the <strong>re-scan on the retuned engine</strong>. An earlier
+          provisional run
+          (<a href="/stats/${esc(run.runId.replace(/-retuned$/, ""))}">${esc(run.runDate)}</a>,
+          kept unedited in run history) published the <em>as-measured</em> pre-retune
+          figure of one top-1000 false block, flagged as pending a re-run. It now has
+          one: re-running the full ${commas(h.packagesScanned)}-package scan on the
+          fixed engine yields <strong>zero</strong> top-1000 false blocks, and the
+          earlier run's number was left in place rather than silently edited. This is
+          also the scoping correction that reconciled the README's earlier
+          "0 false blocks" line: that claim held only on a stale 2019 dependents list;
+          the figure here is corpus-gated and scoped to "the top-1000 most-downloaded."
+        </p>`
+          : `<p>
           The false-block figure is the <em>as-measured</em> number from the
           at-scale scan — the number that <em>motivated</em> the retune. The engine
           has since been fixed so that case no longer blocks, but we have
@@ -320,7 +351,7 @@ function renderMethodology(run) {
           claim was true only on a stale 2019 dependents list that never contained
           this package; it is now corpus-gated and scoped to "the top-1000
           most-downloaded."
-        </p>
+        </p>`}
 
         <h2>Catch rate and the corpus</h2>
         <p>

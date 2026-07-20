@@ -28,7 +28,13 @@
   "corrections": {
     "contact": "https://github.com/adamsjack711-ux/pkgxray/issues (label: calibration)",
     "policy": "Versioned runs are immutable. A corrected number is published as a new dated run; corrections are listed on the page, never silently edited.",
-    "log": []
+    "log": [
+      {
+        "date": "2026-07-19",
+        "what": "Full 1,000-package scan re-run on the retuned engine; the single pre-retune heuristic false block now resolves to review, with no new false block.",
+        "newRun": "2026-07-19-retuned"
+      }
+    ]
   },
   "notes": "Aggregate calibration of a one-time at-scale static scan. Catch rate is measured against the committed reconstructed known-malware corpus (npm removes live malware, so live recall is untestable). The one top-1000 false block is the as-measured figure that drove the retune; the full scan was not re-run on the fixed engine. See methodology."
 }
