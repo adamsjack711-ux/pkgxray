@@ -1218,6 +1218,10 @@ function downloadFile(url, destination, options = {}) {
       file.destroy();
       fs.unlink(destination, () => reject(err));
     };
+    // Attach the error handler at creation, not inside the response callback: an
+    // open-time error (EACCES/ENOSPC) or a write-after-destroy race would
+    // otherwise be an unhandled 'error' event that crashes the process.
+    file.on("error", fail);
     const succeed = () => {
       if (settled) return;
       settled = true;
@@ -1270,7 +1274,6 @@ function downloadFile(url, destination, options = {}) {
           });
           response.pipe(file);
           file.on("finish", succeed);
-          file.on("error", fail);
         }
       );
       request.on("error", fail);
@@ -1294,6 +1297,21 @@ async function extractTarball(archivePath, destination, options = {}) {
     "--strip-components", "1",
     "--no-same-owner", "--no-same-permissions"
   ]);
+  await normalizeTreePermissions(destination);
+}
+
+// Normalize owner perms across an extracted tree so the scanner can always read
+// every file and traverse every directory. A package can ship a directory with
+// no execute bit or a file with no read bit — by accident (pngjs ships lib/ as
+// 0644) or on purpose, to hide code from the static walk so the scan aborts on
+// EACCES and degrades to review instead of reading (and blocking) the payload.
+// This is our throwaway, never-executed copy, so widening owner read/traverse is
+// safe. `u+rX` adds read to everything and execute to DIRECTORIES only (never
+// makes a regular file executable — `chmod -R` applies +X to a directory before
+// it recurses, so a non-traversable dir gets fixed then descended into), so the
+// file-mode signals we derive from the tar listing are unaffected.
+async function normalizeTreePermissions(root) {
+  await run("chmod", ["-R", "u+rX", root]);
 }
 
 // Validate a `tar -tvzf` listing (array of non-empty lines). Throws
@@ -1643,6 +1661,7 @@ module.exports = {
   tarballHostAllowlist,
   // exported for tests: tarball listing validator + local extractor
   extractTarball,
+  normalizeTreePermissions,
   parseTarListingLine,
   assertNoControlChars,
   assertSafeSymlinkTarget,

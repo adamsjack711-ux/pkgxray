@@ -285,6 +285,24 @@ async function main() {
       // never a bare crash-to-1-or-silent-safe.
       const verdict = cfg.verdictForScanError(config);
       process.stderr.write(`pkgxray: guard failed to complete (${error.message}); treating as ${verdict}\n`);
+      // Under --format json, a JSON consumer must still receive a parseable
+      // verdict on stdout — otherwise the degraded review is indistinguishable
+      // from a silent crash (empty stdout), which is exactly what batch scanners
+      // record as a "scan error". Emit a minimal, schema-tagged object.
+      if (options.format === "json") {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              schemaVersion: 1,
+              decision: verdict,
+              reference: options.reference,
+              scanError: error.message
+            },
+            null,
+            2
+          )}\n`
+        );
+      }
       process.exitCode = cfg.exitCodeForVerdict(verdict, config);
       return;
     }

