@@ -86,13 +86,15 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Audit dependencies or package
+      # npx resolves a name@version spec against the current project before
+      # the registry; in this repository the workspace itself is pkgxray at
+      # the pinned version, so npx would skip the install and find no binary.
+      # Installing into a prefix outside the workspace keeps the install
+      # exact-version and non-global while working in any checkout.
+      - name: Install pkgxray
         env:
-          LOCKFILE: ${{ inputs.lockfile }}
-          PACKAGE_REFERENCE: ${{ inputs.package }}
-          FAIL_ON: ${{ inputs.fail-on || 'block' }}
-          OUTPUT_FORMAT: ${{ inputs.output-format || 'markdown' }}
           PKGXRAY_VERSION: ${{ inputs.pkgxray-version || '1.0.3' }}
+        working-directory: ${{ runner.temp }}
         run: |
           set -u
 
@@ -100,6 +102,20 @@ jobs:
             echo "::error::pkgxray-version must be an exact semver, not a mutable tag"
             exit 1
           fi
+          npm install --prefix pkgxray-dist --no-fund --no-audit \
+            --loglevel error "pkgxray@${PKGXRAY_VERSION}"
+          test -x pkgxray-dist/node_modules/.bin/pkgxray
+
+      - name: Audit dependencies or package
+        env:
+          LOCKFILE: ${{ inputs.lockfile }}
+          PACKAGE_REFERENCE: ${{ inputs.package }}
+          FAIL_ON: ${{ inputs.fail-on || 'block' }}
+          OUTPUT_FORMAT: ${{ inputs.output-format || 'markdown' }}
+          PKGXRAY_BIN: ${{ runner.temp }}/pkgxray-dist/node_modules/.bin/pkgxray
+        run: |
+          set -u
+
           if [[ "${FAIL_ON}" != "block" && "${FAIL_ON}" != "review" ]]; then
             echo "::error::fail-on must be 'block' or 'review'"
             exit 1
@@ -133,7 +149,7 @@ jobs:
               exit 1
             fi
             echo "::group::pkgxray guard npm:${PACKAGE_REFERENCE}"
-            if npx --yes "pkgxray@${PKGXRAY_VERSION}" guard "npm:${PACKAGE_REFERENCE}" --format "${OUTPUT_FORMAT}"; then
+            if "${PKGXRAY_BIN}" guard "npm:${PACKAGE_REFERENCE}" --format "${OUTPUT_FORMAT}"; then
               code=0
             else
               code=$?
@@ -166,7 +182,7 @@ jobs:
             while IFS= read -r f; do
               [ -n "${f}" ] || continue
               echo "::group::pkgxray audit ${f}"
-              if npx --yes "pkgxray@${PKGXRAY_VERSION}" audit "${f}" --format "${OUTPUT_FORMAT}"; then
+              if "${PKGXRAY_BIN}" audit "${f}" --format "${OUTPUT_FORMAT}"; then
                 code=0
               else
                 code=$?
