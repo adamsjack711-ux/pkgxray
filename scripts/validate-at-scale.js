@@ -108,7 +108,16 @@ function guardOne(pkg, timeoutMs) {
       try {
         const j = JSON.parse(out);
         const r = j.report || {};
-        rec.decision = j.decision || r.verdict || 'error';
+        // A verdict that carries scanError is guard failing CLOSED (fetch/OSV
+        // outage -> review), not an analyzed package. Counting it as a real
+        // review would silently inflate the calibration denominator — record
+        // it as an error, exactly as the published methodology promises.
+        if (j.scanError) {
+          rec.decision = 'error';
+          rec.error = String(j.scanError).slice(0, 200);
+        } else {
+          rec.decision = j.decision || r.verdict || 'error';
+        }
         rec.grade = r.grade ?? null;
         rec.score = r.score ?? null;
         rec.findings = (r.findings || []).map((f) => ({ severity: f.severity, category: f.category }));
@@ -177,6 +186,15 @@ function clearBucket(d) { return d === 'safe' || d === 'allow'; }
 // are only ever measured, never assumed: if the benchmark can't run, the
 // artifact is not written.
 function buildStatsArtifact(a, results, heuristicBlocks) {
+  // A stats artifact from a run that mostly failed to scan is not a
+  // calibration — refuse to emit one rather than publish a hollow denominator.
+  const errorCount = results.filter((r) => r.decision === 'error').length;
+  if (results.length && errorCount / results.length > 0.1) {
+    throw new Error(
+      `refusing to emit stats: ${errorCount} of ${results.length} scans errored (>10%) — ` +
+      'fix the environment (network/OSV reachability) and re-run'
+    );
+  }
   const benchArgs = [path.join(ROOT, 'benchmark', 'run.js'), '--json'];
   if (a.cohort) benchArgs.push('--cohort', a.cohort);
   const bench = spawnSync(process.execPath, benchArgs, { cwd: ROOT, encoding: 'utf8' });
@@ -214,6 +232,7 @@ function buildStatsArtifact(a, results, heuristicBlocks) {
     },
     headline: {
       packagesScanned: scanned,
+      scanErrors: errorCount,
       // Same key the stats site reads for the false-block card; for a cohort
       // run, `of` is the cohort target-list size, not 1,000.
       topThousandFalseBlocks: {
