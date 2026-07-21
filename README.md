@@ -240,20 +240,23 @@ pipeline (Docker/gVisor), not an install-time developer gate.
 ³ The YARA analyzer runs locally; the LLM-as-judge and Cisco AI Defense
 analyzers require API keys.
 ⁴ Both detonate packages in an OS sandbox. pkgxray's opt-in
-[`canary`](docs/canary-threat-model.md) now runs **two phases** — install-time
+[`canary`](docs/canary-threat-model.md) runs **two phases** — install-time
 lifecycle scripts *and* the import of the package entry point — with decoy
-credentials and a capture proxy, so the malicious-on-first-`require`
-(flatmap-stream) shape that is pkgxray's stated
-[blind spot](docs/threat-model.md#known-blind-spot) is triggered and observed.
-Still marked ◑, honestly: canary is opt-in and *confirm-only* by design (it
-proves malice, never *clears* a package), it detonates without the package's
-dependencies installed, and on Linux it shares the host network namespace so it
-relies on the capture proxy rather than a kernel egress boundary
-([isolation levels](docs/canary-threat-model.md#isolation-levels)) — a
-network-namespace confinement is the remaining step to full parity. OpenSSF
-Package Analysis runs this registry-scale and default-on. Run them as
-complements — pkgxray before install, full dynamic analysis where that risk
-matters.
+credentials, so the malicious-on-first-`require` (flatmap-stream) shape that is
+pkgxray's stated [blind spot](docs/threat-model.md#known-blind-spot) is
+triggered and observed. Egress is now **kernel-confined on both platforms**:
+`sandbox-exec` on macOS and, on Linux with `bubblewrap` + `iproute2`, a private
+network namespace (`bwrap+netns`) where a raw-socket dial that bypasses the
+proxy is refused by the kernel (`ENETUNREACH`) while proxied egress is still
+captured. That tier engages only after a runtime
+[self-test proves it](docs/canary-threat-model.md#isolation-levels) in the
+environment (verify with `node scripts/verify-netns-confinement.js`); absent the
+tooling it falls back to observe-only and says so. Still ◑ — not for a
+confinement gap, but by design: canary is opt-in and *confirm-only* (it proves
+malice, never *clears* a package) and detonates without the package's
+dependencies installed, whereas OpenSSF Package Analysis runs registry-scale and
+default-on. Run them as complements — pkgxray before install, full dynamic
+analysis where that risk matters.
 ⁵ Socket's LLM-based code inspection is a headline feature
 (&ldquo;AI-detected potential malware&rdquo;, human-confirmed); Cisco's YARA-only mode
 is deterministic, its LLM analyzer is not.

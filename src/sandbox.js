@@ -143,21 +143,18 @@ function isRawIpHost(host) {
   return /^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/.test(String(host || ""));
 }
 
-// Loopback HTTP/HTTPS capture proxy. Plaintext requests are read in full (URL,
-// headers, body) and scanned for canary tokens; HTTPS CONNECTs record the
-// target host only. NOTHING is forwarded — captured egress never leaves the
-// machine, so the decoy tokens are safe even when the payload "sends" them.
-function startCaptureProxy(tokenSet) {
-  const hits = [];
-  // Track live sockets so teardown can never hang. server.close()'s callback
-  // only fires once EVERY connection has ended; a payload that opens a
-  // keep-alive socket to the proxy and never closes it would otherwise wedge
-  // the run forever in the teardown await. We force-destroy any lingering
-  // sockets on a short timer so close() is guaranteed to complete.
+// The capture HTTP/HTTPS server, factored out so the in-process proxy and the
+// in-netns file-capture proxy (below) share ONE implementation of request
+// parsing, token scanning, and CONNECT refusal. Plaintext requests are read in
+// full (URL, headers, body) and scanned for canary tokens; HTTPS CONNECTs
+// record the target host only. NOTHING is forwarded — captured egress never
+// leaves the machine. `onHit(hit)` fires for every recorded hit; the socket set
+// it returns lets the caller force-destroy lingering connections on teardown.
+function createCaptureServer(tokenSet, onHit) {
   const sockets = new Set();
   // Precompute each token's encoded variants ONCE — they depend only on the
-  // token, never the request — so the capture hot path (every HTTP request and
-  // every CONNECT) doesn't re-encode all decoys on every hit.
+  // token, never the request — so the capture hot path doesn't re-encode all
+  // decoys on every hit.
   const tokenIndex = Array.from(tokenSet, (token) => ({ token, variants: tokenVariants(token) }));
   const scan = (haystack) => {
     const seen = [];
@@ -166,6 +163,8 @@ function startCaptureProxy(tokenSet) {
     }
     return seen;
   };
+  const record = (hit) => { try { onHit(hit); } catch { /* onHit must never break capture */ } };
+
   const server = http.createServer((req, res) => {
     const chunks = [];
     let bodyBytes = 0;
@@ -191,7 +190,7 @@ function startCaptureProxy(tokenSet) {
       } catch {
         /* relative URL through a proxy is unusual; keep header host */
       }
-      hits.push({ transport: "http", method: req.method, host, url: req.url, tokensSeen, bodyBytes, truncated });
+      record({ transport: "http", method: req.method, host, url: req.url, tokensSeen, bodyBytes, truncated });
       res.writeHead(204);
       res.end();
     });
@@ -208,7 +207,7 @@ function startCaptureProxy(tokenSet) {
     clientSocket.on("close", () => sockets.delete(clientSocket));
     const host = req.url; // host:port
     const authTokens = scan(host);
-    hits.push({ transport: "https-connect", method: "CONNECT", host, url: `https://${host}`, tokensSeen: authTokens, bodyBytes: 0 });
+    record({ transport: "https-connect", method: "CONNECT", host, url: `https://${host}`, tokensSeen: authTokens, bodyBytes: 0 });
     // No MITM: record the intended destination and refuse the tunnel so
     // nothing actually egresses.
     try {
@@ -220,31 +219,94 @@ function startCaptureProxy(tokenSet) {
   });
   server.on("clientError", (_err, socket) => { try { socket.destroy(); } catch { /* noop */ } });
 
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      resolve({
-        port,
-        hits,
-        close: () =>
-          new Promise((r) => {
-            let done = false;
-            const finish = () => { if (!done) { done = true; r(); } };
-            // After a short grace, force-destroy any socket still open so
-            // server.close() can fire its callback. Bounded so a lingering
-            // keep-alive connection can't wedge teardown.
-            const destroyTimer = setTimeout(() => {
-              for (const s of sockets) { try { s.destroy(); } catch { /* noop */ } }
-            }, 250);
-            if (destroyTimer.unref) destroyTimer.unref();
-            // Absolute backstop: resolve regardless if close() never calls back.
-            const hardTimer = setTimeout(finish, 1500);
-            if (hardTimer.unref) hardTimer.unref();
-            server.close(() => { clearTimeout(destroyTimer); clearTimeout(hardTimer); finish(); });
-          })
-      });
+  // Bounded teardown: force-destroy any socket still open so server.close()'s
+  // callback (which only fires once EVERY connection ends) can't be wedged by a
+  // payload holding a keep-alive socket open.
+  const close = () =>
+    new Promise((r) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; r(); } };
+      const destroyTimer = setTimeout(() => {
+        for (const s of sockets) { try { s.destroy(); } catch { /* noop */ } }
+      }, 250);
+      if (destroyTimer.unref) destroyTimer.unref();
+      const hardTimer = setTimeout(finish, 1500);
+      if (hardTimer.unref) hardTimer.unref();
+      server.close(() => { clearTimeout(destroyTimer); clearTimeout(hardTimer); finish(); });
+    });
+
+  return { server, close };
+}
+
+// Loopback HTTP/HTTPS capture proxy in the parent process. Listens on a TCP
+// port (used by the env-only, sandbox-exec, and shared-net bwrap tiers, where
+// the sandbox reaches the host loopback directly) and — when `unixPath` is
+// given — ALSO on a Unix socket, which the netns tier's in-sandbox forwarder
+// connects to across the network-namespace boundary (a path-based unix socket
+// is filesystem-scoped, not netns-scoped, so it works where TCP loopback does
+// not). Both listeners feed one shared `hits` array.
+function startCaptureProxy(tokenSet, options = {}) {
+  const hits = [];
+  const tcp = createCaptureServer(tokenSet, (hit) => hits.push(hit));
+  const unix = options.unixPath ? createCaptureServer(tokenSet, (hit) => hits.push(hit)) : null;
+  return new Promise((resolve, reject) => {
+    tcp.server.listen(0, "127.0.0.1", () => {
+      const { port } = tcp.server.address();
+      const finish = () =>
+        resolve({
+          port,
+          unixPath: options.unixPath || null,
+          hits,
+          close: async () => { await tcp.close(); if (unix) await unix.close(); }
+        });
+      if (!unix) return finish();
+      unix.server.on("error", reject);
+      unix.server.listen(options.unixPath, finish);
     });
   });
+}
+
+// TCP→Unix forwarder, run INSIDE the sandbox's network namespace. It listens on
+// loopback (127.0.0.1:innerPort) and pipes each connection, byte-for-byte, to
+// the parent capture proxy's Unix socket. Because it is a dumb byte pipe, both
+// plaintext HTTP and HTTPS CONNECT frames reach the capture proxy intact. The
+// payload's HTTP(S)_PROXY points at innerPort; anything that bypasses the proxy
+// and dials a real IP directly has no route out of the fresh netns and is
+// refused by the kernel. Returns the server so a self-test can close it.
+function startTcpToUnixForwarder(innerPort, sockPath, onReady) {
+  const net = require("node:net");
+  const server = net.createServer((down) => {
+    const up = net.connect(sockPath);
+    down.on("error", () => up.destroy());
+    up.on("error", () => down.destroy());
+    down.pipe(up);
+    up.pipe(down);
+  });
+  server.on("error", () => { /* surfaced to caller via not-ready */ });
+  server.listen(innerPort, "127.0.0.1", () => { if (onReady) onReady(); });
+  return server;
+}
+
+// Build the bootstrap shell that runs as the bwrap `--unshare-net` child: bring
+// up loopback (a fresh netns starts with lo DOWN), start the forwarder and wait
+// until it is listening, run the payload, then hold the forwarder open for the
+// egress grace window so a delayed beacon is still forwarded before teardown.
+// Pure string construction so it is unit-testable without a sandbox.
+function buildNetnsBootstrap({ nodeBin, selfPath, innerPort, sockPath, readyFile, ipBin, graceMs, payloadCmd }) {
+  const q = shellQuote;
+  const graceS = Math.max(0, Math.ceil((Number(graceMs) || 0) / 1000));
+  return [
+    `${q(ipBin)} link set lo up 2>/dev/null`,
+    `${q(nodeBin)} ${q(selfPath)} __forwarder ${innerPort} ${q(sockPath)} ${q(readyFile)} &`,
+    `__fw=$!`,
+    // Wait (bounded ~5s) for the forwarder to signal ready, then run the payload.
+    `__i=0; while [ ! -f ${q(readyFile)} ] && [ $__i -lt 100 ]; do __i=$((__i+1)); sleep 0.05; done`,
+    payloadCmd,
+    `__status=$?`,
+    graceS > 0 ? `sleep ${graceS}` : `:`,
+    `kill $__fw 2>/dev/null`,
+    `exit $__status`
+  ].join("\n");
 }
 
 // Escape a path for safe interpolation into an SBPL string literal so a path
@@ -290,45 +352,203 @@ function detectSandboxWrapper(sandboxRoot) {
     // process/IPC/hostname namespaces. Net stays SHARED so loopback→proxy still
     // works (the capture proxy, not the network namespace, is what denies real
     // egress — so netConfined is false here; raw-socket egress can still leave).
-    // A tmpfs is stacked over the REAL home dir so the payload cannot read the
-    // operator's actual ~/.aws, ~/.npmrc, ~/.ssh, etc. through the ro-bind of /
-    // (HOME itself is repointed at the decoy tree via env). --die-with-parent
-    // guarantees no sandbox process outlives pkgxray, and --new-session detaches
-    // the controlling terminal (blocks TIOCSTI input-injection). All flags are
-    // long-standing.
-    // Mask the real home ONLY when it's a normal directory that does not contain
-    // the sandbox root. Guard the edge where os.homedir() is the filesystem root
-    // ("/", e.g. a misconfigured root account or a minimal container): `--tmpfs /`
-    // would shadow the ro-bind of everything — including the staged package — so
-    // the payload couldn't read its own package.json and the run would falsely
-    // read "not-observed" without executing anything.
-    const realHome = os.homedir();
-    const resolvedHome = realHome ? path.resolve(realHome) : "";
-    const resolvedRoot = path.resolve(sandboxRoot);
-    const homeIsFsRoot = resolvedHome !== "" && resolvedHome === path.parse(resolvedHome).root;
-    const sandboxUnderHome =
-      resolvedHome !== "" && (resolvedRoot === resolvedHome || resolvedRoot.startsWith(resolvedHome + path.sep));
-    const maskRealHome = resolvedHome !== "" && !homeIsFsRoot && !sandboxUnderHome ? ["--tmpfs", realHome] : [];
+    // The `bwrap+netns` tier (detectNetnsConfinement) upgrades this to
+    // netConfined:true when an unprivileged network namespace can be stood up.
     return {
       level: "bwrap",
       netConfined: false,
-      wrap: (argv) => [
-        "bwrap",
-        "--ro-bind", "/", "/",
-        ...maskRealHome,
-        "--bind", sandboxRoot, sandboxRoot,
-        "--dev", "/dev",
-        "--proc", "/proc",
-        "--unshare-pid",
-        "--unshare-ipc",
-        "--unshare-uts",
-        "--die-with-parent",
-        "--new-session",
-        ...argv
-      ]
+      wrap: (argv) => ["bwrap", ...bwrapBaseArgs(sandboxRoot), ...argv]
     };
   }
   return { level: "env-only", netConfined: false, wrap: (argv) => argv };
+}
+
+// The bwrap arguments shared by the shared-net and netns tiers. A tmpfs is
+// stacked over the REAL home dir so the payload cannot read the operator's
+// actual ~/.aws, ~/.npmrc, ~/.ssh, etc. through the ro-bind of / (HOME itself
+// is repointed at the decoy tree via env). --die-with-parent guarantees no
+// sandbox process outlives pkgxray; --new-session detaches the controlling
+// terminal (blocks TIOCSTI input-injection). All flags are long-standing.
+// Mask the real home ONLY when it's a normal directory that does not contain
+// the sandbox root — the `--tmpfs /` edge (os.homedir() === "/") would shadow
+// the ro-bind of everything, including the staged package, making the payload
+// unable to read its own package.json (a false "not-observed" without executing).
+function bwrapBaseArgs(sandboxRoot) {
+  const realHome = os.homedir();
+  const resolvedHome = realHome ? path.resolve(realHome) : "";
+  const resolvedRoot = path.resolve(sandboxRoot);
+  const homeIsFsRoot = resolvedHome !== "" && resolvedHome === path.parse(resolvedHome).root;
+  const sandboxUnderHome =
+    resolvedHome !== "" && (resolvedRoot === resolvedHome || resolvedRoot.startsWith(resolvedHome + path.sep));
+  const maskRealHome = resolvedHome !== "" && !homeIsFsRoot && !sandboxUnderHome ? ["--tmpfs", realHome] : [];
+  return [
+    "--ro-bind", "/", "/",
+    ...maskRealHome,
+    "--bind", sandboxRoot, sandboxRoot,
+    "--dev", "/dev",
+    "--proc", "/proc",
+    "--unshare-pid",
+    "--unshare-ipc",
+    "--unshare-uts",
+    "--die-with-parent",
+    "--new-session"
+  ];
+}
+
+function hasCmd(cmd) {
+  try {
+    return spawnSync("sh", ["-c", `command -v ${cmd}`], { encoding: "utf8" }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+// Resolve the loopback-up tool. A fresh network namespace starts with `lo`
+// DOWN, so a loopback-only egress path needs `ip link set lo up`. iproute2's
+// `ip` is the only dependency; absent it, the netns tier is unavailable and we
+// fall back to shared-net bwrap. (busybox `ifconfig` is intentionally not used —
+// keeping one well-known tool keeps the self-test's guarantee legible.)
+function resolveIpBin() {
+  return hasCmd("ip") ? "ip" : null;
+}
+
+// Module-level cache: the netns capability is a property of the HOST (kernel +
+// tooling), not of a given run, so the self-test runs at most once per process.
+// undefined = not yet probed; false = unavailable; true = self-test passed.
+let _netnsCapable;
+const NETNS_INNER_PORT = 18080; // arbitrary; inside an isolated netns, no conflict
+
+// Decide whether real network-namespace confinement is available, and if so
+// return a per-run descriptor. Engages ONLY when bwrap + ip are present AND a
+// live self-test proves, using the exact same machinery a real run uses, that
+// (a) proxied egress is still captured and (b) a direct dial to a non-loopback
+// IP is refused by the kernel (ENETUNREACH). Any failure → null → the caller
+// falls back to shared-net bwrap. This is the safety contract: netConfined:true
+// is asserted only after it has been demonstrated in THIS environment, never
+// assumed.
+async function detectNetnsConfinement(sandboxRoot) {
+  if (process.platform !== "linux") return null;
+  const ipBin = resolveIpBin();
+  if (!hasCmd("bwrap") || !ipBin) return null;
+  if (_netnsCapable === undefined) {
+    _netnsCapable = await selfTestNetnsConfinement(ipBin).catch(() => false);
+  }
+  if (!_netnsCapable) return null;
+  const sockPath = path.join(sandboxRoot, "cap.sock");
+  const readyFile = path.join(sandboxRoot, "fw.ready");
+  return {
+    innerPort: NETNS_INNER_PORT,
+    sockPath,
+    // The final wrap depends on the run's grace window (the forwarder must
+    // outlive the payload long enough for the parent's egress-grace read), so
+    // the caller builds it once it knows graceMs.
+    build: (graceMs) => ({
+      level: "bwrap+netns",
+      netConfined: true,
+      wrap: (argv) => netnsWrap(argv, { sandboxRoot, innerPort: NETNS_INNER_PORT, sockPath, readyFile, ipBin, graceMs })
+    })
+  };
+}
+
+// Wrap the payload argv into a bwrap --unshare-net invocation whose child is the
+// netns bootstrap (bring up lo, start the forwarder, run the payload). The base
+// argv from execWithTimeout is ["sh","-c",<cmd>]; we rebuild <cmd> as the
+// bootstrap wrapping the original command.
+function netnsWrap(argv, opts) {
+  const cmd = argv[0] === "sh" && argv[1] === "-c" ? argv[2] : argv.join(" ");
+  const bootstrap = buildNetnsBootstrap({
+    nodeBin: process.execPath,
+    selfPath: __filename,
+    innerPort: opts.innerPort,
+    sockPath: opts.sockPath,
+    readyFile: opts.readyFile,
+    ipBin: opts.ipBin,
+    graceMs: opts.graceMs,
+    payloadCmd: cmd
+  });
+  return ["bwrap", ...bwrapBaseArgs(opts.sandboxRoot), "--unshare-net", "sh", "-c", bootstrap];
+}
+
+// Spawn a raw argv (no shell), capture output, enforce a timeout with a
+// process-group kill. Used by the netns self-test.
+function spawnCapture(argv, { env, timeoutMs }) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(argv[0], argv.slice(1), { env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    } catch (error) {
+      return resolve({ error: error.message, output: "", timedOut: false });
+    }
+    let out = "";
+    const cap = (c) => { if (out.length < 8192) out += c; };
+    child.stdout.on("data", cap);
+    child.stderr.on("data", cap);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; killProcessGroup(child, "SIGKILL"); }, timeoutMs);
+    child.on("error", (e) => { clearTimeout(timer); resolve({ error: e.message, output: out, timedOut }); });
+    child.on("close", (code) => { clearTimeout(timer); resolve({ exitCode: code, output: out, timedOut }); });
+  });
+}
+
+// The self-test: stand up the real machinery once and demand proof of BOTH
+// confinement properties before ever reporting netConfined:true.
+async function selfTestNetnsConfinement(ipBin) {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "npm-netns-selftest-"));
+  const token = `selftest-${crypto.randomBytes(8).toString("hex")}`;
+  let proxy;
+  try {
+    const sockPath = path.join(root, "cap.sock");
+    const readyFile = path.join(root, "fw.ready");
+    const hits = [];
+    const cap = createCaptureServer(new Set([token]), (h) => hits.push(h));
+    await new Promise((res, rej) => { cap.server.on("error", rej); cap.server.listen(sockPath, res); });
+    proxy = cap;
+
+    // Probe (runs inside the netns): (1) POST the token through the proxy — must
+    // be captured; (2) dial a non-loopback TEST-NET-3 (RFC5737) IP directly —
+    // the kernel must refuse it (ENETUNREACH/EHOSTUNREACH/ENETDOWN), proving
+    // there is no route out of the namespace. Prints markers we assert on.
+    const probeSrc =
+      "const http=require('node:http'),net=require('node:net');" +
+      "const p=new URL(process.env.HTTP_PROXY);" +
+      "const r=http.request({host:p.hostname,port:p.port,method:'POST',path:'http://selftest.local/x',headers:{host:'selftest.local'}});" +
+      "r.on('error',()=>{});r.end('t=' + process.env.SELFTEST_TOKEN);" +
+      "const s=net.connect({host:'203.0.113.1',port:80});" +
+      "s.setTimeout(2000);" +
+      "s.on('connect',()=>{console.log('DIRECT_OPEN');s.destroy();});" +
+      "s.on('timeout',()=>{console.log('DIRECT_TIMEOUT');s.destroy();});" +
+      "s.on('error',(e)=>{console.log('DIRECT_ERR_'+e.code);});";
+    const payloadCmd = `${shellQuote(process.execPath)} -e ${shellQuote(probeSrc)}`;
+    const bootstrap = buildNetnsBootstrap({
+      nodeBin: process.execPath, selfPath: __filename, innerPort: NETNS_INNER_PORT,
+      sockPath, readyFile, ipBin, graceMs: 500, payloadCmd
+    });
+    const argv = ["bwrap", ...bwrapBaseArgs(root), "--unshare-net", "sh", "-c", bootstrap];
+    const env = { ...process.env, HTTP_PROXY: `http://127.0.0.1:${NETNS_INNER_PORT}`, SELFTEST_TOKEN: token };
+    const res = await spawnCapture(argv, { env, timeoutMs: 10000 });
+
+    const captured = hits.some((h) => (h.tokensSeen || []).includes(token));
+    // Only a KERNEL-level refusal (unreachable / net down) proves isolation;
+    // a timeout would also occur on a shared net where the IP just doesn't
+    // answer, so it does NOT count as confinement.
+    const directBlocked = /DIRECT_ERR_(ENETUNREACH|EHOSTUNREACH|ENETDOWN|EADDRNOTAVAIL)/.test(res.output || "");
+    return captured && directBlocked;
+  } catch {
+    return false;
+  } finally {
+    if (proxy) await proxy.close().catch(() => {});
+    await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// __forwarder / __capture entrypoints, invoked as `node sandbox.js <mode> …`
+// from inside the sandbox. Kept at module scope so bwrap's ro-bind of / makes
+// this file reachable by absolute path.
+function forwarderMain(argv) {
+  const [portStr, sockPath, readyFile] = argv;
+  startTcpToUnixForwarder(Number(portStr), sockPath, () => {
+    try { require("node:fs").writeFileSync(readyFile, "ready\n"); } catch { /* best effort */ }
+  });
 }
 
 // The install-phase runner: execute the package's declared install lifecycle
@@ -650,7 +870,19 @@ async function runCanarySandbox(options = {}) {
   // Decide isolation up front so a caller that DEMANDS real OS-level confinement
   // (--require-sandbox) fails closed BEFORE we seed decoys, start the proxy, or
   // execute anything, rather than silently running with env-only isolation.
-  const wrapperInfo = detectSandboxWrapper(root);
+  let wrapperInfo = detectSandboxWrapper(root);
+  // Upgrade shared-net bwrap to netns confinement when this host can prove it
+  // (bwrap + ip + a passing self-test). The forwarder must outlive the payload
+  // long enough for the parent's egress-grace read, so it is built with the
+  // run's grace window. Opt out with importPhase-style options.netnsConfinement:false.
+  const graceMs = Number.isFinite(options.egressGraceMs) && options.egressGraceMs >= 0
+    ? options.egressGraceMs
+    : DEFAULT_EGRESS_GRACE_MS;
+  let netns = null;
+  if (wrapperInfo.level === "bwrap" && options.netnsConfinement !== false && !options.runner) {
+    netns = await detectNetnsConfinement(root);
+    if (netns) wrapperInfo = netns.build(graceMs);
+  }
   if (options.requireSandbox === true && wrapperInfo.level === "env-only") {
     await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
     const err = new Error(
@@ -663,9 +895,15 @@ async function runCanarySandbox(options = {}) {
   }
 
   const canary = await seedCanaryFilesystem(home, runId);
-  const proxy = await startCaptureProxy(new Set(canary.tokens.keys()));
+  // Under netns, the sandbox cannot reach the host TCP loopback, so the capture
+  // proxy also opens a Unix socket the in-netns forwarder connects to, and the
+  // payload's proxy env points at the forwarder's inner loopback port instead.
+  const proxy = await startCaptureProxy(
+    new Set(canary.tokens.keys()),
+    netns ? { unixPath: netns.sockPath } : {}
+  );
 
-  const proxyUrl = `http://127.0.0.1:${proxy.port}`;
+  const proxyUrl = netns ? `http://127.0.0.1:${netns.innerPort}` : `http://127.0.0.1:${proxy.port}`;
   // Scrubbed env: keep only what a script needs to run, repoint HOME at the
   // decoy tree, and force every proxy variable at our capture server.
   const env = {
@@ -777,6 +1015,7 @@ module.exports = {
   runCanarySandbox,
   seedCanaryFilesystem,
   startCaptureProxy,
+  createCaptureServer,
   evaluateTripwires,
   matchTokens,
   tokenVariants,
@@ -787,8 +1026,25 @@ module.exports = {
   runLifecycleScripts,
   runImportPhase,
   runInstallAndImport,
+  // exported for tests: netns confinement — forwarder, bootstrap, detection
+  startTcpToUnixForwarder,
+  buildNetnsBootstrap,
+  detectNetnsConfinement,
+  bwrapBaseArgs,
   // exported for tests: process-group kill + timeout runner + resource caps
   killProcessGroup,
   execWithTimeout,
   buildRlimitPrefix
 };
+
+// CLI entrypoints invoked from inside the sandbox: `node <this file> __forwarder …`.
+// Guarded so require() of the module never triggers them.
+if (require.main === module) {
+  const [, , mode, ...rest] = process.argv;
+  if (mode === "__forwarder") {
+    forwarderMain(rest);
+  } else {
+    process.stderr.write("src/sandbox.js is an internal module; no directly runnable command.\n");
+    process.exit(2);
+  }
+}

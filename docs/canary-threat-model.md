@@ -71,13 +71,33 @@ the OS boundary** (not merely unobserved by the proxy):
 | Level | FS confinement | `netConfined` | How to get it |
 |---|---|---|---|
 | `sandbox-exec` | writes outside the sandbox root denied | **`true`** — raw-socket egress blocked | macOS (built in) |
-| `bwrap` | writes confined to sandbox root; real home masked by tmpfs; pid/ipc/uts isolated; dies with parent | `false` — net shared for the proxy | Linux with `bubblewrap` installed |
-| `env-only` | **no OS FS confinement** — decoy HOME + scrubbed env + capture proxy only | `false` | fallback when neither is present |
+| `bwrap+netns` | writes confined to sandbox root; real home masked by tmpfs; pid/ipc/uts isolated; **own network namespace** | **`true`** — no route out of the namespace, raw-socket egress refused (`ENETUNREACH`) | Linux with `bubblewrap` **and** `iproute2` (`ip`), when the netns self-test passes |
+| `bwrap` | writes confined to sandbox root; real home masked by tmpfs; pid/ipc/uts isolated; dies with parent | `false` — net shared for the proxy | Linux with `bubblewrap` but no usable netns |
+| `env-only` | **no OS FS confinement** — decoy HOME + scrubbed env + capture proxy only | `false` | fallback when none of the above are present |
 
 At `env-only`, a payload can still write anywhere the running user can and
 raw-socket egress can leave uncaptured. Use `--require-sandbox` to forbid this
-fallback. On `bwrap`, raw-socket egress is still possible (net is shared so the
-proxy stays reachable); only `sandbox-exec` blocks it at the OS boundary today.
+fallback.
+
+**Network-namespace confinement (`bwrap+netns`).** On Linux with both
+`bubblewrap` and `iproute2`, canary runs the sandbox in its **own network
+namespace** (`bwrap --unshare-net`). A fresh namespace has no route to anything
+but loopback, so a payload that opens a raw socket or dials a direct IP —
+bypassing the proxy env vars — is refused by the kernel (`ENETUNREACH`), not
+merely unobserved. Proxy-respecting egress is still captured: the capture proxy
+also listens on a Unix socket in the bind-mounted sandbox root, and a tiny
+in-namespace TCP→Unix forwarder (`node <sandbox.js> __forwarder`) bridges the
+payload's loopback proxy port to it. The payload therefore sees a working
+`HTTP(S)_PROXY` while having no other way out.
+
+This tier engages **only after a runtime self-test proves it in the current
+environment** — the test stands up the exact same machinery with a benign probe
+and requires *both* that proxied egress is captured *and* that a direct dial to
+a non-loopback TEST-NET-3 IP fails with `ENETUNREACH`. If either check fails
+(unprivileged user/net namespaces restricted, tooling missing), canary falls
+back to shared-net `bwrap` and reports `netConfined:false` — it never *claims*
+kernel confinement it hasn't demonstrated. Check your host with
+`node scripts/verify-netns-confinement.js`.
 
 ## In scope — what canary is designed to catch
 

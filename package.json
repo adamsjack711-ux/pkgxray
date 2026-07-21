@@ -23,7 +23,8 @@
     "benchmark": "node ./benchmark/run.js",
     "audit:evidence": "node ./bin/audit.js",
     "mcp": "node ./bin/mcp-server.js",
-    "cache": "node ./bin/pkgxray-cache.js"
+    "cache": "node ./bin/pkgxray-cache.js",
+    "verify:netns": "node ./scripts/verify-netns-confinement.js"
   },
   "repository": {
     "type": "git",
