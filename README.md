@@ -93,6 +93,7 @@ per-case ([details](docs/benchmark.md#scope-of-the-claim-read-this-first)).
 | Artifact divergence | ✅ | published npm tarball diffed against the tagged GitHub source |
 | MCP capability abuse | ✅ | capability-surface mismatch in the manifest audit (a `get_weather` that also takes a `command`) |
 | Runtime tool drift | ✅ | `mcp-proxy` re-audits on `tools/list_changed`; pinned-manifest drift is denied |
+| Sequence-level tool-call chains | ◑ | `mcp-proxy` gates each call and scans results; no cross-call flow analysis — [honest limits](docs/threat-model.md#sequence-level-attacks-chained-tool-calls) |
 | Dependency confusion / typosquats | ◑ | callback beacons, repo-mismatch and provenance-mismatch signals; no name-similarity heuristic |
 
 <sub>✅ detected · ◑ partial / indirect</sub>
@@ -212,25 +213,46 @@ MCP proxy, hookshot install gate, and browser extension in action.</sub>
 
 ## Comparison
 
-Designed to run *alongside* `npm audit` and
-[OSV-Scanner](https://google.github.io/osv-scanner/), not replace them — they
-match dependencies against known vulnerabilities; pkgxray adds the layers
-they don't attempt:
+`npm audit` and [OSV-Scanner](https://google.github.io/osv-scanner/) match
+dependencies against known CVEs — a different question, answered well.
+pkgxray is designed to run *alongside* them, not replace them (it queries OSV
+itself, before anything downloads). The comparison that matters is against
+tools in the same lane — behavioral supply-chain vetting:
 
-| Capability | npm audit | OSV-Scanner | pkgxray |
-|---|:-:|:-:|:-:|
-| Known-CVE lookup | ✅ | ✅ | ✅ (OSV, blocks before download) |
-| Lockfile / project scanning | ✅ | ✅ | ✅ |
-| Registry signature / provenance verification | ✅ (`npm audit signatures`) | — | ✅ (sigstore/SLSA + repo cross-check) |
-| Static analysis of package code behavior | — | — | ✅ |
-| Prompt-injection & Unicode-smuggling detection | — | — | ✅ |
-| npm ↔ GitHub artifact divergence | — | — | ✅ |
-| Pre-install quarantine of a single package | — | — | ✅ |
-| Verdict-drift monitoring vs. a stored baseline | — | — | ✅ |
-| MCP server vetting & per-call runtime gating | — | — | ✅ |
+| Capability | Socket.dev | OpenSSF Package Analysis | Cisco MCP Scanner | pkgxray |
+|---|:-:|:-:|:-:|:-:|
+| Fully local, zero-dependency, no account or cloud upload | — ¹ | ◑ ² | ◑ ³ | ✅ |
+| Static behavior analysis of package code | ✅ | ✅ | ✅ | ✅ |
+| Sandboxed execution (dynamic analysis) | — | ✅ ⁴ | ◑ (optional Docker) | — ⁴ |
+| npm ↔ GitHub artifact divergence | unknown | — | — | ✅ |
+| Deterministic verdict path — no LLM an injection can steer | — ⁵ | ✅ | ◑ ⁵ | ✅ |
+| Pre-install gate with a quarantined copy to review | ◑ ⁶ | — | — | ✅ |
+| MCP server vetting before connect | — ⁷ | — | ✅ | ✅ |
+| Per-call runtime gating of live MCP traffic | — | — | — ⁸ | ✅ (`mcp-proxy`) |
+| Verdict-drift monitoring vs. a stored baseline | ✅ (cloud-side) | — | — | ✅ (local `recheck`) |
 
-<sub>Scoped to npm supply-chain vetting, per each tool's public docs.
-OSV-Scanner covers many ecosystems beyond npm, which pkgxray does not.</sub>
+<sub>Comparison made **2026-07-21** against each tool's public documentation;
+*unknown* means not publicly documented — not verified either way.<br>
+¹ Socket's analysis runs in its cloud; Socket Firewall needs no account but
+consults Socket's hosted intelligence on every install.
+² Open source and self-hostable, but built as a registry-scale analysis
+pipeline (Docker/gVisor), not an install-time developer gate.
+³ The YARA analyzer runs locally; the LLM-as-judge and Cisco AI Defense
+analyzers require API keys.
+⁴ **This row is OpenSSF Package Analysis's win, stated plainly:** it detonates
+packages in a gVisor sandbox and observes what they actually do, which catches
+the post-install payload fetch that is pkgxray's stated
+[blind spot](docs/threat-model.md#known-blind-spot). Run them as complements —
+pkgxray before install, dynamic analysis where that risk matters.
+⁵ Socket's LLM-based code inspection is a headline feature
+(&ldquo;AI-detected potential malware&rdquo;, human-confirmed); Cisco's YARA-only mode
+is deterministic, its LLM analyzer is not.
+⁶ Socket Firewall blocks risky packages at install time; it does not stage a
+quarantined copy for human review.
+⁷ Socket's MCP offering exposes its package-scoring API *to* agents; it does
+not vet arbitrary MCP servers at connect time.
+⁸ Cisco MCP Scanner is analysis-only per its docs — it does not proxy or gate
+live MCP traffic.</sub>
 
 ## Architecture
 

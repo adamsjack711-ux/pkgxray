@@ -56,6 +56,41 @@ Outputs to `validation/results/`:
 
 Exit code is `0` iff **heuristic false blocks == 0**, so CI can gate on it.
 
+## MCP cohort (separate figures, never merged)
+
+The published calibration numbers are npm-centric, and the README concedes the
+MCP/agent-tooling ecosystem is over-blocked without giving a number. This
+cohort exists to measure that number — **separately**. MCP results live in
+their own out-dir and their own stats artifact; they are never folded into the
+top-1000 / npm figures.
+
+The target list is sourced from the **official MCP Registry**
+(`registry.modelcontextprotocol.io`): latest versions, active servers, npm
+packages only, deduped, collected in registry cursor order until the cap
+(the registry has no download ranking; the file is sorted by identifier for
+stable diffs), sized for one scan pass. Inputs only — names and versions,
+no verdicts:
+
+- [`mcp-registry-targets.txt`](mcp-registry-targets.txt) — the list
+- [`mcp-registry-targets.meta.json`](mcp-registry-targets.meta.json) — source,
+  fetch date, counts, regeneration command
+
+```bash
+node scripts/build-mcp-target-list.js       # refresh the list from the registry
+
+node scripts/validate-at-scale.js \
+  --cohort mcp --list validation/mcp-registry-targets.txt \
+  --emit-stats validation/results/mcp/stats.json --run-id $(date +%F)-mcp
+```
+
+Results land in `validation/results/mcp/` (report + jsonl as above). The
+`--emit-stats` artifact has the exact shape of `website/stats/data/<runId>.json`:
+false-block figures from the scan, catch-rate figures from
+`node benchmark/run.js --json --cohort mcp` (fixtures tagged `"cohort": "mcp"`
+in the committed corpus — today a small denominator, reported as-is). Nothing
+publishes automatically: review the artifact by hand, then copy it into
+`website/stats/data/` and rebuild the stats site.
+
 ## What counts as a false block
 
 The gate is deliberately precise. A `block` decision is only a **false block**

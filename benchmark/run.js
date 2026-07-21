@@ -11,6 +11,10 @@
 //   node benchmark/run.js            # human report, exit 1 on a hard failure
 //   node benchmark/run.js --json     # machine-readable summary for CI
 //   node benchmark/run.js --verbose  # also list every correct case
+//   node benchmark/run.js --cohort mcp   # only fixtures tagged "cohort": "mcp"
+//
+// A fixture without a "cohort" field belongs to the default "npm" cohort, so
+// the no-flag invocation (what CI gates on) is unchanged by cohort tagging.
 //
 // Corpus layout: benchmark/corpus/{malicious,benign}/*.json — each file is one
 // case (see benchmark/README.md for the schema and how to add one).
@@ -63,10 +67,13 @@ function run() {
   const args = process.argv.slice(2);
   const asJson = args.includes("--json");
   const verbose = args.includes("--verbose");
+  const cohortIx = args.indexOf("--cohort");
+  const cohort = cohortIx !== -1 ? args[cohortIx + 1] : null;
 
-  const cases = [...loadCorpus("malicious", "malicious"), ...loadCorpus("benign", "benign")];
+  let cases = [...loadCorpus("malicious", "malicious"), ...loadCorpus("benign", "benign")];
+  if (cohort) cases = cases.filter((c) => (c.cohort || "npm") === cohort);
   if (cases.length === 0) {
-    process.stderr.write("no corpus cases found under benchmark/corpus/\n");
+    process.stderr.write(`no corpus cases found under benchmark/corpus/${cohort ? ` for cohort "${cohort}"` : ""}\n`);
     process.exit(1);
   }
 
@@ -129,15 +136,19 @@ function run() {
   const xfails = results.filter((r) => r.xfail);
   const xpasses = results.filter((r) => r.xpass);
 
-  // Recall floor: number of malicious fixtures that actually block.
+  // Recall floor: number of malicious fixtures that actually block. The
+  // committed floor is defined over the FULL corpus; under a --cohort filter
+  // only a subset runs, so the floor check is skipped (per-cohort recall is
+  // still reported as a count).
   const maliciousBlocking = results.filter((r) => r.expect === "block" && r.actual === "block").length;
-  const recallFloorMet = maliciousBlocking >= BLOCK_RECALL_FLOOR;
+  const recallFloorMet = cohort ? true : maliciousBlocking >= BLOCK_RECALL_FLOOR;
   if (!recallFloorMet) {
     hardFails.push({ fixture: "(recall floor)", outcome: "RECALL_FLOOR", expect: `>=${BLOCK_RECALL_FLOOR} blocking`, actual: `${maliciousBlocking} blocking`,
       note: `malicious-block count ${maliciousBlocking} is below the committed floor ${BLOCK_RECALL_FLOOR}` });
   }
 
   const summary = {
+    cohort: cohort || "all",
     total: results.length,
     malicious: results.filter((r) => r.corpus === "malicious").length,
     benign: results.filter((r) => r.corpus === "benign").length,
@@ -148,7 +159,7 @@ function run() {
     misses: results.filter((r) => r.outcome === "MISS").length,
     recallDrops: recallDrops.length,
     maliciousBlocking,
-    blockRecallFloor: BLOCK_RECALL_FLOOR,
+    blockRecallFloor: cohort ? null : BLOCK_RECALL_FLOOR,
     recallFloorMet,
     blockPrecision: round(precision),
     blockRecall: round(recall),
@@ -180,7 +191,7 @@ function printReport(results, s, { verbose, hardFails, findingMisses, xfails = [
   const p = (line = "") => process.stdout.write(line + "\n");
   p("pkgxray calibration benchmark");
   p("=============================");
-  p(`corpus: ${s.total} cases (${s.malicious} malicious, ${s.benign} benign)`);
+  p(`corpus: ${s.total} cases (${s.malicious} malicious, ${s.benign} benign)${s.cohort !== "all" ? ` — cohort "${s.cohort}"` : ""}`);
   p("");
   p("confusion matrix (rows = expected, cols = actual verdict):");
   p("            safe   review  block");
@@ -195,7 +206,11 @@ function printReport(results, s, { verbose, hardFails, findingMisses, xfails = [
   p(`false blocks    : ${s.falseBlocks}   (benign cases wrongly blocked — must be 0)`);
   p(`full misses     : ${s.misses}   (malicious cases that passed as safe — must be 0)`);
   p(`recall drops    : ${s.recallDrops}   (malware demoted block->review, non-allowlisted — must be 0)`);
-  p(`recall floor    : ${s.maliciousBlocking}/${s.blockRecallFloor} malicious blocking ${s.recallFloorMet ? "✓" : "✗ BELOW FLOOR"}`);
+  if (s.blockRecallFloor == null) {
+    p(`recall floor    : skipped (cohort "${s.cohort}" — floor is defined over the full corpus)`);
+  } else {
+    p(`recall floor    : ${s.maliciousBlocking}/${s.blockRecallFloor} malicious blocking ${s.recallFloorMet ? "✓" : "✗ BELOW FLOOR"}`);
+  }
   p(`known FPs (xfail): ${s.knownFalsePositives}   (documented heuristic misfires, not yet retuned — tracked, non-gating)`);
   p("");
 

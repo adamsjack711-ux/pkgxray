@@ -29,6 +29,37 @@ risk matters. The opt-in [`canary`](canary-threat-model.md) surface narrows —
 but by design cannot close — this gap: a canary run can *confirm* malice, it
 can never *clear* a package.
 
+## Sequence-level attacks (chained tool calls)
+
+The standard critique of static analysis — and it is a fair one — is that it
+catches known-bad patterns but not sequences. An agent granted a set of
+individually reasonable tools can be steered into chaining them: read a
+secret with an authorized read tool, pass it to an authorized network tool.
+No manifest, file, or single call in that chain looks malicious on its own,
+so a scanner that judges artifacts one at a time has nothing to flag.
+
+pkgxray's runtime gate
+([`mcp-proxy`](mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy)) addresses part
+of this at the session layer:
+
+- every `tools/call` gets a per-call verdict — denied and unknown tools never
+  reach the server, and denied tools are stripped from the listing entirely;
+- every tool **result** is scanned for injection payloads before the model
+  reads it, cutting off the main steering channel used to assemble such a
+  chain;
+- a manifest that changes mid-session (`tools/list_changed`, pinned-manifest
+  drift) is re-audited before another call passes.
+
+What it does **not** do: track dataflow across calls. The proxy judges each
+call against the audited manifest; it keeps no taint model of what earlier
+calls returned. A chain assembled entirely from *allowed* tools, steered
+through a channel the injection scan doesn't see (or by a compromised host
+prompt), completes without a finding. That residual gap is real, and it is
+not closable at the package/manifest layer — the mitigations live in the
+consuming agent: least-privilege tool grants, egress restrictions on the
+agent's environment, and human confirmation on sensitive tools. pkgxray
+narrows the corridor; it does not police the route taken through it.
+
 ## Why few false positives
 
 Validated against the 47 most-installed npm packages with **0 false blocks**
