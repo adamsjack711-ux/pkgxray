@@ -2,15 +2,35 @@
 
 Everything else pkgxray does is **static**: it quarantines and inspects bytes,
 and never runs what it inspects. `canary` is the one deliberate exception — it
-**executes** a package's install-time lifecycle scripts (`preinstall`,
-`install`, `postinstall`) to observe what they actually *do*. That turns a
-static "this code *could* read `~/.aws/credentials` and POST it somewhere" into
-a behavioral "this install *did* read the decoy AWS key and *did* try to send it
-to `<host>`."
+**executes** the package in two phases and observes what it actually *does*:
+
+1. **Install phase** — the declared lifecycle scripts (`preinstall`, `install`,
+   `postinstall`), the surface the TeamPCP / node-ipc families use.
+2. **Import phase** — loading the package's own entry point (`require`/`import`
+   of its `main`), so a package that is benign at install but malicious on first
+   `require` — the flatmap-stream shape — is triggered and observed too. Disable
+   with `--no-import-phase` to run install-only.
+
+Both phases run inside the **same** sandbox (decoy HOME, capture proxy, OS
+wrapper, resource caps, process-group timeout kill). That turns a static "this
+code *could* read `~/.aws/credentials` and POST it somewhere" into a behavioral
+"this package *did* read the decoy AWS key on import and *did* try to send it to
+`<host>`."
 
 Because it runs untrusted code, it is opt-in at every entry point
 (`--yes-run-untrusted-code` / `PKGXRAY_ALLOW_EXECUTION=1`) and its guarantees —
 and their limits — are stated here rather than implied.
+
+**Import-phase ceiling (stated, not hidden):** the staged package is detonated
+*without its dependencies installed*, so if its entry point `require()`s an
+uninstalled dependency on the first line, that throws before the payload runs —
+the same ceiling any without-install detonation faces. The phase is best-effort:
+it triggers and observes side effects, it does not guarantee the module fully
+loaded. And on Linux the network namespace is still shared with the host (see
+[isolation levels](#isolation-levels)), so the import phase — like the install
+phase — relies on the capture proxy rather than an OS network boundary there;
+`sandbox-exec` on macOS is the only tier that denies non-loopback egress at the
+kernel today.
 
 ## The governing principle: asymmetric evidence
 
@@ -51,13 +71,33 @@ the OS boundary** (not merely unobserved by the proxy):
 | Level | FS confinement | `netConfined` | How to get it |
 |---|---|---|---|
 | `sandbox-exec` | writes outside the sandbox root denied | **`true`** — raw-socket egress blocked | macOS (built in) |
-| `bwrap` | writes confined to sandbox root; real home masked by tmpfs; pid/ipc/uts isolated; dies with parent | `false` — net shared for the proxy | Linux with `bubblewrap` installed |
-| `env-only` | **no OS FS confinement** — decoy HOME + scrubbed env + capture proxy only | `false` | fallback when neither is present |
+| `bwrap+netns` | writes confined to sandbox root; real home masked by tmpfs; pid/ipc/uts isolated; **own network namespace** | **`true`** — no route out of the namespace, raw-socket egress refused (`ENETUNREACH`) | Linux with `bubblewrap` **and** `iproute2` (`ip`), when the netns self-test passes |
+| `bwrap` | writes confined to sandbox root; real home masked by tmpfs; pid/ipc/uts isolated; dies with parent | `false` — net shared for the proxy | Linux with `bubblewrap` but no usable netns |
+| `env-only` | **no OS FS confinement** — decoy HOME + scrubbed env + capture proxy only | `false` | fallback when none of the above are present |
 
 At `env-only`, a payload can still write anywhere the running user can and
 raw-socket egress can leave uncaptured. Use `--require-sandbox` to forbid this
-fallback. On `bwrap`, raw-socket egress is still possible (net is shared so the
-proxy stays reachable); only `sandbox-exec` blocks it at the OS boundary today.
+fallback.
+
+**Network-namespace confinement (`bwrap+netns`).** On Linux with both
+`bubblewrap` and `iproute2`, canary runs the sandbox in its **own network
+namespace** (`bwrap --unshare-net`). A fresh namespace has no route to anything
+but loopback, so a payload that opens a raw socket or dials a direct IP —
+bypassing the proxy env vars — is refused by the kernel (`ENETUNREACH`), not
+merely unobserved. Proxy-respecting egress is still captured: the capture proxy
+also listens on a Unix socket in the bind-mounted sandbox root, and a tiny
+in-namespace TCP→Unix forwarder (`node <sandbox.js> __forwarder`) bridges the
+payload's loopback proxy port to it. The payload therefore sees a working
+`HTTP(S)_PROXY` while having no other way out.
+
+This tier engages **only after a runtime self-test proves it in the current
+environment** — the test stands up the exact same machinery with a benign probe
+and requires *both* that proxied egress is captured *and* that a direct dial to
+a non-loopback TEST-NET-3 IP fails with `ENETUNREACH`. If either check fails
+(unprivileged user/net namespaces restricted, tooling missing), canary falls
+back to shared-net `bwrap` and reports `netConfined:false` — it never *claims*
+kernel confinement it hasn't demonstrated. Check your host with
+`node scripts/verify-netns-confinement.js`.
 
 ## In scope — what canary is designed to catch
 
