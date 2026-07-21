@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.0.5 (2026-07-21) — second at-scale sweep: two false-block shapes closed
+
+**In plain terms:** we ran the false-block validation over a *fresh* 1,000
+most-downloaded packages — a set with zero overlap with the original top-1000 —
+and it surfaced two popular packages that were wrongly blocked: **wrangler**
+(Cloudflare's Workers CLI) and **@dotenvx/dotenvx** (the dotenv successor). Both
+are now correctly `review`, not `block`. No malware detection was weakened — the
+full malicious corpus still blocks, precision stays 100%.
+
+### What changed
+- **A single named env var is no longer misread as a whole-environment
+  harvest.** `JSON.stringify(process.env[name])` reads *one* variable; the
+  bulk-env regex matched `process.env` before the `[key]` index and treated it
+  as a full harvest, so in the same bundled file as network calls it false-blocked
+  wrangler. `JSON.stringify(process.env)` (the real harvest shape) still blocks.
+- **Tunnel / reverse-proxy endpoints are dual-use, routed to `review` not
+  `block`.** `trycloudflare.com`, `ngrok.io`, `serveo.net`, `loca.lt` were in the
+  same HIGH list as pure exfil sinks, so the official package for each tunnel
+  product false-blocked on its own endpoint. Pure exfil domains (webhook.site,
+  pastebin, oast.*) still block.
+- **A `__dirname`-relative dynamic require no longer corroborates a token-exfil
+  block.** `require(__dirname + '/…')` resolves to a shipped local file the scan
+  can already see, so it cannot hide a network/exec sink; only a computed
+  *non-local* require beside a bulk-env harvest blocks.
+- **Reading `.env` / `.env.keys` with no exfil sink is config-loading, not
+  credential theft.** A `.env` file is the app's own project config, not a global
+  credential store — so a read with no network sink and no shell/exec primitive
+  in the file is `INFO`, mirroring the `.npmrc`/registry-url calibration. A `.env`
+  read that also exfils still blocks. This unblocks dotenvx and every dotenv-style
+  loader.
+- **Four new benign regression fixtures** (`benchmark/corpus/benign/`) lock each
+  fix into the CI calibration gate.
+
 ## 1.0.4 (2026-07-20) — listed on the MCP Registry
 
 **In plain terms:** pkgxray's built-in MCP server can now be found and

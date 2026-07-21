@@ -1,0 +1,12 @@
+{
+  "name": "bundled-cli-serializes-single-env-var-for-upload",
+  "expect": "safe",
+  "note": "A bundled CLI (wrangler shape) that serializes ONE named env var for upload — `JSON.stringify(process.env[name])` — not the whole environment. The bulk-env regex matched `process.env` before the `[key]` index and wrongly read this single-var access as a whole-env harvest, so in the same bundled file as Cloudflare-API network calls it false-BLOCKed the official wrangler CLI on the env+network token-exfil shape. A single-variable serialize is not a bulk harvest; `JSON.stringify(process.env)` (whole env) still is. Regression guard for the top-1000-B false-block fix.",
+  "evidence": {
+    "packageName": "wrangler-like",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"wrangler-like\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/wrangler-like\"}",
+      "wrangler-dist/cli.js": "function getEnv(n){return process.env[n];}\nasync function putVar(name,val){await fetch(\"https://api.cloudflare.com/client/v4/accounts/x/workers\",{method:\"PUT\",body:JSON.stringify(process.env[name])});}\nmodule.exports={getEnv,putVar};\n"
+    }
+  }
+}

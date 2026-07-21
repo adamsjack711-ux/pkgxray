@@ -1,0 +1,12 @@
+{
+  "name": "dotenv-manager-reads-env-and-env-keys-no-sink",
+  "expect": "safe",
+  "note": "A .env manager (dotenvx shape) whose helpers read `.env` / `.env.keys` / `.env.example` — its entire documented purpose. A .env file is the app's OWN project-local config, not a global credential store like ~/.ssh/id_rsa or ~/.aws/credentials, so reading it is exactly what dotenv, dotenvx, and every config loader do. A .env read with no network sink and no shell/exec primitive in the same file is ordinary config-loading (INFO), not credential theft — the .npmrc / registry-url calibration applied to .env. A .env read that ALSO exfils (fetch/POST or curl the file out) still BLOCKs. Regression guard for the top-1000-B false-block fix.",
+  "evidence": {
+    "packageName": "dotenv-manager",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"dotenv-manager\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/dotenv-manager\"}",
+      "src/lib/helpers/keypairMetadata.js": "const fs=require(\"fs\");\nfunction keypairMetadata(envFile=\".env\"){return fs.existsSync(envFile)?fs.readFileSync(envFile,\"utf8\"):null;}\nfunction removeEnvKey(key,keysFilepath=\".env.keys\"){const p=require(\"path\").resolve(keysFilepath);return fs.readFileSync(p,\"utf8\");}\nmodule.exports={keypairMetadata,removeEnvKey};\n"
+    }
+  }
+}

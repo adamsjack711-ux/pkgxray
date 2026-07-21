@@ -121,6 +121,30 @@ const EXEC_REGEX = /\b(?:child_process\.(?:exec|execSync|spawn|spawnSync|fork)|r
 // `foo_require` and `$require` — a `.require(` is a library method, not Node's
 // module loader, so it must not trip the dynamic-require exfil shape.
 const DYNAMIC_REQUIRE_REGEX = /(?<![.\w$])(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/;
+// A dynamic require/import whose argument is anchored to __dirname / __filename
+// (optionally via path.join/resolve) resolves to a LOCAL file already shipped in
+// the package and visible to this scan — it cannot hide a network/exec sink the
+// way `require(computedName)` can. Bundlers and theme/plugin loaders use
+// `require(__dirname + '/…')` constantly (wrangler's bundled `colors` does exactly
+// this: `require(__dirname + '/../themes/generic-logging.js')`), so a local-path
+// dynamic require must NOT, on its own, corroborate a bulk-env harvest into the
+// token-exfil BLOCK.
+const LOCAL_PATH_REQUIRE_ARG_REGEX =
+  /^\s*(?:__dirname|__filename|path\s*\.\s*(?:join|resolve)\s*\(\s*__(?:dirname|filename))/;
+// First dynamic require/import in `text` whose argument is NOT a local-path
+// expression — the only kind that can conceal a network/exec sink. Returns the
+// match (with .index) or null when the file has only local-path dynamic requires.
+function firstNonLocalDynamicRequire(text) {
+  const re = new RegExp(DYNAMIC_REQUIRE_REGEX.source, "g");
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const open = text.indexOf("(", m.index);
+    if (open === -1) continue;
+    if (LOCAL_PATH_REQUIRE_ARG_REGEX.test(text.slice(open + 1, open + 80))) continue;
+    return m;
+  }
+  return null;
+}
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
 
 // `eval` / `new Function` / `vm.runIn*Context` invoked on a COMPUTED argument —
@@ -322,8 +346,19 @@ const HIGH_CONFIDENCE_EXFIL_DOMAINS = [
   "requestbin.net",
   "pipedream.net",
   "pipedream.com",
-  "rce.ee",
-  // Tunneling / reverse proxies
+  "rce.ee"
+];
+
+// Tunneling / reverse-proxy endpoints. Unlike the paste/webhook/OAST domains
+// above — which have NO legitimate reason to appear in a published package —
+// these are the endpoints of real developer-tooling products, and the official
+// package for each embeds its own tunnel domain: wrangler/cloudflared →
+// trycloudflare.com, ngrok → ngrok.io, localtunnel → loca.lt. A tunnel endpoint
+// co-located with a capability is still worth a look (malware does use tunnels
+// for C2), so it is routed to REVIEW like a dual-use URL shortener — but it must
+// NOT BLOCK, or every one of those first-party dev tools false-blocks. A pure
+// exfil domain (webhook.site, pastebin, oast.*) stays in the HIGH list and blocks.
+const TUNNELING_DOMAINS = [
   "ngrok-free.app",
   "ngrok.io",
   "serveo.net",
@@ -2075,7 +2110,12 @@ function looksLikeCredentialRead(content, lower, targetIndex) {
 // HIGH-eligible: they drive the env+network HIGH and the dynamic-require
 // escalation when co-located with a sink.
 const BULK_ENV_REGEXES = [
-  /JSON\.stringify\s*\(\s*process\.env\b/i,
+  // WHOLE-env serialization only. The negative lookahead rejects indexed/property
+  // access — `JSON.stringify(process.env[key])` / `JSON.stringify(process.env.FOO)`
+  // serialize a SINGLE variable (wrangler does this for one named var), which is
+  // not a bulk harvest. `JSON.stringify(process.env)` / `(process.env, null, 2)`
+  // still match.
+  /JSON\.stringify\s*\(\s*process\.env\b(?!\s*[.[])/i,
   // Object.keys/entries/values(process.env) is a whole-env read UNLESS it is
   // immediately narrowed by a key-predicate `.filter(...)` — the ubiquitous
   // `debug` logger idiom `Object.keys(process.env).filter(k => /^debug_/i.test(k))`,
@@ -2452,10 +2492,26 @@ function inspectObfuscatedAssembly(file, lower, findings, normalized, normChange
 const NPMRC_AUTH_FIELD_REGEX = /_authtoken|_auth\b|:_password|_password|authtoken|\/\/[^\n]*:_|\bnpm_token\b/i;
 const NPMRC_NET_SINK_REGEX = /\bfetch\s*\(|\baxios\b|\bhttps?\.(?:request|get)\b|\bXMLHttpRequest\b|sendBeacon|\bgot\s*\(|node-fetch|\bundici\b|\bnet\.(?:connect|Socket)\b|\brequest\s*\(/i;
 
+// A .env file is the app's OWN project-local config, not a global credential
+// store like ~/.ssh/id_rsa or ~/.aws/credentials. Reading it is exactly what
+// dotenv, dotenvx, and every config loader do; it only becomes credential-EXFIL
+// relevant if the same file can also SEND it — a network sink or a shell/exec
+// primitive that could curl it out. With neither, a .env read is ordinary
+// config-loading, so it is INFO, not a block. This mirrors the .npmrc /
+// registry-url calibration: a read with no sink is not a false-block trigger. A
+// real .env stealer reads AND exfils, so it trips the sink and stays HIGH.
+const ENV_EXFIL_SINK_REGEX = new RegExp(
+  `${NPMRC_NET_SINK_REGEX.source}|${EXEC_REGEX.source}|${SHELL_NETWORK_REGEX.source}`,
+  "im"
+);
+
 function credentialSeverity(target, content) {
   if (target.label === ".npmrc" &&
       !NPMRC_AUTH_FIELD_REGEX.test(content) &&
       !NPMRC_NET_SINK_REGEX.test(content)) {
+    return "info";
+  }
+  if (target.label === ".env-file" && !ENV_EXFIL_SINK_REGEX.test(content)) {
     return "info";
   }
   return "high";
@@ -2479,7 +2535,9 @@ function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv, nor
         file: file.path,
         snippet: clipAround(file.content, match.index),
         rationale: sev === "info"
-          ? `Reads ${target.label} but only references the registry URL — no auth token/password field and no network sink in the file, so this is a registry-resolver read, surfaced for awareness rather than blocked.`
+          ? (target.label === ".env-file"
+              ? `Reads ${target.label} but the file has no network sink or shell/exec primitive to send it anywhere — ordinary project-config loading (dotenv-style), surfaced for awareness rather than blocked.`
+              : `Reads ${target.label} but only references the registry URL — no auth token/password field and no network sink in the file, so this is a registry-resolver read, surfaced for awareness rather than blocked.`)
           : `Reads or references ${target.label} near a filesystem read primitive.`
       });
       return;
@@ -2754,6 +2812,12 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   const shortener = URL_SHORTENERS.find(
     (pattern) => codeLower.includes(pattern) || codeNlower.includes(pattern)
   );
+  // Tunnel/reverse-proxy endpoints are dual-use like shorteners: reviewed, not
+  // blocked. The official dev tool for each ships its own tunnel domain
+  // (wrangler → trycloudflare.com, ngrok → ngrok.io, localtunnel → loca.lt).
+  const tunnel = TUNNELING_DOMAINS.find(
+    (pattern) => codeLower.includes(pattern) || codeNlower.includes(pattern)
+  );
   const hasCapability = hasExec || hasDynamicEval || hasNetwork;
 
   // HIGH: real exfil/loader signal — execution OR network plus a hardcoded IP or
@@ -2836,6 +2900,21 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
       snippet: clip(shortener),
       rationale:
         "A URL shortener appears in a file that also has execution or outbound-network capability. Shorteners can hide a redirect target, but are also used for legitimate documentation and error links, so this is flagged for review rather than blocked."
+    });
+  }
+
+  // MEDIUM: a dual-use tunnel / reverse-proxy endpoint co-located with a
+  // capability. Malware uses tunnels for C2, but the official package for each
+  // tunnel product embeds its own endpoint (wrangler → trycloudflare.com), so
+  // this is reviewed rather than blocked — the same treatment as a shortener.
+  if (hasCapability && tunnel) {
+    findings.push({
+      severity: "medium",
+      category: "network-exfil-or-loader",
+      file: file.path,
+      snippet: clip(tunnel),
+      rationale:
+        "A tunnel / reverse-proxy endpoint (ngrok, localtunnel, Cloudflare quick tunnels, …) appears in a file that also has execution or outbound-network capability. Tunnels can front a C2 channel, but are also the core of legitimate dev tooling — the official package for each embeds its own tunnel domain — so this is flagged for review rather than blocked."
     });
   }
 
@@ -3377,8 +3456,8 @@ function inspectCapabilities(file, content, findings) {
 //     which IS corroborated above.
 function inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged) {
   const match =
-    DYNAMIC_REQUIRE_REGEX.exec(content) ||
-    (normChanged ? DYNAMIC_REQUIRE_REGEX.exec(normalized) : null);
+    firstNonLocalDynamicRequire(content) ||
+    (normChanged ? firstNonLocalDynamicRequire(normalized) : null);
   if (!match) return;
 
   if (hasBulkEnv) {

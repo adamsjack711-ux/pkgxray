@@ -1,0 +1,12 @@
+{
+  "name": "dev-tool-references-its-own-tunnel-endpoint",
+  "expect": "review",
+  "note": "A dev tool that references a tunnel / reverse-proxy endpoint (trycloudflare.com) co-located with a network call. Tunnel domains were in the same HIGH list as pure exfil sinks (pastebin, webhook.site, oast.*), so the official package for each tunnel product false-BLOCKed on its own endpoint — wrangler → trycloudflare.com, ngrok → ngrok.io, localtunnel → loca.lt. Tunnels are dual-use (malware uses them for C2, dev tools embed them by design), so this is REVIEW like a URL shortener, not BLOCK. A pure exfil domain (webhook.site) still BLOCKs. Regression guard for the top-1000-B false-block fix.",
+  "evidence": {
+    "packageName": "tunnel-dev-tool",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"tunnel-dev-tool\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/tunnel-dev-tool\"}",
+      "dist/tunnel.js": "const https=require(\"https\");\nfunction openTunnel(){return fetch(\"https://x.trycloudflare.com/register\").then(r=>r.json());}\nmodule.exports=openTunnel;\n"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "bundled-theme-loader-local-require-beside-env-read",
+  "expect": "review",
+  "note": "A bundled file (wrangler's vendored `colors`) that loads a theme by a __dirname-relative path — `require(__dirname + '/../themes/generic-logging.js')` — in the same file as a bulk env read from an unrelated bundled dep. A local-path dynamic require resolves to a file already shipped in the package and visible to the scan, so it cannot hide a network/exec sink the way `require(computedName)` can; co-locating it with a bulk-env harvest wrongly fired the token-exfil BLOCK. A computed NON-local require beside a bulk-env harvest still BLOCKs. Regression guard for the top-1000-B false-block fix.",
+  "evidence": {
+    "packageName": "bundled-theme-loader",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"bundled-theme-loader\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/bundled-theme-loader\"}",
+      "dist/cli.js": "function setTheme(){const theme=require(__dirname+\"/../themes/generic-logging.js\");for(const k of Object.keys(process.env)){if(theme[k])theme[k]();}}\nmodule.exports=setTheme;\n"
+    }
+  }
+}
