@@ -239,14 +239,19 @@ consults Socket's hosted intelligence on every install.
 pipeline (Docker/gVisor), not an install-time developer gate.
 ³ The YARA analyzer runs locally; the LLM-as-judge and Cisco AI Defense
 analyzers require API keys.
-⁴ **This row is OpenSSF Package Analysis's win, stated plainly:** it detonates
-packages in a gVisor sandbox — install and import phases — and observes what
-they actually do, which catches the post-install payload fetch that is
-pkgxray's stated [blind spot](docs/threat-model.md#known-blind-spot).
-pkgxray's opt-in [`canary`](docs/canary-threat-model.md) narrows that gap but
-by design cannot close it: it executes install-time lifecycle scripts in an OS
-sandbox with decoy credentials and can *confirm* malice, but never *clears* a
-package, and it does not observe import/runtime behavior. Run them as
+⁴ Both detonate packages in an OS sandbox. pkgxray's opt-in
+[`canary`](docs/canary-threat-model.md) now runs **two phases** — install-time
+lifecycle scripts *and* the import of the package entry point — with decoy
+credentials and a capture proxy, so the malicious-on-first-`require`
+(flatmap-stream) shape that is pkgxray's stated
+[blind spot](docs/threat-model.md#known-blind-spot) is triggered and observed.
+Still marked ◑, honestly: canary is opt-in and *confirm-only* by design (it
+proves malice, never *clears* a package), it detonates without the package's
+dependencies installed, and on Linux it shares the host network namespace so it
+relies on the capture proxy rather than a kernel egress boundary
+([isolation levels](docs/canary-threat-model.md#isolation-levels)) — a
+network-namespace confinement is the remaining step to full parity. OpenSSF
+Package Analysis runs this registry-scale and default-on. Run them as
 complements — pkgxray before install, full dynamic analysis where that risk
 matters.
 ⁵ Socket's LLM-based code inspection is a headline feature

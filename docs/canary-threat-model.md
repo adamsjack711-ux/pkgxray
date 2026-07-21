@@ -2,15 +2,35 @@
 
 Everything else pkgxray does is **static**: it quarantines and inspects bytes,
 and never runs what it inspects. `canary` is the one deliberate exception — it
-**executes** a package's install-time lifecycle scripts (`preinstall`,
-`install`, `postinstall`) to observe what they actually *do*. That turns a
-static "this code *could* read `~/.aws/credentials` and POST it somewhere" into
-a behavioral "this install *did* read the decoy AWS key and *did* try to send it
-to `<host>`."
+**executes** the package in two phases and observes what it actually *does*:
+
+1. **Install phase** — the declared lifecycle scripts (`preinstall`, `install`,
+   `postinstall`), the surface the TeamPCP / node-ipc families use.
+2. **Import phase** — loading the package's own entry point (`require`/`import`
+   of its `main`), so a package that is benign at install but malicious on first
+   `require` — the flatmap-stream shape — is triggered and observed too. Disable
+   with `--no-import-phase` to run install-only.
+
+Both phases run inside the **same** sandbox (decoy HOME, capture proxy, OS
+wrapper, resource caps, process-group timeout kill). That turns a static "this
+code *could* read `~/.aws/credentials` and POST it somewhere" into a behavioral
+"this package *did* read the decoy AWS key on import and *did* try to send it to
+`<host>`."
 
 Because it runs untrusted code, it is opt-in at every entry point
 (`--yes-run-untrusted-code` / `PKGXRAY_ALLOW_EXECUTION=1`) and its guarantees —
 and their limits — are stated here rather than implied.
+
+**Import-phase ceiling (stated, not hidden):** the staged package is detonated
+*without its dependencies installed*, so if its entry point `require()`s an
+uninstalled dependency on the first line, that throws before the payload runs —
+the same ceiling any without-install detonation faces. The phase is best-effort:
+it triggers and observes side effects, it does not guarantee the module fully
+loaded. And on Linux the network namespace is still shared with the host (see
+[isolation levels](#isolation-levels)), so the import phase — like the install
+phase — relies on the capture proxy rather than an OS network boundary there;
+`sandbox-exec` on macOS is the only tier that denies non-loopback egress at the
+kernel today.
 
 ## The governing principle: asymmetric evidence
 

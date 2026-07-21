@@ -33,7 +33,7 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps]",
       "                     # --deps also OSV-scans the package's DIRECT dependencies (transitive worm entry point)",
-      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox]  # OPT-IN: run install",
+      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox] [--no-import-phase]  # OPT-IN: detonate install + import",
       "                     # scripts in a decoy-credential sandbox behind a capture proxy; confirms exfil behaviorally (cannot clear a pkg).",
       "                     # --require-sandbox fails closed without an OS sandbox (bwrap/sandbox-exec). See docs/canary-threat-model.md",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
@@ -202,6 +202,8 @@ function parseArgs(argv) {
       options.keepSandbox = true;
     } else if (arg === "--require-sandbox") {
       options.requireSandbox = true;
+    } else if (arg === "--no-import-phase") {
+      options.importPhase = false;
     } else if (arg === "--timeout") {
       options.timeoutMs = Number(argv[++i]);
       if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
@@ -384,7 +386,8 @@ async function main() {
       allowExecution: true,
       timeoutMs: options.timeoutMs,
       keepSandbox: options.keepSandbox,
-      requireSandbox: options.requireSandbox
+      requireSandbox: options.requireSandbox,
+      importPhase: options.importPhase
     });
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify({ static: staged.report, behavioral }, null, 2)}\n`);
@@ -650,6 +653,7 @@ function renderCanaryMarkdown(staged, behavioral) {
     `Canary sandbox — behavioral verdict: **${behavioral.verdict.toUpperCase()}**`,
     `Reference: \`${sanitizeForTerminal(staged.reference)}\``,
     `Isolation: ${sanitizeForTerminal(behavioral.isolation)}  ·  run ${sanitizeForTerminal(behavioral.runId)}`,
+    `Phases detonated: install${behavioral.executed && behavioral.executed.importPhase && behavioral.executed.importPhase.attempted ? " + import" : " only"}`,
     ""
   ];
 

@@ -331,7 +331,7 @@ function detectSandboxWrapper(sandboxRoot) {
   return { level: "env-only", netConfined: false, wrap: (argv) => argv };
 }
 
-// The default (real) runner: execute the package's declared install lifecycle
+// The install-phase runner: execute the package's declared install lifecycle
 // scripts, in order, in the package dir with the scrubbed decoy env. This is
 // exactly the install-time execution surface the TeamPCP / node-ipc families
 // use — and the part gated behind allowExecution.
@@ -351,6 +351,88 @@ async function runLifecycleScripts({ pkgDir, env, timeoutMs, wrapper, rlimits })
     ran.push({ hook, command, ...outcome });
   }
   return { ran };
+}
+
+// The loader that runs INSIDE the sandbox to detonate the import phase. It
+// resolves the package's own entry point (respecting package.json `main` /
+// `exports` / index.js), then loads it so any top-level side effect executes
+// and is observed by the capture proxy — the flatmap-stream / malicious-on-first-
+// require shape that a lifecycle-only run never triggers. `require` handles CJS;
+// on ERR_REQUIRE_ESM it falls back to dynamic import(). Best-effort: a package
+// whose entry require()s an uninstalled dependency throws before its payload
+// runs — the same ceiling any without-install detonation faces (noted in the
+// result `limits`). Errors are swallowed to stderr; the goal is to trigger and
+// observe side effects, not to grade whether the module loaded cleanly.
+const IMPORT_PROBE_SOURCE = `'use strict';
+const { pathToFileURL } = require('node:url');
+const dir = process.argv[2];
+(async () => {
+  let entry;
+  try {
+    entry = require.resolve(dir);
+  } catch (e) {
+    process.stderr.write('import-phase: cannot resolve entry (' + (e && e.message || e) + ')');
+    return;
+  }
+  try {
+    require(entry);
+  } catch (e) {
+    if (e && e.code === 'ERR_REQUIRE_ESM') {
+      try { await import(pathToFileURL(entry).href); }
+      catch (e2) { process.stderr.write('import-phase(esm): ' + (e2 && e2.message || e2)); }
+    } else {
+      process.stderr.write('import-phase: ' + (e && e.message || e));
+    }
+  }
+})();
+`;
+
+// The import-phase runner: load the package's entry point inside the SAME
+// sandbox (decoy HOME, capture proxy, OS wrapper, rlimits, process-group kill)
+// so import-time behavior is observed too — not just install scripts. The probe
+// script is written into the sandbox root (writable, and never the package dir,
+// so the staged tree stays pristine) and run with the same node that runs
+// pkgxray. Skips cleanly when the staged package has no resolvable entry.
+async function runImportPhase({ pkgDir, env, timeoutMs, wrapper, rlimits, sandboxRoot }) {
+  try {
+    await fsp.access(path.join(pkgDir, "package.json"));
+  } catch {
+    return { attempted: false, note: "no package.json in staged package" };
+  }
+  const probeDir = sandboxRoot || path.dirname(pkgDir);
+  const probePath = path.join(probeDir, `import-probe-${crypto.randomBytes(4).toString("hex")}.js`);
+  try {
+    await fsp.writeFile(probePath, IMPORT_PROBE_SOURCE, { mode: 0o600 });
+  } catch (error) {
+    return { attempted: false, note: `could not write import probe: ${error.message}` };
+  }
+  // Invoke node directly (not via a shell string) so a package path containing
+  // shell metacharacters can't break the command; execWithTimeout still wraps
+  // it in the OS sandbox and applies the process-group timeout kill.
+  const nodeBin = process.execPath;
+  const command = `${shellQuote(nodeBin)} ${shellQuote(probePath)} ${shellQuote(pkgDir)}`;
+  const outcome = await execWithTimeout(command, { cwd: pkgDir, env, timeoutMs, wrapper, rlimits });
+  await fsp.rm(probePath, { force: true }).catch(() => {});
+  return { attempted: true, entryDir: pkgDir, ...outcome };
+}
+
+// Single-quote a token for safe interpolation into an `sh -c` command. Wraps in
+// single quotes and escapes any embedded single quote the POSIX way ('\'').
+function shellQuote(s) {
+  return `'${String(s).replace(/'/g, "'\\''")}'`;
+}
+
+// The default (real) runner: detonate BOTH phases in the same sandbox —
+// install-time lifecycle scripts, then the import of the package entry point.
+// Import runs even if a lifecycle script failed, so a package that is benign at
+// install but malicious on first require is still observed.
+async function runInstallAndImport(ctx) {
+  const install = await runLifecycleScripts(ctx);
+  let importPhase = { attempted: false, note: "import phase disabled" };
+  if (ctx.importPhase !== false) {
+    importPhase = await runImportPhase(ctx);
+  }
+  return { ran: install.ran || [], note: install.note, importPhase };
 }
 
 // Best-effort resource caps for the untrusted child, applied via `ulimit` in the
@@ -477,7 +559,7 @@ async function evaluateTripwires(canary, hits) {
         file: "CANARY_SANDBOX",
         snippet: `${decoy} → ${hit.host}`,
         rationale:
-          `Install-time execution READ the decoy ${decoy} and transmitted its honeytoken to ${hit.host} (${hit.transport}). This is an observed credential-exfil, not a static inference.`
+          `Sandboxed execution (install + import) READ the decoy ${decoy} and transmitted its honeytoken to ${hit.host} (${hit.transport}). This is an observed credential-exfil, not a static inference.`
       });
     }
   }
@@ -492,7 +574,7 @@ async function evaluateTripwires(canary, hits) {
       file: "CANARY_SANDBOX",
       snippet: hit.host,
       rationale:
-        `Install-time execution contacted ${hit.host} (${hit.transport}) — a known callback/exfil destination or a raw IP. Legitimate installs do not phone these.`
+        `Sandboxed execution (install + import) contacted ${hit.host} (${hit.transport}) — a known callback/exfil destination or a raw IP. Legitimate install/import does not phone these.`
     });
   }
 
@@ -510,7 +592,7 @@ async function evaluateTripwires(canary, hits) {
       file: "CANARY_SANDBOX",
       snippet: hostList.join(", "),
       rationale:
-        `Install-time execution made outbound network requests to: ${hostList.join(", ")}. Review whether this package should reach the network at install.`
+        `Sandboxed execution (install + import) made outbound network requests to: ${hostList.join(", ")}. Review whether this package should reach the network at install or import.`
     });
   }
 
@@ -534,7 +616,7 @@ async function evaluateTripwires(canary, hits) {
       file: "CANARY_SANDBOX",
       snippet: readDecoys.join(", "),
       rationale:
-        `Install-time execution accessed decoy credential file(s): ${readDecoys.join(", ")} (access-time tripwire; corroborating, since atime can be unreliable). Combined with any egress above this is a credential-harvest shape.`
+        `Sandboxed execution (install + import) accessed decoy credential file(s): ${readDecoys.join(", ")} (access-time tripwire; corroborating, since atime can be unreliable). Combined with any egress above this is a credential-harvest shape.`
     });
   }
 
@@ -606,8 +688,18 @@ async function runCanarySandbox(options = {}) {
 
   let execResult;
   try {
-    const runner = options.runner || runLifecycleScripts;
-    execResult = await runner({ pkgDir, env, timeoutMs, wrapper: wrapperInfo.wrap, home, proxyPort: proxy.port, rlimits: options.rlimits });
+    const runner = options.runner || runInstallAndImport;
+    execResult = await runner({
+      pkgDir,
+      env,
+      timeoutMs,
+      wrapper: wrapperInfo.wrap,
+      home,
+      proxyPort: proxy.port,
+      rlimits: options.rlimits,
+      sandboxRoot: root,
+      importPhase: options.importPhase
+    });
   } finally {
     // Keep the capture proxy alive for a short grace window after the runner
     // settles. A payload that backgrounds a delayed beacon —
@@ -691,6 +783,10 @@ module.exports = {
   detectSandboxWrapper,
   makeRunId,
   DECOY_SPECS,
+  // exported for tests: the two phase runners + their composition
+  runLifecycleScripts,
+  runImportPhase,
+  runInstallAndImport,
   // exported for tests: process-group kill + timeout runner + resource caps
   killProcessGroup,
   execWithTimeout,

