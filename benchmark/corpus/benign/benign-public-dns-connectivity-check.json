@@ -1,0 +1,12 @@
+{
+  "name": "connectivity-check-to-public-dns",
+  "expect": "safe",
+  "note": "A connectivity probe to a well-known public DNS resolver ('http://1.1.1.1' Cloudflare; 8.8.8.8 Google is the same class). These are routable public IPs, but their presence is never exfil — packages ping them to detect connectivity or use them as a default DNS server (anthropic's agent SDK, aws-cdk). They are allowlisted so a connectivity check is not read as a hardcoded C2 destination. Regression guard for the deeper-corpus false-block fixes.",
+  "evidence": {
+    "packageName": "net-probe",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"net-probe\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/net-probe\"}",
+      "net.js": "const http = require(\"http\");\nfunction online(cb){ http.get(\"http://1.1.1.1\", () => cb(true)).on(\"error\", () => cb(false)); }\nmodule.exports = online;\n"
+    }
+  }
+}

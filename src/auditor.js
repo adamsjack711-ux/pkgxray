@@ -18,6 +18,23 @@ const SEVERITY_ORDER = {
 // Suspicious credential / wallet read targets. Each entry is a regex that
 // requires a path or quote boundary so we don't match identifiers like
 // `process.env` or `someObj.ledger`.
+// Browser-profile-path markers: a real Chrome/Firefox credential read reaches
+// into the browser's profile directory. HTTP-cookie handling in a web framework
+// references none of these.
+// Require a browser-profile PATH fragment, not a bare browser word: "edge",
+// "opera", "brave", "safari", "chrome" are ordinary English / framework tokens
+// (Next.js `runtime: 'edge'`), so a real profile read is identified by the
+// storage directory it reaches into (User Data / Application Support / AppData /
+// .mozilla / Local Extension Settings) or a browser name used as a path segment
+// (`chrome/`, `Google/Chrome`). HTTP-cookie handling references none of these.
+const BROWSER_PROFILE_CONTEXT =
+  /User Data|Application Support|AppData|Local Extension Settings|\.mozilla|Google\/Chrome|\/Library\/|\b(?:chrome|chromium|firefox|brave|edge|opera|vivaldi|safari)[\/\\]/i;
+// Wallet-storage markers: on-disk wallet theft references the vault / keystore /
+// extension-storage path. A web3 hooks library that only names wallet CONNECTORS
+// (window.ethereum providers) has none of these.
+const WALLET_FILE_CONTEXT =
+  /nkbihfbeogaeaoehlefnkodbefgpgknn|Local Extension Settings|Extension Settings|wallet\.dat|keystore|vault\.json|\bmnemonic\b|\bseed\s*phrase\b|Application Support|AppData/i;
+
 const SUSPICIOUS_READ_TARGETS = [
   { re: /['"`\/\\]\.?ssh\/(?:id_(?:rsa|dsa|ecdsa|ed25519)|authorized_keys)/i, label: "ssh-private-key" },
   { re: /['"`\/\\]id_(?:rsa|dsa|ecdsa|ed25519)\b/i, label: "ssh-key-file" },
@@ -28,11 +45,24 @@ const SUSPICIOUS_READ_TARGETS = [
   { re: /['"`\/\\]\.env(?:\.[a-z]+)?(?:['"`]|\s|$)/i, label: ".env-file" },
   { re: /['"`]login\.keychain(?:-db)?['"`]/i, label: "macOS keychain" },
   { re: /\bsecurity\s+find-(?:generic|internet)-password\b/, label: "macOS security CLI" },
-  { re: /['"`]\/?(?:Cookies|Login Data|Web Data|cookies\.sqlite)['"`]/i, label: "browser-creds" },
-  { re: /['"`]Local State['"`]/, label: "browser local-state" },
+  // Firefox's cookie DB has an unambiguous filename — no context needed.
+  { re: /['"`]cookies\.sqlite['"`]/i, label: "browser-creds" },
+  // Chrome/Chromium credential files ("Cookies", "Login Data", "Web Data") are
+  // common English words as quoted strings, so a bare `"cookies"` / `"Web Data"`
+  // is almost always HTTP-cookie handling (next-auth, cookies-next: `req["cookies"]`,
+  // `type TmpCookiesObj`), not a read of the browser profile DB. Require a
+  // browser-profile-path co-indicator in the file; real cookie theft always
+  // references the Chrome/Firefox profile directory it reads the file from.
+  { re: /['"`]\/?(?:Cookies|Login Data|Web Data)['"`]/i, label: "browser-creds", context: BROWSER_PROFILE_CONTEXT },
+  { re: /['"`]Local State['"`]/, label: "browser local-state", context: BROWSER_PROFILE_CONTEXT },
   { re: /\bkeytar\.[a-z]+Password\(/i, label: "keytar API" },
-  { re: /\bmetamask['"`\s\/]/i, label: "metamask wallet" },
-  { re: /\b(?:electrum|exodus|ledger live|atomic wallet)\b/i, label: "crypto wallet" }
+  // `metamask` / `metaMask` is the name of the browser-injected wallet CONNECTOR
+  // that every web3 library re-exports (wagmi: `export { metaMask } from
+  // '../metaMask.js'`), not a read of the MetaMask extension vault. Require a
+  // wallet-storage-FILE co-indicator; a connector that talks to `window.ethereum`
+  // has none, while code that steals the vault references its on-disk storage.
+  { re: /\bmetamask['"`\s\/]/i, label: "metamask wallet", context: WALLET_FILE_CONTEXT },
+  { re: /\b(?:electrum|exodus|ledger live|atomic wallet)\b/i, label: "crypto wallet", context: WALLET_FILE_CONTEXT }
 ];
 
 // AI-coding-agent / MCP config files. Reading ANOTHER agent's configuration is
@@ -146,6 +176,41 @@ function firstNonLocalDynamicRequire(text) {
   return null;
 }
 const DYNAMIC_EVAL_REGEX = /\b(?:eval\s*\(|new\s+Function\s*\(|vm\.runIn[A-Za-z]+Context\b)/;
+
+// True when a match of `anchorRe` in `text` has a match of `nearRe` within
+// `window` chars. The co-location HIGHs (bulk-env harvest beside a network call,
+// a dynamic require beside a bulk-env harvest, an on-chain read beside calldata
+// extraction) assume "same file ≈ same module" — which a webpack/esbuild/yarn
+// bundle breaks: it concatenates hundreds of unrelated modules into one megafile,
+// so an env read from module A ends up in the same file as a fetch from module Z
+// megabytes away. Requiring the two signals to be within a window keeps a genuine
+// dropper (a compact file where read and send sit together) HIGH while stopping
+// bundle co-tenants that never interact from corroborating each other. Anchors on
+// the rarer signal and bounds the number of anchors scanned so a huge minified
+// bundle can't blow up scan time.
+function anyMatchNear(text, anchorRe, nearRe, window = 800, cap = 200) {
+  const re = new RegExp(anchorRe.source, anchorRe.flags.includes("g") ? anchorRe.flags : anchorRe.flags + "g");
+  let m;
+  let n = 0;
+  while ((m = re.exec(text)) !== null) {
+    const slice = text.slice(Math.max(0, m.index - window), m.index + window);
+    if (nearRe.test(slice)) return true;
+    if (m.index === re.lastIndex) re.lastIndex++;
+    if (++n >= cap) break;
+  }
+  return false;
+}
+// True when `re` matches within `window` chars of a known `index`.
+function regexNearIndex(text, re, index, window = 800) {
+  return re.test(text.slice(Math.max(0, index - window), index + window));
+}
+// A network primitive in any of its spellings (JS API / shell curl-wget), for
+// proximity checks against a bulk-env or credential anchor.
+const NETWORK_NEAR_REGEX = /\b(?:fetch\s*\(|axios|got\s*\(|node-fetch|undici|https?\.(?:request|get|post|put|delete)\s*\(|XMLHttpRequest|WebSocket|sendBeacon\s*\(|net\.(?:connect|Socket)|request\s*\()|(?:curl|wget)\s/i;
+// Any bulk-environment harvest spelling, for proximity checks. Mirrors
+// BULK_ENV_REGEXES (whole-env serialize / iterate) as a single alternation.
+const BULK_ENV_NEAR_REGEX =
+  /JSON\.stringify\s*\(\s*process\.env\b(?!\s*[.[])|Object\.(?:entries|keys|values)\s*\(\s*process\.env\s*\)|for\s*\(\s*(?:const|let|var)\s+\w+\s+(?:of|in)\s+(?:Object\.(?:keys|values|entries)\s*\(\s*)?process\.env\b|(?:json\.dumps|dict)\s*\(\s*(?:dict\s*\(\s*)?os\.environ\b|for\s+\w+\s+in\s+os\.environ\b/i;
 
 // `eval` / `new Function` / `vm.runIn*Context` invoked on a COMPUTED argument —
 // the genuinely dangerous form. Crucially this EXCLUDES eval/Function on a plain
@@ -281,7 +346,14 @@ const NODE_EXEC_STAGE2_PAYLOAD_REGEX =
 // web3 libraries, so on their own they are not a signal (see inspectOnChainLoader:
 // only co-location with a code executor escalates).
 const ONCHAIN_C2_READ_REGEX =
-  /\beth_getTransactionByHash\b|\beth_getTransactionReceipt\b|trongrid\.io|tronscan\.[a-z]+|fullnode\.[a-z0-9.-]*aptoslabs\.com|api\.(?:mainnet\.)?aptoslabs\.com|\baptos[a-z]*\.dev\b|bsc-dataseed|\.getTransaction\s*\([^)]*\)/i;
+  /\beth_getTransactionByHash\b|\beth_getTransactionReceipt\b|trongrid\.io|tronscan\.[a-z]+|fullnode\.[a-z0-9.-]*aptoslabs\.com|api\.(?:mainnet\.)?aptoslabs\.com|\baptos[a-z]*\.dev\b|bsc-dataseed/i;
+// A bare `.getTransaction(...)` is NOT a reliable on-chain-read signal on its
+// own: it is Sentry's APM (`scope.getTransaction()`), a database/ORM transaction
+// handle, and ethers' own `provider.getTransaction(hash)` — all ubiquitous and
+// benign (convex bundles Sentry and false-blocked on it). It only indicates an
+// EtherHiding loader when the file ALSO extracts raw calldata from the result,
+// so it counts only in combination with ONCHAIN_CALLDATA_EXTRACT_REGEX below.
+const ONCHAIN_GENERIC_GETTX_REGEX = /\.getTransaction\s*\([^)]*\)/i;
 // Pulling the raw bytes out of a fetched transaction: EVM calldata lives in the
 // `input` hex field (sliced past the `0x`), Tron carries it in `raw_data.data`.
 // This is the "read the payload out of the tx" step that distinguishes a loader
@@ -2526,6 +2598,11 @@ function inspectCredentialAccess(file, content, lower, findings, hasBulkEnv, nor
   lower = content.toLowerCase();
   if (normChanged) normalized = stripComments(normalized, file.path);
   for (const target of SUSPICIOUS_READ_TARGETS) {
+    // Targets whose keyword is a common word/identifier (browser "Cookies",
+    // wallet-connector "metaMask") only count when a corroborating profile/
+    // storage-path marker is present in the file — otherwise it is HTTP-cookie
+    // or web3-connector code, not a credential-store read.
+    if (target.context && !target.context.test(content)) continue;
     const match = target.re.exec(content);
     if (match && looksLikeCredentialRead(content, lower, match.index)) {
       const sev = credentialSeverity(target, content);
@@ -2610,13 +2687,18 @@ function inspectAgentConfigAccess(file, content, lower, findings, normalized, no
 }
 
 function inspectPersistence(file, content, lower, findings) {
+  // Match in comment-stripped code: a persistence path named in a comment
+  // (angular's completion.js comment "the configuration file … (.bashrc, .zshrc,
+  // etc.)") is not a write. Indices are preserved so snippets still align.
+  content = stripComments(content, file.path);
+  lower = content.toLowerCase();
   if (!hasWriteVerb(lower)) return;
   // Hard persistence locations first — crontab, launch agents, systemd, init.d,
   // Windows Run keys have no legitimate "tab completion" story, so they always
   // BLOCK regardless of surrounding context.
   for (let i = SHELL_RC_PERSISTENCE_COUNT; i < PERSISTENCE_REGEXES.length; i++) {
     const match = PERSISTENCE_REGEXES[i].exec(content);
-    if (match) {
+    if (match && writeVerbNear(lower, match.index)) {
       findings.push({
         severity: "high",
         category: "persistence",
@@ -2650,7 +2732,7 @@ function inspectPersistence(file, content, lower, findings) {
   const softContext = completionContext || pathInstallContext || aliasInstallContext;
   for (let i = 0; i < SHELL_RC_PERSISTENCE_COUNT; i++) {
     const match = PERSISTENCE_REGEXES[i].exec(content);
-    if (match) {
+    if (match && writeVerbNear(lower, match.index)) {
       findings.push({
         severity: softContext ? "medium" : "high",
         category: "persistence",
@@ -2684,6 +2766,34 @@ const URL_DECIMAL_HOST_REGEX = /\bhttps?:\/\/(\d{5,10})(?:[:/?#]|$)/;
 const URL_HEX_HOST_REGEX = /\bhttps?:\/\/(0[xX][0-9A-Fa-f]{5,8})(?:[:/?#]|$)/;
 const URL_IPV6_HOST_REGEX = /\bhttps?:\/\/\[([0-9A-Fa-f:]{2,45})\](?::\d+)?/;
 
+// Well-known public DNS / connectivity-check resolvers. These are routable
+// public IPs, but their presence is never exfil: packages ping them to detect
+// connectivity or use them as a default DNS server (1.1.1.1 Cloudflare, 8.8.8.8
+// / 8.8.4.4 Google, 9.9.9.9 Quad9, 208.67.222.222 OpenDNS). Treated as benign so
+// a connectivity check (`http://1.1.1.1`) or a documented default DNS value
+// (aws-cdk, node connectivity probes) is not read as a hardcoded C2 destination.
+const BENIGN_PUBLIC_IPS = new Set([
+  "1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9",
+  "208.67.222.222", "208.67.220.220"
+]);
+
+// A bare quoted dotted-quad is only an exfil/callback IP if it sits in a NETWORK
+// context. Without this, any four-part dotted number with octets ≤255 matches —
+// but X.509 / ASN.1 OIDs (`2.5.29.14` subject-key-id, `1.3.101.112` Ed25519) and
+// four-part version strings (`2.3.8.0`, `3.0.4.1`) are dotted quads too, and they
+// pervade crypto/PKI libraries (ssh2-streams, pdfkit's cert code), build-tool
+// schemas (app-builder-lib), and compilers (@babel/standalone). A real hardcoded
+// IP destination appears next to a host/connect/socket/URL/port token; an OID or
+// version does not. Checked in a window around the match.
+const IP_NETWORK_CONTEXT_REGEX =
+  /:\/\/|\b(?:host(?:name)?|addr(?:ess)?|connect|socket|server|proxy|listen|bind|endpoint|gateway|dns|resolver?|nameserver|upstream|ip|port|net|tcp|udp|ping|fetch|request|url|remote|target|peer|dial)\b|:\d{2,5}\b/i;
+
+function quotedIpHasNetworkContext(content, matchIndex, matchLength) {
+  const start = Math.max(0, matchIndex - 48);
+  const end = Math.min(content.length, matchIndex + matchLength + 48);
+  return IP_NETWORK_CONTEXT_REGEX.test(content.slice(start, end));
+}
+
 // Convert a 32-bit integer to dotted-quad ("a.b.c.d"), or null if out of range.
 function dwordToDottedQuad(value) {
   if (!Number.isFinite(value) || value < 0 || value > 0xffffffff) return null;
@@ -2698,7 +2808,7 @@ function dwordToDottedQuad(value) {
 function findPublicIpInCode(content) {
   // (a) full URL form: http://1.2.3.4 or https://1.2.3.4
   const urlIp = content.match(PUBLIC_URL_IP_REGEX);
-  if (urlIp && !isPrivateIp(urlIp[1])) return urlIp[0];
+  if (urlIp && !isPrivateIp(urlIp[1]) && !BENIGN_PUBLIC_IPS.has(urlIp[1])) return urlIp[0];
   // (b) decimal-dword URL host: http://2130706433/ (== 127.0.0.1).
   const decHost = content.match(URL_DECIMAL_HOST_REGEX);
   if (decHost) {
@@ -2715,11 +2825,16 @@ function findPublicIpInCode(content) {
   // unique-local are treated as private; anything else is a public exfil host.
   const v6Host = content.match(URL_IPV6_HOST_REGEX);
   if (v6Host && !isPrivateIpv6(v6Host[1])) return v6Host[0];
-  // (e) quoted-string IPv4 literals (hostname / host fields, sockets, etc.)
+  // (e) quoted-string IPv4 literals (hostname / host fields, sockets, etc.).
+  // Requires a network context around the match so an OID / version dotted-quad
+  // (`"2.5.29.14"`, `"2.3.8.0"`) is not read as an exfil IP, and skips benign
+  // public DNS resolvers.
   QUOTED_IP_REGEX.lastIndex = 0;
   let m;
   while ((m = QUOTED_IP_REGEX.exec(content)) !== null) {
-    if (!isPrivateIp(m[1])) return m[0];
+    if (isPrivateIp(m[1]) || BENIGN_PUBLIC_IPS.has(m[1])) continue;
+    if (!quotedIpHasNetworkContext(content, m.index, m[0].length)) continue;
+    return m[0];
   }
   return null;
 }
@@ -2852,11 +2967,17 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
     return;
   }
 
-  // HIGH: bulk env-var harvest in the same file as outbound network. This shape
-  // (read the whole environment, send it somewhere) is essentially never a
-  // legitimate test fixture, so it stays HIGH even in test/ paths — flagged
-  // keepHighInTests so the test-file downgrade below skips it.
-  if (hasNetwork && hasBulkEnv) {
+  // HIGH: bulk env-var harvest CLOSE TO outbound network. This shape (read the
+  // whole environment, send it somewhere) is essentially never a legitimate test
+  // fixture, so it stays HIGH even in test/ paths. Requires the harvest and the
+  // network call to be in proximity, not merely in the same file: a bundle
+  // (aws-cdk, pdfkit's vendored yarn, simple-bin-help) concatenates an unrelated
+  // env read and an unrelated fetch into one megafile, which is not token-exfil.
+  const bulkEnvNearNetwork =
+    hasNetwork && hasBulkEnv &&
+    (anyMatchNear(content, BULK_ENV_NEAR_REGEX, NETWORK_NEAR_REGEX) ||
+      (normChanged && anyMatchNear(normalized, BULK_ENV_NEAR_REGEX, NETWORK_NEAR_REGEX)));
+  if (bulkEnvNearNetwork) {
     findings.push({
       severity: "high",
       category: "network-exfil-or-loader",
@@ -3396,13 +3517,24 @@ function inspectHiddenNodeExec(file, content, findings, normalized, normChanged)
 // visible executor is the loader shape minus the sink, flagged for review.
 function inspectOnChainLoader(file, content, findings, normalized, normChanged) {
   const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
-  if (!testBoth(ONCHAIN_C2_READ_REGEX)) return;
+  const extractsCalldata = testBoth(ONCHAIN_CALLDATA_EXTRACT_REGEX);
+  // Unambiguous on-chain reads gate on their own; a generic `.getTransaction()`
+  // only counts when raw-calldata extraction sits RIGHT BESIDE it (the loader step
+  // Sentry / DB / ethers-balance reads never perform). Proximity, not same-file:
+  // convex bundles Sentry's `scope.getTransaction()` and unrelated calldata-shaped
+  // code into one megafile, which is not an EtherHiding loader.
+  const genericGetTxWithCalldata =
+    (extractsCalldata &&
+      (anyMatchNear(content, ONCHAIN_GENERIC_GETTX_REGEX, ONCHAIN_CALLDATA_EXTRACT_REGEX) ||
+        (normChanged && anyMatchNear(normalized, ONCHAIN_GENERIC_GETTX_REGEX, ONCHAIN_CALLDATA_EXTRACT_REGEX)))) ||
+    false;
+  const hasOnChainRead = testBoth(ONCHAIN_C2_READ_REGEX) || genericGetTxWithCalldata;
+  if (!hasOnChainRead) return;
   const hasExecutor =
     findDynamicEval(content) !== -1 ||
     (normChanged && findDynamicEval(normalized) !== -1) ||
     testBoth(EXEC_REGEX);
-  const extractsCalldata = testBoth(ONCHAIN_CALLDATA_EXTRACT_REGEX);
-  const idx = (ONCHAIN_C2_READ_REGEX.exec(content) || { index: 0 }).index;
+  const idx = (ONCHAIN_C2_READ_REGEX.exec(content) || ONCHAIN_GENERIC_GETTX_REGEX.exec(content) || { index: 0 }).index;
   if (hasExecutor) {
     findings.push({
       severity: "high",
@@ -3455,12 +3587,16 @@ function inspectCapabilities(file, content, findings) {
 //     without adding coverage, since a real hidden sink needs a destination,
 //     which IS corroborated above.
 function inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged) {
-  const match =
-    firstNonLocalDynamicRequire(content) ||
-    (normChanged ? firstNonLocalDynamicRequire(normalized) : null);
+  const contentMatch = firstNonLocalDynamicRequire(content);
+  const match = contentMatch || (normChanged ? firstNonLocalDynamicRequire(normalized) : null);
   if (!match) return;
+  const matchText = contentMatch ? content : normalized;
 
-  if (hasBulkEnv) {
+  // Only HIGH when the dynamic require sits CLOSE TO the bulk-env harvest. In a
+  // bundle the two come from unrelated modules concatenated megabytes apart
+  // (pdfkit's vendored yarn: a lazy-global `require(name)` far from an unrelated
+  // env iteration), which is not the hidden-sink token-exfil shape.
+  if (hasBulkEnv && regexNearIndex(matchText, BULK_ENV_NEAR_REGEX, match.index)) {
     findings.push({
       severity: "high",
       category: "network-exfil-or-loader",
@@ -3506,18 +3642,28 @@ function inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, 
   });
 }
 
+const WRITE_VERBS = [
+  "writefile",
+  "appendfile",
+  "createwritestream",
+  ">>",
+  "set-content",
+  "add-content",
+  "open(",
+  "fs.write",
+  "echo "
+];
 function hasWriteVerb(lower) {
-  return [
-    "writefile",
-    "appendfile",
-    "createwritestream",
-    ">>",
-    "set-content",
-    "add-content",
-    "open(",
-    "fs.write",
-    "echo "
-  ].some((verb) => lower.includes(verb));
+  return WRITE_VERBS.some((verb) => lower.includes(verb));
+}
+// True when a write verb appears within `window` chars of `index`. A persistence
+// target (`~/.zshrc`) must be near an actual WRITE to be a persistence write; a
+// bare mention — an example in a description string (`"Read(~/.zshrc)"`) or a
+// comment describing the completion feature — is not persistence even in a file
+// that writes files elsewhere.
+function writeVerbNear(lower, index, window = 240) {
+  const s = lower.slice(Math.max(0, index - window), index + window);
+  return WRITE_VERBS.some((verb) => s.includes(verb));
 }
 
 function decideVerdict(findings, evidence) {

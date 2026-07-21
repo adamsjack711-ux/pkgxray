@@ -1,0 +1,12 @@
+{
+  "name": "shell-completion-installer-rc-in-comment",
+  "expect": "safe",
+  "note": "A CLI's shell-completion installer (angular's 'ng completion') whose COMMENT describes the rc files it targets ('the configuration file (.bashrc, .zshrc, etc.)') while the actual append writes to a variable path, not a literal rc file. The rc names in the comment are stripped before matching, so a documented completion installer is not read as silent persistence. Regression guard for the deeper-corpus false-block fixes.",
+  "evidence": {
+    "packageName": "cli-completion",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"cli-completion\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/cli-completion\"}",
+      "src/completion.js": "const fs = require(\"fs\");\n// find the shell configuration file (.bashrc, .zshrc, etc.) and append the completion command\nfunction install(rcFile){ fs.appendFileSync(rcFile, \"source <(ng completion script)\n\"); }\nmodule.exports = install;\n"
+    }
+  }
+}

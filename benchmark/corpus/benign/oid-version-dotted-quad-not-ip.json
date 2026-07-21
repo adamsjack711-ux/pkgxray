@@ -1,0 +1,12 @@
+{
+  "name": "crypto-lib-oid-and-version-dotted-quads",
+  "expect": "safe",
+  "note": "A crypto/PKI library that references X.509/ASN.1 OIDs ('1.3.101.112' Ed25519, '2.5.29.14' subject-key-id) and a four-part version string. These are dotted quads with octets <=255, so they matched the hardcoded-public-IP heuristic and false-blocked crypto packages (ssh2-streams, pdfkit's cert code), build schemas (app-builder-lib) and compilers (@babel/standalone) whenever the file also had any exec/network capability. A bare quoted dotted-quad now counts as an exfil IP only in a network context (host/connect/socket/URL/port); an OID/version has none. A real quoted IP in a host field still blocks. Regression guard for the deeper-corpus false-block fixes.",
+  "evidence": {
+    "packageName": "crypto-lib",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"crypto-lib\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/crypto-lib\"}",
+      "lib/keyParser.js": "const cp = require(\"child_process\");\nconst OID_ED25519 = \"1.3.101.112\";\nconst OID_SKI = \"2.5.29.14\";\nconst SCHEMA_VERSION = \"2.3.8.0\";\nfunction parseKey(buf){ return { oid: OID_ED25519, ski: OID_SKI, v: SCHEMA_VERSION }; }\nmodule.exports = parseKey;\n"
+    }
+  }
+}

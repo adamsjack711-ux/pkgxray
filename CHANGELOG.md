@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.0.6 (2026-07-21) — deeper sweep: fourteen more false-block shapes closed
+
+**In plain terms:** we widened the validation to a fresh 3,000 packages deeper
+into the download ranking (a set with zero overlap with any earlier run) and it
+surfaced sixteen popular packages that were wrongly blocked — Anthropic's own
+agent SDK, `@angular/cli`, `bun`, `next-auth`, `@auth/core`, `wagmi`,
+`@wagmi/connectors`, `pdfkit`, `aws-cdk`, `app-builder-lib`, `firebase-tools`,
+`convex`, `cookies-next`, `@babel/standalone`, `ssh2-streams`, `simple-bin-help`.
+Fourteen were genuine false positives and are now `review`/`safe`; two (`bun`,
+`firebase-tools`) genuinely perform the flagged high-risk operation and are
+recorded as defensible true positives. No malware detection was weakened — the
+malicious corpus still blocks at 100% precision, and every fix strictly *relaxes*
+a heuristic (adds a required corroborator), so nothing new can block.
+
+### What changed
+- **OID / version dotted-quads are no longer read as public IPs.** X.509/ASN.1
+  OIDs (`1.3.101.112` Ed25519, `2.5.29.14`) and four-part version strings are
+  dotted quads too; a bare quoted dotted-quad now counts as an exfil IP only in a
+  network context (host/connect/socket/URL/port). Unblocks crypto/PKI libs
+  (`ssh2-streams`, `pdfkit`), build schemas (`app-builder-lib`), `@babel/standalone`.
+- **Well-known public DNS resolvers are allowlisted.** `1.1.1.1`, `8.8.8.8`, … are
+  connectivity-check / default-DNS targets, never C2 (Anthropic's SDK, `aws-cdk`).
+- **Browser-cookie credential target requires a profile-path co-indicator.** A
+  quoted `"cookies"` / `"Cookies"` is HTTP-cookie handling (`next-auth`,
+  `@auth/core`, `cookies-next`), not a read of the Chrome/Firefox cookie DB; real
+  theft references the profile directory. Next.js's `edge` runtime is no longer
+  mistaken for the Edge browser.
+- **Wallet credential target requires a wallet-storage-file co-indicator.**
+  `metaMask` is the web3 connector every library re-exports (`wagmi`), not a read
+  of the extension vault.
+- **Persistence requires a real write near the rc file, and is comment-stripped.**
+  A shell-rc path named in a doc-example string (Anthropic's `Read(~/.zshrc)`
+  permission example) or a completion-installer comment (`@angular/cli`) is not a
+  persistence write.
+- **On-chain-loader no longer fires on a generic `.getTransaction()`.** That is
+  Sentry's APM / a DB transaction / ethers' own call (`convex` bundles Sentry); it
+  counts toward the EtherHiding shape only with raw-calldata extraction beside it.
+- **The bundle co-location HIGHs now require proximity, not same-file.** A
+  webpack/esbuild/yarn bundle concatenates unrelated modules into one megafile, so
+  an env read and a fetch (or a computed require) megabytes apart no longer
+  corroborate token-exfil (`aws-cdk`, `pdfkit`'s vendored yarn, `simple-bin-help`).
+- **Nine new benign regression fixtures**, plus `bun` and `firebase-tools` added to
+  `validation/defensible-blocks.json` as documented true positives.
+
 ## 1.0.5 (2026-07-21) — second at-scale sweep: two false-block shapes closed
 
 **In plain terms:** we ran the false-block validation over a *fresh* 1,000

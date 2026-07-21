@@ -8,13 +8,13 @@
     "url": "https://github.com/adamsjack711-ux/pkgxray",
     "source": "github"
   },
-  "version": "1.0.5",
+  "version": "1.0.6",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pkgxray",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

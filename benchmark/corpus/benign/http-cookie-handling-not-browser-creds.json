@@ -1,0 +1,12 @@
+{
+  "name": "http-cookie-handling-not-browser-cookie-db",
+  "expect": "safe",
+  "note": "A web framework's HTTP-cookie handling: quoted 'cookies' / 'Cookies' property access (next-auth, cookies-next: req[\"cookies\"], TmpCookiesObj) matched the browser-Cookies-DB credential target. 'Cookies'/'Login Data'/'Web Data' are common words, so they now require a browser-profile-path co-indicator (User Data / Application Support / AppData / a browser name used as a path segment); real Chrome/Firefox cookie theft always references the profile directory. Note the Next.js 'edge' runtime token, which must not be read as the Edge browser. A read of the actual browser Cookies DB (with a profile path) still blocks. Regression guard for the deeper-corpus false-block fixes.",
+  "evidence": {
+    "packageName": "cookie-lib",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"cookie-lib\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/cookie-lib\"}",
+      "src/types.ts": "import fs from \"fs\";\nexport type NextCookies = NextRequest[\"cookies\"];\nexport type TmpCookiesObj = { [key: string]: string };\nexport const runtime = \"edge\";\nexport function getAll(req){ return req[\"cookies\"]; }\n"
+    }
+  }
+}

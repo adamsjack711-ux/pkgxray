@@ -1,0 +1,12 @@
+{
+  "name": "web3-metamask-connector-export-not-wallet-vault",
+  "expect": "safe",
+  "note": "A web3 library re-exporting the browser-injected wallet CONNECTOR named 'metaMask' (wagmi: export { metaMask } from '../metaMask.js'). The identifier matched the MetaMask-wallet credential target and false-blocked the entire wagmi/web3 ecosystem. The 'metamask'/crypto-wallet targets now require a wallet-storage-file co-indicator (extension-storage path, wallet.dat, keystore, vault.json, mnemonic/seed phrase); a connector that talks to window.ethereum has none. Code that steals the on-disk vault still blocks. Regression guard for the deeper-corpus false-block fixes.",
+  "evidence": {
+    "packageName": "web3-connectors",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"web3-connectors\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/web3-connectors\"}",
+      "src/exports/metaMask.ts": "export { type MetaMaskParameters, metaMask } from \"../metaMask.js\";\nexport { coinbaseWallet } from \"../coinbaseWallet.js\";\nexport { walletConnect } from \"../walletConnect.js\";\n"
+    }
+  }
+}
