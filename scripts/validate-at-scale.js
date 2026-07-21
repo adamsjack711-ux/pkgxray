@@ -12,13 +12,22 @@
 // Usage:
 //   node scripts/validate-at-scale.js [--list <file>] [--limit N]
 //        [--concurrency N] [--timeout-ms N] [--out-dir <dir>]
+//        [--cohort <name>] [--emit-stats <file> --run-id <id>]
 //
 // Outputs (default --out-dir validation/results/):
 //   results.jsonl      one JSON object per package (decision, grade, findings)
 //   report.md          human-readable summary with the false-block list
 // Exit code: 0 if false blocks == 0, else 1 (so CI can gate on it).
+//
+// Cohorts: `--cohort mcp` labels the run and defaults the out-dir to
+// validation/results/mcp/, so MCP figures are NEVER merged into the npm
+// numbers. `--emit-stats` additionally writes a stats-site artifact in the
+// exact shape of website/stats/data/<runId>.json — catch-rate figures come
+// from `node benchmark/run.js --json --cohort <name>` (the committed corpus),
+// false-block figures from this scan. Nothing is published automatically:
+// review the artifact by hand before copying it into website/stats/data/.
 
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -31,7 +40,10 @@ function parseArgs(argv) {
     limit: Infinity,
     concurrency: 6,
     timeoutMs: 30000,
-    outDir: path.join(ROOT, 'validation', 'results'),
+    outDir: null,
+    cohort: null,
+    emitStats: null,
+    runId: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const v = argv[i + 1];
@@ -41,12 +53,26 @@ function parseArgs(argv) {
       case '--concurrency': a.concurrency = Number(v); i++; break;
       case '--timeout-ms': a.timeoutMs = Number(v); i++; break;
       case '--out-dir': a.outDir = path.resolve(v); i++; break;
+      case '--cohort': a.cohort = v; i++; break;
+      case '--emit-stats': a.emitStats = path.resolve(v); i++; break;
+      case '--run-id': a.runId = v; i++; break;
       case '--help': case '-h':
-        console.log('node scripts/validate-at-scale.js [--list f] [--limit N] [--concurrency N] [--timeout-ms N] [--out-dir d]');
+        console.log('node scripts/validate-at-scale.js [--list f] [--limit N] [--concurrency N] [--timeout-ms N] [--out-dir d] [--cohort name] [--emit-stats f --run-id id]');
         process.exit(0);
       default:
         console.error('unknown arg:', argv[i]); process.exit(2);
     }
+  }
+  // A cohort run keeps its results in its own directory so it can never be
+  // conflated with the default (npm top-1000) numbers.
+  if (!a.outDir) {
+    a.outDir = a.cohort
+      ? path.join(ROOT, 'validation', 'results', a.cohort)
+      : path.join(ROOT, 'validation', 'results');
+  }
+  if (a.emitStats && !a.runId) {
+    console.error('--emit-stats requires --run-id (e.g. --run-id 2026-07-25-mcp)');
+    process.exit(2);
   }
   return a;
 }
@@ -145,6 +171,79 @@ function isDefensibleBlock(r) {
 // guard's JSON decision vocabulary is safe|review|block; older docs say allow.
 function clearBucket(d) { return d === 'safe' || d === 'allow'; }
 
+// Build a stats-site artifact in the exact shape of website/stats/data/*.json.
+// False-block figures come from THIS scan; catch-rate figures come from the
+// committed corpus via `benchmark/run.js --json [--cohort <name>]`. Numbers
+// are only ever measured, never assumed: if the benchmark can't run, the
+// artifact is not written.
+function buildStatsArtifact(a, results, heuristicBlocks) {
+  const benchArgs = [path.join(ROOT, 'benchmark', 'run.js'), '--json'];
+  if (a.cohort) benchArgs.push('--cohort', a.cohort);
+  const bench = spawnSync(process.execPath, benchArgs, { cwd: ROOT, encoding: 'utf8' });
+  let summary;
+  try {
+    summary = JSON.parse(bench.stdout).summary;
+  } catch {
+    throw new Error(`benchmark run failed (exit ${bench.status}): ${(bench.stderr || '').trim().slice(0, 200)}`);
+  }
+
+  let version = 'unknown';
+  try { version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch {}
+  let commit = 'unknown';
+  const rev = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+  if (rev.status === 0) commit = rev.stdout.trim();
+
+  const runDate = new Date().toISOString().slice(0, 10);
+  const scanned = results.length;
+  const fbCount = heuristicBlocks.length;
+  const crOf = summary.malicious;
+  const crBlocked = summary.maliciousBlocking;
+  const round4 = (n) => Math.round(n * 10000) / 10000;
+
+  return {
+    schemaVersion: 1,
+    runId: a.runId,
+    runDate,
+    cohort: a.cohort || 'npm',
+    pkgxray: {
+      version,
+      build: 'validation',
+      commit,
+      node: process.version,
+      command: 'pkgxray guard npm:<name>@<version> --format json',
+    },
+    headline: {
+      packagesScanned: scanned,
+      // Same key the stats site reads for the false-block card; for a cohort
+      // run, `of` is the cohort target-list size, not 1,000.
+      topThousandFalseBlocks: {
+        count: fbCount,
+        of: scanned,
+        rate: scanned ? round4(fbCount / scanned) : 0,
+      },
+      knownMalwareCatchRate: {
+        blocked: crBlocked,
+        of: crOf,
+        rate: crOf ? round4(crBlocked / crOf) : 0,
+        passedAsSafe: summary.misses,
+      },
+    },
+    methodologyUrl: '/stats/methodology',
+    reproInputs: (() => {
+      const rel = path.relative(ROOT, a.list).replace(/\\/g, '/');
+      return rel.startsWith('..') ? a.list : `https://github.com/adamsjack711-ux/pkgxray/blob/main/${rel}`;
+    })(),
+    corrections: {
+      contact: 'https://github.com/adamsjack711-ux/pkgxray/issues (label: calibration)',
+      policy: 'Versioned runs are immutable. A corrected number is published as a new dated run; corrections are listed on the page, never silently edited.',
+      log: [],
+    },
+    notes: a.cohort === 'mcp'
+      ? `Separate MCP-cohort calibration: ${scanned} npm-published MCP servers from the official MCP Registry, one static pass; never merged into the npm figures. Catch rate is measured against the ${crOf} MCP-tagged fixture(s) in the committed corpus — a small denominator reported as-is, not extrapolated. Review this artifact by hand before publishing.`
+      : `Aggregate calibration of a one-time at-scale static scan. Catch rate is measured against the committed corpus (${crBlocked} of ${crOf} blocking). Review this artifact by hand before publishing.`,
+  };
+}
+
 function buildReport(a, pkgs, results, wallMs) {
   const by = { safe: [], review: [], block: [], error: [] };
   for (const r of results) (by[r.decision] || (by[r.decision] = [])).push(r);
@@ -168,7 +267,9 @@ function buildReport(a, pkgs, results, wallMs) {
   const topReasons = [...reasonCounts.entries()].sort((x, y) => y[1] - x[1]);
 
   const L = [];
-  L.push('# pkgxray at-scale validation — top-1000 npm packages');
+  L.push(a.cohort
+    ? `# pkgxray at-scale validation — "${a.cohort}" cohort (reported separately, never merged into the npm numbers)`
+    : '# pkgxray at-scale validation — top-1000 npm packages');
   L.push('');
   L.push(`Corpus: \`${path.relative(ROOT, a.list)}\` · ${pkgs.length} packages · concurrency ${a.concurrency} · ${(wallMs / 1000).toFixed(0)}s wall.`);
   L.push('');
@@ -269,6 +370,12 @@ async function main() {
   if (heuristicBlocks.length) console.error('  ->', heuristicBlocks.map((r) => r.package).join(', '));
   console.error(`report: ${path.relative(ROOT, reportPath)}`);
   console.error(`raw:    ${path.relative(ROOT, jsonlPath)}`);
+  if (a.emitStats) {
+    const artifact = buildStatsArtifact(a, results, heuristicBlocks);
+    fs.mkdirSync(path.dirname(a.emitStats), { recursive: true });
+    fs.writeFileSync(a.emitStats, JSON.stringify(artifact, null, 2) + '\n');
+    console.error(`stats:  ${path.relative(ROOT, a.emitStats)}  (review by hand before copying into website/stats/data/)`);
+  }
   process.exit(heuristicBlocks.length === 0 ? 0 : 1);
 }
 
