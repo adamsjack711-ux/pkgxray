@@ -223,7 +223,7 @@ tools in the same lane — behavioral supply-chain vetting:
 |---|:-:|:-:|:-:|:-:|
 | Fully local, zero-dependency, no account or cloud upload | — ¹ | ◑ ² | ◑ ³ | ✅ |
 | Static behavior analysis of package code | ✅ | ✅ | ✅ | ✅ |
-| Sandboxed execution (dynamic analysis) | — | ✅ ⁴ | ◑ (optional Docker) | — ⁴ |
+| Sandboxed execution (dynamic analysis) | — | ✅ ⁴ | ◑ (optional Docker) | ◑ (opt-in `canary`) ⁴ |
 | npm ↔ GitHub artifact divergence | unknown | — | — | ✅ |
 | Deterministic verdict path — no LLM an injection can steer | — ⁵ | ✅ | ◑ ⁵ | ✅ |
 | Pre-install gate with a quarantined copy to review | ◑ ⁶ | — | — | ✅ |
@@ -240,10 +240,15 @@ pipeline (Docker/gVisor), not an install-time developer gate.
 ³ The YARA analyzer runs locally; the LLM-as-judge and Cisco AI Defense
 analyzers require API keys.
 ⁴ **This row is OpenSSF Package Analysis's win, stated plainly:** it detonates
-packages in a gVisor sandbox and observes what they actually do, which catches
-the post-install payload fetch that is pkgxray's stated
-[blind spot](docs/threat-model.md#known-blind-spot). Run them as complements —
-pkgxray before install, dynamic analysis where that risk matters.
+packages in a gVisor sandbox — install and import phases — and observes what
+they actually do, which catches the post-install payload fetch that is
+pkgxray's stated [blind spot](docs/threat-model.md#known-blind-spot).
+pkgxray's opt-in [`canary`](docs/canary-threat-model.md) narrows that gap but
+by design cannot close it: it executes install-time lifecycle scripts in an OS
+sandbox with decoy credentials and can *confirm* malice, but never *clears* a
+package, and it does not observe import/runtime behavior. Run them as
+complements — pkgxray before install, full dynamic analysis where that risk
+matters.
 ⁵ Socket's LLM-based code inspection is a headline feature
 (&ldquo;AI-detected potential malware&rdquo;, human-confirmed); Cisco's YARA-only mode
 is deterministic, its LLM analyzer is not.
