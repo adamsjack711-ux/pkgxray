@@ -1,0 +1,13 @@
+{
+  "source": "https://registry.modelcontextprotocol.io/v0/servers",
+  "query": "version=latest, status=active, packages[].registryType=npm",
+  "fetched_date": "2026-07-21",
+  "pages_fetched": 25,
+  "server_records_seen": 2500,
+  "active_server_records": 2492,
+  "enumeration": "stopped at cap (registry cursor order — alphabetical by server name)",
+  "listed": 300,
+  "order": "file sorted by npm identifier for stable diffs; registry has no download ranking",
+  "list": "mcp-registry",
+  "command": "node scripts/build-mcp-target-list.js"
+}

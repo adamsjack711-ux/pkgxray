@@ -66,8 +66,10 @@ top-1000 / npm figures.
 
 The target list is sourced from the **official MCP Registry**
 (`registry.modelcontextprotocol.io`): latest versions, active servers, npm
-packages only, deduped, alphabetical (the registry has no download ranking),
-capped for one scan pass. Inputs only — names and versions, no verdicts:
+packages only, deduped, collected in registry cursor order until the cap
+(the registry has no download ranking; the file is sorted by identifier for
+stable diffs), sized for one scan pass. Inputs only — names and versions,
+no verdicts:
 
 - [`mcp-registry-targets.txt`](mcp-registry-targets.txt) — the list
 - [`mcp-registry-targets.meta.json`](mcp-registry-targets.meta.json) — source,
