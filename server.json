@@ -23,7 +23,7 @@
       "packageArguments": [
         {
           "type": "positional",
-          "value": "serve-mcp"
+          "value": "mcp-server"
         }
       ]
     }

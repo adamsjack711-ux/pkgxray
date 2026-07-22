@@ -29,7 +29,7 @@ the 2024 `@solana/web3.js` compromise. **[▶ 60-second walkthrough](#demo)**</s
 ### 1. Scan a known-safe package without installing pkgxray
 
 ```bash
-npx --yes pkgxray@1.0.3 guard npm:express@4.21.0
+npx --yes pkgxray@1.0.4 guard npm:express@4.21.0
 ```
 
 This downloads pkgxray through npm's temporary `npx` cache, stages the target
@@ -73,7 +73,7 @@ payload downloaded only at runtime. See the [threat model](docs/threat-model.md)
 From a repository checkout:
 
 ```bash
-npx --yes pkgxray@1.0.3 --file examples/onboarding-malicious.json --format markdown
+npx --yes pkgxray@1.0.4 --file examples/onboarding-malicious.json --format markdown
 ```
 
 The fixture contains inert source text that models a split-string SSH-key read
@@ -211,7 +211,7 @@ installed (`pkgxray-mcp`) or zero-install via `npx`:
   "mcpServers": {
     "pkgxray": {
       "command": "npx",
-      "args": ["--yes", "--package", "pkgxray@1.0.3", "pkgxray-mcp"],
+      "args": ["--yes", "--package", "pkgxray@1.0.4", "pkgxray-mcp"],
       "env": { "PKGXRAY_MCP_ALLOWED_ROOTS": "/absolute/path/to/project" }
     }
   }
