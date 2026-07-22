@@ -10,6 +10,7 @@ start, and a tour of the capabilities. Everything deeper lives here.
 | [architecture.md](architecture.md) | The analysis pipeline, the surfaces that share it, design principles, repo layout |
 | [threat-model.md](threat-model.md) | What pkgxray defends against, the known blind spot, false-positive philosophy, the honest position on prompt injection |
 | [mcp.md](mcp.md) | The MCP server, connect-time vetting of MCP servers (`pkgxray mcp`), and the per-call runtime gate (`pkgxray mcp-proxy`) |
+| [mcp-registry.md](mcp-registry.md) | MCP Registry metadata, ownership, release verification, and manual publication checklist |
 | [integrations/github-actions.md](integrations/github-actions.md) | Pull-request scans, scheduled rechecks, exact package scans, and the reusable GitHub Actions workflow |
 | [configuration.md](configuration.md) | The `.pkgxray.json` policy file — schema, precedence, and the "tighten freely, loosen loudly" invariants |
 | [reference.md](reference.md) | Severity policy, `recheck` monitoring, performance numbers, JSON output, browser extension, cache server |

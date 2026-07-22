@@ -14,22 +14,60 @@ directions:
 
 ## The pkgxray MCP server
 
-Use the stdio server from any MCP-capable agent:
+Use an exact npm version from any MCP-capable agent:
 
 ```json
-{ "mcpServers": { "pkgxray": { "command": "pkgxray-mcp" } } }
+{
+  "mcpServers": {
+    "pkgxray": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "--package",
+        "pkgxray@1.0.3",
+        "pkgxray-mcp"
+      ],
+      "env": {
+        "PKGXRAY_MCP_ALLOWED_ROOTS": "/absolute/path/to/project"
+      }
+    }
+  }
+}
 ```
 
-| Tool | What it does |
-|---|---|
-| `guard_agent_extension_install` | stage + vuln-check + audit a real package |
-| `audit_agent_extension_supply_chain` | static heuristics on supplied evidence |
-| `audit_lockfile_supply_chain` | batch OSV scan of a lockfile |
-| `triage_lockfile_supply_chain` | record each flagged dep into `.pkgxray.lock` |
+If pkgxray is already installed, `"command": "pkgxray-mcp"` also works. The
+source tree adds `pkgxray serve-mcp` for future Registry releases, but the
+published `pkgxray@1.0.3` package predates that alias; use the verified launcher
+above until a later version is released.
+
+| Tool | Inputs | Output and security consequence |
+|---|---|---|
+| `guard_agent_extension_install` | exact package reference; optional policy/promotion | downloads and stages a real package, queries npm/OSV/GitHub, and returns cited `SAFE`/`REVIEW`/`BLOCK`; optional promotion writes files |
+| `audit_agent_extension_supply_chain` | caller-supplied source and metadata | pure static structured verdict; no local file read, network, install, or execution |
+| `audit_lockfile_supply_chain` | manifest path under an approved root | reads the manifest, queries OSV, and returns one verdict per resolved package |
+| `triage_lockfile_supply_chain` | manifest path plus bulk `allow` or `block` | writes a sibling `.pkgxray.lock`; `allow` suppresses selected findings in later audits |
 
 The server honors the same `.pkgxray.json` policy file as the CLI — including
 the `mcp` block (`tools`, `packageScanFirst`, `timeoutMs`); see
 [configuration.md](configuration.md).
+
+### Filesystem boundary
+
+MCP tool arguments cannot grant themselves filesystem access. Local package
+references, lockfiles, promotion targets, and caller-selected quarantine roots
+must resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`. Multiple roots use the platform
+path delimiter (`:` on macOS/Linux, `;` on Windows). Symlink escapes are
+rejected.
+
+When the variable is omitted, only the server's startup working directory is
+allowed. Set an absolute project root in host configuration rather than relying
+on an application-wide home-directory working directory. Set the variable to an
+empty string to disable all caller-selected filesystem paths; registry package
+scans still use pkgxray's internal OS quarantine.
+
+The agent controls tool arguments and supplied evidence. The operator controls
+the process environment, working directory, `.pkgxray.json`, and executable
+version. Do not allow untrusted prompts to edit those controls.
 
 ## Vetting MCP servers: `pkgxray mcp`
 

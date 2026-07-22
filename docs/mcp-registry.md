@@ -1,0 +1,101 @@
+# MCP Registry readiness
+
+Status: metadata and runtime entry point are prepared, but **not published**.
+The official MCP Registry is still in preview and may make breaking changes or
+reset data.
+
+## Prepared metadata
+
+- Registry name: `io.github.adamsjack711-ux/pkgxray`
+- npm package: `pkgxray`
+- transport: local stdio
+- launch contract: `pkgxray serve-mcp`
+- metadata: [`server.json`](../server.json)
+- npm ownership marker: `package.json#mcpName`
+
+`server.json`, `package.json`, and the npm artifact must all use the same exact
+release version. The checked-in `1.0.3` metadata is a release template: the
+currently published `pkgxray@1.0.3` predates `mcpName` and `serve-mcp`, so it
+cannot be submitted. Do not publish the registry entry until a later reviewed
+npm release contains both.
+
+## Pre-release verification
+
+1. Choose the next release version without changing it only for registry
+   submission.
+2. Update `package.json`, `server.json.version`, and
+   `server.json.packages[0].version` together.
+3. Run the complete [release checklist](release.md).
+4. Inspect `npm pack --dry-run`; confirm `server.json`, `bin/mcp-server.js`, and
+   the `pkgxray` launcher are included.
+5. Exercise both launch paths against the packed artifact:
+
+   ```bash
+   pkgxray-mcp
+   pkgxray serve-mcp
+   ```
+
+6. Send `initialize`, `tools/list`, and one inert evidence audit over stdio.
+   Confirm the reported server version matches the package.
+7. Confirm every advertised tool has a title, description, input schema, and
+   read/destructive/idempotent/open-world annotations.
+8. Verify a lockfile inside `PKGXRAY_MCP_ALLOWED_ROOTS` succeeds, a path outside
+   it fails, and a symlink cannot escape it.
+
+## Package ownership verification
+
+Publish the reviewed npm package with provenance first. Then verify:
+
+```bash
+npm view pkgxray@<VERSION> version mcpName --json
+npx --yes --package pkgxray@<VERSION> pkgxray --version
+```
+
+The returned `mcpName` must be exactly
+`io.github.adamsjack711-ux/pkgxray`. Publishing npm requires the maintainer's
+npm account, protected release environment approval, and configured npm trusted
+publishing/provenance. None of those credentials belong in `server.json`.
+
+## Manual Registry publication
+
+The maintainer needs:
+
+- a GitHub account that controls the `adamsjack711-ux` namespace;
+- browser access for GitHub device authorization;
+- a local installation of the official `mcp-publisher` CLI;
+- the already-published npm release described above.
+
+Using a reviewed checkout of the release tag:
+
+```bash
+brew install mcp-publisher
+mcp-publisher --help
+mcp-publisher login github
+mcp-publisher publish
+```
+
+`login github` displays a one-time device code and asks the maintainer to
+authorize it at `https://github.com/login/device`. Do not paste that code or the
+saved Registry token into issues, CI logs, or source control.
+
+Publication is a manual external write. It must be performed only after review;
+this repository does not automate it.
+
+## Post-publication verification
+
+```bash
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.adamsjack711-ux/pkgxray"
+```
+
+Confirm:
+
+- the returned name and version match the release;
+- the npm identifier and exact version are correct;
+- the repository ID is `1276320499`;
+- installation launches `pkgxray serve-mcp`, not the audit CLI;
+- a fresh client can initialize, list all intended tools, and remove the server
+  without leaving a global package installation.
+
+If package validation fails, first inspect the published npm artifact's
+`mcpName`. If namespace authorization fails, repeat
+`mcp-publisher login github` with the GitHub account that owns the namespace.
