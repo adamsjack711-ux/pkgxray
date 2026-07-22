@@ -5,7 +5,7 @@ name: release
 # supply-chain guard. A security tool that can't prove its own supply chain has
 # no business vetting anyone else's.
 #
-# Trigger: publishing a GitHub Release (tag like v0.17.0). Also runnable via
+# Trigger: publishing a GitHub Release (tag like v1.0.3). Also runnable via
 # workflow_dispatch with dry_run=true to exercise everything except the publish.
 #
 # Why the self-guard uses --no-source-scan: pkgxray's source *is* a catalogue of
@@ -35,9 +35,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"

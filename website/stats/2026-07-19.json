@@ -26,7 +26,7 @@
   "methodologyUrl": "/stats/methodology",
   "reproInputs": "https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19",
   "corrections": {
-    "contact": "https://github.com/adamsjack711-ux/pkgxray/issues (label: calibration)",
+    "contact": "https://github.com/adamsjack711-ux/pkgxray/issues?q=is%3Aissue%20label%3Acalibration",
     "policy": "Versioned runs are immutable. A corrected number is published as a new dated run; corrections are listed on the page, never silently edited.",
     "log": [
       {

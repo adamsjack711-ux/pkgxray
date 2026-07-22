@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-`pkgxray` is in the `0.x` series. Security fixes are applied to the latest
+`pkgxray` is in the `1.x` release line. Security fixes are applied to the latest
 released version on the `main` branch. Please upgrade to the newest version
 before reporting an issue.
 

@@ -1,7 +1,7 @@
 # Calibration run — 2026-07-19 (reproducibility inputs)
 
 These are the **inputs** to the 2026-07-19 calibration run published at
-<https://pkgxray.pages.dev/stats/2026-07-19>. They let a third party reproduce
+<https://pkgxray.ca/stats/2026-07-19>. They let a third party reproduce
 the run and re-derive the numbers. They contain package **names and versions
 only — no verdicts**. pkgxray does not publish per-package verdicts (a public
 "package → verdict" lookup would be a free detection oracle).
