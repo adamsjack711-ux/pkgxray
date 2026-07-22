@@ -1,6 +1,7 @@
 # MCP Registry readiness
 
-Status: metadata and runtime entry point are prepared, but **not published**.
+Status: metadata and runtime entry point are prepared and ship in published
+`pkgxray@1.0.4`, but the Registry entry itself is **not published** yet.
 The official MCP Registry is still in preview and may make breaking changes or
 reset data.
 
@@ -9,15 +10,14 @@ reset data.
 - Registry name: `io.github.adamsjack711-ux/pkgxray`
 - npm package: `pkgxray`
 - transport: local stdio
-- launch contract: `pkgxray serve-mcp`
+- launch contract: `pkgxray mcp-server`
 - metadata: [`server.json`](../server.json)
 - npm ownership marker: `package.json#mcpName`
 
 `server.json`, `package.json`, and the npm artifact must all use the same exact
-release version. The checked-in `1.0.3` metadata is a release template: the
-currently published `pkgxray@1.0.3` predates `mcpName` and `serve-mcp`, so it
-cannot be submitted. Do not publish the registry entry until a later reviewed
-npm release contains both.
+release version. Published `pkgxray@1.0.4` already carries `mcpName` and the
+`mcp-server` launcher, so the registry entry can be submitted from that release;
+keep the three versions in lockstep on every future bump.
 
 ## Pre-release verification
 
@@ -32,7 +32,7 @@ npm release contains both.
 
    ```bash
    pkgxray-mcp
-   pkgxray serve-mcp
+   pkgxray mcp-server
    ```
 
 6. Send `initialize`, `tools/list`, and one inert evidence audit over stdio.
@@ -92,7 +92,7 @@ Confirm:
 - the returned name and version match the release;
 - the npm identifier and exact version are correct;
 - the repository ID is `1276320499`;
-- installation launches `pkgxray serve-mcp`, not the audit CLI;
+- installation launches `pkgxray mcp-server`, not the audit CLI;
 - a fresh client can initialize, list all intended tools, and remove the server
   without leaving a global package installation.
 

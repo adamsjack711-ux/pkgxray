@@ -37,7 +37,7 @@ test("coding-agent guide covers every requested host and integration mode", () =
 
 test("agent examples pin pkgxray and distinguish guidance from enforcement", () => {
   assert.doesNotMatch(GUIDE, /pkgxray@latest/);
-  assert.match(GUIDE, /pkgxray@1\.0\.3/);
+  assert.match(GUIDE, /pkgxray@1\.0\.4/);
   assert.match(GUIDE, /advisory unless the host has an execution hook/);
   assert.match(
     GUIDE,

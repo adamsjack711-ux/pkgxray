@@ -25,7 +25,7 @@ test("MCP Registry and npm ownership metadata agree", () => {
   assert.equal(npmPackage.version, pkg.version);
   assert.deepEqual(npmPackage.transport, { type: "stdio" });
   assert.deepEqual(npmPackage.packageArguments, [
-    { type: "positional", value: "serve-mcp" },
+    { type: "positional", value: "mcp-server" },
   ]);
   assert.ok(pkg.files.includes("server.json"));
 });
@@ -39,7 +39,7 @@ test("registry launch entry point performs an MCP initialize handshake", () => {
   });
   const result = spawnSync(
     process.execPath,
-    [resolve(ROOT, "bin", "audit.js"), "serve-mcp"],
+    [resolve(ROOT, "bin", "audit.js"), "mcp-server"],
     {
       cwd: ROOT,
       encoding: "utf8",
@@ -53,19 +53,19 @@ test("registry launch entry point performs an MCP initialize handshake", () => {
   assert.equal(response.result.serverInfo.version, pkg.version);
 });
 
-test("registry checklist states the unpublished release blocker", () => {
+test("registry checklist states the launcher ships in the published release", () => {
   const guide = readFileSync(resolve(ROOT, "docs", "mcp-registry.md"), "utf8");
   assert.match(guide, /not published/i);
-  assert.match(guide, /currently published `pkgxray@1\.0\.3` predates `mcpName`/);
+  assert.match(guide, /Published `pkgxray@1\.0\.4` already carries `mcpName`/);
   assert.match(guide, /mcp-publisher login github/);
   assert.match(guide, /mcp-publisher publish/);
 });
 
-test("public setup uses the launcher actually published in pkgxray 1.0.3", () => {
+test("public setup uses the launcher actually published in pkgxray 1.0.4", () => {
   for (const file of ["README.md", "docs/mcp.md"]) {
     const guide = readFileSync(resolve(ROOT, file), "utf8");
-    assert.match(guide, /pkgxray@1\.0\.3/);
+    assert.match(guide, /pkgxray@1\.0\.4/);
     assert.match(guide, /pkgxray-mcp/);
-    assert.doesNotMatch(guide, /pkgxray@1\.0\.3[\s\S]{0,80}serve-mcp/);
+    assert.doesNotMatch(guide, /pkgxray@1\.0\.4[\s\S]{0,80}serve-mcp/);
   }
 });

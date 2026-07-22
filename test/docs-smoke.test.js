@@ -27,7 +27,7 @@ test("README uses the canonical project description and zero-install command", (
   assert.ok(PACKAGE.description.startsWith(canonical));
   assert.match(
     README,
-    /npx --yes pkgxray@1\.0\.3 guard npm:express@4\.21\.0/
+    /npx --yes pkgxray@1\.0\.4 guard npm:express@4\.21\.0/
   );
 });
 
