@@ -48,7 +48,7 @@
           <h1 class="stats-title">How the numbers are made</h1>
           <p class="section-lead">
             A calibration claim you cannot reproduce is marketing. Everything
-            needed to re-run the 2026-07-19-retuned scan and re-derive the four
+            needed to re-run the 2026-07-21 scan and re-derive the four
             numbers is here.
           </p>
         </div>
@@ -57,9 +57,9 @@
       <section class="section"><div class="section-inner narrow prose">
         <h2>What was scanned</h2>
         <p>
-          <strong>1,301 published packages</strong> in one
+          <strong>5,000 published packages</strong> in one
           static pass, split across three target lists resolved on
-          <strong>2026-07-19</strong>:
+          <strong>2026-07-21</strong>:
         </p>
         <ul>
           <li>
@@ -84,8 +84,8 @@
 
         <h2>Exact tool and command</h2>
         <p>
-          <code>pkgxray 1.0.3</code> (build
-          <code>1fed962</code>, Node v26.0.0), one
+          <code>pkgxray 1.0.6</code> (build
+          <code>76c0768</code>, Node v22.22.2), one
           invocation per package:
         </p>
         <pre class="code-block"><code>pkgxray guard npm:&lt;name&gt;@&lt;version&gt; --format json</code></pre>
@@ -131,10 +131,10 @@
         <p>
           This run is the <strong>re-scan on the retuned engine</strong>. An earlier
           provisional run
-          (<a href="./2026-07-19.html">2026-07-19</a>,
+          (<a href="./2026-07-21.html">2026-07-21</a>,
           kept unedited in run history) published the <em>as-measured</em> pre-retune
           figure of one top-1000 false block, flagged as pending a re-run. It now has
-          one: re-running the full 1,301-package scan on the
+          one: re-running the full 5,000-package scan on the
           fixed engine yields <strong>zero</strong> top-1000 false blocks, and the
           earlier run's number was left in place rather than silently edited. This is
           also the scoping correction that reconciled the README's earlier
@@ -149,9 +149,9 @@
           still downloadable. Catch rate is therefore measured against a committed,
           reconstructed corpus run through the real static engine
           (<code>node benchmark/run.js</code>):
-          <strong>19 of
-          20</strong> malicious samples block outright
-          (95.0%), and
+          <strong>20 of
+          21</strong> malicious samples block outright
+          (95.2%), and
           <strong>0 passed as safe</strong> —
           the remainder are routed to <code>review</code> by policy
           (download-then-exec and geo/locale-gated payloads), not missed. CI hard-fails
@@ -176,7 +176,7 @@
         <p class="fineprint">
           Aggregate figures only. This page does not publish per-package verdicts —
           a public "package → verdict" lookup would be a free detection oracle for an
-          attacker tuning against the scanner. <a href="./2026-07-19-retuned.html">Back to the 2026-07-19-retuned run →</a>
+          attacker tuning against the scanner. <a href="./2026-07-21.html">Back to the 2026-07-21 run →</a>
         </p>
       </div></section>
         </main>
