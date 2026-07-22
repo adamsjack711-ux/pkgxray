@@ -4,7 +4,8 @@
 // examples/pkgxray-guard/. The `replace` points the hookshot import at the
 // parent repo (../..), so it builds offline with no `go get` once dropped in.
 // If you build it standalone (outside the fork), delete the replace line and
-// run `go get github.com/CorridorSecurity/hookshot@latest`.
+// resolve the reviewed Hookshot commit documented in README.md; do not silently
+// substitute a mutable @latest dependency in this security gate.
 module github.com/CorridorSecurity/hookshot/examples/pkgxray-guard
 
 go 1.21

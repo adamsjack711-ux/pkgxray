@@ -219,8 +219,9 @@ installed (`pkgxray-mcp`) or zero-install via `npx`:
 ```
 
 The [MCP guide](docs/mcp.md#the-pkgxray-mcp-server) explains the operator-owned
-filesystem boundary. Gate installs with the [hookshot integration](examples/hookshot/)
-and wrap MCP servers with
+filesystem boundary. Product-specific setup is in the
+[coding-agent integration guide](docs/integrations/coding-agents.md). Gate
+installs with the [Hookshot integration](examples/hookshot/) and wrap MCP servers with
 [`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy).
 
 ## Configuration

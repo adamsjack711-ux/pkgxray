@@ -12,6 +12,7 @@ start, and a tour of the capabilities. Everything deeper lives here.
 | [mcp.md](mcp.md) | The MCP server, connect-time vetting of MCP servers (`pkgxray mcp`), and the per-call runtime gate (`pkgxray mcp-proxy`) |
 | [mcp-registry.md](mcp-registry.md) | MCP Registry metadata, ownership, release verification, and manual publication checklist |
 | [integrations/github-actions.md](integrations/github-actions.md) | Pull-request scans, scheduled rechecks, exact package scans, and the reusable GitHub Actions workflow |
+| [integrations/coding-agents.md](integrations/coding-agents.md) | Codex, Claude Code, Cursor, Windsurf, generic MCP/command agents, and Hookshot enforcement |
 | [configuration.md](configuration.md) | The `.pkgxray.json` policy file — schema, precedence, and the "tighten freely, loosen loudly" invariants |
 | [reference.md](reference.md) | Severity policy, `recheck` monitoring, performance numbers, JSON output, browser extension, cache server |
 | [benchmark.md](benchmark.md) | The calibration benchmark — how the 0-false-block claim is measured and regression-gated |
