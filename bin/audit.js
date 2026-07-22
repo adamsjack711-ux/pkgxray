@@ -12,6 +12,7 @@ const { pinMcpManifest, recheckMcpManifest } = require("../src/mcp-pin");
 const { runMcpProxy } = require("../src/mcp-proxy");
 const { runCanarySandbox } = require("../src/sandbox");
 const cfg = require("../src/config");
+const { version: PACKAGE_VERSION } = require("../package.json");
 
 // Map a config-adjusted verdict (safe|review|block, from applyConfig, which has
 // already applied mutes + the pinned allowlist) through the same policy
@@ -28,6 +29,7 @@ function printUsage() {
   process.stderr.write(
     [
       "Usage:",
+      "  pkgxray --version",
       "  pkgxray < evidence.json",
       "  pkgxray --format json < evidence.json",
       "  pkgxray --file evidence.json --format markdown",
@@ -61,7 +63,10 @@ function printUsage() {
 
 function parseArgs(argv) {
   const options = { command: "audit", format: "markdown", file: null };
-  if (argv[0] === "guard") {
+  if (argv[0] === "--version" || argv[0] === "-V") {
+    options.command = "version";
+    argv = [];
+  } else if (argv[0] === "guard") {
     options.command = "guard";
     options.reference = argv[1];
     argv = argv.slice(2);
@@ -270,6 +275,10 @@ async function main() {
   }
 
   const options = parseArgs(process.argv.slice(2));
+  if (options.command === "version") {
+    process.stdout.write(`${PACKAGE_VERSION}\n`);
+    return;
+  }
   if (options.help) {
     printUsage();
     return;

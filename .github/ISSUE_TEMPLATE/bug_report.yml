@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible pkgxray failure that is not an incorrect verdict or security vulnerability.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not use this form for credentials, active malware, or an exploitable scanner bypass. Report those privately through [GitHub Security Advisories](https://github.com/adamsjack711-ux/pkgxray/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: pkgxray version
+      description: Output of `pkgxray --version`, or the exact npm version.
+      placeholder: 1.0.3
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js and operating system
+      placeholder: Node 24.4.1 on Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Redact tokens, credentials, private paths, and package contents.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest safe sequence that reproduces the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private source, and active malware from this report.
+          required: true
