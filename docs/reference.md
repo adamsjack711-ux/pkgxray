@@ -74,24 +74,10 @@ This is informational (never changes the exit code) unless you pass
 
 ### Scheduled CI job (GitHub Actions)
 
-```yaml
-# .github/workflows/pkgxray-recheck.yml
-name: pkgxray recheck
-on:
-  schedule:
-    - cron: "0 6 * * *"   # daily 06:00 UTC
-  workflow_dispatch:
-jobs:
-  recheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - run: npx pkgxray recheck package-lock.json --format json
-        # exit 2 (regressed→block) or 3 (regressed→review) fails the build
-```
+See the [GitHub Actions integration](integrations/github-actions.md) for
+copy-paste pull-request and scheduled workflows with minimal permissions,
+full-SHA action pins, an exact pkgxray version, JSON output, and explicit exit
+code handling.
 
 ---
 

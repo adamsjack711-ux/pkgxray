@@ -11,6 +11,14 @@ const README = readFileSync(resolve(ROOT, "README.md"), "utf8");
 const PACKAGE = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
 const CLI = resolve(ROOT, "bin", "audit.js");
 const FIXTURE = resolve(ROOT, "examples", "onboarding-malicious.json");
+const ACTIONS_GUIDE = readFileSync(
+  resolve(ROOT, "docs", "integrations", "github-actions.md"),
+  "utf8"
+);
+const AUDIT_WORKFLOW = readFileSync(
+  resolve(ROOT, ".github", "workflows", "pkgxray-audit.yml"),
+  "utf8"
+);
 
 test("README uses the canonical project description and zero-install command", () => {
   const canonical =
@@ -63,4 +71,31 @@ test("documented entry points remain present in CLI help", () => {
     assert.match(help, new RegExp(`pkgxray ${command.replace("-", "\\-")}`));
   }
   for (const flag of ["--file", "--format json"]) assert.match(help, new RegExp(flag));
+});
+
+test("GitHub Actions documentation covers every supported manifest and package guard", () => {
+  for (const target of [
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "pnpm-lock.yml",
+    "yarn.lock",
+    "package.json",
+  ]) {
+    assert.match(ACTIONS_GUIDE, new RegExp(target.replaceAll(".", "\\.")));
+    assert.match(AUDIT_WORKFLOW, new RegExp(target.replaceAll(".", "\\.")));
+  }
+  assert.match(ACTIONS_GUIDE, /guard npm:express@4\.21\.0/);
+  assert.match(AUDIT_WORKFLOW, /PACKAGE_REFERENCE/);
+});
+
+test("GitHub Actions examples pin dependencies and avoid global installs", () => {
+  for (const source of [ACTIONS_GUIDE, AUDIT_WORKFLOW]) {
+    const uses = [...source.matchAll(/uses:\s+\S+@([0-9a-f]{40})/g)];
+    assert.ok(uses.length > 0, "expected at least one full-SHA action reference");
+    assert.doesNotMatch(source, /uses:\s+\S+@(?:main|master|v\d+)/);
+    assert.doesNotMatch(source, /npx[^\n]*pkgxray@latest|npm install -g pkgxray/);
+  }
+  assert.match(AUDIT_WORKFLOW, /persist-credentials:\s+false/);
+  assert.match(AUDIT_WORKFLOW, /default:\s+"1\.0\.3"/);
 });
