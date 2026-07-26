@@ -77,7 +77,14 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
     URL → `pkgxray mcp` probe, an entry it can't read → **review** (never a
     silent allow). Env-only or formatting edits re-triage nothing. A post-edit
     hook can't undo the write, so a BLOCK becomes a file-edit block (honored by
-    Claude) and a review becomes agent context.
+    Claude) and a review becomes agent context. Once the gate clears, the
+    vetted stdio entries are **auto-wrapped in place** to launch behind
+    `pkgxray mcp-proxy` (the per-call runtime gate): unlike a command, a config
+    file is shared state the hook can rewrite, so the wrap needs no agent
+    round-trip (`PKGXRAY_HOOK_MCP_WRAP=0` to disable). The
+    `pkgxray-guard wrap-config <file>…` subcommand applies the same rewrite to
+    stdio servers already on disk — retrofitting the runtime gate onto servers
+    registered before the hook was installed.
   - **Dependency manifests** *(opt-in)* — when the agent edits `package.json`
     or a lockfile, checks it and feeds the verdict back as agent context (or a
     block on Claude for a `BLOCK`). It diffs the edit hunks so it doesn't
@@ -156,7 +163,7 @@ All via environment variables (the hook reads them at startup):
 | `PKGXRAY_CACHE_URL` | — | Forwarded to pkgxray so registry/GitHub fetches route through a shared cache server across runs. |
 | `PKGXRAY_HOOK_CONCURRENCY` | `8` | Max packages guarded concurrently within one command. |
 | `PKGXRAY_HOOK_MCP_PROBE` | `1` | `0` skips the `pkgxray mcp <url>` probe on HTTP MCP-server adds; they then surface as **review** instead of being probed. |
-| `PKGXRAY_HOOK_MCP_WRAP` | `1` | `0` stops auto-wrapping vetted stdio `mcp add` launchers in `pkgxray mcp-proxy` (the per-call runtime gate). |
+| `PKGXRAY_HOOK_MCP_WRAP` | `1` | `0` stops auto-wrapping vetted stdio servers — both `mcp add` launchers and config-file entries — in `pkgxray mcp-proxy` (the per-call runtime gate). |
 
 When a single command installs several packages (`npm i a b c …`), they are
 guarded **concurrently** (bounded by `PKGXRAY_HOOK_CONCURRENCY`), so the gate's

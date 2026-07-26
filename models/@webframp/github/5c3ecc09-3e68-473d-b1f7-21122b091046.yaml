@@ -1,0 +1,8 @@
+type: '@webframp/github'
+typeVersion: 2026.06.21.1
+id: 5c3ecc09-3e68-473d-b1f7-21122b091046
+name: github
+version: 1
+tags: {}
+globalArguments: {}
+methods: {}

@@ -1,0 +1,19 @@
+type: '@adamsjack711/npm-drift'
+typeVersion: 2026.07.17.1
+id: fef3bafa-8dcd-4443-9986-5c188f8a0097
+name: npm-drift
+version: 1
+tags: {}
+globalArguments:
+  packages:
+    - npm: pkgxray
+      repo: adamsjack711-ux/pkgxray
+    - npm: driftcheck-cli
+      repo: adamsjack711-ux/driftcheck
+    - npm: nimtui
+      repo: adamsjack711-ux/NimTui
+    - npm: stik-cli
+      repo: adamsjack711-ux/stik
+    - npm: agentwatch-cli
+      repo: adamsjack711-ux/agentwatch
+methods: {}

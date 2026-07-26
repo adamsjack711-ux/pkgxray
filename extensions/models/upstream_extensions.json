@@ -1,0 +1,16 @@
+{
+  "@webframp/github": {
+    "version": "2026.07.16.1",
+    "pulledAt": "2026-07-17T18:51:15.062Z",
+    "files": [
+      ".swamp/pulled-extensions/@webframp/github/models/github/repos.ts",
+      ".swamp/bundles/9d92b9c9/github/repos.js",
+      ".swamp/pulled-extensions/@webframp/github/files/LICENSE.md",
+      ".swamp/pulled-extensions/@webframp/github/files/README.md",
+      ".swamp/pulled-extensions/@webframp/github/manifest.yaml"
+    ],
+    "checksum": "0fceed62351fb2c7daed86d8e37d1ec1081ab3e10bde76b21b843002294a2cb0",
+    "filesChecksum": "bcf1147470e6ffb86be2552386dbb0c57aea1558c6b164b98f65a8ef015c0b0b",
+    "serverUrl": "https://swamp-club.com"
+  }
+}
