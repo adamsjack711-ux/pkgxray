@@ -14,9 +14,9 @@ The website source verifies these public routes:
 - `/stats/2026-07-19` and `/stats/2026-07-19-retuned` — immutable run pages
 
 The source does **not** verify `/methodology` or any of the proposed SEO routes
-below. Every new route is therefore labelled **proposed**. Before publication,
-confirm that `pkgxray.ca` serves the same site; the repository currently names
-`pkgxray.pages.dev` as the live site and canonical host.
+below. Every new route is therefore labelled **proposed**. The repository's
+website metadata now uses `pkgxray.ca` as the canonical host; before
+publication, confirm `pkgxray.ca` serves the deployed site.
 
 Apply these boundaries to all nine pages:
 
