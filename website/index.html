@@ -6,7 +6,7 @@
     <title>pkgxray — Analyze packages before you install them</title>
     <meta
       name="description"
-      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. Never executes untrusted code."
+      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. The static scanner never executes package code."
     />
     <meta name="theme-color" content="#1c1510" />
     <link rel="canonical" href="https://pkgxray.ca/" />
@@ -16,7 +16,7 @@
     <meta property="og:title" content="pkgxray — Analyze packages before you install them" />
     <meta
       property="og:description"
-      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. Never executes untrusted code."
+      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. The static scanner never executes package code."
     />
     <meta property="og:image" content="https://pkgxray.ca/assets/og.jpg" />
     <meta property="og:image:width" content="1200" />
@@ -29,7 +29,7 @@
     <meta name="twitter:title" content="pkgxray — Analyze packages before you install them" />
     <meta
       name="twitter:description"
-      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. Never executes untrusted code."
+      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. The static scanner never executes package code."
     />
     <meta name="twitter:image" content="https://pkgxray.ca/assets/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -74,7 +74,7 @@
           </h1>
           <p class="headline">Analyze packages before you install them.</p>
           <p class="support">
-            Zero-dependency · runs locally · never executes untrusted code
+            Zero-dependency · runs locally · static scans never execute package code
           </p>
           <div class="cta-row">
             <button
@@ -177,7 +177,7 @@
       <!-- 2. Why it matters — Sonatype / MCP numbers -->
       <section class="section why-section" id="why" aria-labelledby="why-title">
         <div class="section-inner">
-          <h2 id="why-title">npm is where the malware is.</h2>
+          <h2 id="why-title">npm is the primary target for open-source malware.</h2>
           <p class="section-lead">
             Agents install packages and connect to MCP servers at machine speed.
             The registry they pull from is under industrial-scale attack.
@@ -245,7 +245,8 @@
           <p class="why-sources">
             Each figure links to its supporting report. Sources include
             <a href="https://www.sonatype.com/state-of-the-software-supply-chain/2026/software-infrastructure-growth" rel="noopener noreferrer">Sonatype’s 2026 State of the Software Supply Chain</a>,
-            its <a href="https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems" rel="noopener noreferrer">Q4 2025 OSS Malware Index</a>,
+            its <a href="https://www.sonatype.com/state-of-the-software-supply-chain/2026/open-source-malware" rel="noopener noreferrer">open-source malware chapter</a>
+            and <a href="https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems" rel="noopener noreferrer">Q4 2025 OSS Malware Index</a>,
             <a href="https://www.paloaltonetworks.com/blog/cloud-security/npm-supply-chain-attack/" rel="noopener noreferrer">Palo Alto Networks’ incident analysis</a>,
             and <a href="https://nimblebrain.ai/blog/state-of-mcp-security-2026/" rel="noopener noreferrer">NimbleBrain’s MCP registry analysis</a>.
           </p>
@@ -260,13 +261,13 @@
           <p class="section-lead">
             We ran the scanner over 5,000 published packages — code only, no
             execution — read every block by hand, and measured recall against a
-            known-malware corpus.
+            committed, reconstructed known-malware corpus.
           </p>
           <div class="stat-grid">
             <div class="stat-card">
               <div class="stat-value">5,000</div>
               <div class="stat-label">packages scanned</div>
-              <div class="stat-sub">published npm + MCP, one static pass</div>
+              <div class="stat-sub">top-1,000 list + 4,000 deeper sweep, one static pass</div>
             </div>
             <div class="stat-card">
               <div class="stat-value">0</div>

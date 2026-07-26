@@ -56,7 +56,7 @@
             <div class="stat-card">
               <div class="stat-value">5,000</div>
               <div class="stat-label">packages scanned</div>
-              <div class="stat-sub">published npm + MCP packages, one static pass · <a href="./2026-07-21.json">source data</a></div>
+              <div class="stat-sub">published npm packages, one static pass · <a href="./2026-07-21.json">source data</a></div>
             </div>
             <div class="stat-card">
               <div class="stat-value">0.0%</div>
@@ -80,10 +80,11 @@
             <span class="dot-sep">·</span>
             <a href="./2026-07-21.json">Raw JSON</a>
             <span class="dot-sep">·</span>
-            <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">Target lists</a>
+            <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">Top-1000 target list</a>
           </p>
 
           <p class="stats-note">Aggregate calibration on the 1.0.6 engine. packagesScanned counts the distinct popular packages validated this cycle: the top-1000 calibration list plus two deeper, non-overlapping download-ranked sweeps (1,000 and 3,000). The top-1000 false-block figure is the re-measured heuristic count on the fixed engine (0/1000). Catch rate is against the committed reconstructed known-malware corpus (npm removes live malware, so live recall is untestable). This run&#39;s scan environment had the OSV endpoint unavailable, so it is heuristic-scoped; the false-block metric is heuristic-only by definition and is unaffected, and known-CVE blocks are by-design true positives, never false blocks.</p>
+          <p class="stats-note"><strong>What the 5,000 counts:</strong> 1,000 top-1000 calibration list + 1,000 deeper download-ranked sweep (first) + 3,000 deeper download-ranked sweep (second). Counted separately, <em>not</em> in this denominator: 300 MCP cohort, 21 reconstructed known-malware corpus.</p>
         </div>
       </section>
 
@@ -96,7 +97,7 @@
             Contest a figure at
             <a href="https://github.com/adamsjack711-ux/pkgxray/issues?q=is%3Aissue%20label%3Acalibration" rel="noopener noreferrer">the tracker</a>.
           </p>
-          <ul class="corrections-log"><li><strong>2026-07-21</strong> — Widened validation past the top-1000 calibration list into two deeper, non-overlapping download-ranked sweeps (1,000 and 3,000 packages) to hunt false blocks the head never exercised. The deeper sweeps surfaced 16 wrongly-blocked popular packages: 14 were genuine heuristic false positives across six detectors (OID/version dotted-quads read as IPs, benign public DNS, HTTP-cookie identifiers read as the browser cookie DB, the metaMask web3 connector name read as a wallet read, shell-rc paths named in doc/comments, Sentry&#39;s getTransaction read as an on-chain loader, and env/require co-location inside bundled megafiles), and 2 (bun, firebase-tools) genuinely perform the flagged high-risk operation and are recorded as defensible true positives. Every fix strictly relaxes a heuristic, so nothing new can block. The top-1000 calibration list was then re-scanned on the fixed engine (1.0.6): 0 / 1,000 heuristic false blocks, unchanged.</li></ul>
+          <ul class="corrections-log"><li><strong>2026-07-21</strong> — Widened validation past the top-1000 calibration list into two deeper, non-overlapping download-ranked sweeps (1,000 and 3,000 packages) to hunt false blocks the head never exercised. The deeper sweeps surfaced 16 wrongly-blocked popular packages: 14 were genuine heuristic false positives across six detectors (OID/version dotted-quads read as IPs, benign public DNS, HTTP-cookie identifiers read as the browser cookie DB, the metaMask web3 connector name read as a wallet read, shell-rc paths named in doc/comments, Sentry&#39;s getTransaction read as an on-chain loader, and env/require co-location inside bundled megafiles), and 2 (bun, firebase-tools) genuinely perform the flagged high-risk operation and are recorded as defensible true positives. Every fix strictly relaxes a heuristic, so nothing new can block. The top-1000 calibration list was then re-scanned on the fixed engine (1.0.6): 0 / 1,000 heuristic false blocks, unchanged.</li><li><strong>2026-07-26</strong> — Metadata-only clarification (no measured number changed): (1) recorded that engine 1.0.6 (commit 76c0768) was a pre-release build never published to npm — the public npm release at run time was 1.0.4 — and added a commit-checkout reproduction command, since `npx pkgxray@1.0.6` would not resolve; (2) added the explicit 5,000-package composition (top-1000 calibration list + two deeper download-ranked sweeps of 1,000 and 3,000) and recorded that the 300-package MCP cohort and the 21-sample reconstructed known-malware corpus are separate sets, not part of the 5,000 denominator; (3) noted that the 4,000 extended-sweep targets were selected from the committed download-rank pool but the resolved snapshot was not committed.</li></ul>
         </div>
       </section>
 
@@ -107,7 +108,7 @@
           <ul class="run-history"><li><a href="./2026-07-19-retuned.html">2026-07-19-retuned</a></li><li><a href="./2026-07-19.html">2026-07-19</a></li></ul>
           <p class="fineprint">
             Pinned version: this page is the <code>2026-07-21</code> snapshot at
-            <code>pkgxray 1.0.6 · 76c0768</code>.
+            <code>pkgxray 1.0.6 · 76c0768</code>. Engine <code>1.0.6</code> was a pre-release build, not published to npm; the public npm release at run time was <code>1.0.4</code>.
             <a href="./">Latest run →</a>
           </p>
         </div>

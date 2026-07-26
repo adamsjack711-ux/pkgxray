@@ -7,7 +7,10 @@
     "build": "deeper-sweep",
     "commit": "76c0768",
     "node": "v22.22.2",
-    "command": "pkgxray guard npm:<name>@<version> --format json"
+    "command": "pkgxray guard npm:<name>@<version> --format json",
+    "releaseStatus": "pre-release build, not published to npm",
+    "publicReleaseAtRunTime": "1.0.4",
+    "reproCommand": "git checkout 76c0768 && node bin/audit.js guard npm:<name>@<version> --format json"
   },
   "headline": {
     "packagesScanned": 5000,
@@ -23,6 +26,44 @@
       "passedAsSafe": 0
     }
   },
+  "scope": {
+    "denominatorTotal": 5000,
+    "denominator": [
+      {
+        "name": "top-1000 calibration list",
+        "count": 1000,
+        "role": "the false-block denominator; committed with resolved name@version rows",
+        "source": "https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19"
+      },
+      {
+        "name": "deeper download-ranked sweep (first)",
+        "count": 1000,
+        "role": "false-block hunt beyond the head",
+        "source": "https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22"
+      },
+      {
+        "name": "deeper download-ranked sweep (second)",
+        "count": 3000,
+        "role": "false-block hunt beyond the head",
+        "source": "https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22"
+      }
+    ],
+    "separateSets": [
+      {
+        "name": "MCP cohort",
+        "count": 300,
+        "role": "hunting list — NOT part of the 5,000 denominator",
+        "source": "https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/mcp-registry-targets.txt"
+      },
+      {
+        "name": "reconstructed known-malware corpus",
+        "count": 21,
+        "role": "catch-rate corpus — NOT part of the 5,000 denominator",
+        "source": "https://github.com/adamsjack711-ux/pkgxray/tree/main/benchmark/corpus/malicious"
+      }
+    ],
+    "reproNote": "The top-1000 list is committed with resolved name@version rows. The 4,000 extended-sweep targets were selected from the committed download-rank pool (validation/calibration-2026-07-22/pool-npm-high-impact-1.13.0.json) via scripts/build-extended-target-list.js --want 4000; the resolved 4,000-name snapshot was not committed, so that portion is reproducible in method but not byte-identical."
+  },
   "methodologyUrl": "/stats/methodology",
   "reproInputs": "https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19",
   "corrections": {
@@ -32,6 +73,10 @@
       {
         "date": "2026-07-21",
         "what": "Widened validation past the top-1000 calibration list into two deeper, non-overlapping download-ranked sweeps (1,000 and 3,000 packages) to hunt false blocks the head never exercised. The deeper sweeps surfaced 16 wrongly-blocked popular packages: 14 were genuine heuristic false positives across six detectors (OID/version dotted-quads read as IPs, benign public DNS, HTTP-cookie identifiers read as the browser cookie DB, the metaMask web3 connector name read as a wallet read, shell-rc paths named in doc/comments, Sentry's getTransaction read as an on-chain loader, and env/require co-location inside bundled megafiles), and 2 (bun, firebase-tools) genuinely perform the flagged high-risk operation and are recorded as defensible true positives. Every fix strictly relaxes a heuristic, so nothing new can block. The top-1000 calibration list was then re-scanned on the fixed engine (1.0.6): 0 / 1,000 heuristic false blocks, unchanged."
+      },
+      {
+        "date": "2026-07-26",
+        "what": "Metadata-only clarification (no measured number changed): (1) recorded that engine 1.0.6 (commit 76c0768) was a pre-release build never published to npm — the public npm release at run time was 1.0.4 — and added a commit-checkout reproduction command, since `npx pkgxray@1.0.6` would not resolve; (2) added the explicit 5,000-package composition (top-1000 calibration list + two deeper download-ranked sweeps of 1,000 and 3,000) and recorded that the 300-package MCP cohort and the 21-sample reconstructed known-malware corpus are separate sets, not part of the 5,000 denominator; (3) noted that the 4,000 extended-sweep targets were selected from the committed download-rank pool but the resolved snapshot was not committed."
       }
     ]
   },
