@@ -42,8 +42,15 @@ function parseNpmLockfile(text) {
     for (const [key, entry] of Object.entries(json.packages)) {
       if (!key || key === "") continue; // root
       if (!entry || !entry.version) continue;
+      // Real registry deps are installed under a `node_modules/` path. A bare
+      // key like "packages/foo" or "apps/bar" is one of the project's OWN
+      // workspace packages (first-party source, not supply chain) — skip it
+      // like the root. This also avoids indexing an empty segment list, which
+      // crashed on `.replace` of undefined when such an entry carried no `name`
+      // (e.g. a workspace app whose package.json omits "name").
       // key looks like "node_modules/foo" or "node_modules/foo/node_modules/bar"
       const segments = key.split("node_modules/").slice(1);
+      if (segments.length === 0) continue; // workspace/local package, not a registry dep
       const name = entry.name || segments[segments.length - 1].replace(/\/$/, "");
       add(deps, name, entry.version, [key]);
     }
