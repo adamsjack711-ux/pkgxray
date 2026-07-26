@@ -6,6 +6,13 @@ served from this directory of the main repo. Live at
 
 Warm CLI palette (stik-latte) with mint x-ray accents. Static files only — no build step.
 
+> **Canonical source.** This directory is the source of truth. The separate
+> [`pkgxray-site`](https://github.com/adamsjack711-ux/pkgxray-site) repo is a
+> deploy mirror and must be synced *from here* (copy `index.html`, `app.js`,
+> `styles.css`, `_headers`, `validate.mjs`, `stats/{build.mjs,site.json,stats.css,data/*}`,
+> and `assets/{og.jpg,poster.jpg}`, then run `node stats/build.mjs` and
+> `node validate.mjs` in the mirror). Do not edit the mirror by hand.
+
 ## Local preview
 
 ```bash
