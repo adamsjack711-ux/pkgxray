@@ -2,7 +2,8 @@
 
 # pkgxray — pre-install security for npm packages, MCP servers, and AI agents
 
-**pkgxray — pre-install security for npm packages, MCP servers, and AI agents.**
+**Inspect an npm package or MCP server before you install or connect to it, and
+get a deterministic, evidence-backed `SAFE`, `REVIEW`, or `BLOCK` verdict.**
 
 Use local, zero-dependency package static analysis to inspect npm packages and
 Model Context Protocol (MCP) servers before installation or connection. pkgxray
@@ -232,6 +233,20 @@ filesystem boundary. Product-specific setup is in the
 installs with the [Hookshot integration](examples/hookshot/) and wrap MCP servers with
 [`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy).
 
+## Integrations
+
+One engine behind every entry point. "Works with" means a documented setup
+guide, not a vendor-endorsed integration.
+
+| Where | What it does | Guide |
+|---|---|---|
+| Coding agents — Codex, Claude Code, Cursor, Windsurf | Gate installs and expose the audit tools to the agent | [coding-agents.md](docs/integrations/coding-agents.md) |
+| MCP clients | Vet a server before connect; run pkgxray itself as an MCP server | [mcp.md](docs/mcp.md) |
+| GitHub Actions / CI | Fail a build when a dependency crosses policy | [github-actions.md](docs/integrations/github-actions.md) |
+| Install gate — Hookshot | Run `guard` on every package an agent tries to install | [examples/hookshot/](examples/hookshot/) |
+| Runtime MCP gate | Proxy a live MCP server and gate every tool call | [`mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy) |
+| Dependency monitoring | Re-vet installed deps and pre-vet upgrades on a schedule | [`recheck`](docs/reference.md#monitoring-pkgxray-recheck) |
+
 ## Configuration
 
 One optional `.pkgxray.json`, read by every surface. Zero config means
@@ -294,23 +309,16 @@ pipeline (Docker/gVisor), not an install-time developer gate.
 ³ The YARA analyzer runs locally; the LLM-as-judge and Cisco AI Defense
 analyzers require API keys.
 ⁴ Both detonate packages in an OS sandbox. pkgxray's opt-in
-[`canary`](docs/canary-threat-model.md) runs **two phases** — install-time
-lifecycle scripts *and* the import of the package entry point — with decoy
-credentials, so the malicious-on-first-`require` (flatmap-stream) shape that is
-pkgxray's stated [blind spot](docs/threat-model.md#known-blind-spot) is
-triggered and observed. Egress is now **kernel-confined on both platforms**:
-`sandbox-exec` on macOS and, on Linux with `bubblewrap` + `iproute2`, a private
-network namespace (`bwrap+netns`) where a raw-socket dial that bypasses the
-proxy is refused by the kernel (`ENETUNREACH`) while proxied egress is still
-captured. That tier engages only after a runtime
-[self-test proves it](docs/canary-threat-model.md#isolation-levels) in the
-environment (verify with `node scripts/verify-netns-confinement.js`); absent the
-tooling it falls back to observe-only and says so. Still ◑ — not for a
-confinement gap, but by design: canary is opt-in and *confirm-only* (it proves
-malice, never *clears* a package) and detonates without the package's
-dependencies installed, whereas OpenSSF Package Analysis runs registry-scale and
-default-on. Run them as complements — pkgxray before install, full dynamic
-analysis where that risk matters.
+[`canary`](docs/canary-threat-model.md) runs two phases — install lifecycle
+scripts *and* the entry-point import — with decoy credentials behind
+kernel-confined egress (`sandbox-exec` on macOS, a `bwrap`+netns namespace on
+Linux), so the malicious-on-first-`require` shape that is pkgxray's stated
+[blind spot](docs/threat-model.md#known-blind-spot) is observed. Still ◑ by
+design, not for a confinement gap: canary is opt-in and *confirm-only* (it
+proves malice, never *clears* a package), whereas OpenSSF Package Analysis runs
+registry-scale and default-on. Confinement levels, the `npm run verify:netns`
+self-test, and threat model:
+[docs/canary-threat-model.md](docs/canary-threat-model.md#isolation-levels).
 ⁵ Socket's LLM-based code inspection is a headline feature
 (&ldquo;AI-detected potential malware&rdquo;, human-confirmed); Cisco's YARA-only mode
 is deterministic, its LLM analyzer is not.
