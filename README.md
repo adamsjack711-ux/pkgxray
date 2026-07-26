@@ -211,9 +211,11 @@ and the self-hostable cache server (`PKGXRAY_CACHE_URL`) are documented in the
 
 **Guard AI coding agents**
 
-pkgxray is published on the [MCP Registry](https://registry.modelcontextprotocol.io)
-as `io.github.adamsjack711-ux/pkgxray`. Add it to any MCP client — locally
-installed (`pkgxray-mcp`) or zero-install via `npx`:
+pkgxray ships a built-in MCP server under the registry name
+`io.github.adamsjack711-ux/pkgxray`. Add it to any MCP client — locally
+installed (`pkgxray-mcp`) or zero-install via `npx` (this setup does not depend
+on the [MCP Registry](https://registry.modelcontextprotocol.io), which is in
+preview and may not currently list the entry):
 
 ```json
 {

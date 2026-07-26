@@ -1,10 +1,12 @@
 # MCP Registry
 
-Status: the Registry entry `io.github.adamsjack711-ux/pkgxray` is **published**
-and resolves to the released `pkgxray@1.0.4` (`mcpName` marker + the
-`mcp-server` launcher ship in that npm release). The official MCP Registry is
-still in preview and may make breaking changes or reset its data, so the entry
-may need to be re-submitted after a registry reset.
+Status: pkgxray's MCP metadata and runtime entry point ship in the released
+`pkgxray@1.0.4` (`mcpName` marker + the `mcp-server` launcher). The entry was
+submitted to the official MCP Registry at that release, but the Registry is
+**still in preview and periodically resets its data** — a live lookup of
+`io.github.adamsjack711-ux/pkgxray` may currently return nothing, in which case
+the entry needs to be **re-submitted** (see "Manual Registry publication"
+below). Local and `npx`-based setup does not depend on the Registry.
 
 ## Prepared metadata
 
