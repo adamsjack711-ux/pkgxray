@@ -102,8 +102,9 @@ The gap is **trust**, not just *known* vulnerabilities:
 - For MCP: what can this server *actually* reach once your agent connects?
 
 That's the gap [pkgxray](https://github.com/adamsjack711-ux/pkgxray) fills. It's
-zero-dependency, runs entirely on your machine, never executes untrusted code,
-and returns a `SAFE` / `REVIEW` / `BLOCK` verdict with cited evidence — *before*
+zero-dependency, runs entirely on your machine, never executes package code
+during normal scans, and returns a `SAFE` / `REVIEW` / `BLOCK` verdict with
+cited evidence — *before*
 a line of the package runs:
 
 ```bash

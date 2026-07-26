@@ -2,7 +2,7 @@
 
 The rules that shape every pkgxray decision, and why they hold.
 
-## Never execute untrusted code
+## Never execute untrusted code in the default path
 
 Traditional antivirus inspects what *executes*; pkgxray inspects what gets
 *installed*. The guard flow stages a package in a private quarantine, audits

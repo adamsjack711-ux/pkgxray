@@ -26,7 +26,7 @@ the 2024 `@solana/web3.js` compromise. **[▶ 60-second walkthrough](#demo)**</s
 
 ## Quick start
 
-### 1. Scan a known-safe package without installing pkgxray
+### 1. Scan a known-benign package without installing pkgxray
 
 ```bash
 npx --yes pkgxray@1.0.4 guard npm:express@4.21.0
@@ -172,6 +172,14 @@ runtime sandboxing when that risk matters. Full analysis:
 Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 **`3`** review. The full signal-to-severity mapping is in the
 [severity policy](docs/reference.md#severity-policy-what-lands-in-block--review--info).
+
+> **Two execution models.** Default `guard` and `audit` scans are **static** —
+> package code is never executed. Enumerating an MCP server may spawn it and
+> `mcp-proxy` runs it behind a gate; the opt-in
+> [`canary`](docs/canary-threat-model.md) is the one deliberate exception that
+> *executes* the package in a sandbox to confirm behavior. A `canary` run can
+> confirm malice but can never prove a package safe. Full boundary:
+> [SECURITY.md](SECURITY.md#scope).
 
 ## Usage
 
@@ -320,8 +328,9 @@ live MCP traffic.</sub>
 Acquisition (OSV pre-check → fetch) → sandboxed quarantine → static analysis →
 policy → verdict. The same engine backs every surface: CLI, MCP server,
 runtime proxy, install hook, browser extension, and CI cache server.
-Principles: never execute untrusted code · citable evidence only ·
-minimize false positives · fail closed · zero runtime dependencies.
+Principles: never execute untrusted package code in the default static-analysis
+path · citable evidence only · minimize false positives · fail closed · zero
+runtime dependencies.
 
 Details: [docs/architecture.md](docs/architecture.md) ·
 [docs/design.md](docs/design.md)

@@ -21,7 +21,7 @@ a fork of the triage store, stop — that's a signal it's mis-scoped.
 ## The one caveat that is a real difference, not a detail
 
 Every other thing pkgxray does is **static — it never executes what it inspects**
-(README: "never executes untrusted code"; a tarball is staged in quarantine and
+(README: "never executes package code during normal scans"; a tarball is staged in quarantine and
 read as bytes). **Enumerating an MCP server is not static.** To list a server's
 tool manifest you must connect to it, and for a **stdio** server that means
 **spawning and running the server process**. That is inherent to how MCP works —
