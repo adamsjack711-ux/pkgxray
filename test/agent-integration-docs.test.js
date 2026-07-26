@@ -59,7 +59,7 @@ test("integration guide relative links resolve", () => {
 
 test("Hookshot setup is pinned, removable, and version-accurate", () => {
   assert.match(HOOKSHOT, /73584ae0e4df38105be9f892130b4c66ea6ce04e/);
-  assert.match(HOOKSHOT, /npm install --global pkgxray@1\.0\.3/);
+  assert.match(HOOKSHOT, /npm install --global pkgxray@1\.0\.4/);
   assert.match(HOOKSHOT, /npm uninstall --global pkgxray/);
   assert.match(HOOKSHOT, /## Troubleshooting/);
   assert.match(HOOKSHOT, /## Security assumptions/);

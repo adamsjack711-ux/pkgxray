@@ -90,12 +90,12 @@ and network exfiltration. It is never executed. The command returns `BLOCK`
 ## Why pkgxray?
 
 AI coding assistants install packages and connect to MCP servers at machine
-speed, often without a human ever reading the code. Sonatype reported
-**454,648 newly identified malicious open-source packages across monitored
-ecosystems in 2025**. Its Q4 report counted 394,877 in that quarter and said
-99.8% of Q4 malware originated from npm
-([annual figure](https://www.infosecurity-magazine.com/news/454000-malicious-open-source/);
-[Q4 scope](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems)).
+speed, often without a human ever reading the code. Sonatype identified
+**more than 454,600 new malicious open-source packages across monitored
+ecosystems in 2025**, with over 99% of them on npm; its Q4 report counted
+394,877 that quarter
+([2025 malware](https://www.sonatype.com/state-of-the-software-supply-chain/2026/open-source-malware);
+[Q4 index](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems)).
 Traditional antivirus inspects what *executes*; **pkgxray inspects what gets
 *installed***.
 
@@ -300,8 +300,13 @@ tools in the same lane — behavioral supply-chain vetting:
 | Per-call runtime gating of live MCP traffic | — | — | — ⁸ | ✅ (`mcp-proxy`) |
 | Verdict-drift monitoring vs. a stored baseline | ✅ (cloud-side) | — | — | ✅ (local `recheck`) |
 
-<sub>Comparison made **2026-07-21** against each tool's public documentation;
-*unknown* means not publicly documented — not verified either way.<br>
+<!-- MAINTAINER: re-review this table against each competitor's public docs
+     every 60–90 days and update the "Last reviewed" date below. -->
+
+<sub>**Last reviewed against public documentation: 2026-07-21** (re-reviewed
+every 60–90 days). A **—** means no equivalent capability was found in the
+public documentation reviewed on that date — not that it was tested and found
+absent; *unknown* means not publicly documented either way.<br>
 ¹ Socket's analysis runs in its cloud; Socket Firewall needs no account but
 consults Socket's hosted intelligence on every install.
 ² Open source and self-hostable, but built as a registry-scale analysis
@@ -362,7 +367,7 @@ methodology: [docs/benchmark.md](docs/benchmark.md)
 | [architecture.md](docs/architecture.md) | Pipeline, surfaces, repo layout |
 | [threat-model.md](docs/threat-model.md) | Scope, blind spots, prompt-injection stance |
 | [mcp.md](docs/mcp.md) | MCP server, connect-time vetting, runtime proxy |
-| [mcp-registry.md](docs/mcp-registry.md) | Registry readiness and release verification |
+| [mcp-registry.md](docs/mcp-registry.md) | Registry entry and release verification |
 | [configuration.md](docs/configuration.md) | `.pkgxray.json` schema and invariants |
 | [reference.md](docs/reference.md) | Severity policy, `recheck`, JSON output, cache server |
 | [benchmark.md](docs/benchmark.md) | Calibration benchmark & real-world validation |

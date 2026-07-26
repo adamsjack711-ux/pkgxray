@@ -1,9 +1,10 @@
-# MCP Registry readiness
+# MCP Registry
 
-Status: metadata and runtime entry point are prepared and ship in published
-`pkgxray@1.0.4`, but the Registry entry itself is **not published** yet.
-The official MCP Registry is still in preview and may make breaking changes or
-reset data.
+Status: the Registry entry `io.github.adamsjack711-ux/pkgxray` is **published**
+and resolves to the released `pkgxray@1.0.4` (`mcpName` marker + the
+`mcp-server` launcher ship in that npm release). The official MCP Registry is
+still in preview and may make breaking changes or reset its data, so the entry
+may need to be re-submitted after a registry reset.
 
 ## Prepared metadata
 
