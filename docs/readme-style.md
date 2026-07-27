@@ -19,15 +19,20 @@ Keep the README professional *and* tight (~200 lines) — depth belongs in `docs
 1. **Header** — `docs/banner.png` (regenerate from `docs/banner.svg` with
    `rsvg-convert -w 1840 -h 600 docs/banner.svg -o docs/banner.png`), then the
    canonical H1, a two-sentence description, a badge row (version, downloads,
-   tests, benchmark, license), and a quick-links row (Website · Docs ·
-   Calibration · Report a bug).
-2. **Highlights** — five emoji bullets, one line each, benefit-first.
+   tests, benchmark, license), a quick-links row (Website · Docs · Calibration ·
+   Report a bug), and the **demo gif** (`docs/demo/hero.gif`) with its
+   "Real runs" caption. Keep the gif — it shows the tool working.
+2. **Highlights** — five bold-label bullets, one line each, benefit-first.
 3. **Table of contents** — one compact linked line under Highlights.
 4. **Scans & detects** — a trivy-style labeled dual-list, not a table (the full
    matrix + comparison table live in `docs/` and on the website).
 5. **Collapsible sample output** — `<details><summary>` so the quick start stays
    short.
 6. **Footer** — centered attribution + MIT + website.
+
+**No emoji.** They read as unprofessional here. Use bold labels, typographic
+marks (·, →), and code formatting instead — never pictographic emoji (⚡🔒✅🟢
+etc.) in the README.
 
 ## Accuracy rules the README must keep
 
