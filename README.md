@@ -16,15 +16,19 @@ Local, zero-dependency static analysis — normal scans never execute package co
 
 [**Website**](https://pkgxray.ca) · [**Documentation**](docs/README.md) · [**Calibration**](https://pkgxray.ca/stats) · [**Report a bug**](https://github.com/adamsjack711-ux/pkgxray/issues)
 
+<img src="docs/demo/hero.gif" alt="pkgxray guard clearing express@4.21.0 with a SAFE A+ verdict, then blocking a trojaned sample with a BLOCK F verdict and a HIGH credential-access finding" width="820">
+
+<sub>Real runs: <code>guard</code> clears <code>express@4.21.0</code>, then blocks a sample modeled on the 2024 <code>@solana/web3.js</code> compromise.</sub>
+
 </div>
 
 ## Highlights
 
-- ⚡ **Zero runtime dependencies** — pure Node, runs entirely on your machine (~25 ms static pass).
-- 🔒 **Normal scans never execute package code** — the tarball is read as bytes in quarantine.
-- 🧾 **Deterministic, cited verdicts** — every finding names the file and evidence; no LLM in the verdict path, so injected text can't steer it.
-- 🤖 **Built for the agent era** — vet MCP servers before connect, gate the installs an agent runs, and re-audit live MCP traffic.
-- ✅ **Calibrated and regression-gated** — zero heuristic false blocks on the top-1000 most-downloaded packages, enforced in CI.
+- **Zero runtime dependencies** — pure Node, runs entirely on your machine (~25 ms static pass).
+- **Normal scans never execute package code** — the tarball is read as bytes in quarantine.
+- **Deterministic, cited verdicts** — every finding names the file and evidence; no LLM in the verdict path, so injected text can't steer it.
+- **Built for the agent era** — vet MCP servers before connect, gate the installs an agent runs, and re-audit live MCP traffic.
+- **Calibrated and regression-gated** — zero heuristic false blocks on the top-1000 most-downloaded packages, enforced in CI.
 
 > **[1. Quick start](#quick-start)** · [2. What it scans & detects](#what-it-scans--detects) · [3. Verdicts](#verdicts) · [4. Usage](#usage) · [5. Integrations](#integrations) · [6. How it compares](#how-it-compares) · [7. Documentation](#documentation)
 
@@ -114,9 +118,9 @@ The full coverage matrix — and the known download-later blind spot — is in t
 
 | Verdict | You should |
 |---|---|
-| 🟢 `SAFE` | Install. Only `safe` promotes out of quarantine by default. |
-| 🟡 `REVIEW` | Inspect the quarantined copy before promoting. |
-| 🔴 `BLOCK` | Do not install. Every finding names the file and evidence. |
+| `SAFE` | Install. Only `safe` promotes out of quarantine by default. |
+| `REVIEW` | Inspect the quarantined copy before promoting. |
+| `BLOCK` | Do not install. Every finding names the file and evidence. |
 
 Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 **`3`** review.
