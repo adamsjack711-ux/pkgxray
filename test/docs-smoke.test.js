@@ -67,10 +67,45 @@ test("documented entry points remain present in CLI help", () => {
   });
   assert.equal(result.status, 0, result.stderr);
   const help = `${result.stdout}\n${result.stderr}`;
-  for (const command of ["guard", "audit", "recheck", "mcp", "mcp-proxy", "serve-mcp"]) {
+  // Every command — common and advanced — must remain discoverable.
+  for (const command of [
+    "guard",
+    "audit",
+    "recheck",
+    "mcp",
+    "mcp-proxy",
+    "serve-mcp",
+    "canary",
+    "triage",
+    "mcp-server",
+  ]) {
     assert.match(help, new RegExp(`pkgxray ${command.replace("-", "\\-")}`));
   }
   for (const flag of ["--file", "--format json"]) assert.match(help, new RegExp(flag));
+  // Help is grouped so the first screen leads with the common commands.
+  assert.match(help, /Common commands/i);
+  assert.match(help, /Advanced/i);
+  // The canary line must be explicit that it executes untrusted package code and
+  // requires the opt-in flag — this is the one path that runs the package.
+  assert.match(help, /canary[^\n]*--yes-run-untrusted-code/);
+  assert.match(help, /EXECUTES untrusted package code/);
+});
+
+test("CLI exit-code contract stays SAFE=0, REVIEW=3, BLOCK=2", () => {
+  const { exitCodeForVerdict } = require(resolve(ROOT, "src", "config.js"));
+  assert.equal(exitCodeForVerdict("safe", {}), 0);
+  assert.equal(exitCodeForVerdict("allow", {}), 0);
+  assert.equal(exitCodeForVerdict("review", {}), 3);
+  assert.equal(exitCodeForVerdict("block", {}), 2);
+
+  // End-to-end: incomplete evidence fails closed to REVIEW (exit 3), never safe.
+  const review = spawnSync(process.execPath, [CLI, "--format", "json"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    input: JSON.stringify({ packageName: "exit-code-probe", sourceFiles: [] }),
+  });
+  assert.equal(review.status, 3, review.stderr || review.stdout);
+  assert.equal(JSON.parse(review.stdout).verdict, "review");
 });
 
 test("pkgxray --version reports the package version", () => {
@@ -106,5 +141,5 @@ test("GitHub Actions examples pin dependencies and avoid global installs", () =>
     assert.doesNotMatch(source, /npx[^\n]*pkgxray@latest|npm install -g pkgxray/);
   }
   assert.match(AUDIT_WORKFLOW, /persist-credentials:\s+false/);
-  assert.match(AUDIT_WORKFLOW, /default:\s+"1\.0\.3"/);
+  assert.match(AUDIT_WORKFLOW, /default:\s+"1\.0\.4"/);
 });

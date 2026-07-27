@@ -43,7 +43,7 @@ verdict — and your policy — cannot drift depending on how a package arrived:
 
 ## Design principles
 
-- **Never execute untrusted code.** Analysis operates on bytes in quarantine.
+- **Never execute untrusted code in the default static-analysis path.** Analysis operates on bytes in quarantine.
   (The sole, deliberate exception is the opt-in [`canary`](canary-threat-model.md)
   surface, which is gated behind an explicit flag and carries its own threat
   model.)

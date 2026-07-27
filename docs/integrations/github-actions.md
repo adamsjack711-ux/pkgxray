@@ -39,7 +39,7 @@ jobs:
 
       - name: Scan dependency manifest
         env:
-          PKGXRAY_VERSION: "1.0.3"
+          PKGXRAY_VERSION: "1.0.4"
           TARGET: package-lock.json
         run: |
           set +e
@@ -62,12 +62,12 @@ Dependabot pull requests. Do not replace them with mutable `@main`, `@v4`, or
 
 | What to scan | Command |
 |---|---|
-| npm lockfile | `npx --yes pkgxray@1.0.3 audit package-lock.json` |
-| npm shrinkwrap | `npx --yes pkgxray@1.0.3 audit npm-shrinkwrap.json` |
-| pnpm lockfile | `npx --yes pkgxray@1.0.3 audit pnpm-lock.yaml` |
-| Yarn lockfile | `npx --yes pkgxray@1.0.3 audit yarn.lock` |
-| package manifest | `npx --yes pkgxray@1.0.3 audit package.json` |
-| one exact npm package | `npx --yes pkgxray@1.0.3 guard npm:express@4.21.0` |
+| npm lockfile | `npx --yes pkgxray@1.0.4 audit package-lock.json` |
+| npm shrinkwrap | `npx --yes pkgxray@1.0.4 audit npm-shrinkwrap.json` |
+| pnpm lockfile | `npx --yes pkgxray@1.0.4 audit pnpm-lock.yaml` |
+| Yarn lockfile | `npx --yes pkgxray@1.0.4 audit yarn.lock` |
+| package manifest | `npx --yes pkgxray@1.0.4 audit package.json` |
+| one exact npm package | `npx --yes pkgxray@1.0.4 guard npm:express@4.21.0` |
 
 Prefer a lockfile when one exists: it contains resolved versions. A
 `package.json` range cannot prove which version is installed, so incomplete
@@ -104,7 +104,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
-      - run: npx --yes pkgxray@1.0.3 recheck package-lock.json --format json
+      - run: npx --yes pkgxray@1.0.4 recheck package-lock.json --format json
 ```
 
 ## Reusable workflow
@@ -122,7 +122,7 @@ jobs:
     uses: adamsjack711-ux/pkgxray/.github/workflows/pkgxray-audit.yml@<PINNED_COMMIT_SHA>
     with:
       fail-on: block
-      pkgxray-version: "1.0.3"
+      pkgxray-version: "1.0.4"
       output-format: json
 ```
 

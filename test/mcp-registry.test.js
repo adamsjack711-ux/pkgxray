@@ -55,7 +55,11 @@ test("registry launch entry point performs an MCP initialize handshake", () => {
 
 test("registry checklist states the launcher ships in the published release", () => {
   const guide = readFileSync(resolve(ROOT, "docs", "mcp-registry.md"), "utf8");
-  assert.match(guide, /not published/i);
+  // The Registry is in preview and resets data; the doc must stay honest that a
+  // live lookup may return nothing and the entry may need re-submission, rather
+  // than overclaiming a permanent listing.
+  assert.match(guide, /preview and periodically resets/i);
+  assert.match(guide, /re-submitted/i);
   assert.match(guide, /Published `pkgxray@1\.0\.4` already carries `mcpName`/);
   assert.match(guide, /mcp-publisher login github/);
   assert.match(guide, /mcp-publisher publish/);

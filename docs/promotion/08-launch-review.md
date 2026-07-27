@@ -67,9 +67,9 @@ outreach.
   embargo handling.
 - Any use of the Experimental browser extension or Hookshot integration as a
   launch headline.
-- The public domain strategy: promotional copy uses `https://pkgxray.ca`, while
-  repository website metadata currently contains `pkgxray.pages.dev`
-  canonicals.
+- The public domain strategy: promotional copy and the repository website
+  metadata both use `https://pkgxray.ca` canonicals (verified by
+  `website/validate.mjs`).
 
 ## Claims needing external verification immediately before publication
 

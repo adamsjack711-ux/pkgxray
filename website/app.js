@@ -130,18 +130,19 @@ const WHY_PANELS = {
     },
   },
   malware: {
-    value: 454648,
+    value: 454600,
     decimals: 0,
     unit: "",
+    prefix: "≈",
     label: "new malicious open-source packages identified in 2025",
     danger: true,
     copy:
-      "Sonatype identified 394,877 malicious packages in Q4 2025; 99.8% of that quarter’s malware originated from npm. The count includes repository abuse and potentially unwanted applications as well as credential theft, loaders, and backdoors.",
+      "Sonatype identified 394,877 malicious packages in Q4 2025 alone; over 99% of 2025’s open-source malware originated from npm. The count includes repository abuse and potentially unwanted applications as well as credential theft, loaders, and backdoors.",
     note:
-      "The 2025 total is Sonatype’s identified-package count, not an estimate of the chance that a downloaded package is malicious. Automated spam campaigns inflate the tail.",
+      "Sonatype’s public figure is “more than 454,600” new malicious packages in 2025 across npm, PyPI, Maven Central, NuGet and Hugging Face — a count of what Sonatype detected, not an estimate of the chance any downloaded package is malicious. Automated npm spam campaigns inflate the tail and the npm share.",
     source: {
-      label: "Infosecurity: Sonatype’s 2025 identified-package count",
-      url: "https://www.infosecurity-magazine.com/news/454000-malicious-open-source/",
+      label: "Sonatype: 2026 State of the Software Supply Chain — open-source malware",
+      url: "https://www.sonatype.com/state-of-the-software-supply-chain/2026/open-source-malware",
     },
   },
   blast: {
@@ -213,6 +214,9 @@ function renderWhyPanel(key) {
   const unitHtml = panel.unit
     ? `<span class="unit">${panel.unit}</span>`
     : "";
+  const prefixHtml = panel.prefix
+    ? `<span class="why-prefix">${panel.prefix}</span>`
+    : "";
   const noteHtml = panel.note
     ? `<p class="why-note">${panel.note}</p>`
     : "";
@@ -221,7 +225,7 @@ function renderWhyPanel(key) {
     : "";
 
   panelEl.innerHTML = `
-    <p class="why-stat${panel.danger ? " is-danger" : ""}"><span data-why-value>0</span>${unitHtml}</p>
+    <p class="why-stat${panel.danger ? " is-danger" : ""}">${prefixHtml}<span data-why-value>0</span>${unitHtml}</p>
     <p class="why-label">${panel.label}</p>
     <p class="why-copy">${panel.copy}</p>
     ${noteHtml}

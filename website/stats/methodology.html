@@ -58,29 +58,23 @@
         <h2>What was scanned</h2>
         <p>
           <strong>5,000 published packages</strong> in one
-          static pass, split across three target lists resolved on
+          static pass, across download-ranked target lists resolved around
           <strong>2026-07-21</strong>:
         </p>
         <ul>
-          <li>
-            <strong>top-1000</strong> (the calibration list, 1,000 packages) —
-            the anvaka <code>npmrank.json</code> pagerank pool re-ranked by
-            <em>real last-week download count</em>
-            (<code>api.npmjs.org/downloads/point/last-week</code>), top 1,000 pinned
-            to their resolved latest version. This is the list the false-block
-            number is measured on.
-          </li>
-          <li>
-            <strong>MCP</strong> (300 packages) — an npm keyword search over
-            <code>mcp-server</code>, <code>modelcontextprotocol</code>,
-            <code>mcp</code>, capped by relevance then re-ranked by last-week
-            downloads. A hunting list, not part of the false-block denominator.
-          </li>
-          <li>
-            <strong>known-malware corpus</strong> — reconstructed from OpenSSF
-            malicious-packages and published advisories (see below).
-          </li>
+          <li><strong>1,000 — top-1000 calibration list</strong>: the false-block denominator; committed with resolved name@version rows. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>1,000 — deeper download-ranked sweep (first)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>3,000 — deeper download-ranked sweep (second)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
         </ul>
+        <p>
+          Counted <em>separately</em> and <strong>not</strong> part of the
+          5,000-package denominator above:
+        </p>
+        <ul>
+          <li><strong>300 — MCP cohort</strong>: hunting list — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/mcp-registry-targets.txt" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>21 — reconstructed known-malware corpus</strong>: catch-rate corpus — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/benchmark/corpus/malicious" rel="noopener noreferrer">inputs</a></li>
+        </ul>
+        <p class="fineprint">The top-1000 list is committed with resolved name@version rows. The 4,000 extended-sweep targets were selected from the committed download-rank pool (validation/calibration-2026-07-22/pool-npm-high-impact-1.13.0.json) via scripts/build-extended-target-list.js --want 4000; the resolved 4,000-name snapshot was not committed, so that portion is reproducible in method but not byte-identical.</p>
 
         <h2>Exact tool and command</h2>
         <p>
@@ -90,11 +84,19 @@
         </p>
         <pre class="code-block"><code>pkgxray guard npm:&lt;name&gt;@&lt;version&gt; --format json</code></pre>
         <p>
-          Static only — pkgxray reads the tarball's bytes and queries OSV; it never
-          executes package code and never connected to any hosted endpoint. Exit
-          codes: <code>0</code> safe, <code>2</code> block, <code>3</code> review.
-          A scan that failed to produce a parseable verdict is recorded as a
-          <em>scan error</em>, never counted as safe.
+          Engine <code>1.0.6</code> was a
+          pre-release build, not published to npm — <code>npx pkgxray@1.0.6</code>
+          will not resolve. The public npm release at run time was
+          <code>1.0.4</code>. To reproduce on the
+          exact engine, check out the commit:
+        </p>
+        <pre class="code-block"><code>git checkout 76c0768 &amp;&amp; node bin/audit.js guard npm:&lt;name&gt;@&lt;version&gt; --format json</code></pre>
+        <p>
+          Static only — the scanner reads the tarball's bytes and queries OSV; the
+          static scan never executes package code and never connected to any hosted
+          endpoint. Exit codes: <code>0</code> safe, <code>2</code> block,
+          <code>3</code> review. A scan that failed to produce a parseable verdict is
+          recorded as a <em>scan error</em>, never counted as safe.
         </p>
 
         <h2>How false blocks were adjudicated</h2>
@@ -160,17 +162,19 @@
 
         <h2>Reproduce it</h2>
         <p>
-          The resolved target lists (names, versions, and download counts — inputs
-          only, no verdicts) are committed here:
+          The committed top-1000 target list (names, versions, and download counts —
+          inputs only, no verdicts) is here:
+          <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19</a>.
         </p>
         <p>
-          <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19</a>
+          Check out the exact engine and run one invocation per package over the
+          top-1000 list to re-derive the verdict distribution and the false-block
+          count:
         </p>
+        <pre class="code-block"><code>git checkout 76c0768 &amp;&amp; node bin/audit.js guard npm:&lt;name&gt;@&lt;version&gt; --format json</code></pre>
         <p>
-          Re-run <code>pkgxray guard npm:&lt;name&gt;@&lt;version&gt; --format json</code> over the top-1000 list and
-          you will re-derive the verdict distribution and the false-block count. The
-          corpus and benchmark harness live in the repository under
-          <code>benchmark/</code>.
+          The corpus and benchmark harness live in the repository under
+          <code>benchmark/</code> (<code>node benchmark/run.js</code>).
         </p>
 
         <p class="fineprint">

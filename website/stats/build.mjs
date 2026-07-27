@@ -117,7 +117,7 @@ function renderStatsPage(run, { isLatest, allRuns }) {
     {
       value: commas(h.packagesScanned),
       label: "packages scanned",
-      sub: "published npm + MCP packages, one static pass",
+      sub: "published npm packages, one static pass",
     },
     {
       value: pct(fb.rate),
@@ -156,6 +156,20 @@ function renderStatsPage(run, { isLatest, allRuns }) {
         .join("")}</ul>`
     : `<p class="corrections-none">No corrections to date.</p>`;
 
+  // Denominator composition (data-driven; older runs without `scope` fall back to
+  // the notes paragraph). Makes the "what is in the number" explicit on the page.
+  const sc = run.scope;
+  const scopeBlock = sc
+    ? `<p class="stats-note"><strong>What the ${commas(sc.denominatorTotal)} counts:</strong> ${sc.denominator
+        .map((d) => `${commas(d.count)} ${esc(d.name)}`)
+        .join(" + ")}. Counted separately, <em>not</em> in this denominator: ${sc.separateSets
+        .map((s) => `${commas(s.count)} ${esc(s.name)}`)
+        .join(", ")}.</p>`
+    : "";
+  const relLine = run.pkgxray.releaseStatus
+    ? ` Engine <code>${esc(run.pkgxray.version)}</code> was a ${esc(run.pkgxray.releaseStatus)}; the public npm release at run time was <code>${esc(run.pkgxray.publicReleaseAtRunTime)}</code>.`
+    : "";
+
   return (
     head(
       `pkgxray calibration — ${run.runId}`,
@@ -190,10 +204,11 @@ function renderStatsPage(run, { isLatest, allRuns }) {
             <span class="dot-sep">·</span>
             <a href="./${run.runId}.json">Raw JSON</a>
             <span class="dot-sep">·</span>
-            <a href="${esc(run.reproInputs)}" rel="noopener noreferrer">Target lists</a>
+            <a href="${esc(run.reproInputs)}" rel="noopener noreferrer">Top-1000 target list</a>
           </p>
 
           <p class="stats-note">${esc(run.notes || "")}</p>
+          ${scopeBlock}
         </div>
       </section>
 
@@ -217,7 +232,7 @@ function renderStatsPage(run, { isLatest, allRuns }) {
           ${historyList}
           <p class="fineprint">
             Pinned version: this page is the <code>${run.runId}</code> snapshot at
-            <code>pkgxray ${esc(run.pkgxray.version)} · ${esc(run.pkgxray.commit)}</code>.
+            <code>pkgxray ${esc(run.pkgxray.version)} · ${esc(run.pkgxray.commit)}</code>.${relLine}
             <a href="./">Latest run →</a>
           </p>
         </div>
@@ -231,6 +246,45 @@ function renderStatsPage(run, { isLatest, allRuns }) {
 function renderMethodology(run) {
   const canonical = `${CANON}/stats/methodology`;
   const h = run.headline;
+  const sc = run.scope;
+  // Data-driven "what was scanned": the denominator packages and, kept explicitly
+  // separate, the sets that are NOT part of the denominator (MCP cohort, corpus).
+  const scannedList = sc
+    ? `<p>
+          <strong>${commas(sc.denominatorTotal)} published packages</strong> in one
+          static pass, across download-ranked target lists resolved around
+          <strong>${esc(run.runDate)}</strong>:
+        </p>
+        <ul>
+          ${sc.denominator
+            .map(
+              (d) =>
+                `<li><strong>${commas(d.count)} — ${esc(d.name)}</strong>: ${esc(
+                  d.role
+                )}. <a href="${esc(d.source)}" rel="noopener noreferrer">inputs</a></li>`
+            )
+            .join("\n          ")}
+        </ul>
+        <p>
+          Counted <em>separately</em> and <strong>not</strong> part of the
+          ${commas(sc.denominatorTotal)}-package denominator above:
+        </p>
+        <ul>
+          ${sc.separateSets
+            .map(
+              (s) =>
+                `<li><strong>${commas(s.count)} — ${esc(s.name)}</strong>: ${esc(
+                  s.role
+                )}. <a href="${esc(s.source)}" rel="noopener noreferrer">inputs</a></li>`
+            )
+            .join("\n          ")}
+        </ul>
+        <p class="fineprint">${esc(sc.reproNote)}</p>`
+    : `<p>
+          <strong>${commas(h.packagesScanned)} published packages</strong> in one
+          static pass. Resolved target lists (inputs only, no verdicts) are committed
+          under <a href="${esc(run.reproInputs)}" rel="noopener noreferrer">validation/</a>.
+        </p>`;
   return (
     head(
       "pkgxray calibration — methodology",
@@ -252,31 +306,7 @@ function renderMethodology(run) {
 
       <section class="section"><div class="section-inner narrow prose">
         <h2>What was scanned</h2>
-        <p>
-          <strong>${commas(h.packagesScanned)} published packages</strong> in one
-          static pass, split across three target lists resolved on
-          <strong>${esc(run.runDate)}</strong>:
-        </p>
-        <ul>
-          <li>
-            <strong>top-1000</strong> (the calibration list, ${commas(h.topThousandFalseBlocks.of)} packages) —
-            the anvaka <code>npmrank.json</code> pagerank pool re-ranked by
-            <em>real last-week download count</em>
-            (<code>api.npmjs.org/downloads/point/last-week</code>), top 1,000 pinned
-            to their resolved latest version. This is the list the false-block
-            number is measured on.
-          </li>
-          <li>
-            <strong>MCP</strong> (300 packages) — an npm keyword search over
-            <code>mcp-server</code>, <code>modelcontextprotocol</code>,
-            <code>mcp</code>, capped by relevance then re-ranked by last-week
-            downloads. A hunting list, not part of the false-block denominator.
-          </li>
-          <li>
-            <strong>known-malware corpus</strong> — reconstructed from OpenSSF
-            malicious-packages and published advisories (see below).
-          </li>
-        </ul>
+        ${scannedList}
 
         <h2>Exact tool and command</h2>
         <p>
@@ -285,12 +315,22 @@ function renderMethodology(run) {
           invocation per package:
         </p>
         <pre class="code-block"><code>${esc(run.pkgxray.command)}</code></pre>
+        ${run.pkgxray.releaseStatus
+          ? `<p>
+          Engine <code>${esc(run.pkgxray.version)}</code> was a
+          ${esc(run.pkgxray.releaseStatus)} — <code>npx pkgxray@${esc(run.pkgxray.version)}</code>
+          will not resolve. The public npm release at run time was
+          <code>${esc(run.pkgxray.publicReleaseAtRunTime)}</code>. To reproduce on the
+          exact engine, check out the commit:
+        </p>
+        <pre class="code-block"><code>${esc(run.pkgxray.reproCommand || run.pkgxray.command)}</code></pre>`
+          : ""}
         <p>
-          Static only — pkgxray reads the tarball's bytes and queries OSV; it never
-          executes package code and never connected to any hosted endpoint. Exit
-          codes: <code>0</code> safe, <code>2</code> block, <code>3</code> review.
-          A scan that failed to produce a parseable verdict is recorded as a
-          <em>scan error</em>, never counted as safe.
+          Static only — the scanner reads the tarball's bytes and queries OSV; the
+          static scan never executes package code and never connected to any hosted
+          endpoint. Exit codes: <code>0</code> safe, <code>2</code> block,
+          <code>3</code> review. A scan that failed to produce a parseable verdict is
+          recorded as a <em>scan error</em>, never counted as safe.
         </p>
 
         <h2>How false blocks were adjudicated</h2>
@@ -380,17 +420,19 @@ function renderMethodology(run) {
 
         <h2>Reproduce it</h2>
         <p>
-          The resolved target lists (names, versions, and download counts — inputs
-          only, no verdicts) are committed here:
+          The committed top-1000 target list (names, versions, and download counts —
+          inputs only, no verdicts) is here:
+          <a href="${esc(run.reproInputs)}" rel="noopener noreferrer">${esc(run.reproInputs)}</a>.
         </p>
         <p>
-          <a href="${esc(run.reproInputs)}" rel="noopener noreferrer">${esc(run.reproInputs)}</a>
+          Check out the exact engine and run one invocation per package over the
+          top-1000 list to re-derive the verdict distribution and the false-block
+          count:
         </p>
+        <pre class="code-block"><code>${esc(run.pkgxray.reproCommand || run.pkgxray.command)}</code></pre>
         <p>
-          Re-run <code>${esc(run.pkgxray.command)}</code> over the top-1000 list and
-          you will re-derive the verdict distribution and the false-block count. The
-          corpus and benchmark harness live in the repository under
-          <code>benchmark/</code>.
+          The corpus and benchmark harness live in the repository under
+          <code>benchmark/</code> (<code>node benchmark/run.js</code>).
         </p>
 
         <p class="fineprint">

@@ -6,6 +6,12 @@
 installed straight from the official Model Context Protocol registry, so any
 AI coding assistant can add it in one step. No scanning behavior changed.
 
+> **Note (2026-07-26):** The MCP Registry is still in preview and periodically
+> resets its data. A live lookup of `io.github.adamsjack711-ux/pkgxray` may
+> currently return no entry, in which case it needs re-submission — see
+> [docs/mcp-registry.md](docs/mcp-registry.md). Local and `npx` setup does not
+> depend on the Registry.
+
 ### What changed
 - **Published to the [MCP Registry](https://registry.modelcontextprotocol.io)**
   as `io.github.adamsjack711-ux/pkgxray`, with a `server.json` describing how

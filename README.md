@@ -2,7 +2,8 @@
 
 # pkgxray — pre-install security for npm packages, MCP servers, and AI agents
 
-**pkgxray — pre-install security for npm packages, MCP servers, and AI agents.**
+**Inspect an npm package or MCP server before you install or connect to it, and
+get a deterministic, evidence-backed `SAFE`, `REVIEW`, or `BLOCK` verdict.**
 
 Use local, zero-dependency package static analysis to inspect npm packages and
 Model Context Protocol (MCP) servers before installation or connection. pkgxray
@@ -26,7 +27,7 @@ the 2024 `@solana/web3.js` compromise. **[▶ 60-second walkthrough](#demo)**</s
 
 ## Quick start
 
-### 1. Scan a known-safe package without installing pkgxray
+### 1. Scan a known-benign package without installing pkgxray
 
 ```bash
 npx --yes pkgxray@1.0.4 guard npm:express@4.21.0
@@ -89,12 +90,12 @@ and network exfiltration. It is never executed. The command returns `BLOCK`
 ## Why pkgxray?
 
 AI coding assistants install packages and connect to MCP servers at machine
-speed, often without a human ever reading the code. Sonatype reported
-**454,648 newly identified malicious open-source packages across monitored
-ecosystems in 2025**. Its Q4 report counted 394,877 in that quarter and said
-99.8% of Q4 malware originated from npm
-([annual figure](https://www.infosecurity-magazine.com/news/454000-malicious-open-source/);
-[Q4 scope](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems)).
+speed, often without a human ever reading the code. Sonatype identified
+**more than 454,600 new malicious open-source packages across monitored
+ecosystems in 2025**, with over 99% of them on npm; its Q4 report counted
+394,877 that quarter
+([2025 malware](https://www.sonatype.com/state-of-the-software-supply-chain/2026/open-source-malware);
+[Q4 index](https://www.sonatype.com/blog/open-source-malware-index-q4-2025-automation-overwhelms-ecosystems)).
 Traditional antivirus inspects what *executes*; **pkgxray inspects what gets
 *installed***.
 
@@ -173,6 +174,14 @@ Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 **`3`** review. The full signal-to-severity mapping is in the
 [severity policy](docs/reference.md#severity-policy-what-lands-in-block--review--info).
 
+> **Two execution models.** Default `guard` and `audit` scans are **static** —
+> package code is never executed. Enumerating an MCP server may spawn it and
+> `mcp-proxy` runs it behind a gate; the opt-in
+> [`canary`](docs/canary-threat-model.md) is the one deliberate exception that
+> *executes* the package in a sandbox to confirm behavior. A `canary` run can
+> confirm malice but can never prove a package safe. Full boundary:
+> [SECURITY.md](SECURITY.md#scope).
+
 ## Usage
 
 **Vet an npm package before installing**
@@ -202,9 +211,11 @@ and the self-hostable cache server (`PKGXRAY_CACHE_URL`) are documented in the
 
 **Guard AI coding agents**
 
-pkgxray is published on the [MCP Registry](https://registry.modelcontextprotocol.io)
-as `io.github.adamsjack711-ux/pkgxray`. Add it to any MCP client — locally
-installed (`pkgxray-mcp`) or zero-install via `npx`:
+pkgxray ships a built-in MCP server under the registry name
+`io.github.adamsjack711-ux/pkgxray`. Add it to any MCP client — locally
+installed (`pkgxray-mcp`) or zero-install via `npx` (this setup does not depend
+on the [MCP Registry](https://registry.modelcontextprotocol.io), which is in
+preview and may not currently list the entry):
 
 ```json
 {
@@ -223,6 +234,20 @@ filesystem boundary. Product-specific setup is in the
 [coding-agent integration guide](docs/integrations/coding-agents.md). Gate
 installs with the [Hookshot integration](examples/hookshot/) and wrap MCP servers with
 [`pkgxray mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy).
+
+## Integrations
+
+One engine behind every entry point. "Works with" means a documented setup
+guide, not a vendor-endorsed integration.
+
+| Where | What it does | Guide |
+|---|---|---|
+| Coding agents — Codex, Claude Code, Cursor, Windsurf | Gate installs and expose the audit tools to the agent | [coding-agents.md](docs/integrations/coding-agents.md) |
+| MCP clients | Vet a server before connect; run pkgxray itself as an MCP server | [mcp.md](docs/mcp.md) |
+| GitHub Actions / CI | Fail a build when a dependency crosses policy | [github-actions.md](docs/integrations/github-actions.md) |
+| Install gate — Hookshot | Run `guard` on every package an agent tries to install | [examples/hookshot/](examples/hookshot/) |
+| Runtime MCP gate | Proxy a live MCP server and gate every tool call | [`mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy) |
+| Dependency monitoring | Re-vet installed deps and pre-vet upgrades on a schedule | [`recheck`](docs/reference.md#monitoring-pkgxray-recheck) |
 
 ## Configuration
 
@@ -277,8 +302,13 @@ tools in the same lane — behavioral supply-chain vetting:
 | Per-call runtime gating of live MCP traffic | — | — | — ⁸ | ✅ (`mcp-proxy`) |
 | Verdict-drift monitoring vs. a stored baseline | ✅ (cloud-side) | — | — | ✅ (local `recheck`) |
 
-<sub>Comparison made **2026-07-21** against each tool's public documentation;
-*unknown* means not publicly documented — not verified either way.<br>
+<!-- MAINTAINER: re-review this table against each competitor's public docs
+     every 60–90 days and update the "Last reviewed" date below. -->
+
+<sub>**Last reviewed against public documentation: 2026-07-21** (re-reviewed
+every 60–90 days). A **—** means no equivalent capability was found in the
+public documentation reviewed on that date — not that it was tested and found
+absent; *unknown* means not publicly documented either way.<br>
 ¹ Socket's analysis runs in its cloud; Socket Firewall needs no account but
 consults Socket's hosted intelligence on every install.
 ² Open source and self-hostable, but built as a registry-scale analysis
@@ -286,23 +316,16 @@ pipeline (Docker/gVisor), not an install-time developer gate.
 ³ The YARA analyzer runs locally; the LLM-as-judge and Cisco AI Defense
 analyzers require API keys.
 ⁴ Both detonate packages in an OS sandbox. pkgxray's opt-in
-[`canary`](docs/canary-threat-model.md) runs **two phases** — install-time
-lifecycle scripts *and* the import of the package entry point — with decoy
-credentials, so the malicious-on-first-`require` (flatmap-stream) shape that is
-pkgxray's stated [blind spot](docs/threat-model.md#known-blind-spot) is
-triggered and observed. Egress is now **kernel-confined on both platforms**:
-`sandbox-exec` on macOS and, on Linux with `bubblewrap` + `iproute2`, a private
-network namespace (`bwrap+netns`) where a raw-socket dial that bypasses the
-proxy is refused by the kernel (`ENETUNREACH`) while proxied egress is still
-captured. That tier engages only after a runtime
-[self-test proves it](docs/canary-threat-model.md#isolation-levels) in the
-environment (verify with `node scripts/verify-netns-confinement.js`); absent the
-tooling it falls back to observe-only and says so. Still ◑ — not for a
-confinement gap, but by design: canary is opt-in and *confirm-only* (it proves
-malice, never *clears* a package) and detonates without the package's
-dependencies installed, whereas OpenSSF Package Analysis runs registry-scale and
-default-on. Run them as complements — pkgxray before install, full dynamic
-analysis where that risk matters.
+[`canary`](docs/canary-threat-model.md) runs two phases — install lifecycle
+scripts *and* the entry-point import — with decoy credentials behind
+kernel-confined egress (`sandbox-exec` on macOS, a `bwrap`+netns namespace on
+Linux), so the malicious-on-first-`require` shape that is pkgxray's stated
+[blind spot](docs/threat-model.md#known-blind-spot) is observed. Still ◑ by
+design, not for a confinement gap: canary is opt-in and *confirm-only* (it
+proves malice, never *clears* a package), whereas OpenSSF Package Analysis runs
+registry-scale and default-on. Confinement levels, the `npm run verify:netns`
+self-test, and threat model:
+[docs/canary-threat-model.md](docs/canary-threat-model.md#isolation-levels).
 ⁵ Socket's LLM-based code inspection is a headline feature
 (&ldquo;AI-detected potential malware&rdquo;, human-confirmed); Cisco's YARA-only mode
 is deterministic, its LLM analyzer is not.
@@ -320,8 +343,9 @@ live MCP traffic.</sub>
 Acquisition (OSV pre-check → fetch) → sandboxed quarantine → static analysis →
 policy → verdict. The same engine backs every surface: CLI, MCP server,
 runtime proxy, install hook, browser extension, and CI cache server.
-Principles: never execute untrusted code · citable evidence only ·
-minimize false positives · fail closed · zero runtime dependencies.
+Principles: never execute untrusted package code in the default static-analysis
+path · citable evidence only · minimize false positives · fail closed · zero
+runtime dependencies.
 
 Details: [docs/architecture.md](docs/architecture.md) ·
 [docs/design.md](docs/design.md)
@@ -345,7 +369,7 @@ methodology: [docs/benchmark.md](docs/benchmark.md)
 | [architecture.md](docs/architecture.md) | Pipeline, surfaces, repo layout |
 | [threat-model.md](docs/threat-model.md) | Scope, blind spots, prompt-injection stance |
 | [mcp.md](docs/mcp.md) | MCP server, connect-time vetting, runtime proxy |
-| [mcp-registry.md](docs/mcp-registry.md) | Registry readiness and release verification |
+| [mcp-registry.md](docs/mcp-registry.md) | Registry entry and release verification |
 | [configuration.md](docs/configuration.md) | `.pkgxray.json` schema and invariants |
 | [reference.md](docs/reference.md) | Severity policy, `recheck`, JSON output, cache server |
 | [benchmark.md](docs/benchmark.md) | Calibration benchmark & real-world validation |

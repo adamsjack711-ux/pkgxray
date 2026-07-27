@@ -186,10 +186,54 @@ for (const name of runFiles) {
       errors.push(`${rel(join(dataDir, name))}: ${field} is not a valid absolute URL`);
     }
   }
+  // Denominator composition must stay internally consistent so the "5,000"
+  // story cannot silently drift out of sync across pages again (item 2 / 39).
+  if (run.scope && Array.isArray(run.scope.denominator)) {
+    const sum = run.scope.denominator.reduce((n, d) => n + (Number(d.count) || 0), 0);
+    if (sum !== run.scope.denominatorTotal) {
+      errors.push(
+        `${rel(join(dataDir, name))}: scope.denominator sums to ${sum}, not denominatorTotal ${run.scope.denominatorTotal}`
+      );
+    }
+    if (run.scope.denominatorTotal !== run.headline?.packagesScanned) {
+      errors.push(
+        `${rel(join(dataDir, name))}: scope.denominatorTotal ${run.scope.denominatorTotal} != headline.packagesScanned ${run.headline?.packagesScanned}`
+      );
+    }
+    for (const entry of [...run.scope.denominator, ...(run.scope.separateSets || [])]) {
+      try {
+        new URL(entry.source);
+      } catch {
+        errors.push(
+          `${rel(join(dataDir, name))}: scope source is not a valid absolute URL: ${JSON.stringify(entry.source)}`
+        );
+      }
+    }
+  }
 }
 
 for (const required of ["stats/index.html", "stats/methodology.html", "assets/og.jpg"]) {
   if (!existsSync(join(ROOT, required))) errors.push(`${required}: required generated file is missing`);
+}
+
+// Security headers must not silently regress (item 28).
+const headersPath = join(ROOT, "_headers");
+if (!existsSync(headersPath)) {
+  errors.push("_headers: file is missing");
+} else {
+  const headers = readFileSync(headersPath, "utf8");
+  for (const header of [
+    "Content-Security-Policy",
+    "Strict-Transport-Security",
+    "Permissions-Policy",
+    "X-Content-Type-Options",
+    "X-Frame-Options",
+    "Referrer-Policy",
+  ]) {
+    if (!new RegExp(`^\\s*${header}\\s*:`, "im").test(headers)) {
+      errors.push(`_headers: missing required security header ${header}`);
+    }
+  }
 }
 
 if (errors.length) {
