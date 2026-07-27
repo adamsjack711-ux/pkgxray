@@ -137,6 +137,29 @@ re-scan). A verdict that regresses on refresh flips subsequent decisions to
 `block`/`review`; a re-scan that errors is reported under `errors` and leaves the
 prior good verdict untouched.
 
+**Authorization.** Because a recheck re-scans *every* cached package — one
+download + extract + scan each — the endpoint is guarded so a remote caller
+can't use it to amplify load:
+
+- With no `adminToken` set (the default), the endpoint accepts **loopback
+  clients only**. The `curl http://127.0.0.1:...` above works; a request from
+  any other host gets `403`.
+- Set `adminToken` (config file) or `PKGXRAY_PROXY_ADMIN_TOKEN` (env) to require
+  a shared secret, which lets a trusted admin trigger a recheck remotely:
+
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    http://pkgxray-proxy.internal:4873/-/pkgxray/recheck
+  ```
+
+  A missing or wrong token is `401` (compared in constant time). The
+  `x-pkgxray-admin-token: <token>` header is accepted as an alternative to
+  `Authorization: Bearer`.
+
+When you bind the proxy to a non-loopback address (see **Deployment**), set an
+`adminToken` — otherwise every recheck must originate from the proxy host
+itself.
+
 ### Example config file
 
 ```json
@@ -147,7 +170,8 @@ prior good verdict untouched.
   "scanErrorPolicy": "fail-closed",
   "allowlist": ["@myorg/internal", "some-fp-package@1.4.2"],
   "denylist": ["known-bad-pkg"],
-  "cacheUrl": "http://pkgxray-cache.internal:7000"
+  "cacheUrl": "http://pkgxray-cache.internal:7000",
+  "adminToken": "set-a-long-random-secret-to-allow-remote-recheck"
 }
 ```
 
@@ -161,6 +185,12 @@ Run it as a service (systemd, launchd, a container) on a host your developers an
 CI can reach, bind `host: 0.0.0.0`, and hand out the `registry=` line via a
 committed `.npmrc`. Put a shared `pkgxray` cache server behind `cacheUrl` so
 repeated upstream fetches during scanning are collapsed across the fleet.
+
+When you bind to a non-loopback address, set an `adminToken` (see the recheck
+endpoint above) so the state-changing recheck can't be triggered by any client
+that can reach the port. The proxy is otherwise a read-through gate and, like
+the cache server, is **not** an auth boundary — run it inside a trusted network
+or behind your own authenticating reverse proxy.
 
 **Tarball URL assumption:** the proxy does **not** rewrite the `dist.tarball`
 URLs inside metadata responses. It assumes those URLs resolve back through the

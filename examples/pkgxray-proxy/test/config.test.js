@@ -61,6 +61,15 @@ test('rejects invalid scanTimeoutMs', () => {
   assert.throws(() => loadConfig({ scanTimeoutMs: 0 }, {}), /scanTimeoutMs/);
 });
 
+test('adminToken defaults to undefined and is read from env', () => {
+  assert.equal(loadConfig({}, {}).adminToken, undefined);
+  assert.equal(loadConfig({}, { PKGXRAY_PROXY_ADMIN_TOKEN: 's3cret' }).adminToken, 's3cret');
+});
+
+test('rejects an empty adminToken', () => {
+  assert.throws(() => loadConfig({ adminToken: '' }, {}), /adminToken/);
+});
+
 test('strips trailing slash from upstream', () => {
   const cfg = loadConfig({ upstream: 'https://registry.npmjs.org/' }, {});
   assert.equal(cfg.upstream, 'https://registry.npmjs.org');

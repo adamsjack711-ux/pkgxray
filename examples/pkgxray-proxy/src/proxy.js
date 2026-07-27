@@ -7,6 +7,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
+import crypto from 'node:crypto';
 
 import { parsePath, canonicalTarballPath } from './path-parser.js';
 import { runGuard as defaultRunGuard, ScanError } from './pkgxray-runner.js';
@@ -324,6 +325,68 @@ function listMatches(list, name, version) {
 }
 
 /**
+ * True for a loopback source address: IPv4 127.0.0.0/8, IPv6 ::1, and the
+ * IPv4-mapped-IPv6 forms Node reports (e.g. ::ffff:127.0.0.1) on a dual-stack
+ * listener.
+ */
+export function isLoopbackAddress(addr) {
+  if (typeof addr !== 'string' || addr.length === 0) return false;
+  const a = addr.toLowerCase();
+  if (a === '::1') return true;
+  const mapped = a.startsWith('::ffff:') ? a.slice('::ffff:'.length) : a;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(mapped);
+}
+
+/** Constant-time string compare that never short-circuits on length. */
+function timingSafeEqualStr(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+/** Pull an admin token from the request (Bearer header or x-pkgxray-admin-token). */
+function presentedAdminToken(req) {
+  const auth = req.headers && req.headers.authorization;
+  if (typeof auth === 'string') {
+    const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
+    if (m) return m[1].trim();
+  }
+  const header = req.headers && req.headers['x-pkgxray-admin-token'];
+  if (typeof header === 'string' && header.length > 0) return header.trim();
+  return null;
+}
+
+/**
+ * Decide whether an admin request (POST /-/pkgxray/recheck) is authorized. The
+ * endpoint triggers a re-scan of EVERY cached package — a download+extract+scan
+ * per entry — so an unauthenticated remote caller could use it to amplify load.
+ * Precedence:
+ *   1. adminToken configured -> a matching `Authorization: Bearer <token>` is
+ *      required (from any host), so an operator can expose recheck to a trusted
+ *      admin with a shared secret.
+ *   2. no adminToken -> only loopback clients may trigger it, so the documented
+ *      localhost `curl` workflow still works but a remote caller is refused with
+ *      a pointer to set a token.
+ * @returns {{ok:true}|{ok:false, status:number, message:string}}
+ */
+export function authorizeAdmin(config, req) {
+  if (config.adminToken) {
+    const presented = presentedAdminToken(req);
+    if (presented && timingSafeEqualStr(presented, config.adminToken)) return { ok: true };
+    return { ok: false, status: 401, message: 'admin token required (Authorization: Bearer <token>)' };
+  }
+  const remote = req.socket && req.socket.remoteAddress;
+  if (isLoopbackAddress(remote)) return { ok: true };
+  return {
+    ok: false,
+    status: 403,
+    message:
+      'admin recheck is restricted to loopback; set adminToken (PKGXRAY_PROXY_ADMIN_TOKEN) to allow remote admin access',
+  };
+}
+
+/**
  * Build the HTTP server.
  * @param {object} config validated config from loadConfig()
  * @param {VerdictStore} store
@@ -373,6 +436,15 @@ export function createServer(config, store, deps = {}) {
   }
 
   async function handleAdminRecheck(req, res) {
+    const auth = authorizeAdmin(config, req);
+    if (!auth.ok) {
+      log({
+        event: 'admin-recheck-denied',
+        status: auth.status,
+        remote: req.socket && req.socket.remoteAddress,
+      });
+      return sendJson(res, auth.status, { error: 'unauthorized', message: auth.message });
+    }
     const summary = await adminRecheck({ config, store, runGuard, log });
     log({
       event: 'admin-recheck',

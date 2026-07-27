@@ -29,6 +29,12 @@ export const DEFAULTS = Object.freeze({
   verdictTtlMs: 24 * 60 * 60 * 1000,
   cacheUrl: undefined,
   logDecisions: true,
+  // Shared secret guarding the state-changing admin endpoint
+  // (POST /-/pkgxray/recheck). When set, that request requires
+  // `Authorization: Bearer <token>`. When unset (the default), the endpoint is
+  // restricted to loopback clients so a remote caller can never drive the
+  // (amplifying) full re-scan — set a token to allow remote admin access.
+  adminToken: undefined,
 });
 
 const REVIEW_POLICIES = new Set(['block', 'warn', 'allow']);
@@ -92,6 +98,7 @@ function readEnv(env) {
   }
   // PKGXRAY_CACHE_URL is the shared-cache server URL forwarded to the CLI.
   if (env.PKGXRAY_CACHE_URL !== undefined) out.cacheUrl = env.PKGXRAY_CACHE_URL;
+  if (env.PKGXRAY_PROXY_ADMIN_TOKEN !== undefined) out.adminToken = env.PKGXRAY_PROXY_ADMIN_TOKEN;
   if (env.PKGXRAY_PROXY_LOG_DECISIONS !== undefined) {
     out.logDecisions = !/^(0|false|no|off)$/i.test(env.PKGXRAY_PROXY_LOG_DECISIONS.trim());
   }
@@ -134,6 +141,9 @@ function validate(cfg) {
   }
   if (cfg.cacheUrl !== undefined && typeof cfg.cacheUrl !== 'string') {
     throw new Error('Invalid cacheUrl');
+  }
+  if (cfg.adminToken !== undefined && (typeof cfg.adminToken !== 'string' || cfg.adminToken.length === 0)) {
+    throw new Error('Invalid adminToken: expected a non-empty string');
   }
   // Normalize: strip trailing slash from upstream so path joins are clean.
   cfg.upstream = cfg.upstream.replace(/\/+$/, '');
