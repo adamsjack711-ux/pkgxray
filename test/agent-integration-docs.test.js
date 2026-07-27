@@ -37,7 +37,7 @@ test("coding-agent guide covers every requested host and integration mode", () =
 
 test("agent examples pin pkgxray and distinguish guidance from enforcement", () => {
   assert.doesNotMatch(GUIDE, /pkgxray@latest/);
-  assert.match(GUIDE, /pkgxray@1\.0\.4/);
+  assert.match(GUIDE, /pkgxray@1\.0\.5/);
   assert.match(GUIDE, /advisory unless the host has an execution hook/);
   assert.match(
     GUIDE,
@@ -59,7 +59,7 @@ test("integration guide relative links resolve", () => {
 
 test("Hookshot setup is pinned, removable, and version-accurate", () => {
   assert.match(HOOKSHOT, /73584ae0e4df38105be9f892130b4c66ea6ce04e/);
-  assert.match(HOOKSHOT, /npm install --global pkgxray@1\.0\.4/);
+  assert.match(HOOKSHOT, /npm install --global pkgxray@1\.0\.5/);
   assert.match(HOOKSHOT, /npm uninstall --global pkgxray/);
   assert.match(HOOKSHOT, /## Troubleshooting/);
   assert.match(HOOKSHOT, /## Security assumptions/);

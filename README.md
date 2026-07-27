@@ -33,7 +33,7 @@ code actually do* — before anything installs.
 **1. Scan a known-benign package** (no install of pkgxray needed):
 
 ```bash
-npx --yes pkgxray@1.0.4 guard npm:express@4.21.0
+npx --yes pkgxray@1.0.5 guard npm:express@4.21.0
 ```
 
 It stages the tarball in quarantine and runs the static and supply-chain checks
@@ -58,7 +58,7 @@ payload downloaded only at runtime. See the [threat model](docs/threat-model.md)
 **3. See a BLOCK on the supplied inert fixture:**
 
 ```bash
-npx --yes pkgxray@1.0.4 --file examples/onboarding-malicious.json --format markdown
+npx --yes pkgxray@1.0.5 --file examples/onboarding-malicious.json --format markdown
 ```
 
 The fixture is inert source text modeling a split-string SSH-key read and

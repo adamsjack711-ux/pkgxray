@@ -12,7 +12,7 @@ body:
     attributes:
       label: pkgxray version
       description: Output of `pkgxray --version`, or the exact npm version.
-      placeholder: 1.0.4
+      placeholder: 1.0.5
     validations:
       required: true
   - type: input

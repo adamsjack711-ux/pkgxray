@@ -6,7 +6,7 @@ an agent to scan first, but cannot prove that every install was intercepted.
 For an actual pre-execution gate, use the experimental
 [Hookshot integration](../../examples/hookshot/).
 
-All examples pin `pkgxray@1.0.4`. Advance that version only through a reviewed
+All examples pin `pkgxray@1.0.5`. Advance that version only through a reviewed
 release update.
 
 ## Shared agent policy
@@ -44,7 +44,7 @@ trusted projects:
 enabled = true
 required = true
 command = "npx"
-args = ["--yes", "--package", "pkgxray@1.0.4", "pkgxray", "mcp-server"]
+args = ["--yes", "--package", "pkgxray@1.0.5", "pkgxray", "mcp-server"]
 env = { PKGXRAY_MCP_ALLOWED_ROOTS = "/absolute/path/to/project" }
 ```
 
@@ -69,7 +69,7 @@ has no interactive hook approval response.
 - Remove the `[mcp_servers.pkgxray]` table and pkgxray lines from `AGENTS.md`.
 - Run `codex mcp list` or `/mcp verbose` if tools are absent.
 - Project `.codex/config.toml` loads only for a trusted project.
-- Test `npx --yes --package pkgxray@1.0.4 pkgxray mcp-server` directly if startup
+- Test `npx --yes --package pkgxray@1.0.5 pkgxray mcp-server` directly if startup
   fails.
 - Codex controls tool selection; MCP availability alone is not enforcement.
 
@@ -95,7 +95,7 @@ Add a project-scoped `.mcp.json`:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.0.4",
+        "pkgxray@1.0.5",
         "pkgxray",
         "mcp-server"
       ],
@@ -151,7 +151,7 @@ Add `.cursor/mcp.json`:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.0.4",
+        "pkgxray@1.0.5",
         "pkgxray",
         "mcp-server"
       ],
@@ -214,7 +214,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.0.4",
+        "pkgxray@1.0.5",
         "pkgxray",
         "mcp-server"
       ],
@@ -269,7 +269,7 @@ Adapt this standard stdio shape to the client's MCP configuration:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.0.4",
+        "pkgxray@1.0.5",
         "pkgxray",
         "mcp-server"
       ],
@@ -311,13 +311,13 @@ No global installation is required. Add the [shared policy](#shared-agent-policy
 to the agent's durable instruction file and permit this exact command:
 
 ```bash
-npx --yes pkgxray@1.0.4 guard npm:<name>@<version> --format json
+npx --yes pkgxray@1.0.5 guard npm:<name>@<version> --format json
 ```
 
 ### Minimal working example
 
 ```bash
-npx --yes pkgxray@1.0.4 guard npm:express@4.21.0 --format json
+npx --yes pkgxray@1.0.5 guard npm:express@4.21.0 --format json
 ```
 
 ### Blocking, removal, limitations, and troubleshooting

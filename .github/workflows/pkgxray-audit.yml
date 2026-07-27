@@ -26,7 +26,7 @@ on:
       pkgxray-version:
         description: "Exact npm version of pkgxray to run."
         type: string
-        default: "1.0.4"
+        default: "1.0.5"
       output-format:
         description: "Report format: markdown | json."
         type: string
@@ -48,7 +48,7 @@ on:
       pkgxray-version:
         description: "Exact npm version of pkgxray to run."
         type: string
-        default: "1.0.4"
+        default: "1.0.5"
       output-format:
         description: "Report format: markdown | json."
         type: choice
@@ -93,7 +93,7 @@ jobs:
       # exact-version and non-global while working in any checkout.
       - name: Install pkgxray
         env:
-          PKGXRAY_VERSION: ${{ inputs.pkgxray-version || '1.0.4' }}
+          PKGXRAY_VERSION: ${{ inputs.pkgxray-version || '1.0.5' }}
         working-directory: ${{ runner.temp }}
         run: |
           set -u

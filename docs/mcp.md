@@ -24,7 +24,7 @@ Use an exact npm version from any MCP-capable agent:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.0.4",
+        "pkgxray@1.0.5",
         "pkgxray-mcp"
       ],
       "env": {
@@ -36,7 +36,7 @@ Use an exact npm version from any MCP-capable agent:
 ```
 
 If pkgxray is already installed, `"command": "pkgxray-mcp"` also works. The
-published `pkgxray@1.0.4` package also exposes `pkgxray mcp-server` — the same
+published `pkgxray@1.0.5` package also exposes `pkgxray mcp-server` — the same
 stdio server, launched as a subcommand — which is the entry point the MCP
 Registry entry uses.
 
