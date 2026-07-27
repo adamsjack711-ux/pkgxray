@@ -1,7 +1,7 @@
 # MCP Registry
 
 Status: pkgxray's MCP metadata and runtime entry point ship in the released
-`pkgxray@1.0.4` (`mcpName` marker + the `mcp-server` launcher). The entry was
+`pkgxray@1.0.5` (`mcpName` marker + the `mcp-server` launcher). The entry was
 submitted to the official MCP Registry at that release, but the Registry is
 **still in preview and periodically resets its data** — a live lookup of
 `io.github.adamsjack711-ux/pkgxray` may currently return nothing, in which case
@@ -18,7 +18,7 @@ below). Local and `npx`-based setup does not depend on the Registry.
 - npm ownership marker: `package.json#mcpName`
 
 `server.json`, `package.json`, and the npm artifact must all use the same exact
-release version. Published `pkgxray@1.0.4` already carries `mcpName` and the
+release version. Published `pkgxray@1.0.5` already carries `mcpName` and the
 `mcp-server` launcher, so the registry entry can be submitted from that release;
 keep the three versions in lockstep on every future bump.
 

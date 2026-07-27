@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.5 (2026-07-27) — accuracy & docs cleanup
+
+**In plain terms:** a documentation, website, and CLI-clarity release. **No
+detection, dependency, or verdict behavior changed** — same engine as 1.0.4.
+
+### What changed
+- **Execution wording is now precise everywhere.** Absolute "never executes
+  untrusted code" claims are scoped to the default static path, since the opt-in
+  `canary` deliberately executes package code in a sandbox. `pkgxray --help` is
+  regrouped (Common / Evidence / Advanced) and the canary line states plainly
+  that it EXECUTES untrusted package code and needs `--yes-run-untrusted-code`.
+- **Calibration pages reconciled.** The 5,000-package denominator is described
+  the same way on every page (top-1000 + two deeper sweeps of 1,000 and 3,000;
+  the MCP cohort and malware corpus are separate), the run's pre-release engine
+  and commit-checkout reproduction are disclosed, and the annual malware figure
+  cites Sonatype's primary report.
+- **Shorter README.** Trimmed to a focused overview with depth relocated to
+  `docs/` (including a new `docs/comparison.md`); integrations surfaced.
+- **MCP Registry claim corrected** to match the live registry (see the 1.0.4
+  note below).
+
 ## 1.0.4 (2026-07-20) — listed on the MCP Registry
 
 **In plain terms:** pkgxray's built-in MCP server can now be found and
