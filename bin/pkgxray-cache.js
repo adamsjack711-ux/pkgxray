@@ -41,7 +41,11 @@ function parseArgs(argv) {
     cacheDir: path.join(os.homedir(), ".cache", "pkgxray-server"),
     upstreamGithubApi: "https://api.github.com",
     upstreamCodeload: "https://codeload.github.com",
-    host: "0.0.0.0",
+    // Bind loopback-only by default. This server is NOT an auth boundary (see
+    // printUsage), so a careless deploy that exposes it should fail SAFE: the
+    // operator must opt into a routable interface with --host 0.0.0.0 (or
+    // PKGXRAY_CACHE_HOST) and put their own auth/network controls in front.
+    host: process.env.PKGXRAY_CACHE_HOST || "127.0.0.1",
     maxCacheBytes: process.env.PKGXRAY_CACHE_MAX_BYTES
       ? Number(process.env.PKGXRAY_CACHE_MAX_BYTES)
       : DEFAULT_MAX_CACHE_BYTES
@@ -78,7 +82,7 @@ function printUsage() {
   process.stderr.write(
     [
       "Usage:",
-      "  pkgxray-cache [--port 8819] [--host 0.0.0.0] [--cache-dir DIR]",
+      "  pkgxray-cache [--port 8819] [--host 127.0.0.1] [--cache-dir DIR]",
       "                [--upstream-github-api URL] [--upstream-codeload URL]",
       "                [--max-cache-bytes N]",
       "",
@@ -87,7 +91,9 @@ function printUsage() {
       "  GET /github/tarball/{owner}/{repo}/{ref}  proxy + cache codeload tarball (24h TTL)",
       "  GET /healthz                            { ok: true, version }",
       "",
-      "Not an auth boundary — run on a private network or behind your own proxy.",
+      "Binds 127.0.0.1 by default. To serve a fleet, set --host 0.0.0.0 (or",
+      "PKGXRAY_CACHE_HOST) explicitly — and note this is NOT an auth boundary:",
+      "run it on a private network or behind your own authenticating proxy.",
       "The server never uses its own GitHub token for a client request; a client",
       "must present x-pkgxray-github-token to reach private repos.",
       "",

@@ -347,7 +347,15 @@ test("extractTarball fails CLOSED on a hostile listing (real archive path is a r
   }
 });
 
-test("normalizeTreePermissions makes a non-traversable dir readable so hidden code is scanned, not skipped", async () => {
+test("normalizeTreePermissions makes a non-traversable dir readable so hidden code is scanned, not skipped", {
+  // Root bypasses directory-traverse permission bits, so the precondition below
+  // (lstat through a 0o644 dir must fail with EACCES) can't hold when the suite
+  // runs as UID 0 (e.g. in a root container). The behavior under test is a
+  // non-root concern; skip rather than report a false failure. CI runs non-root.
+  skip: typeof process.getuid === "function" && process.getuid() === 0
+    ? "requires a non-root UID (root bypasses directory traverse bits)"
+    : false
+}, async () => {
   // A package can ship a directory with no execute bit (pngjs ships lib/ as 0644)
   // — by accident or to hide a payload from the static walk so the scan aborts on
   // EACCES and degrades to review instead of reading the code. The staging step
