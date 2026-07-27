@@ -141,5 +141,7 @@ test("GitHub Actions examples pin dependencies and avoid global installs", () =>
     assert.doesNotMatch(source, /npx[^\n]*pkgxray@latest|npm install -g pkgxray/);
   }
   assert.match(AUDIT_WORKFLOW, /persist-credentials:\s+false/);
-  assert.match(AUDIT_WORKFLOW, /default:\s+"1\.0\.5"/);
+  // The live reusable workflow pins the last PUBLISHED release (bumped to the new
+  // version only after it is on npm), so its default may trail package.json.
+  assert.match(AUDIT_WORKFLOW, /default:\s+"1\.0\.4"/);
 });
