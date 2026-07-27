@@ -399,6 +399,47 @@
         </div>
       </section>
 
+      <!-- 4b. What it catches -->
+      <section class="section catches" id="catches" aria-labelledby="catches-title">
+        <div class="section-inner">
+          <h2 id="catches-title">What it catches</h2>
+          <p class="section-lead">
+            Deterministic heuristics — no LLM in the verdict path, so injected
+            text can't steer them.
+          </p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>Threat</th><th>Coverage</th><th>How pkgxray sees it</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Credential theft</td><td class="mark yes">✅</td><td>reads of <code>.ssh</code> / <code>.aws</code> / <code>.npmrc</code> / <code>.env</code> / keychains / wallets, incl. split-fragment paths (<code>".s"+"sh"</code>)</td></tr>
+                <tr><td>Prompt injection</td><td class="mark yes">✅</td><td>tiered detection in docs, comments, metadata; deterministic verdict path can't be steered</td></tr>
+                <tr><td>Unicode smuggling</td><td class="mark yes">✅</td><td>invisible tag-block characters + Trojan Source bidi / zero-width</td></tr>
+                <tr><td>Base64 payloads</td><td class="mark yes">✅</td><td>encoded envelopes in docs/comments; blobs decoded into computed-arg <code>eval</code> / <code>new Function</code> / <code>child_process</code></td></tr>
+                <tr><td>Exfiltration &amp; loaders</td><td class="mark yes">✅</td><td>cross-file correlation: stage-2 loaders, <code>curl | sh</code>, <code>process.env</code> harvesting near a network sink</td></tr>
+                <tr><td>Persistence</td><td class="mark yes">✅</td><td>writes to shell rc files, cron, launch agents</td></tr>
+                <tr><td>Obfuscation</td><td class="mark yes">✅</td><td>packed blob + computed-arg execution; minification alone is deliberately <em>not</em> flagged</td></tr>
+                <tr><td>Known CVEs</td><td class="mark yes">✅</td><td>OSV batch pre-check before download; never mutable by config</td></tr>
+                <tr><td>Trojaned updates / takeover</td><td class="mark yes">✅</td><td><code>recheck</code> verdict-drift + version-drift monitoring</td></tr>
+                <tr><td>Artifact divergence</td><td class="mark yes">✅</td><td>published npm tarball diffed against the tagged GitHub source</td></tr>
+                <tr><td>MCP capability abuse</td><td class="mark yes">✅</td><td>capability-surface mismatch in the manifest audit (a <code>get_weather</code> that also takes a <code>command</code>)</td></tr>
+                <tr><td>Runtime tool drift</td><td class="mark yes">✅</td><td><code>mcp-proxy</code> re-audits on <code>tools/list_changed</code>; pinned-manifest drift is denied</td></tr>
+                <tr><td>Sequence-level tool-call chains</td><td class="mark part">◑</td><td><code>mcp-proxy</code> gates each call and scans results; no cross-call flow analysis</td></tr>
+                <tr><td>Dependency confusion / typosquats</td><td class="mark part">◑</td><td>callback beacons, repo- and provenance-mismatch signals; no name-similarity heuristic</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="fineprint">
+            ✅ detected · ◑ partial / indirect. <strong>Known blind spot:</strong>
+            a package that downloads its real payload <em>after</em> install can
+            ship a clean tree — pair pkgxray with runtime sandboxing when that risk
+            matters.
+            <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/threat-model.md" rel="noopener noreferrer">Full threat model →</a>
+          </p>
+        </div>
+      </section>
+
       <!-- 5. Surfaces as a flow -->
       <section class="section surfaces" aria-labelledby="surfaces-title">
         <div class="section-inner">
@@ -473,6 +514,46 @@
               <a href="#install">Try it →</a>
             </article>
           </div>
+        </div>
+      </section>
+
+      <!-- 5c. How it compares -->
+      <section class="section comparison" id="comparison" aria-labelledby="comparison-title">
+        <div class="section-inner">
+          <h2 id="comparison-title">How pkgxray compares</h2>
+          <p class="section-lead">
+            Run it <em>alongside</em> <code>npm audit</code> and OSV-Scanner, not
+            instead of them — they answer <em>"known CVE?"</em>. The comparison
+            that matters is against tools in the same lane: behavioral
+            supply-chain vetting.
+          </p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>Capability</th><th>Socket.dev</th><th>OpenSSF Pkg Analysis</th><th>Cisco MCP Scanner</th><th>pkgxray</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Fully local, zero-dependency, no account or cloud upload</td><td class="mark no">—</td><td class="mark part">◑</td><td class="mark part">◑</td><td class="mark yes">✅</td></tr>
+                <tr><td>Static behavior analysis of package code</td><td class="mark yes">✅</td><td class="mark yes">✅</td><td class="mark yes">✅</td><td class="mark yes">✅</td></tr>
+                <tr><td>Sandboxed execution (dynamic analysis)</td><td class="mark no">—</td><td class="mark yes">✅</td><td class="mark part">◑</td><td class="mark part">◑ opt-in <code>canary</code></td></tr>
+                <tr><td>npm ↔ GitHub artifact divergence</td><td class="mark unk">unknown</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✅</td></tr>
+                <tr><td>Deterministic verdict path — no LLM an injection can steer</td><td class="mark no">—</td><td class="mark yes">✅</td><td class="mark part">◑</td><td class="mark yes">✅</td></tr>
+                <tr><td>Pre-install gate with a quarantined copy to review</td><td class="mark part">◑</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✅</td></tr>
+                <tr><td>MCP server vetting before connect</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✅</td><td class="mark yes">✅</td></tr>
+                <tr><td>Per-call runtime gating of live MCP traffic</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✅ <code>mcp-proxy</code></td></tr>
+                <tr><td>Verdict-drift monitoring vs. a stored baseline</td><td class="mark yes">✅ cloud</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✅ local <code>recheck</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="fineprint">
+            <strong>Last reviewed against public documentation: 2026-07-21</strong>
+            (re-reviewed every 60–90 days). A <strong>—</strong> means no
+            equivalent capability was found in the public documentation reviewed
+            on that date — not that it was tested and found absent;
+            <em>unknown</em> means not publicly documented either way. Full
+            per-tool notes:
+            <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/comparison.md" rel="noopener noreferrer">comparison.md →</a>
+          </p>
         </div>
       </section>
 
