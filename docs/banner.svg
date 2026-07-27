@@ -88,7 +88,7 @@
 
   <!-- Tagline -->
   <text x="333" y="164" font-size="18.5" fill="#9bdfb8">Analyze packages before you install them.</text>
-  <text x="333" y="188" font-size="13" fill="#5f7a6c">Zero-dependency · runs locally · never executes untrusted code</text>
+  <text x="333" y="188" font-size="13" fill="#5f7a6c">Zero-dependency · runs locally · static scans never execute code</text>
 
   <!-- Verdict chips -->
   <g font-size="14" font-weight="700" text-anchor="middle">
