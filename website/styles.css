@@ -949,6 +949,80 @@ code,
   }
 }
 
+/* ——— Data tables (catches / comparison) ——— */
+
+.table-scroll {
+  overflow-x: auto;
+  margin: 1.5rem 0 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 640px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.data-table thead th {
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table td {
+  color: var(--muted);
+}
+
+.data-table td:first-child {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.data-table code {
+  font-size: 0.82em;
+  color: var(--accent);
+}
+
+.data-table .mark {
+  text-align: center;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.mark.yes {
+  color: var(--xray);
+}
+.mark.part {
+  color: var(--warn);
+}
+.mark.no {
+  color: var(--muted);
+}
+.mark.unk {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  font-weight: 400;
+}
+
 /* ——— Install ——— */
 
 .install-section {
