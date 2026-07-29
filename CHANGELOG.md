@@ -34,8 +34,28 @@ severity policy in [docs/reference.md](docs/reference.md).
   anti-forensic cleanup — the shape used by the `easy-day-js` dropper in the
   Mastra compromise. Blocks when an install-time script deletes itself after
   fetching or executing a payload; reviews otherwise.
-- **Five new calibration fixtures** (three malicious, two benign), all modeled
-  on published advisories. The corpus is now 56 cases; block recall is 95.8%
+- **New `registry-self-publish` band.** Publishing to the registry from package
+  code is the primitive that turned one compromised account into Shai-Hulud's
+  796 packages. It is also what every release tool does, so the primitive alone
+  is never the signal: this blocks only when the publish runs from install-time
+  code, or when the code first asks the registry *which* packages the current
+  credentials can reach — target selection by something that doesn't know whose
+  account it landed in. `semantic-release`-style publishers and a `release` npm
+  script both stay `safe`, with a benign fixture holding that line.
+- **New `metadata-mimicry` signal, deliberately info-only.** Reports when a
+  package publishes under a name that disagrees with its declared repository
+  while running a consumer install hook — the manifest-copying that let
+  `easy-day-js` pass review in the Mastra compromise. It is recorded as
+  evidence and **never changes a verdict**; see the note below for why it
+  cannot safely do more.
+- **Callback-style download-then-execute is now caught.** The promise forms
+  (`eval(await fetch(…))`, `.then(eval)`) were covered, but the older
+  `res.on("end", () => new Function(body)())` accumulator was not — which left
+  the unobfuscated Mastra dropper shape citing nothing but generic
+  code-execution. Anchored on a stream-end handler so an ordinary JSON
+  accumulator does not qualify.
+- **Eight new calibration fixtures** (four malicious, four benign), all modeled
+  on published advisories. The corpus is now 58 cases; block recall is 96.0%
   with **0 false blocks and 0 misses** held.
 - **Fixed a quadratic-backtracking regex** in the new secret-store rule that
   cost 47s on the de-obfuscation perf fixture. The variable-length hostname run
@@ -57,10 +77,25 @@ release; both now have regression tests.
   a strict `preinstall`/`install`/`postinstall`/`prepack`/`prepare` seed set;
   a build script that reads instance metadata reviews rather than blocks.
 
+### Why metadata-mimicry does not block
+
+Worth recording, because it looks like a solvable problem and is not. Packages
+disagree with their repository name constantly and legitimately: monorepos
+(`react-dom` → facebook/react, `@types/node` → DefinitelyTyped,
+`lodash.debounce` → lodash) and multi-artifact repos (`@sentry/cli` →
+getsentry/sentry-cli). Every relation test that keeps `@sentry/cli` clean —
+separator-insensitive containment being the obvious one — **also** matches
+`easy-day-js` against `dayjs`, because a convincing typosquat is by
+construction shaped exactly like a legitimate variant. Separating them needs
+data the static engine does not have: who actually publishes the package versus
+who owns the linked repository. So the discrepancy is surfaced as evidence for
+the human reading a review, and the behavioral bands carry the verdict — which
+they do, since a dropper still has to fetch, execute, or obfuscate.
+
 ### Notes
 
 - No CLI, JSON-schema, configuration, exit-code, or MCP contract changed. The
-  three new categories appear in `findings[].category` and `riskBands[]`, which
+  new categories appear in `findings[].category` and `riskBands[]`, which
   the [compatibility policy](docs/compatibility.md) permits in a patch release
   (detection may become stricter as signatures improve).
 - `docs/design/evasion-triage.md` listed the F4 bulk-env spread gap as open; it

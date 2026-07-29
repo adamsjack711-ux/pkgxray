@@ -108,7 +108,8 @@ extensions.
 instance-metadata and secret-store harvesting, prompt injection, Unicode
 smuggling, base64 payloads and stage-2 loaders, exfiltration, persistence
 (shell profile, OS scheduler, and injected CI/CD workflows), self-deleting
-droppers, obfuscated computed-arg execution, known CVEs (via OSV, before
+droppers, registry worm replication (install-time `npm publish`),
+obfuscated computed-arg execution, known CVEs (via OSV, before
 download), npm↔GitHub artifact divergence, trojaned updates (`recheck`), and MCP
 capability-surface abuse.
 

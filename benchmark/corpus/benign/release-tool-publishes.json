@@ -1,0 +1,12 @@
+{
+  "name": "release-tool-invokes-npm-publish",
+  "expect": "safe",
+  "note": "a semantic-release-style publisher: shells out to `npm publish` from its CLI, reads NPM_TOKEN, and is invoked deliberately by a human or CI. Same publish primitive as the worm, but no install-time reach and no credential-scoped package enumeration — so registry-self-publish must NOT fire. This is the false-block guard for that detector.",
+  "evidence": {
+    "packageName": "some-release-tool",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"some-release-tool\",\"version\":\"23.1.0\",\"repository\":\"https://github.com/some-release-tool/some-release-tool\",\"bin\":{\"some-release-tool\":\"cli.js\"}}",
+      "cli.js": "const execa=require('execa');\nasync function publish(pkg,context){\n  await execa('npm',['publish',pkg.path,'--tag',context.tag],{env:{NPM_TOKEN:process.env.NPM_TOKEN}});\n}\nmodule.exports={publish};"
+    }
+  }
+}

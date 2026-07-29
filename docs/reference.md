@@ -26,7 +26,9 @@ see [compatibility.md](compatibility.md).
   managed secret store from install-time code (or next to an exfiltration
   sink); a CI/CD workflow written into the consuming repository by install-time
   code; an install-time script that deletes its own file after fetching or
-  executing a payload.
+  executing a payload; publishing to the package registry from install-time
+  code, or enumerating which packages the current credentials can publish to
+  and then publishing.
 - **review** (MEDIUM) — install/postinstall scripts; `eval` / `new Function` /
   vm on a **computed** argument; weaker prompt-injection (reworded steering,
   chat/role scaffolding like `<|im_start|>` / `<<SYS>>` / `[INST]`, identity
@@ -41,8 +43,11 @@ see [compatibility.md](compatibility.md).
   fetch/exec stage; npm↔GitHub divergence; missing package.json or entrypoint.
 - **info** — child_process/fetch/network in isolation; `eval` / `new Function` on
   a **string literal** (bundler `eval-source-map` wrapper, feature-detection
-  probe — the executed text is in the artifact and scanned as code). Recorded,
-  does not gate.
+  probe — the executed text is in the artifact and scanned as code); a package
+  name that disagrees with its declared repository while a consumer install hook
+  is present (`metadata-mimicry` — ordinary for monorepos and multi-artifact
+  repos, and indistinguishable from a typosquat without publisher data, so it is
+  evidence only). Recorded, does not gate.
 
 `.d.ts`, `.map`, `.min.js`, `.lock` files are skipped. Tarballs up to 20,000
 entries / 256 MB uncompressed are scanned.
