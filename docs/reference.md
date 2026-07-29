@@ -134,13 +134,16 @@ duplicates traffic. Run a shared cache to collapse it into one fetch per
 (repo, ref) per TTL window:
 
 ```bash
-pkgxray-cache --port 8819 --cache-dir /var/cache/pkgxray
+pkgxray-cache --port 8819 --host 0.0.0.0 --cache-dir /var/cache/pkgxray
 export PKGXRAY_CACHE_URL=http://cache.internal:8819
 ```
 
 Routes: `GET /github/repos/{owner}/{repo}` (1h), `GET
 /github/tarball/{owner}/{repo}/{ref}` (24h, streamed), `GET /healthz`. With
 `PKGXRAY_CACHE_URL` unset, clients run the default path with zero overhead.
+
+The server binds `127.0.0.1` by default; to serve a fleet, opt into a routable
+interface with `--host 0.0.0.0` (or `PKGXRAY_CACHE_HOST`) as shown above.
 
 > **Trust model:** the cache is a transparent proxy, **not** an auth boundary —
 > no login or rate limit. Run it on a private network or behind a reverse proxy

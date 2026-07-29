@@ -442,6 +442,27 @@ test("parseArgs accepts --max-cache-bytes and rejects a negative value", () => {
   assert.throws(() => parseArgs(["--max-cache-bytes", "-5"]));
 });
 
+test("parseArgs binds loopback by default; 0.0.0.0 must be opted into", () => {
+  const { parseArgs } = require("../bin/pkgxray-cache");
+  const savedHost = process.env.PKGXRAY_CACHE_HOST;
+  delete process.env.PKGXRAY_CACHE_HOST;
+  try {
+    // Fail-safe default: not exposed on all interfaces without an explicit opt-in.
+    assert.equal(parseArgs([]).host, "127.0.0.1");
+    // Explicit opt-in still works, both flag forms.
+    assert.equal(parseArgs(["--host", "0.0.0.0"]).host, "0.0.0.0");
+    assert.equal(parseArgs(["--host=0.0.0.0"]).host, "0.0.0.0");
+    // PKGXRAY_CACHE_HOST supplies the default when no flag is given.
+    process.env.PKGXRAY_CACHE_HOST = "10.0.0.5";
+    assert.equal(parseArgs([]).host, "10.0.0.5");
+    // ...but an explicit flag overrides the env default.
+    assert.equal(parseArgs(["--host", "127.0.0.1"]).host, "127.0.0.1");
+  } finally {
+    if (savedHost === undefined) delete process.env.PKGXRAY_CACHE_HOST;
+    else process.env.PKGXRAY_CACHE_HOST = savedHost;
+  }
+});
+
 test("upstream 404 is propagated to client and not cached", async (t) => {
   const upstream = await startFakeUpstream({
     __default: (_req, res) => {
