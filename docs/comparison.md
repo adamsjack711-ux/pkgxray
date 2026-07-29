@@ -8,15 +8,15 @@ tools in the same lane — behavioral supply-chain vetting:
 
 | Capability | Socket.dev | OpenSSF Package Analysis | Cisco MCP Scanner | pkgxray |
 |---|:-:|:-:|:-:|:-:|
-| Fully local, zero-dependency, no account or cloud upload | — ¹ | ◑ ² | ◑ ³ | ✅ |
-| Static behavior analysis of package code | ✅ | ✅ | ✅ | ✅ |
-| Sandboxed execution (dynamic analysis) | — | ✅ ⁴ | ◑ (optional Docker) | ◑ (opt-in `canary`) ⁴ |
-| npm ↔ GitHub artifact divergence | unknown | — | — | ✅ |
-| Deterministic verdict path — no LLM an injection can steer | — ⁵ | ✅ | ◑ ⁵ | ✅ |
-| Pre-install gate with a quarantined copy to review | ◑ ⁶ | — | — | ✅ |
-| MCP server vetting before connect | — ⁷ | — | ✅ | ✅ |
-| Per-call runtime gating of live MCP traffic | — | — | — ⁸ | ✅ (`mcp-proxy`) |
-| Verdict-drift monitoring vs. a stored baseline | ✅ (cloud-side) | — | — | ✅ (local `recheck`) |
+| Fully local, zero-dependency, no account or cloud upload | — ¹ | ◑ ² | ◑ ³ | ✓ |
+| Static behavior analysis of package code | ✓ | ✓ | ✓ | ✓ |
+| Sandboxed execution (dynamic analysis) | — | ✓ ⁴ | ◑ (optional Docker) | ◑ (opt-in `canary`) ⁴ |
+| npm ↔ GitHub artifact divergence | unknown | — | — | ✓ |
+| Deterministic verdict path — no LLM an injection can steer | — ⁵ | ✓ | ◑ ⁵ | ✓ |
+| Pre-install gate with a quarantined copy to review | ◑ ⁶ | — | — | ✓ |
+| MCP server vetting before connect | — ⁷ | — | ✓ | ✓ |
+| Per-call runtime gating of live MCP traffic | — | — | — ⁸ | ✓ (`mcp-proxy`) |
+| Verdict-drift monitoring vs. a stored baseline | ✓ (cloud-side) | — | — | ✓ (local `recheck`) |
 
 <!-- MAINTAINER: re-review this table against each competitor's public docs
      every 60–90 days and update the "Last reviewed" date below. -->
