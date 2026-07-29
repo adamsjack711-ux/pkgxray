@@ -22,7 +22,11 @@ see [compatibility.md](compatibility.md).
   `eval` / `new Function` / `child_process`; split token-exfil across files;
   **concealed/encoded injection** — instructions smuggled in invisible Unicode
   tag characters, or a base64 blob in docs/comments, that decode to a
-  verdict-forcing prompt.
+  verdict-forcing prompt; a read of the cloud instance-metadata service or a
+  managed secret store from install-time code (or next to an exfiltration
+  sink); a CI/CD workflow written into the consuming repository by install-time
+  code; an install-time script that deletes its own file after fetching or
+  executing a payload.
 - **review** (MEDIUM) — install/postinstall scripts; `eval` / `new Function` /
   vm on a **computed** argument; weaker prompt-injection (reworded steering,
   chat/role scaffolding like `<|im_start|>` / `<<SYS>>` / `[INST]`, identity
@@ -31,8 +35,10 @@ see [compatibility.md](compatibility.md).
   Source Unicode; **invisible Unicode tag characters** (text-smuggling channel)
   even when they don't decode to a known prompt; a geo/locale-gated destructive
   op; download-then-execute;
-  clipboard access; a lone exfil/callback domain; npm↔GitHub divergence; missing
-  package.json or entrypoint.
+  clipboard access; a lone exfil/callback domain; a cloud-metadata / secret-store
+  read that forwards to a second host from ordinary runtime code; a CI/CD
+  workflow written by an explicitly-invoked scaffolder; self-deletion without a
+  fetch/exec stage; npm↔GitHub divergence; missing package.json or entrypoint.
 - **info** — child_process/fetch/network in isolation; `eval` / `new Function` on
   a **string literal** (bundler `eval-source-map` wrapper, feature-detection
   probe — the executed text is in the artifact and scanned as code). Recorded,

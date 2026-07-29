@@ -9,13 +9,13 @@
     "source": "github",
     "id": "1276320499"
   },
-  "version": "1.0.5",
+  "version": "1.0.6",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pkgxray",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

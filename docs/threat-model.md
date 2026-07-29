@@ -13,7 +13,12 @@ see its dedicated [canary threat model](canary-threat-model.md).
   [`recheck`](reference.md#monitoring-pkgxray-recheck))
 - Typosquatting & dependency confusion
 - Credential theft (`.ssh`, `.aws`, `.npmrc`, `.env`, keychains, wallets)
+- Cloud credential harvesting (AWS/GCP/Azure instance metadata, managed secret
+  stores) from install-time code or next to an exfiltration sink
 - Malicious lifecycle scripts
+- Repository-level persistence (injected CI/CD workflows that run on the next
+  push with the repository's secrets in scope)
+- Self-deleting droppers (anti-forensic stage-1 cleanup)
 - Supply-chain tampering (npm artifact ≠ tagged source)
 - Provenance spoofing
 - AI prompt injection in package docs, code comments, and metadata

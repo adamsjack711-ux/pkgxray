@@ -1,5 +1,71 @@
 # Changelog
 
+## 1.0.6 (unreleased) — detection for the 2026 worm playbook
+
+**In plain terms:** the first engine release since 1.0.1. Three new detector
+bands close gaps that the 2025-26 npm worm families (Shai-Hulud and its
+Mini/2.0 descendants, and the Sapphire Sleet campaigns against Axios and
+Mastra) walked straight through. **Some packages that previously scanned as
+`safe` or bare `review` will now be `block` or carry cited evidence** — see the
+severity policy in [docs/reference.md](docs/reference.md).
+
+### What changed
+
+- **New `cloud-metadata-access` band.** Reads of the cloud instance-metadata
+  service (AWS/ECS link-local, GCP `metadata.google.internal`, the Azure token
+  path) and of managed secret stores (Secrets Manager, Secret Manager, Key
+  Vault, Vault) are now detected. Blocks from install-time code or next to an
+  exfiltration sink; reviews when runtime code forwards the result to a second
+  host. Harvesting host IAM credentials is the credential-theft step of the
+  Shai-Hulud family, which previously produced no finding at all.
+  **This band deliberately does not fire on cloud SDKs** — reading IMDS and
+  returning the result is how ambient credentials are supposed to work, so a
+  provider like `@aws-sdk/credential-provider-imds` still scans `safe`. A new
+  benign fixture guards that line.
+- **New `ci-workflow-injection` band.** Writing a CI/CD workflow
+  (`.github/workflows/`, GitLab, CircleCI, Azure Pipelines, Jenkins) into the
+  consuming repository is now detected. An injected workflow runs on the next
+  push with the repository's secrets in scope — repository-level persistence
+  that the existing shell-profile / crontab / launchd / Run-key checks stopped
+  short of. Blocks from install-time code; a project scaffolder invoked on
+  purpose reviews rather than blocks, mirroring how shell-completion installers
+  are already treated.
+- **New `self-deleting-dropper` band.** A script that unlinks its own file is
+  anti-forensic cleanup — the shape used by the `easy-day-js` dropper in the
+  Mastra compromise. Blocks when an install-time script deletes itself after
+  fetching or executing a payload; reviews otherwise.
+- **Five new calibration fixtures** (three malicious, two benign), all modeled
+  on published advisories. The corpus is now 56 cases; block recall is 95.8%
+  with **0 false blocks and 0 misses** held.
+- **Fixed a quadratic-backtracking regex** in the new secret-store rule that
+  cost 47s on the de-obfuscation perf fixture. The variable-length hostname run
+  is now bounded; scan time is back at baseline.
+
+### Calibration fixes found by self-scan
+
+Running the new bands against pkgxray's own source caught two defects before
+release; both now have regression tests.
+
+- **Comments no longer trigger the new bands.** The metadata IP is quoted
+  constantly in SSRF-defense code and in the comments explaining why it is
+  blocked — pkgxray's own network guards do exactly that and self-scanned as
+  three HIGH findings. The new detectors now match comment-stripped text, the
+  same treatment the exfil-destination check already used.
+- **"Install-time" now means hooks npm runs automatically.** Reachability was
+  being computed from *every* `scripts` entry, so a file reached only by
+  `npm test` or `npm run build` counted as install-time. The new bands key off
+  a strict `preinstall`/`install`/`postinstall`/`prepack`/`prepare` seed set;
+  a build script that reads instance metadata reviews rather than blocks.
+
+### Notes
+
+- No CLI, JSON-schema, configuration, exit-code, or MCP contract changed. The
+  three new categories appear in `findings[].category` and `riskBands[]`, which
+  the [compatibility policy](docs/compatibility.md) permits in a patch release
+  (detection may become stricter as signatures improve).
+- `docs/design/evasion-triage.md` listed the F4 bulk-env spread gap as open; it
+  was closed by `BULK_ENV_CLONE_REGEXES` and the row is now marked accordingly.
+
 ## 1.0.5 (2026-07-27) — accuracy & docs cleanup
 
 **In plain terms:** a documentation, website, and CLI-clarity release. **No

