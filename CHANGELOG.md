@@ -61,8 +61,13 @@ in its error replies. See **Windows fixes** below.
   code-execution. Anchored on a stream-end handler so an ordinary JSON
   accumulator does not qualify.
 - **Eight new calibration fixtures** (four malicious, four benign), all modeled
-  on published advisories. The corpus is now 58 cases; block recall is 96.0%
-  with **0 false blocks and 0 misses** held.
+  on published advisories. The corpus is now 58 cases — 25 malicious, 33 benign
+  — with **0 false blocks and 0 missed detections** at 100% block precision.
+  Block recall is 96.0%: the single non-blocking malicious case is a bare
+  `curl | sh` to an unknown host, deliberately routed to `review` by the
+  download-then-execute severity policy and marked `knownUnderflag` in the
+  fixture. It is a policy decision, not a miss — `full misses` is 0, which is
+  the number that matters.
 - **Fixed a quadratic-backtracking regex** in the new secret-store rule that
   cost 47s on the de-obfuscation perf fixture. The variable-length hostname run
   is now bounded; scan time is back at baseline.
