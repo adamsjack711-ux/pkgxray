@@ -17,16 +17,15 @@ the surface under test. Baseline: **0 blocks**.
 | F1 `f1-ssh-exfil` | `safe` (A+ 98) | `block` | `SUSPICIOUS_READ_TARGETS` / `NETWORK_REGEX` match literal substrings only. The `.ssh/id_rsa` path is assembled from an array of fragments (`[".s","sh","id_r","sa"]`) and `https` from `"ht"+"tps"`, so no literal matches → no behavioral finding. | ✅ yes |
 | F2 `f2-dynamic-require` | `review` (C+ 79) | `block` | Network primitive is `lib.request(...)` where `lib = require(<variable>)`, so `NETWORK_REGEX` misses it and the env+network HIGH in `inspectExecNetworkCombinations()` never fires. Only the lone `webhook.site` MEDIUM + bulk-env MEDIUM keep it at review. | ✅ yes |
 | F3 `f3-sendbeacon` | `review` (C+ 79) | `block` | `navigator.sendBeacon` is not in `NETWORK_REGEX`, so the bulk-env + network HIGH doesn't trigger. Only the bulk-env MEDIUM keeps it at review; with a non-flagged domain it would be `safe`. | ✅ yes |
-| F4 `f4-bulk-env` | `safe` (spread shape) | `review` | Bulk-env harvest on its own is *partly* handled: `JSON.stringify(process.env)` / `Object.entries(process.env)` already emit a MEDIUM (`environment-access`) → review. But the **spread / clone shapes** `{...process.env}` and `Object.assign({}, process.env)` are missing from `BULK_ENV_REGEXES`, so a whole-env dump via spread is `safe`. | ✅ partial gap (spread only) |
+| F4 `f4-bulk-env` | `review` (all shapes) | `review` | ~~The spread / clone shapes `{...process.env}` and `Object.assign({}, process.env)` were missing from `BULK_ENV_REGEXES`.~~ **Closed** — `BULK_ENV_CLONE_REGEXES` now covers them; all three shapes emit MEDIUM `environment-access`. | ✅ closed |
 
 ## Notes
 
-- **F4 is only a partial gap.** The core "bulk env harvest alone → review" ask in
-  the prompt is *already satisfied* for the `JSON.stringify` / `Object.entries`
-  shapes (they emit MEDIUM `environment-access`). The genuine, reproducible gap is
-  the **object-spread / `Object.assign` clone** of `process.env`, which the
-  existing `BULK_ENV_REGEXES` don't cover. PR #3 closes that specific shape; it
-  does not re-introduce a "bulk env on its own" rule that already exists.
+- **F4 is closed.** The core "bulk env harvest alone → review" ask was already
+  satisfied for the `JSON.stringify` / `Object.entries` shapes; the genuine gap
+  was the **object-spread / `Object.assign` clone** of `process.env`. That is now
+  handled by `BULK_ENV_CLONE_REGEXES` — verified against the engine, all three
+  shapes yield `review`.
 
 - All four fixtures live under `test/fixtures/evasion/`.
 

