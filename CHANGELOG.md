@@ -2,12 +2,18 @@
 
 ## 1.0.6 (2026-07-30) — detection for the 2026 worm playbook
 
-**In plain terms:** the first engine release since 1.0.1. Three new detector
+**In plain terms:** the first engine release since 1.0.1. Four new detector
 bands close gaps that the 2025-26 npm worm families (Shai-Hulud and its
 Mini/2.0 descendants, and the Sapphire Sleet campaigns against Axios and
-Mastra) walked straight through. **Some packages that previously scanned as
-`safe` or bare `review` will now be `block` or carry cited evidence** — see the
-severity policy in [docs/reference.md](docs/reference.md).
+Mastra) walked straight through, plus a fifth signal that reports without
+gating. **Some packages that previously scanned as `safe` or bare `review` will
+now be `block` or carry cited evidence** — see the severity policy in
+[docs/reference.md](docs/reference.md).
+
+This release also fixes two bugs that had shipped in every prior version and
+only became visible once CI started running on Windows: `guard` could not scan a
+local directory by absolute path there, and the MCP server leaked absolute paths
+in its error replies. See **Windows fixes** below.
 
 ### What changed
 
@@ -92,6 +98,36 @@ who owns the linked repository. So the discrepancy is surfaced as evidence for
 the human reading a review, and the behavioral bands carry the verdict — which
 they do, since a dropper still has to fetch, execute, or obfuscate.
 
+### Windows fixes
+
+CI ran only on Linux until this release, so several documented behaviors were
+asserted by prose alone. Adding `windows-latest` and `macos-latest` to the test
+matrix surfaced two bugs that had shipped in every prior version. Both are the
+same root cause — path logic that assumed POSIX — and both now carry regression
+tests that fail on Linux if they return, since a POSIX-shaped assertion is
+exactly why they survived.
+
+- **`guard` now accepts a Windows absolute path.** Deciding "is this a
+  filesystem path?" was `reference.startsWith("/")`, which no Windows path
+  satisfies, so `pkgxray guard C:\some\dir` fell through to the npm branch and
+  asked the registry for a package literally named `C:\Users\…`. Scanning a
+  local directory by absolute path never worked on Windows. Now uses
+  `path.isAbsolute`, which is byte-identical to the old check on POSIX and also
+  covers drive-letter and UNC roots.
+- **The MCP server no longer leaks Windows paths in errors.** Error replies are
+  scrubbed so a possibly-hostile caller cannot map the operator's filesystem,
+  but both scrub patterns keyed on a leading `/`. On Windows the full path went
+  back untouched — user profile and temp directory included. Drive-letter and
+  UNC paths are now redacted the same way, keeping the basename for context.
+  **If you run the MCP server on Windows, this is an information-disclosure fix,
+  not a cosmetic one.**
+- **Verdicts are confirmed identical across platforms.** The calibration
+  benchmark now runs on Windows and macOS as well as Linux, with the same
+  0 false blocks and 0 misses. Two macOS `sandbox-exec` tests — which back the
+  canary threat model's claim that macOS is the only tier denying non-loopback
+  egress at the OS boundary — executed for the first time in the project's
+  history, and pass.
+
 ### Notes
 
 - No CLI, JSON-schema, configuration, exit-code, or MCP contract changed. The
@@ -100,6 +136,10 @@ they do, since a dropper still has to fetch, execute, or obfuscate.
   (detection may become stricter as signatures improve).
 - `docs/design/evasion-triage.md` listed the F4 bulk-env spread gap as open; it
   was closed by `BULK_ENV_CLONE_REGEXES` and the row is now marked accordingly.
+- Windows and macOS are now blocking CI gates, not advisory ones. A handful of
+  tests are skipped there for reasons recorded inline — POSIX mode bits, AF_UNIX
+  path sockets, and control bytes in filenames have no Windows equivalent — and
+  each notes why no behavior is left unasserted.
 
 ## 1.0.5 (2026-07-27) — accuracy & docs cleanup
 
