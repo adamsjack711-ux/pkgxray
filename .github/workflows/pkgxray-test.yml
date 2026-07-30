@@ -64,19 +64,24 @@ jobs:
   # One Node version (active LTS) per OS: the point is the platform, and the
   # version axis is already covered above.
   #
-  # PROVISIONAL: continue-on-error is set because these have never run and the
-  # failure set is unknown. It keeps the discovery honest instead of blocking
-  # unrelated merges on a surprise. Flip it off — and make these required
-  # checks — as soon as they are green; that follow-up is the point of adding
-  # them, not an optional extra.
+  # This job started out continue-on-error while the failure set was unknown.
+  # It is now a real gate: both platforms pass, and the discovery run was worth
+  # it — it surfaced two shipped bugs, both POSIX-only path logic that a
+  # Linux-only matrix could not see. parseReference tested startsWith("/"), so
+  # a Windows absolute path fell through to the npm branch and `guard C:\dir`
+  # asked the registry for a package named "C:\Users\..."; and
+  # sanitizeErrorMessage matched only leading-slash paths, so the MCP server
+  # returned full "C:\Users\...\Temp\..." paths — user profile included — to a
+  # possibly-hostile caller, defeating the box-mapping defense it exists for.
   test-cross-platform:
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     # A hung job must not sit on a runner for the 360-minute default. The first
     # Windows run did exactly that: the suite stopped emitting after the last
     # recheck test and produced nothing for nine minutes until it was cancelled
     # by hand, which also meant no logs (GitHub serves them only once a job
-    # ends). Twenty minutes is generous — Linux finishes in ~20s, macOS ~21s.
+    # ends). The cause was a unix-socket bind that cannot work on win32; the
+    # guard stays because the next such hang should fail fast, not go unseen.
+    # Twenty minutes is generous — every platform finishes in ~20s.
     timeout-minutes: 20
     strategy:
       fail-fast: false
