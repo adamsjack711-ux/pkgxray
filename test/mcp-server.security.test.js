@@ -201,7 +201,16 @@ test("HIGH: stdin buffer is bounded — huge unterminated message is rejected mi
 // ---------------------------------------------------------------------------
 // HIGH-3: ANSI / control-byte injection in guard markdown output
 // ---------------------------------------------------------------------------
-test("HIGH: guard markdown output scrubs control bytes from reference", async () => {
+test("HIGH: guard markdown output scrubs control bytes from reference", {
+  // The fixture needs a directory whose NAME contains raw ESC bytes, which the
+  // Win32 filesystem refuses outright (mkdir fails EINVAL on control characters
+  // in a path component). POSIX permits them, which is exactly why the scrubbing
+  // this test covers matters there. The behavior is not win32-specific, but the
+  // fixture cannot be constructed on win32 to exercise it.
+  skip: process.platform === "win32"
+    ? "win32 rejects control bytes in filenames (mkdir EINVAL), so the fixture cannot be created"
+    : false
+}, async () => {
   // The reference field is attacker-controlled (an LLM/tool input the MCP
   // host blindly forwards). Without scrubbing, an ESC byte (0x1B) in the
   // reference would survive into the text content the host renders to the
@@ -484,4 +493,45 @@ test("sanity: audit happy path still returns a report", async () => {
   const reply = lines.map((l) => JSON.parse(l)).find((r) => r.id === 1);
   assert.ok(reply && reply.result, JSON.stringify(reply));
   assert.ok(reply.result.content[0].text.startsWith("Verdict:"));
+});
+
+// ---------------------------------------------------------------------------
+// MEDIUM: sanitizeErrorMessage must redact EVERY absolute path shape, not just
+// the host platform's. The end-to-end leak test above can only produce paths in
+// whichever form the running OS uses, so a Linux-only CI could never observe
+// that the Windows shapes were untouched — which they were: the POSIX patterns
+// match a leading "/" and nothing else, so on win32 the full
+// "C:\Users\...\Temp\..." path (user profile included) travelled straight back
+// to the caller. Testing the pure function lets every platform assert every
+// shape.
+// ---------------------------------------------------------------------------
+
+const { sanitizeErrorMessage } = require("../bin/mcp-server.js");
+
+test("MEDIUM: sanitizeErrorMessage redacts Windows drive-letter and UNC paths", () => {
+  const drive = sanitizeErrorMessage(
+    "Promotion target already exists: C:\\Users\\alice\\AppData\\Local\\Temp\\pkgxray-x\\promoted"
+  );
+  assert.ok(!drive.includes("C:\\Users"), `drive-letter path leaked: ${drive}`);
+  assert.ok(!drive.includes("alice"), `user profile leaked: ${drive}`);
+  assert.match(drive, /promoted/, "basename should survive for context");
+
+  const forward = sanitizeErrorMessage("cannot read C:/Users/alice/dev/pkg/index.js");
+  assert.ok(!forward.includes("C:/Users"), `forward-slash drive path leaked: ${forward}`);
+
+  const unc = sanitizeErrorMessage("cannot read \\\\fileserver\\share\\secret.txt");
+  assert.ok(!unc.includes("fileserver"), `UNC host leaked: ${unc}`);
+  assert.match(unc, /secret\.txt/, "basename should survive for context");
+});
+
+test("MEDIUM: sanitizeErrorMessage leaves URLs and npm specifiers intact", () => {
+  // The drive-letter rule keys off "<letter>:<separator>", which a URL scheme
+  // also matches on its last scheme character ("http://" -> "p:/"). A negative
+  // lookbehind prevents that; without it, every registry URL in an error
+  // message would be mangled into "<path>/...".
+  const url = sanitizeErrorMessage("fetch failed for https://registry.npmjs.org/express/latest");
+  assert.match(url, /https:\/\/registry\.npmjs\.org\/express\/latest/, `URL was mangled: ${url}`);
+
+  const spec = sanitizeErrorMessage("reference npm:express@4.21.0 could not be resolved");
+  assert.match(spec, /npm:express@4\.21\.0/, `npm specifier was mangled: ${spec}`);
 });

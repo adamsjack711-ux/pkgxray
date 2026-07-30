@@ -46,3 +46,67 @@ jobs:
       # built-ins only (node --test), so this is just the test run.
       - name: Run tests
         run: node --test
+
+  # Cross-platform coverage. The Node matrix above is thorough but Linux-only,
+  # which leaves real claims unexercised:
+  #
+  #   * Two sandbox tests are gated `skip: process.platform !== "darwin"`
+  #     (sandbox-exec profile + runtime egress confinement). On a Linux-only
+  #     matrix they have NEVER executed, so the macOS tier of the canary threat
+  #     model is asserted by documentation alone.
+  #   * PERSISTENCE_REGEXES ships Windows Run-key detection, the MCP server
+  #     splits PKGXRAY_MCP_ALLOWED_ROOTS on the platform path delimiter (`;` on
+  #     Windows — see docs/mcp.md), and the auditor normalizes paths throughout.
+  #     None of that has run on a win32 path layout.
+  #   * ~15 tests carry `process.platform === "win32"` skips whose correctness
+  #     has never been checked, because the branch was never taken.
+  #
+  # One Node version (active LTS) per OS: the point is the platform, and the
+  # version axis is already covered above.
+  #
+  # This job started out continue-on-error while the failure set was unknown.
+  # It is now a real gate: both platforms pass, and the discovery run was worth
+  # it — it surfaced two shipped bugs, both POSIX-only path logic that a
+  # Linux-only matrix could not see. parseReference tested startsWith("/"), so
+  # a Windows absolute path fell through to the npm branch and `guard C:\dir`
+  # asked the registry for a package named "C:\Users\..."; and
+  # sanitizeErrorMessage matched only leading-slash paths, so the MCP server
+  # returned full "C:\Users\...\Temp\..." paths — user profile included — to a
+  # possibly-hostile caller, defeating the box-mapping defense it exists for.
+  test-cross-platform:
+    runs-on: ${{ matrix.os }}
+    # A hung job must not sit on a runner for the 360-minute default. The first
+    # Windows run did exactly that: the suite stopped emitting after the last
+    # recheck test and produced nothing for nine minutes until it was cancelled
+    # by hand, which also meant no logs (GitHub serves them only once a job
+    # ends). The cause was a unix-socket bind that cannot work on win32; the
+    # guard stays because the next such hang should fail fast, not go unseen.
+    # Twenty minutes is generous — every platform finishes in ~20s.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      # --test-timeout turns a hang into a NAMED failure instead of a silent
+      # stall, which is the whole diagnostic problem with a platform we cannot
+      # reproduce locally: without it the log simply stops and the culprit has
+      # to be guessed from whichever test ran last. 60s is far above the
+      # slowest legitimate test (~150ms) while still failing fast.
+      # Deliberately NOT applied to the Linux job above — that is the
+      # established gate and this run is the one in discovery.
+      - name: Run tests
+        run: node --test --test-timeout=60000
+
+      # The calibration corpus exercises the auditor's path handling
+      # (normalizeRelPath, the require-graph walk, lifecycle reachability) on
+      # every fixture, so it is the cheapest broad check that verdicts do not
+      # drift with the platform's path separator.
+      - name: Calibration benchmark
+        run: node ./benchmark/run.js

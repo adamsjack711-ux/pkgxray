@@ -153,7 +153,10 @@ test("loadDecisions returns empty map when file is missing", async () => {
 test("lockPathForLockfile is sibling of lockfile", () => {
   const lp = lockPathForLockfile("/tmp/foo/package-lock.json");
   assert.equal(path.basename(lp), ".pkgxray.lock");
-  assert.equal(path.dirname(lp), "/tmp/foo");
+  // path.resolve, not a literal: on Windows "/tmp/foo" resolves to "D:\tmp\foo"
+  // because the cwd's drive is prepended. Comparing against the resolved form
+  // asserts the same invariant (sibling of the lockfile) on either platform.
+  assert.equal(path.dirname(lp), path.resolve("/tmp/foo"));
 });
 
 // ---------------------------------------------------------------------------

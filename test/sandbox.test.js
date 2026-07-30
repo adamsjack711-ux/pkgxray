@@ -536,7 +536,16 @@ test("#6 forwarder relays a proxied request across a unix socket into the captur
 // The parent capture proxy binds BOTH a TCP port and (when asked) a unix
 // socket, and both feed one hits array — so the shared-net and netns tiers can
 // coexist without duplicating capture logic.
-test("#6 capture proxy exposes a unix socket alongside its TCP port when requested", async () => {
+test("#6 capture proxy exposes a unix socket alongside its TCP port when requested", {
+  // Windows has no AF_UNIX socket at a filesystem path — the equivalent is a
+  // named pipe under \\.\pipe\, so binding one under the temp dir fails with
+  // EACCES ("listen EACCES ...\\cap.sock"). The unix-socket tier exists to feed
+  // the Linux netns forwarder, which is itself linux-only, so there is no
+  // Windows behavior being left unasserted here.
+  skip: process.platform === "win32"
+    ? "AF_UNIX path sockets do not exist on win32 (named pipes are the equivalent)"
+    : false
+}, async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-dual-"));
   const sockPath = path.join(dir, "cap.sock");
   const proxy = await startCaptureProxy(new Set(["t"]), { unixPath: sockPath });

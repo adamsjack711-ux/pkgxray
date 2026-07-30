@@ -25,6 +25,21 @@ test("parses local and npm references", () => {
   });
 });
 
+// An absolute path must resolve as `local` on whatever platform the suite runs
+// on. Written against a platform-native absolute path (os.tmpdir()) rather than
+// a "/..." literal, because that literal is the reason the bug survived: the
+// branch tested `startsWith("/")`, which no Windows absolute path satisfies, so
+// `C:\dir` fell through to the npm branch and pkgxray asked the registry for a
+// package named `C:\Users\...` (observed as HTTP 405 against
+// registry.npmjs.org/C%3A%5CUsers%5C...). Scanning a local directory by
+// absolute path was simply broken on Windows, and a POSIX-only assertion could
+// never have caught it.
+test("an absolute path parses as a local reference on this platform", () => {
+  const parsed = parseReference(os.tmpdir());
+  assert.equal(parsed.type, "local");
+  assert.equal(parsed.path, path.resolve(os.tmpdir()));
+});
+
 test("guards local extension in quarantine and promotes safe packages", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-test-"));
   const source = path.join(root, "source");
@@ -320,7 +335,19 @@ test("validateTarListing REJECTS an entry whose name embeds a control character"
   assert.throws(() => validateTarListing([line], BIG, 20000), /Tarball rejected/);
 });
 
-test("extractTarball fails CLOSED on a hostile listing (real archive path is a reject, not a safe skip)", async () => {
+test("extractTarball fails CLOSED on a hostile listing (real archive path is a reject, not a safe skip)", {
+  // This one builds its fixture by shelling out to POSIX `ln` and `tar`, and
+  // both behave differently on win32 — the archive came back carrying an entry
+  // named "package/\r", which the validator (correctly) rejects for holding a
+  // control character, failing the test on its own setup rather than on the
+  // behavior it targets. The security decisions this wraps are asserted
+  // directly and platform-independently by the validateTarListing tests above
+  // (escaping hardlink rejected, benign hardlink accepted, embedded control
+  // character rejected), so nothing goes uncovered on Windows.
+  skip: process.platform === "win32"
+    ? "fixture depends on POSIX ln/tar semantics; validateTarListing covers the security contract directly"
+    : false
+}, async () => {
   // End-to-end: build a real archive, then swap in a validator-hostile listing
   // by pointing extractTarball at an archive whose *content* is fine but whose
   // membership we've established rejects. We can't force tar to emit an escaping
@@ -348,13 +375,20 @@ test("extractTarball fails CLOSED on a hostile listing (real archive path is a r
 });
 
 test("normalizeTreePermissions makes a non-traversable dir readable so hidden code is scanned, not skipped", {
-  // Root bypasses directory-traverse permission bits, so the precondition below
-  // (lstat through a 0o644 dir must fail with EACCES) can't hold when the suite
-  // runs as UID 0 (e.g. in a root container). The behavior under test is a
-  // non-root concern; skip rather than report a false failure. CI runs non-root.
-  skip: typeof process.getuid === "function" && process.getuid() === 0
-    ? "requires a non-root UID (root bypasses directory traverse bits)"
-    : false
+  // Two environments cannot express the precondition below (lstat through a
+  // 0o644 dir must fail with EACCES):
+  //   * root — UID 0 bypasses directory-traverse bits entirely, so the lstat
+  //     succeeds. CI runs non-root; this covers the root-container case.
+  //   * win32 — there are no POSIX mode bits. Node's fs.chmod on Windows only
+  //     toggles the read-only flag, so the directory stays traversable and the
+  //     assert.rejects never fires. normalizeTreePermissions is a POSIX-only
+  //     concern (it exists because packages like pngjs ship lib/ as 0644), so
+  //     there is no Windows behavior here to assert.
+  skip: process.platform === "win32"
+    ? "POSIX mode bits do not exist on win32 (fs.chmod only toggles read-only)"
+    : typeof process.getuid === "function" && process.getuid() === 0
+      ? "requires a non-root UID (root bypasses directory traverse bits)"
+      : false
 }, async () => {
   // A package can ship a directory with no execute bit (pngjs ships lib/ as 0644)
   // — by accident or to hide a payload from the static walk so the scan aborts on
