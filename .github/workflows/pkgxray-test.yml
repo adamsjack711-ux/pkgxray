@@ -46,3 +46,49 @@ jobs:
       # built-ins only (node --test), so this is just the test run.
       - name: Run tests
         run: node --test
+
+  # Cross-platform coverage. The Node matrix above is thorough but Linux-only,
+  # which leaves real claims unexercised:
+  #
+  #   * Two sandbox tests are gated `skip: process.platform !== "darwin"`
+  #     (sandbox-exec profile + runtime egress confinement). On a Linux-only
+  #     matrix they have NEVER executed, so the macOS tier of the canary threat
+  #     model is asserted by documentation alone.
+  #   * PERSISTENCE_REGEXES ships Windows Run-key detection, the MCP server
+  #     splits PKGXRAY_MCP_ALLOWED_ROOTS on the platform path delimiter (`;` on
+  #     Windows — see docs/mcp.md), and the auditor normalizes paths throughout.
+  #     None of that has run on a win32 path layout.
+  #   * ~15 tests carry `process.platform === "win32"` skips whose correctness
+  #     has never been checked, because the branch was never taken.
+  #
+  # One Node version (active LTS) per OS: the point is the platform, and the
+  # version axis is already covered above.
+  #
+  # PROVISIONAL: continue-on-error is set because these have never run and the
+  # failure set is unknown. It keeps the discovery honest instead of blocking
+  # unrelated merges on a surprise. Flip it off — and make these required
+  # checks — as soon as they are green; that follow-up is the point of adding
+  # them, not an optional extra.
+  test-cross-platform:
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Run tests
+        run: node --test
+
+      # The calibration corpus exercises the auditor's path handling
+      # (normalizeRelPath, the require-graph walk, lifecycle reachability) on
+      # every fixture, so it is the cheapest broad check that verdicts do not
+      # drift with the platform's path separator.
+      - name: Calibration benchmark
+        run: node ./benchmark/run.js
