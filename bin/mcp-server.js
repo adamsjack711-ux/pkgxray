@@ -423,6 +423,17 @@ function sanitizeErrorMessage(message) {
   out = out.replace(/\/(?:private\/)?(?:var|tmp)\/[^\s'"`)]+/g, "<path>");
   // Remaining absolute-looking tokens — keep the basename for context.
   out = out.replace(/(?:^|\s)\/(?:[^\s/]+\/)+([^\s/'"`)]+)/g, " <path>/$1");
+  // Windows absolute paths: drive-letter roots (C:\… or C:/…) and UNC shares
+  // (\\host\share\…). Neither pattern above matches a backslash path or a drive
+  // letter, so on win32 the whole path survived into the reply — the temp dir
+  // and the user profile with it, which is exactly the box-mapping this function
+  // exists to prevent. The negative lookbehind stops a URL scheme ("http://…")
+  // from reading as a drive letter; the basename is kept for context, matching
+  // the POSIX branch above.
+  out = out.replace(
+    /(?<![A-Za-z])(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/])(?:[^\s'"`)]*[\\/])?([^\s\\/'"`)]+)/g,
+    "<path>/$1"
+  );
   return out;
 }
 
@@ -959,5 +970,10 @@ module.exports = {
   CONFIG_TOOL_KEY,
   startStdioServer: attachStdin,
   attachStdin,
-  resolveOperatorPath
+  resolveOperatorPath,
+  // Exported for direct unit testing. The end-to-end leak test can only
+  // exercise whichever path shape the host platform produces, so a Windows
+  // path leak was invisible to a Linux-only suite; testing the pure function
+  // lets every platform assert every shape.
+  sanitizeErrorMessage
 };
