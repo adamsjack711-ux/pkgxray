@@ -204,6 +204,90 @@ const ALT_RUNTIME_DOWNLOAD_REGEX =
 const ALT_RUNTIME_SPAWN_REGEX =
   /(?:["'`]|spawn\w*\s*\(\s*["'`]|execa?\s*\(\s*["'`]|exec\w*\s*\(\s*["'`][^"'`]*\b)(?:bun|deno)\b[^"'`\n]{0,60}?\b(?:run|eval|-e|--allow|install|x)\b/i;
 
+// --- Cloud instance-metadata / secret-store access -------------------------
+// The link-local instance-metadata endpoints. Reaching these hands back
+// short-lived IAM/service-account credentials for the whole host, which is why
+// the 2025-26 worm families (Shai-Hulud and its Mini/2.0 descendants) harvest
+// them from every major provider. AWS/ECS use link-local IPv4, GCP uses a
+// magic DNS name, Azure shares the AWS IP but with its own token path.
+const CLOUD_METADATA_ENDPOINT_REGEX =
+  /169\.254\.169\.254|169\.254\.170\.2|metadata\.google\.internal|\/latest\/meta-data\/|\/computeMetadata\/v1\/|\/metadata\/identity\/oauth2\/token/i;
+// Managed secret stores — the other half of the same harvest. These are the
+// API hostnames and the operation names that read a secret's plaintext.
+// Every alternative is anchored on a literal, and the one variable-length run
+// (the AWS region) is explicitly bounded. An UNBOUNDED leading `[a-z0-9-]+`
+// before a literal suffix — e.g. `[a-z0-9-]+\.vault\.azure\.net` — backtracks
+// quadratically over a long letter run and cost this rule 47s on the
+// de-obfuscation perf fixture; match the distinctive suffix instead.
+const CLOUD_SECRET_STORE_REGEX =
+  /secretsmanager\.[a-z0-9-]{1,32}\.amazonaws\.com|\bGetSecretValue\b|secretmanager\.googleapis\.com|\bAccessSecretVersion\b|\.vault\.azure\.net|\/v1\/secret\/data\/|\bVAULT_TOKEN\b/i;
+
+// --- CI/CD workflow injection ----------------------------------------------
+// Writing a CI workflow into the repo being installed into is how Shai-Hulud
+// turned one compromised dependency into org-wide credential theft: the
+// injected job runs on the next push, in CI, with the org's secrets in scope.
+// Persistence in the REPOSITORY rather than in the shell profile — which is
+// why PERSISTENCE_REGEXES (rc files, crontab, launchd, systemd, Run keys)
+// never saw it.
+const CI_WORKFLOW_PATH_REGEX =
+  /\.github\/workflows\/|\.gitlab-ci\.yml|\.circleci\/config\.yml|azure-pipelines\.yml|\bJenkinsfile\b|\.github\/actions\//i;
+// Filesystem writes, including the shell redirect / heredoc forms an install
+// script uses. Deliberately covers mkdir because `.github/workflows` usually
+// has to be created before the job file lands in it.
+const FS_WRITE_REGEX =
+  /\b(?:writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream|mkdirSync|mkdirp|outputFile|copyFileSync|cpSync|renameSync)\s*\(|>\s*["']?[\w./-]{0,64}\.github\/|\bmkdir\s+-p\b|\btee\s+/i;
+
+// --- Declared-identity mismatch (metadata mimicry) -------------------------
+// The easy-day-js dropper in the Mastra compromise copied dayjs's author,
+// homepage, repository and version numbering verbatim so it would survive a
+// glance at the manifest. Reporting that is useful; BLOCKING on it is not
+// achievable statically, and this rule is deliberately INFO-only as a result.
+//
+// The reason is worth recording, because it looks like a solvable problem and
+// is not. Legitimate packages disagree with their repository name constantly —
+// monorepos (`react-dom` -> facebook/react, `@types/node` -> DefinitelyTyped,
+// `lodash.debounce` -> lodash) and multi-artifact repos (`@sentry/cli` ->
+// getsentry/sentry-cli). Every relation test that keeps `@sentry/cli` clean —
+// separator-insensitive containment being the obvious one — also matches
+// `easy-day-js` against `dayjs`, because a convincing typosquat is by
+// construction shaped exactly like a legitimate variant. Deciding between them
+// needs data this function does not have (who actually publishes the package
+// vs. who owns the linked repo). So: surface the discrepancy as evidence for
+// the human reading a review, and let the BEHAVIORAL bands carry the verdict —
+// which they do, since a dropper still has to fetch, execute, or obfuscate.
+const GITHUB_PROJECT_RE = /github\.com[/:]([^/\s]+)\/([^/\s#?"']+?)(?:\.git)?$/i;
+
+function declaredRepoProject(json) {
+  const repo = json && json.repository;
+  const url = typeof repo === "string" ? repo : repo && repo.url;
+  if (!url) return null;
+  const m = GITHUB_PROJECT_RE.exec(String(url).trim());
+  return m ? m[2] : null;
+}
+
+// --- Registry self-publish (worm propagation) ------------------------------
+// Publishing to the registry from package code is the primitive that turns one
+// compromised maintainer account into Shai-Hulud's 796 packages. It is also
+// exactly what every release tool does — `np`, `semantic-release`, `lerna`,
+// `changesets` all shell out to `npm publish` — so the primitive alone can
+// never be the signal. What separates a worm from a release tool is WHEN it
+// runs (install time, unattended) and WHETHER it first asks the registry which
+// packages the stolen credentials can reach.
+const REGISTRY_PUBLISH_REGEX =
+  /\b(?:npm|pnpm|yarn|bun)\s+publish\b|\bnpm\s+dist-tag\s+add\b|["'`]publish["'`]\s*,|registry\.npmjs\.org\/-\/package\/[^"'`\s]*\/dist-tags/i;
+// Asking "what can these credentials publish to?" — the target-selection step.
+// A release tool publishes one package it already knows about; a worm has to
+// enumerate, because it does not know whose account it landed in.
+const REGISTRY_ENUMERATE_REGEX =
+  /\bnpm\s+access\s+(?:list\s+packages|ls-packages)\b|\bnpm\s+owner\s+(?:ls|list)\b|\/-\/user\/[^"'`\s]*\/package\b|\bnpm\s+whoami\b/i;
+
+// --- Self-deleting dropper (anti-forensics) --------------------------------
+// A stage-1 that removes its own file after running leaves the installed tree
+// looking clean — the Mastra/easy-day-js dropper did exactly this. Nothing
+// legitimate deletes the script it is currently executing.
+const SELF_DELETE_REGEX =
+  /\b(?:unlinkSync|unlink|rmSync|rm)\s*\(\s*(?:__filename|__dirname\b)|\brm\s+-[rf]{1,2}\s+["']?\$0\b|\bfs\.promises\.unlink\s*\(\s*__filename/i;
+
 // --- Hidden/detached inline-eval subprocess (self-`node -e`) ----------------
 // child_process spawning Node ITSELF on an inline `-e`/`--eval` script is
 // eval-by-subprocess: the payload runs in a fresh process the parent scan never
@@ -695,6 +779,10 @@ const BAND_DEFINITIONS = [
   { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
   { band: "remote-code-load", label: "remote-code-load", categories: ["remote-code-load"], rationale: "Network content fed straight to an interpreter (curl | sh, eval over a fetched body) — download-then-execute." },
   { band: "alternate-runtime", label: "alternate-runtime-exec", categories: ["alternate-runtime-exec"], rationale: "Fetches a second language runtime (Bun / Deno) at install/runtime and executes a payload under it — the TeamPCP shape that escapes Node-only static analysis and EDR." },
+  { band: "cloud-metadata-access", label: "cloud-metadata-access", categories: ["cloud-metadata-access"], rationale: "Reads the cloud instance-metadata service (AWS/GCP/Azure IMDS) or a managed secret store from install-time code or next to an exfiltration sink — the host-credential harvest step of the Shai-Hulud worm family." },
+  { band: "ci-workflow-injection", label: "ci-workflow-injection", categories: ["ci-workflow-injection"], rationale: "Writes a CI/CD workflow file into the consuming repository. An injected workflow runs on the next push with the repo's secrets in scope — repository-level persistence that shell-profile checks never see." },
+  { band: "self-deleting-dropper", label: "self-deleting-dropper", categories: ["self-deleting-dropper"], rationale: "Deletes its own source after fetching or executing a payload — anti-forensic cleanup that leaves the installed tree looking clean." },
+  { band: "registry-self-publish", label: "registry-self-publish", categories: ["registry-self-publish"], rationale: "Publishes to the package registry from install-time code, or enumerates which packages the current credentials can reach before publishing — the self-replication step that turns one compromised account into hundreds of compromised packages." },
   { band: "onchain-c2-loader", label: "onchain-c2-loader", categories: ["onchain-c2-loader"], rationale: "Reads a payload out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos) and, co-located with a code executor, runs it — the EtherHiding shape where the chain is the command channel and the committed loader never changes." },
   { band: "agent-config-access", label: "agent-config-access", categories: ["agent-config-access"], rationale: "Reads another AI-coding-agent's config (Claude/Cursor/Kiro/Aider/Continue) — MCP definitions, API keys, and tool allowlists that no ordinary dependency needs." },
   { band: "native-build", label: "native-build-execution", categories: ["native-build"], rationale: "Ships a native-build manifest (binding.gyp / extconf.rb) that compiles/runs code at install; escalates when it shells out or fetches from the network at build time." },
@@ -708,6 +796,7 @@ const BAND_DEFINITIONS = [
   { band: "clipboard", label: "clipboard-access", categories: ["data-access"], rationale: "Reads or writes the system clipboard — can expose copied secrets." },
   { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
   { band: "missing-metadata", label: "missing-metadata", categories: ["missing-metadata", "supply-chain-signal", "github-fetch"], rationale: "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped." },
+  { band: "metadata-mimicry", label: "metadata-mimicry", categories: ["metadata-mimicry"], rationale: "Publishes under a name that disagrees with its declared repository while running a consumer install hook. Ordinary for monorepos and multi-artifact repos; also how a typosquat borrows a trusted project's identity. Evidence only — it never changes a verdict." },
   { band: "github-mismatch", label: "github-mismatch", categories: ["github-mismatch"], rationale: "package.json points at a GitHub repo that doesn't exist or doesn't match — strong typosquat / impersonation signal." },
   { band: "github-archived", label: "github-archived", categories: ["github-archived"], rationale: "Linked repository is archived or disabled — no maintenance, security issues will not be fixed." },
   { band: "github-young", label: "github-young", categories: ["github-young"], rationale: "Linked repository was created within the last 30 days — common slopsquat shape." },
@@ -1116,6 +1205,42 @@ function inspectPackageJson(path, json, findings) {
         rationale:
           "Install-time scripts run automatically with the installing user's privileges and require manual review."
       });
+      // An install hook that publishes INLINE never reaches the file-level
+      // self-publish check, because the command lives in package.json and
+      // package.json is not itself install-time-reachable code.
+      if (REGISTRY_PUBLISH_REGEX.test(scripts[hook])) {
+        findings.push({
+          severity: "high",
+          category: "registry-self-publish",
+          file: path,
+          keepHighInTests: true,
+          snippet: `"${hook}": "${scripts[hook]}"`,
+          rationale:
+            "An install hook publishes to the package registry. Installing this package would republish from the installing user's credentials — the self-replication step of a registry worm."
+        });
+      }
+    }
+  }
+
+  // Declared-identity mismatch, gated on a hook that runs for CONSUMERS. The
+  // gate is what keeps the ordinary monorepo disagreement (react-dom,
+  // @types/node, lodash.debounce — none of which ship install hooks) out of the
+  // output entirely; `prepare`/`prepack` are excluded because monorepo build
+  // tooling uses them routinely.
+  const consumerHook = ["preinstall", "install", "postinstall"].find((h) => scripts[h]);
+  const project = declaredRepoProject(json);
+  if (project && consumerHook && typeof json.name === "string") {
+    const bare = json.name.replace(/^@[^/]+\//, "");
+    const scopeName = (json.name.match(/^@([^/]+)\//) || [])[1] || null;
+    if (bare !== project && scopeName !== project) {
+      findings.push({
+        severity: "info",
+        category: "metadata-mimicry",
+        file: path,
+        snippet: `"name": "${json.name}" vs repository "${project}"`,
+        rationale:
+          `Declares the repository "${project}" but publishes as "${json.name}", and runs a "${consumerHook}" hook on install. Common and harmless for monorepos and multi-artifact repos; it is also how a typosquat borrows a trusted project's identity (the easy-day-js / Mastra compromise copied dayjs's repository, homepage and author verbatim). Recorded as evidence — confirm this is the package you meant.`
+      });
     }
   }
 
@@ -1199,6 +1324,10 @@ const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
   "credential-access",
   "agent-config-access",
   "alternate-runtime-exec",
+  "cloud-metadata-access",
+  "ci-workflow-injection",
+  "self-deleting-dropper",
+  "registry-self-publish",
   "persistence"
 ]);
 
@@ -1238,7 +1367,11 @@ function auditFiles(files, findings, evidence) {
   // even if it sits under test/ or examples/. An attacker could hide a payload
   // in `examples/x.js` and wire `postinstall: node examples/x.js`; that file
   // must never get the test-file downgrade or the doc skip below.
-  const { all: runtimePaths, lifecycle: lifecyclePaths } = collectLifecycleReferencedPaths(files);
+  const {
+    all: runtimePaths,
+    lifecycle: lifecyclePaths,
+    installTime: installTimePaths
+  } = collectLifecycleReferencedPaths(files);
 
   // Install-time / auto-execution SURFACES (native build manifests, agent
   // hooks, IDE folderOpen tasks). These are config/build files, scanned once
@@ -1253,6 +1386,12 @@ function auditFiles(files, findings, evidence) {
 
   for (const file of files) {
     const isRuntimeReferenced = runtimePaths.has(normalizeRelPath(file.path));
+    // Reachable from a hook npm runs AUTOMATICALLY on install — a stricter
+    // claim than isRuntimeReferenced (which also counts main/bin entrypoints)
+    // and than lifecyclePaths (which counts every npm script, including ones
+    // that only run when a human types them). The detectors below block on
+    // "this ran because I installed the package", so they need this set.
+    const isInstallTimeReferenced = installTimePaths.has(normalizeRelPath(file.path));
     // Minified JS/MJS is executable and must be scanned (a lifecycle-referenced
     // file of ANY extension is runtime too). Only genuinely inert data files
     // (.d.ts/.map/.min.css/.lock) that no lifecycle script runs are skipped.
@@ -1310,6 +1449,13 @@ function auditFiles(files, findings, evidence) {
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
+    inspectCloudMetadataAccess(
+      file, content, lower, findings, isInstallTimeReferenced,
+      hasBulkEnv || hasBulkEnvClone, domain, normalized, normChanged
+    );
+    inspectCiWorkflowInjection(file, content, findings, isInstallTimeReferenced, normalized, normChanged);
+    inspectSelfDeletingDropper(file, content, findings, isInstallTimeReferenced, normalized, normChanged);
+    inspectRegistrySelfPublish(file, content, findings, isInstallTimeReferenced, normalized, normChanged);
     inspectHiddenNodeExec(file, content, findings, normalized, normChanged);
     inspectOnChainLoader(file, content, findings, normalized, normChanged);
     inspectCapabilities(file, content, findings);
@@ -1469,17 +1615,25 @@ function collectLifecycleReferencedPaths(files) {
   //    of the test-file downgrade, but for BUILD OUTPUT they must NOT block on
   //    their own (a dist bundle is reachable from main by definition — see the
   //    build-output downgrade), so they're tracked separately.
+  //  • installSeeds — the strict subset of lifecycleSeeds reachable from a hook
+  //    npm runs AUTOMATICALLY on install. `npm test` / `npm run build` only run
+  //    when someone types them, so detectors whose rationale is specifically
+  //    "this executed just because I installed the package" must key off this
+  //    set, not the broader script list.
   const lifecycleSeeds = [];
+  const installSeeds = [];
   const entrySeeds = [];
   const pkg = findPackageJson(files);
   if (pkg && pkg.json) {
     if (pkg.json.scripts && typeof pkg.json.scripts === "object") {
-      for (const command of Object.values(pkg.json.scripts)) {
+      for (const [hook, command] of Object.entries(pkg.json.scripts)) {
         if (typeof command !== "string") continue;
         let m;
         SCRIPT_PATH_TOKEN_REGEX.lastIndex = 0;
         while ((m = SCRIPT_PATH_TOKEN_REGEX.exec(command)) !== null) {
-          lifecycleSeeds.push(normalizeRelPath(m[1]));
+          const seed = normalizeRelPath(m[1]);
+          lifecycleSeeds.push(seed);
+          if (AUTO_RUN_INSTALL_HOOKS.has(hook)) installSeeds.push(seed);
         }
       }
     }
@@ -1522,9 +1676,20 @@ function collectLifecycleReferencedPaths(files) {
   };
 
   const lifecycle = walk(lifecycleSeeds);
+  const installTime = walk(installSeeds);
   const all = walk([...lifecycleSeeds, ...entrySeeds]);
-  return { all, lifecycle };
+  return { all, lifecycle, installTime };
 }
+
+// The package.json hooks npm executes on its own during `npm install`. Kept in
+// sync with the hook list inspectPackageJson reports as install-hook findings.
+const AUTO_RUN_INSTALL_HOOKS = new Set([
+  "preinstall",
+  "install",
+  "postinstall",
+  "prepack",
+  "prepare"
+]);
 
 // --- Install-time / auto-execution surfaces (#1) ---------------------------
 // The install hooks in package.json are no longer the only place install-time
@@ -1824,6 +1989,10 @@ const ARTIFACT_CORRELATION_CATEGORIES = new Set([
   "logic-bomb",
   "remote-code-load",
   "alternate-runtime-exec",
+  "cloud-metadata-access",
+  "ci-workflow-injection",
+  "self-deleting-dropper",
+  "registry-self-publish",
   "hidden-unicode"
 ]);
 
@@ -3197,7 +3366,15 @@ const REMOTE_CODE_LOAD_REGEXES = [
   /(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(\s*(?:await\s+)?(?:fetch|got|axios|node-fetch|https?\.get)\b/i,
   // promise chain handing the response straight to eval
   /\.then\s*\(\s*eval\s*\)/,
-  /\.then\s*\(\s*\w+\s*=>\s*eval\s*\(/
+  /\.then\s*\(\s*\w+\s*=>\s*eval\s*\(/,
+  // Callback-style accumulate-then-execute: the classic `https.get(url, res =>
+  // { let d=""; res.on("data", …); res.on("end", () => new Function(d)()) })`.
+  // Same download-then-execute conduct as the promise forms above, but written
+  // in the older Node idiom, which none of the patterns above matched — the
+  // unobfuscated variant of the Mastra dropper sat at review because of it.
+  // Anchored on an "end"/"close" stream handler so an ordinary response
+  // accumulator that merely parses JSON does not qualify.
+  /\.on\s*\(\s*['"`](?:end|close)['"`][\s\S]{0,120}?(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(/i
 ];
 
 function inspectRemoteCodeLoad(file, content, findings) {
@@ -3256,6 +3433,197 @@ function inspectAlternateRuntime(file, content, lower, findings, normalized, nor
     snippet: clipAround(content, idx),
     rationale:
       "References a download endpoint for a standalone Bun / Deno runtime. Pulling a second language runtime into an npm package is unusual and is the delivery step of the TeamPCP family; flagged for review even without a co-located executor in this file."
+  });
+}
+
+// --- Cloud metadata / secret-store harvest ---------------------------------
+// Deliberately does NOT fire on plain library code. Every cloud SDK legitimately
+// reads IMDS — that is how ambient credentials work — so flagging the endpoint
+// on its own would put `@aws-sdk/*`, `@google-cloud/*` and `@azure/*` into
+// review for doing their job. What has no legitimate story is reaching that
+// endpoint from code that runs at INSTALL time, or next to an exfil sink. Both
+// corroborators below are ones the engine already trusts elsewhere.
+function inspectCloudMetadataAccess(
+  file, content, lower, findings, isLifecycle, hasBulkEnv, exfilDomain, normalized, normChanged
+) {
+  // Matched against COMMENT-STRIPPED text. The metadata IP is quoted constantly
+  // in SSRF-defense code and in the comments explaining why it is blocked —
+  // pkgxray's own network guards do exactly that, and self-scanned as a HIGH
+  // until this was applied. A comment does not reach the endpoint.
+  const codeText = stripComments(content, file.path);
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const testBoth = (re) => re.test(codeText) || (normChanged && re.test(codeNorm));
+  const endpoint = testBoth(CLOUD_METADATA_ENDPOINT_REGEX);
+  const secretStore = testBoth(CLOUD_SECRET_STORE_REGEX);
+  if (!endpoint && !secretStore) return;
+
+  const target = endpoint
+    ? CLOUD_METADATA_ENDPOINT_REGEX.exec(codeText)
+    : CLOUD_SECRET_STORE_REGEX.exec(codeText);
+  const idx = target ? target.index : 0;
+  const what = endpoint ? "the cloud instance-metadata service" : "a managed secret store";
+
+  // Install-time reach is the unambiguous shape: a postinstall hook has no
+  // business holding the host's IAM credentials.
+  if (isLifecycle) {
+    findings.push({
+      severity: "high",
+      category: "cloud-metadata-access",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(content, idx),
+      rationale:
+        `Reads ${what} from code that runs at install time. Install hooks have no legitimate need for the host's IAM / service-account credentials, and harvesting them is the credential-theft step of the Shai-Hulud worm family.`
+    });
+    return;
+  }
+
+  // Runtime code, but co-located with an exfil sink or a whole-environment
+  // harvest — the theft chain rather than an SDK credential lookup.
+  if (exfilDomain || hasBulkEnv) {
+    findings.push({
+      severity: "high",
+      category: "cloud-metadata-access",
+      file: file.path,
+      snippet: clipAround(content, idx),
+      rationale:
+        `Reads ${what} in a file that also ${exfilDomain ? `reaches a flagged exfiltration host (${exfilDomain})` : "harvests the entire process environment"}. Cloud credentials read next to an exfiltration sink is theft, not an SDK credential lookup.`
+    });
+    return;
+  }
+
+  // Runtime code with no exfil corroborator. The discriminator that separates a
+  // credential provider from a harvester is where the credentials GO: an SDK
+  // reads the metadata endpoint and returns the result, while a harvester
+  // forwards it to a SECOND host. Requiring an outbound destination that isn't
+  // itself the metadata service keeps `@aws-sdk/credential-provider-imds` and
+  // its GCP/Azure equivalents silent, which is the whole point — ambient
+  // credential lookup is how cloud SDKs are supposed to work.
+  if (hasExternalNetworkDestination(codeText)) {
+    findings.push({
+      severity: "medium",
+      category: "cloud-metadata-access",
+      file: file.path,
+      snippet: clipAround(content, idx),
+      rationale:
+        `Reads ${what} and also contacts an unrelated external host in the same file. A cloud SDK reads these credentials and returns them; forwarding them to a second destination is the harvest shape — flagged for review.`
+    });
+  }
+}
+
+// Any absolute http(s) URL whose host is NOT a metadata / link-local / loopback
+// address. Used to tell "reads ambient credentials" (one endpoint, the SDK
+// shape) apart from "reads ambient credentials and ships them somewhere" (two
+// endpoints, the harvest shape).
+const ABSOLUTE_URL_HOST_RE = /https?:\/\/([A-Za-z0-9._-]+(?::\d+)?)/gi;
+const NON_EXTERNAL_HOST_RE =
+  /^(?:169\.254\.|metadata\.google\.internal|localhost|127\.|0\.0\.0\.0|\[?::1)/i;
+
+function hasExternalNetworkDestination(content) {
+  ABSOLUTE_URL_HOST_RE.lastIndex = 0;
+  let m;
+  while ((m = ABSOLUTE_URL_HOST_RE.exec(content)) !== null) {
+    if (!NON_EXTERNAL_HOST_RE.test(m[1])) return true;
+  }
+  return false;
+}
+
+// --- CI/CD workflow injection ----------------------------------------------
+// Requires BOTH a CI config path and a filesystem write in the same file, which
+// is what keeps scaffolding tools that merely mention `.github/workflows` in a
+// template string out of it. Install-time reach blocks; explicit invocation
+// (a project generator writing a workflow because the user asked it to) is
+// reviewed — the same distinction PERSISTENCE_REGEXES draws for shell-completion
+// installers.
+function inspectCiWorkflowInjection(file, content, findings, isLifecycle, normalized, normChanged) {
+  // Comment-stripped for the same reason as the metadata check: CI docs and
+  // release notes reference `.github/workflows/` constantly.
+  const codeText = stripComments(content, file.path);
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const testBoth = (re) => re.test(codeText) || (normChanged && re.test(codeNorm));
+  if (!testBoth(CI_WORKFLOW_PATH_REGEX)) return;
+  if (!testBoth(FS_WRITE_REGEX)) return;
+
+  const match = CI_WORKFLOW_PATH_REGEX.exec(codeText);
+  const idx = match ? match.index : 0;
+
+  findings.push({
+    severity: isLifecycle ? "high" : "medium",
+    category: "ci-workflow-injection",
+    file: file.path,
+    keepHighInTests: isLifecycle,
+    snippet: clipAround(content, idx),
+    rationale: isLifecycle
+      ? "Writes a CI/CD workflow file from code that runs at install time. An injected workflow executes on the next push with the repository's secrets in scope — the org-wide propagation step of the Shai-Hulud worm."
+      : "Writes a CI/CD workflow file. Legitimate for a project scaffolder invoked on purpose, but it is also how a compromised dependency persists into a repository and reaches its CI secrets — flagged for review."
+  });
+}
+
+// --- Registry self-publish --------------------------------------------------
+// Fires only on the two shapes a release tool never has: publishing from code
+// that runs unattended at install time, and enumerating which packages the
+// current credentials can publish to before publishing. `semantic-release`
+// shelling out to `npm publish` from its CLI trips neither and stays silent.
+function inspectRegistrySelfPublish(file, content, findings, isInstallTime, normalized, normChanged) {
+  const codeText = stripComments(content, file.path);
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const testBoth = (re) => re.test(codeText) || (normChanged && re.test(codeNorm));
+  if (!testBoth(REGISTRY_PUBLISH_REGEX)) return;
+
+  const match = REGISTRY_PUBLISH_REGEX.exec(codeText);
+  const idx = match ? match.index : 0;
+  const enumerates = testBoth(REGISTRY_ENUMERATE_REGEX);
+
+  if (isInstallTime) {
+    findings.push({
+      severity: "high",
+      category: "registry-self-publish",
+      file: file.path,
+      keepHighInTests: true,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Publishes to the package registry from code that runs at install time. An install hook that republishes is the self-replication step of a registry worm — this is how one compromised account became hundreds of compromised packages in the Shai-Hulud campaigns."
+    });
+    return;
+  }
+
+  if (enumerates) {
+    findings.push({
+      severity: "high",
+      category: "registry-self-publish",
+      file: file.path,
+      snippet: clipAround(content, idx),
+      rationale:
+        "Enumerates which packages the current credentials may publish to, then publishes. A release tool publishes a package it already knows about; enumerating first is target selection by code that does not know whose account it is running in."
+    });
+  }
+}
+
+// --- Self-deleting dropper --------------------------------------------------
+// Removing the currently-executing file is anti-forensics: after install the
+// tree looks clean and the payload that ran is gone. On its own it is a review
+// signal; from an install script it is the Mastra/easy-day-js dropper shape.
+function inspectSelfDeletingDropper(file, content, findings, isLifecycle, normalized, normChanged) {
+  const codeText = stripComments(content, file.path);
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const testBoth = (re) => re.test(codeText) || (normChanged && re.test(codeNorm));
+  if (!testBoth(SELF_DELETE_REGEX)) return;
+
+  const match = SELF_DELETE_REGEX.exec(codeText);
+  const idx = match ? match.index : 0;
+  const fetchesOrExecs =
+    NETWORK_REGEX.test(codeText) || EXEC_REGEX.test(codeText) || findDynamicEval(codeText) !== -1;
+
+  findings.push({
+    severity: isLifecycle && fetchesOrExecs ? "high" : "medium",
+    category: "self-deleting-dropper",
+    file: file.path,
+    keepHighInTests: isLifecycle && fetchesOrExecs,
+    snippet: clipAround(content, idx),
+    rationale:
+      isLifecycle && fetchesOrExecs
+        ? "Deletes its own file after fetching or executing a payload, from code that runs at install time. Erasing the stage-1 so the installed tree looks clean is the self-removing dropper used in the Mastra / easy-day-js compromise."
+        : "Deletes the file that is currently executing. Nothing legitimate removes its own source; this is the anti-forensic cleanup step of a dropper — flagged for review."
   });
 }
 
@@ -3460,10 +3828,10 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, ["install-hook", "native-build", "agent-hook"], 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader", "self-deleting-dropper"], 0.15),
     dataAccess: scoreParameter(
       findings,
-      ["credential-access", "agent-config-access", "environment-access", "data-access"],
+      ["credential-access", "agent-config-access", "environment-access", "data-access", "cloud-metadata-access"],
       0.15
     ),
     networkExposure: scoreParameter(
@@ -3471,7 +3839,7 @@ function gradeEvidence(findings, evidence) {
       ["network-access", "network-exfil-or-loader"],
       0.15
     ),
-    persistence: scoreParameter(findings, "persistence", 0.1),
+    persistence: scoreParameter(findings, ["persistence", "ci-workflow-injection", "registry-self-publish"], 0.1),
     obfuscation: scoreParameter(findings, ["obfuscation", "obfuscated-token", "hidden-unicode"], 0.1),
     knownVulnerabilities: scoreParameter(findings, "known-vulnerability", 0.15),
     provenance: scoreParameter(

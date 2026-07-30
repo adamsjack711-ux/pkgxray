@@ -1,0 +1,12 @@
+{
+  "name": "project-scaffolder-writes-ci-workflow",
+  "expect": "review",
+  "note": "a project generator that writes a GitHub Actions workflow because the user explicitly ran it. Same filesystem shape as the Shai-Hulud propagation step, but invoked on purpose and NOT reachable from a lifecycle script — so ci-workflow-injection is expected to surface at review, never block. Mirrors the shell-completion-installer treatment in PERSISTENCE_REGEXES.",
+  "evidence": {
+    "packageName": "create-some-app",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"create-some-app\",\"version\":\"2.0.0\",\"bin\":{\"create-some-app\":\"cli.js\"}}",
+      "cli.js": "const fs=require('fs');\nconst path=require('path');\n// Scaffolds a starter CI pipeline into the new project directory.\nfunction writeCi(target){\n  fs.mkdirSync(path.join(target,'.github/workflows'),{recursive:true});\n  fs.writeFileSync(path.join(target,'.github/workflows/ci.yml'),'name: ci\\non: [push]\\njobs:\\n  test:\\n    runs-on: ubuntu-latest\\n    steps:\\n      - uses: actions/checkout@v4\\n      - run: npm ci && npm test\\n');\n}\nmodule.exports={writeCi};"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "pkgxray",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "mcpName": "io.github.adamsjack711-ux/pkgxray",
   "description": "pkgxray — pre-install security for npm packages, MCP servers, and AI agents. Zero-dependency local static analysis with cited SAFE, REVIEW, or BLOCK verdicts.",
   "license": "MIT",
