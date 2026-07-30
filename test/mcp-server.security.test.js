@@ -201,7 +201,16 @@ test("HIGH: stdin buffer is bounded — huge unterminated message is rejected mi
 // ---------------------------------------------------------------------------
 // HIGH-3: ANSI / control-byte injection in guard markdown output
 // ---------------------------------------------------------------------------
-test("HIGH: guard markdown output scrubs control bytes from reference", async () => {
+test("HIGH: guard markdown output scrubs control bytes from reference", {
+  // The fixture needs a directory whose NAME contains raw ESC bytes, which the
+  // Win32 filesystem refuses outright (mkdir fails EINVAL on control characters
+  // in a path component). POSIX permits them, which is exactly why the scrubbing
+  // this test covers matters there. The behavior is not win32-specific, but the
+  // fixture cannot be constructed on win32 to exercise it.
+  skip: process.platform === "win32"
+    ? "win32 rejects control bytes in filenames (mkdir EINVAL), so the fixture cannot be created"
+    : false
+}, async () => {
   // The reference field is attacker-controlled (an LLM/tool input the MCP
   // host blindly forwards). Without scrubbing, an ESC byte (0x1B) in the
   // reference would survive into the text content the host renders to the

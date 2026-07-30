@@ -112,8 +112,13 @@ test("saveDecisions omits verdict/checkedAt for human-only records", async () =>
 });
 
 test("lockPathForLockfile resolves alongside the lockfile", () => {
+  // The expectation goes through path.resolve for the same reason the
+  // implementation does: on Windows, resolving "/proj" yields "D:\proj" (the
+  // cwd's drive is prepended), so a hardcoded "/proj" literal compares a
+  // drive-qualified path against a bare one. The invariant under test — the
+  // lock lands beside the lockfile — holds on both platforms.
   assert.equal(
     lockPathForLockfile("/proj/package-lock.json"),
-    path.join("/proj", ".pkgxray.lock")
+    path.join(path.resolve("/proj"), ".pkgxray.lock")
   );
 });

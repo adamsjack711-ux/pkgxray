@@ -25,6 +25,21 @@ test("parses local and npm references", () => {
   });
 });
 
+// An absolute path must resolve as `local` on whatever platform the suite runs
+// on. Written against a platform-native absolute path (os.tmpdir()) rather than
+// a "/..." literal, because that literal is the reason the bug survived: the
+// branch tested `startsWith("/")`, which no Windows absolute path satisfies, so
+// `C:\dir` fell through to the npm branch and pkgxray asked the registry for a
+// package named `C:\Users\...` (observed as HTTP 405 against
+// registry.npmjs.org/C%3A%5CUsers%5C...). Scanning a local directory by
+// absolute path was simply broken on Windows, and a POSIX-only assertion could
+// never have caught it.
+test("an absolute path parses as a local reference on this platform", () => {
+  const parsed = parseReference(os.tmpdir());
+  assert.equal(parsed.type, "local");
+  assert.equal(parsed.path, path.resolve(os.tmpdir()));
+});
+
 test("guards local extension in quarantine and promotes safe packages", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-test-"));
   const source = path.join(root, "source");

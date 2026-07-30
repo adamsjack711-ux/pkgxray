@@ -565,9 +565,17 @@ function parseReference(reference) {
     };
   }
 
+  // A bare filesystem path. `path.isAbsolute` is used rather than a literal
+  // `startsWith("/")` because on Windows an absolute path is `C:\dir` or a UNC
+  // `\\server\share`, neither of which begins with a slash. Without this the
+  // reference fell through to the npm branch and pkgxray asked the registry for
+  // a package literally named `C:\Users\...` — an observed HTTP 405 from
+  // `registry.npmjs.org/C%3A%5CUsers%5C...`, i.e. scanning a local directory by
+  // absolute path simply did not work on Windows. On POSIX `path.isAbsolute` is
+  // exactly `startsWith("/")`, so this is a no-op there.
   if (
     reference.startsWith(".") ||
-    reference.startsWith("/") ||
+    path.isAbsolute(reference) ||
     reference.startsWith("~")
   ) {
     const expanded = reference.startsWith("~/")
