@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.6 (unreleased) — detection for the 2026 worm playbook
+## 1.0.6 (2026-07-30) — detection for the 2026 worm playbook
 
 **In plain terms:** the first engine release since 1.0.1. Three new detector
 bands close gaps that the 2025-26 npm worm families (Shai-Hulud and its
