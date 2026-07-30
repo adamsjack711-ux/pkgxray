@@ -72,6 +72,12 @@ jobs:
   test-cross-platform:
     runs-on: ${{ matrix.os }}
     continue-on-error: true
+    # A hung job must not sit on a runner for the 360-minute default. The first
+    # Windows run did exactly that: the suite stopped emitting after the last
+    # recheck test and produced nothing for nine minutes until it was cancelled
+    # by hand, which also meant no logs (GitHub serves them only once a job
+    # ends). Twenty minutes is generous — Linux finishes in ~20s, macOS ~21s.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -83,8 +89,15 @@ jobs:
         with:
           node-version: "22"
 
+      # --test-timeout turns a hang into a NAMED failure instead of a silent
+      # stall, which is the whole diagnostic problem with a platform we cannot
+      # reproduce locally: without it the log simply stops and the culprit has
+      # to be guessed from whichever test ran last. 60s is far above the
+      # slowest legitimate test (~150ms) while still failing fast.
+      # Deliberately NOT applied to the Linux job above — that is the
+      # established gate and this run is the one in discovery.
       - name: Run tests
-        run: node --test
+        run: node --test --test-timeout=60000
 
       # The calibration corpus exercises the auditor's path handling
       # (normalizeRelPath, the require-graph walk, lifecycle reachability) on
