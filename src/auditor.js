@@ -843,13 +843,25 @@ function auditMetadata(evidence, findings) {
   if (packageJson) {
     inspectPackageJson(packageJson.path, packageJson.json, findings);
   } else {
-    findings.push({
-      severity: "info",
-      category: "missing-package-json",
-      file: "package.json",
-      snippet: "No package.json found in provided source files.",
-      rationale: "Install hooks and dependency metadata could not be checked."
-    });
+    // No package.json — but a Python package's manifest is setup.py /
+    // pyproject.toml. When one is present the evidence is NOT incomplete: it IS
+    // the manifest, so analyze its install/build hooks instead of reporting an
+    // npm-shaped missing one. Only a package with neither is truly unmanifested.
+    const pyManifests = findPythonManifests(evidence.sourceFiles);
+    if (pyManifests.length > 0) {
+      for (const m of pyManifests) {
+        if (m.kind === "setup.py") inspectSetupPy(m.path, m.content, findings);
+        else if (m.kind === "pyproject.toml") inspectPyprojectBuild(m.path, m.content, findings);
+      }
+    } else {
+      findings.push({
+        severity: "info",
+        category: "missing-package-json",
+        file: "package.json",
+        snippet: "No package.json or Python manifest found in provided source files.",
+        rationale: "Install hooks and dependency metadata could not be checked."
+      });
+    }
   }
 
   inspectMetadataObject("NPM_METADATA", evidence.npmMetadata, findings);
@@ -1273,6 +1285,94 @@ function inspectPackageJson(path, json, findings) {
       });
     }
   }
+}
+
+// --- Python (PyPI) manifests ------------------------------------------------
+// pip executes setup.py at install time for a source distribution, and a
+// pyproject.toml can name an in-tree build backend that runs at build. This is
+// the PyPI analog of npm lifecycle scripts — the install-time execution
+// surface. We only flag a manifest that does MORE than declare metadata; the
+// generic behavioral scanners still analyze the payload itself. This adds the
+// "runs at pip install" framing and drives the lifecycle-script band.
+const PY_MANIFEST_BASENAMES = new Set(["setup.py", "pyproject.toml"]);
+
+function findPythonManifests(files) {
+  const out = [];
+  for (const file of files) {
+    const base = file.path.split("/").pop();
+    if (PY_MANIFEST_BASENAMES.has(base)) {
+      out.push({ path: file.path, content: file.content, kind: base });
+    }
+  }
+  return out;
+}
+
+// Install-time execution primitives a normal declarative setup.py never
+// contains. Kept high-signal so it does not fire on the benign majority (which
+// just call setup(), read a README, or import the package for its __version__).
+const SETUP_INSTALL_EXEC_RE =
+  /\b(?:os\.system|subprocess\.(?:call|run|Popen|check_output|check_call)|os\.popen|pty\.spawn|socket\.socket|ctypes\.(?:CDLL|WinDLL|cdll|windll))\b/;
+// A Python DYNAMIC-code primitive as a BUILTIN call (not preceded by `.` or a
+// word char), so JS-style `re.exec(...)` / `vm.compile(...)` method calls that
+// share the same package can't match — Python's dangerous forms are the bare
+// builtins `exec(` / `compile(` / `__import__(` (and `eval(`).
+const PY_DYNAMIC_EXEC_RE = /(?<![.\w])(?:exec|eval|compile|__import__)\s*\(/;
+// Decoders that turn an opaque blob back into runnable code/bytes.
+const PY_DECODE_RE = /\b(?:base64\.(?:b64decode|b85decode|a85decode)|marshal\.loads|zlib\.decompress|lzma\.decompress|codecs\.decode|binascii\.(?:unhexlify|a2b_base64)|bytes\.fromhex)\b/;
+const PY_NET_RE = /\b(?:urllib\.request\.urlopen|urlopen|requests\.(?:get|post)|http\.client|socket\.socket)\b/;
+const SETUP_CMDCLASS_RE = /\bcmdclass\s*=/;
+
+function inspectSetupPy(path, content, findings) {
+  // Strip comments so a commented-out `# subprocess.call(...)` example doesn't
+  // fire (stripComments blanks with equal-length spaces, so indices still line
+  // up with the original content for the snippet).
+  const scan = stripComments(content, path);
+  const dynExec = PY_DYNAMIC_EXEC_RE.exec(scan);
+
+  // BLOCK: obfuscated or remote code execution AT INSTALL TIME. setup.py runs
+  // during `pip install`, so a dynamic exec fed a decoded blob (or paired with
+  // a network fetch) is the source-distribution dropper shape — not a review,
+  // a rejection. Contained to the manifest, so no FP risk to the wider engine.
+  if (dynExec && (PY_DECODE_RE.test(scan) || PY_NET_RE.test(scan))) {
+    findings.push({
+      severity: "high",
+      category: "code-execution",
+      file: path,
+      snippet: clipAround(content, Math.max(0, dynExec.index)),
+      rationale:
+        "setup.py runs during `pip install` and here executes a dynamically decoded or network-fetched payload (exec/eval/compile over base64/marshal/zlib, or a fetched body). This is the sdist-dropper shape — code the installing user never sees runs with their privileges at install time."
+    });
+    return;
+  }
+
+  // REVIEW: any other install-time execution beyond declaring metadata.
+  const execHit = SETUP_INSTALL_EXEC_RE.exec(scan);
+  const cmdIdx = scan.search(SETUP_CMDCLASS_RE);
+  if (!execHit && !dynExec && cmdIdx === -1) return;
+  const idx = execHit ? execHit.index : dynExec ? dynExec.index : cmdIdx;
+  findings.push({
+    severity: "medium",
+    category: "install-hook",
+    file: path,
+    snippet: clipAround(content, Math.max(0, idx)),
+    rationale:
+      "setup.py runs automatically during `pip install` of a source distribution. This one executes code beyond declaring package metadata (subprocess / network / dynamic exec / custom install command), so it runs with the installing user's privileges and requires manual review."
+  });
+}
+
+function inspectPyprojectBuild(path, content, findings) {
+  // An in-tree build backend (`backend-path`) makes a PEP 517 front-end execute
+  // project-supplied backend code at build time — an install/build-time surface.
+  const idx = content.search(/\bbackend-path\s*=/);
+  if (idx === -1) return;
+  findings.push({
+    severity: "medium",
+    category: "install-hook",
+    file: path,
+    snippet: clipAround(content, Math.max(0, idx)),
+    rationale:
+      "pyproject.toml declares an in-tree build backend (backend-path). PEP 517 build front-ends execute that project-supplied backend code at build time — an install/build-time execution surface."
+  });
 }
 
 // Free-text metadata fields a reader/agent sees but a human rarely scrutinizes.

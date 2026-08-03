@@ -100,17 +100,21 @@ cited file and evidence.
 
 ## What it scans & detects
 
-**Scans** — `pkgxray guard npm:name@version`, `github:owner/repo`, a local
-directory, whole lockfiles (`npm`, `yarn`, `pnpm`), MCP servers, and AI-agent
-extensions.
+**Scans** — `pkgxray guard npm:name@version` or `pypi:name@version`,
+`github:owner/repo`, a local directory, whole lockfiles across two ecosystems
+(npm: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `package.json`; PyPI:
+`requirements.txt`, `poetry.lock`, `Pipfile.lock`, `pyproject.toml`), MCP
+servers, and AI-agent extensions.
 
 **Detects** — credential theft (incl. split-fragment paths), cloud
 instance-metadata and secret-store harvesting, prompt injection, Unicode
 smuggling, base64 payloads and stage-2 loaders, exfiltration, persistence
 (shell profile, OS scheduler, and injected CI/CD workflows), self-deleting
-droppers, registry worm replication (install-time `npm publish`),
-obfuscated computed-arg execution, known CVEs (via OSV, before
-download), npm↔GitHub artifact divergence, trojaned updates (`recheck`), and MCP
+droppers, registry worm replication (install-time `npm publish`), npm
+install-hook and PyPI `setup.py` install-time execution, obfuscated computed-arg
+execution, hallucinated / slopsquat names (a lockfile pin the registry never
+published), known CVEs (via OSV, before download), npm↔GitHub artifact
+divergence, trojaned updates (`recheck`), and MCP
 capability-surface abuse.
 
 The full coverage matrix — and the known download-later blind spot — is in the
@@ -132,8 +136,10 @@ Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 
 ```bash
 pkgxray guard npm:some-package@1.2.3 [--format json]   # vet a package before install
+pkgxray guard pypi:some-package@1.2.3                  # same, for a PyPI package (sdist staged + scanned)
 pkgxray mcp --package npm:some-mcp-server@1.4.2 npx some-mcp-server   # vet an MCP server; --recheck catches the rug-pull
 pkgxray audit package-lock.json [--deep]               # also: yarn.lock, pnpm-lock.yaml, package.json
+pkgxray audit requirements.txt [--deep]                # PyPI: also poetry.lock, Pipfile.lock, pyproject.toml
 pkgxray recheck package-lock.json                      # scheduled: non-zero only on a regression
 ```
 

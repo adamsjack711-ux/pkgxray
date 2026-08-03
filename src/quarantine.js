@@ -534,6 +534,10 @@ async function stageReference(reference, stagedPath, options) {
     return resolveNpmPackage(parsed.specifier, options);
   }
 
+  if (parsed.type === "pypi") {
+    return resolvePyPIPackage(parsed.specifier, options);
+  }
+
   if (parsed.type === "github") {
     return resolveGithubRepo(parsed, options);
   }
@@ -544,6 +548,10 @@ async function stageReference(reference, stagedPath, options) {
 function parseReference(reference) {
   if (reference.startsWith("npm:")) {
     return { type: "npm", specifier: reference.slice("npm:".length) };
+  }
+
+  if (reference.startsWith("pypi:")) {
+    return { type: "pypi", specifier: reference.slice("pypi:".length) };
   }
 
   if (reference.startsWith("file:")) {
@@ -710,6 +718,78 @@ async function resolveNpmPackage(specifier, options) {
     integrity: (metadata.dist && metadata.dist.integrity) || null,
     shasum: (metadata.dist && metadata.dist.shasum) || null,
     npmMetadata: npmMetadataForEvidence(metadata)
+  };
+}
+
+// PyPI counterpart of resolveNpmPackage. Resolves a `pypi:` reference to a
+// downloadable sdist (a .tar.gz — the same format the npm download/extract path
+// already handles) so the whole acquisition + extraction pipeline is reused.
+// A 404 is the slopsquat/hallucination signal: a name PyPI never published.
+// Wheel-only or fileless versions fall back to a metadata-only audit (existence
+// + maintainers + repo cross-check + OSV) — wheel (ZIP) source inspection is v2.
+async function resolvePyPIPackage(specifier, options) {
+  const pypi = require("./pypi");
+  const { name, version } = pypi.parsePypiSpecifier(specifier);
+
+  let json;
+  try {
+    json = await pypi.fetchPypiMetadata(name, version);
+  } catch (error) {
+    if (error && error.statusCode === 404) {
+      throw new Error(
+        version
+          ? `Version not found on PyPI: ${name}==${version} (unpublished, yanked, or a typosquat/hallucinated name)`
+          : `Package not found on PyPI: ${name} (possible typosquat or hallucinated dependency)`
+      );
+    }
+    throw error;
+  }
+
+  const info = (json && json.info) || {};
+  const resolvedVersion = version || info.version || null;
+  const evidenceMeta = pypi.pypiMetadataForEvidence(json);
+  const file = pypi.releaseFileForVersion(json, resolvedVersion);
+
+  // Only sdists are a .tar.gz we can extract and scan. Prefer them; wheel-only
+  // or fileless versions get a metadata-only audit.
+  if (file && file.packagetype === "sdist") {
+    // Pin the download to PyPI's file host. Do NOT trust the URL's own host
+    // (poisoned metadata could point it at an attacker) — mirror how the npm
+    // path pins to the registry origin. Private indexes: PKGXRAY_TARBALL_HOSTS.
+    const allowedHosts = tarballHostAllowlist(["files.pythonhosted.org"]);
+    try {
+      assertDownloadHostAllowed(new URL(file.url), { allowedHosts, strictHosts: true, originalUrl: file.url });
+    } catch (err) {
+      throw new Error(`Unsafe PyPI sdist URL for ${name}: ${err.message}`);
+    }
+    return {
+      type: "pypi",
+      ecosystem: "PyPI",
+      packageName: info.name || name,
+      version: resolvedVersion,
+      needsDownload: true,
+      tarballUrl: file.url,
+      allowedHosts,
+      strictHosts: true,
+      // PyPI publishes a hex sha256; sha256ToSri makes it the npm SRI form the
+      // existing verifyNpmTarballIntegrity path checks with no new code.
+      integrity: pypi.sha256ToSri(file.sha256),
+      shasum: null,
+      npmMetadata: evidenceMeta
+    };
+  }
+
+  return {
+    type: "pypi",
+    ecosystem: "PyPI",
+    packageName: info.name || name,
+    version: resolvedVersion,
+    needsDownload: false,
+    skipSourceScan: true,
+    npmMetadata: evidenceMeta,
+    noSourceReason: file
+      ? "only a wheel is published for this version; sdist source inspection lands in v1, wheel unzip in v2"
+      : "no downloadable sdist/wheel for this version (yanked or fileless)"
   };
 }
 
@@ -978,6 +1058,10 @@ async function precheckVulnerabilities(resolved, stagedPath) {
 
   if (resolved.type === "npm" && resolved.packageName && resolved.version) {
     return queryOsvPackage(resolved.packageName, resolved.version, "npm");
+  }
+
+  if (resolved.type === "pypi" && resolved.packageName && resolved.version) {
+    return queryOsvPackage(resolved.packageName, resolved.version, "PyPI");
   }
 
   const identity = await readPackageIdentity(stagedPath);

@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — PyPI ecosystem support
+
+**In plain terms:** pkgxray now scans **Python packages**, not just npm. Point it
+at a Python lockfile or a `pypi:` package and it runs the same engine — OSV,
+quarantined download, behavioral scan, cited verdict.
+
+### What changed
+- **Python manifests.** `pkgxray audit` now accepts `requirements.txt`,
+  `poetry.lock`, `Pipfile.lock`, and `pyproject.toml`, resolving each to
+  PEP 503-normalized `name@version` deps and querying OSV's `PyPI` ecosystem.
+  Exact pins are vetted; ranges / VCS / URL / editable installs are surfaced as
+  unresolved rather than counted safe.
+- **`pypi:` guard.** `pkgxray guard pypi:name@version` stages the source
+  distribution (a `.tar.gz`, reusing the npm download + integrity-verify +
+  extraction path), pinned to `files.pythonhosted.org`, and runs the full
+  behavioral audit. Wheel-only versions get a metadata-only audit.
+- **PyPI registry client** (`src/pypi.js`) — package existence (a name PyPI
+  never published is the hallucinated/slopsquat signal), version list, and
+  metadata mapped onto the same evidence contract the heuristics already use
+  (`project_urls`→repository, `ownership.roles`→maintainers, `yanked`→deprecated).
+- **`setup.py` / `pyproject.toml` install-hook detection.** `pip install` of an
+  sdist executes `setup.py`; pkgxray blocks the dropper shape (dynamic exec over
+  a decoded or network-fetched payload) and flags generic install-time execution
+  (subprocess / custom `cmdclass` / in-tree `backend-path`) for review.
+- **No detection change for npm.** The shared behavioral engine is untouched;
+  ecosystem is threaded file-level from the manifest format. 27 new tests.
+
 ## 1.0.6 (2026-07-30) — detection for the 2026 worm playbook
 
 **In plain terms:** the first engine release since 1.0.1. Four new detector
