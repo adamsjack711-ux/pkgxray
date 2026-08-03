@@ -16,7 +16,29 @@ function detectFormat(filePath) {
   if (base === "yarn.lock") return "yarn";
   if (base === "pnpm-lock.yaml" || base === "pnpm-lock.yml") return "pnpm";
   if (base === "package.json") return "package-json";
+  // Python / PyPI manifests. requirements files come in many names
+  // (requirements.txt, requirements-dev.txt, dev-requirements.txt) — match any
+  // *.txt whose name mentions "requirements".
+  if (/requirements[\w.-]*\.txt$/i.test(base) || /[\w.-]*requirements\.txt$/i.test(base)) return "requirements";
+  if (base === "poetry.lock") return "poetry";
+  if (base === "Pipfile.lock") return "pipfile";
+  if (base === "pyproject.toml") return "pyproject";
   return null;
+}
+
+// Which registry ecosystem a detected format belongs to. Drives the OSV query
+// ecosystem string and the guard reference scheme. Everything defaults to npm
+// (the original single-ecosystem behaviour); Python formats map to PyPI.
+function formatEcosystem(format) {
+  switch (format) {
+    case "requirements":
+    case "poetry":
+    case "pipfile":
+    case "pyproject":
+      return { osv: "PyPI", scheme: "pypi" };
+    default:
+      return { osv: "npm", scheme: "npm" };
+  }
 }
 
 async function parseLockfile(filePath) {
@@ -30,6 +52,10 @@ async function parseLockfile(filePath) {
     case "yarn": return { format, deps: parseYarnLockfile(text) };
     case "pnpm": return { format, deps: parsePnpmLockfile(text) };
     case "package-json": return { format, deps: parsePackageJson(text) };
+    case "requirements": return { format, deps: parseRequirementsTxt(text) };
+    case "poetry": return { format, deps: parsePoetryLock(text) };
+    case "pipfile": return { format, deps: parsePipfileLock(text) };
+    case "pyproject": return { format, deps: parsePyproject(text) };
     default: throw new Error(`unreachable`);
   }
 }
@@ -288,6 +314,212 @@ function addUnresolved(deps, name, spec, paths, kind) {
 }
 
 // ---------------------------------------------------------------------------
+// Python (PyPI) manifest parsers — same normalized shape as the npm parsers:
+// Map<name@version, { name, version, paths }>. Names are PEP 503-normalized so
+// OSV (which keys PyPI advisories on the canonical name) matches regardless of
+// how the manifest spelled them (Flask == flask == FLASK). Lockfiles
+// (poetry.lock, Pipfile.lock) pin exact versions; requirements.txt is pinned
+// when produced by `pip freeze`; pyproject.toml usually carries ranges and so
+// mostly lands as `unresolved` (same philosophy as parsePackageJson).
+// ---------------------------------------------------------------------------
+
+// PEP 503 name normalization: lowercase, collapse runs of -, _, . into one -.
+function normalizePypiName(name) {
+  return String(name).trim().replace(/[-_.]+/g, "-").toLowerCase();
+}
+
+function parseRequirementsTxt(text) {
+  const deps = new Map();
+  // Join backslash line-continuations so a wrapped requirement parses as one.
+  const merged = [];
+  let buffer = "";
+  for (const raw of text.split(/\r?\n/)) {
+    if (/\\\s*$/.test(raw)) {
+      buffer += raw.replace(/\\\s*$/, "");
+      continue;
+    }
+    merged.push(buffer + raw);
+    buffer = "";
+  }
+  if (buffer) merged.push(buffer);
+
+  for (const rawLine of merged) {
+    const parsed = parseRequirementLine(rawLine);
+    if (!parsed) continue;
+    if (parsed.unresolved) {
+      addUnresolved(deps, parsed.name, parsed.spec, ["requirements.txt"], parsed.kind);
+    } else {
+      add(deps, parsed.name, parsed.version, ["requirements.txt"]);
+    }
+  }
+  return deps;
+}
+
+// Parse ONE requirements/PEP 508 line into { name, version } (exact pin only),
+// an unresolved marker (range/url/vcs/editable/unpinnable), or null (blank,
+// comment, or an option line carrying no package). Mirrors
+// resolvePackageJsonSpec: never emit a bogus pinned version that reads "safe".
+function parseRequirementLine(rawLine) {
+  // Strip a leading or whitespace-preceded `#` comment (pip's comment rule).
+  let line = rawLine.replace(/(^|\s)#.*$/, "$1").trim();
+  if (!line) return null;
+
+  if (line.startsWith("-")) {
+    // -e / --editable installs a VCS or local checkout we can't OSV-query.
+    // Surface those; skip other option lines (-r/-c/--index-url carry nothing).
+    if (!/^(-e|--editable)\b/.test(line)) return null;
+    const target = line.replace(/^(-e|--editable)\s+/, "").trim();
+    // A `#egg=NAME` fragment names the package; otherwise keep the raw target
+    // (a URL/path) as the label — it's unresolved either way.
+    const egg = target.match(/#egg=([A-Za-z0-9._-]+)/);
+    return { unresolved: true, name: egg ? normalizePypiName(egg[1]) : target, spec: rawLine.trim(), kind: "editable" };
+  }
+
+  // Drop inline options (--hash=..., --global-option ...) and env markers.
+  line = line.replace(/\s--[\w-]+[=\s]\S+/g, "").trim();
+  const semi = line.indexOf(";");
+  if (semi !== -1) line = line.slice(0, semi).trim();
+  if (!line) return null;
+
+  // PEP 508 direct reference `name @ url`, or a bare VCS/URL/local-path install.
+  if (/\s@\s/.test(line)) {
+    const name = normalizePypiName(line.split(/\s@\s/)[0].trim().replace(/\[[^\]]*\]$/, ""));
+    return { unresolved: true, name, spec: rawLine.trim(), kind: "url" };
+  }
+  if (/^(git\+|hg\+|svn\+|bzr\+|https?:\/\/|file:|\.|\/)/.test(line)) {
+    return { unresolved: true, name: line, spec: rawLine.trim(), kind: "url" };
+  }
+
+  const m = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(===|==|~=|!=|<=|>=|<|>)?\s*(.*)$/);
+  if (!m) return null;
+  const name = normalizePypiName(m[1]);
+  const op = m[2];
+  let version = (m[3] || "").trim();
+  if ((op === "==" || op === "===") && version) {
+    // A pin can still hide a wildcard (==2.1.*) or comma range (==2,<3).
+    version = version.split(",")[0].trim();
+    if (!version || version.includes("*")) {
+      return { unresolved: true, name, spec: rawLine.trim(), kind: "unpinnable" };
+    }
+    return { name, version };
+  }
+  return { unresolved: true, name, spec: rawLine.trim(), kind: op ? "range" : "unpinnable" };
+}
+
+function parsePoetryLock(text) {
+  const deps = new Map();
+  // poetry.lock is TOML: a series of [[package]] tables. Scrape name/version
+  // rather than pull in a TOML parser (matches the pnpm YAML-scrape approach).
+  const blocks = text.split(/^\[\[package\]\]\s*$/m).slice(1);
+  for (const block of blocks) {
+    const nameM = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
+    const verM = block.match(/^\s*version\s*=\s*"([^"]+)"/m);
+    if (!nameM || !verM) continue;
+    const name = normalizePypiName(nameM[1]);
+    const version = verM[1].trim();
+    // A [package.source] with a non-registry type is a git/url/local install,
+    // not a PyPI release we can vet. "legacy" is a private index — still real.
+    const typeM = block.match(/^\s*type\s*=\s*"([^"]+)"/m);
+    if (typeM && ["git", "url", "directory", "file"].includes(typeM[1])) {
+      addUnresolved(deps, name, version, ["poetry.lock"], "source");
+      continue;
+    }
+    add(deps, name, version, ["poetry.lock"]);
+  }
+  return deps;
+}
+
+function parsePipfileLock(text) {
+  const json = JSON.parse(text);
+  const deps = new Map();
+  for (const section of ["default", "develop"]) {
+    const entries = json[section] || {};
+    for (const [rawName, spec] of Object.entries(entries)) {
+      const name = normalizePypiName(rawName);
+      if (!spec || typeof spec !== "object") continue;
+      if (spec.git || spec.path || spec.file || spec.url) {
+        addUnresolved(deps, name, spec.version || spec.git || spec.path || spec.url || "*", [section], "source");
+        continue;
+      }
+      let version = typeof spec.version === "string" ? spec.version.trim() : "";
+      if (version.startsWith("==")) version = version.slice(2).trim();
+      if (!version || /[<>=~!*]/.test(version)) {
+        addUnresolved(deps, name, spec.version || "*", [section], "unpinnable");
+        continue;
+      }
+      add(deps, name, version, [section]);
+    }
+  }
+  return deps;
+}
+
+function parsePyproject(text) {
+  const deps = new Map();
+  // pyproject.toml expresses deps two common ways; scrape both without a TOML
+  // parser. Versions are usually ranges, so most land as unresolved.
+  // (1) PEP 621: [project] dependencies = [ "requests>=2", ... ].
+  const projDeps = matchTomlArray(text, /(^|\n)\s*dependencies\s*=\s*\[/);
+  for (const item of projDeps) {
+    const parsed = parseRequirementLine(item);
+    if (!parsed) continue;
+    if (parsed.unresolved) addUnresolved(deps, parsed.name, parsed.spec, ["pyproject.toml"], parsed.kind);
+    else add(deps, parsed.name, parsed.version, ["pyproject.toml"]);
+  }
+  // (2) Poetry: [tool.poetry.dependencies] name = "^1.2.3" table entries.
+  parsePoetryTomlTable(text, deps);
+  return deps;
+}
+
+// Return the quoted string items of the first TOML array whose assignment
+// matches `re` (e.g. `dependencies = [ ... ]`). Bracket-matched so nested
+// arrays don't end it early. Empty if not found.
+function matchTomlArray(text, re) {
+  const m = re.exec(text);
+  if (!m) return [];
+  const open = text.indexOf("[", m.index + m[0].length - 1);
+  if (open === -1) return [];
+  let depth = 0;
+  let end = open;
+  for (; end < text.length; end++) {
+    const c = text[end];
+    if (c === "[") depth++;
+    else if (c === "]" && --depth === 0) { end++; break; }
+  }
+  const inner = text.slice(open + 1, end - 1);
+  const items = [];
+  const strRe = /"([^"]*)"|'([^']*)'/g;
+  let s;
+  while ((s = strRe.exec(inner))) items.push(s[1] !== undefined ? s[1] : s[2]);
+  return items;
+}
+
+// Scrape `[tool.poetry.dependencies]` (and group sub-tables) `name = "spec"`
+// entries. Only exact pins ("1.2.3", no caret/tilde/range) resolve.
+function parsePoetryTomlTable(text, deps) {
+  const lines = text.split(/\r?\n/);
+  let inTable = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith("[")) {
+      inTable = /^\[tool\.poetry(\.group\.[\w.-]+)?\.dependencies\]$/.test(line);
+      continue;
+    }
+    if (!inTable || !line || line.startsWith("#")) continue;
+    const m = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)\s*=\s*(.+)$/);
+    if (!m) continue;
+    const name = normalizePypiName(m[1]);
+    if (name === "python") continue; // the interpreter constraint, not a package
+    const rhs = m[2].trim();
+    // Table/inline forms ({ version = ..., git = ... }) → unresolved.
+    const strM = rhs.match(/^["']([^"']+)["']$/);
+    if (!strM) { addUnresolved(deps, name, rhs, ["pyproject.toml"], "complex"); continue; }
+    const spec = strM[1].trim();
+    if (/^\d[\w.+-]*$/.test(spec)) add(deps, name, spec, ["pyproject.toml"]);
+    else addUnresolved(deps, name, spec, ["pyproject.toml"], "range");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Batch OSV
 // ---------------------------------------------------------------------------
 
@@ -297,14 +529,16 @@ const https = require("node:https");
 // second + third chunks reuse the first chunk's TLS session.
 const OSV_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
 
-function batchOsvQuery(deps) {
+function batchOsvQuery(deps, ecosystem = "npm") {
   // Unresolved specs (workspace/catalog/url/git/alias-without-pin) carry a raw
   // spec in `version` that OSV cannot resolve — querying them would come back
   // empty and read "safe". Skip them here; the audit surfaces them separately.
+  // `ecosystem` is OSV's registry token ("npm", "PyPI", ...); it comes from the
+  // lockfile format so every dep in one file shares it.
   const queries = Array.from(deps.values())
     .filter((d) => !d.unresolved)
     .map((d) => ({
-      package: { name: d.name, ecosystem: "npm" },
+      package: { name: d.name, ecosystem },
       version: d.version
     }));
   if (queries.length === 0) return Promise.resolve([]);
@@ -362,6 +596,7 @@ const DEEP_CONCURRENCY = 4;
 
 async function auditLockfile(filePath, options = {}) {
   const { format, deps } = await parseLockfile(filePath);
+  const ecosystem = formatEcosystem(format);
   const start = Date.now();
   const queries = Array.from(deps.values());
 
@@ -372,7 +607,7 @@ async function auditLockfile(filePath, options = {}) {
     // the vuln/triage decision logic without hitting the network.
     osvResults = options.osvResults;
   } else if (options.vulnerabilityCheck !== false) {
-    osvResults = await batchOsvQuery(deps);
+    osvResults = await batchOsvQuery(deps, ecosystem.osv);
   }
   const osvMs = Date.now() - start;
 
@@ -458,7 +693,7 @@ async function auditLockfile(filePath, options = {}) {
     const targets = options.deepAll
       ? results
       : results.filter((r) => r.decision === "block");
-    await runDeep(targets, options);
+    await runDeep(targets, options, ecosystem.scheme);
     deepMs = Date.now() - deepStart;
   }
 
@@ -486,14 +721,14 @@ async function auditLockfile(filePath, options = {}) {
   };
 }
 
-async function runDeep(results, options) {
+async function runDeep(results, options, scheme = "npm") {
   if (results.length === 0) return;
   // Lazy-require to avoid a cycle (lockfile -> quarantine -> lockfile).
   const { guardExtension } = require("./quarantine");
   const { mapPool } = require("./pool");
   await mapPool(results, Math.min(DEEP_CONCURRENCY, results.length), async (r) => {
     try {
-      const result = await guardExtension(`npm:${r.name}@${r.version}`, {
+      const result = await guardExtension(`${scheme}:${r.name}@${r.version}`, {
         vulnerabilityCheck: false, // already done by the lockfile pass
         githubMetadata: options.githubMetadata !== false,
         githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
@@ -581,7 +816,15 @@ module.exports = {
   auditLockfile,
   parseLockfile,
   detectFormat,
+  formatEcosystem,
   batchOsvQuery,
   renderLockfileMarkdown,
-  sanitizeForTerminal
+  sanitizeForTerminal,
+  // Exposed for unit tests of the Python manifest parsers.
+  parseRequirementsTxt,
+  parseRequirementLine,
+  parsePoetryLock,
+  parsePipfileLock,
+  parsePyproject,
+  normalizePypiName
 };

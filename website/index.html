@@ -420,13 +420,14 @@
                 <tr><td>Exfiltration &amp; loaders</td><td class="mark yes">✓</td><td>cross-file correlation: stage-2 loaders, <code>curl | sh</code>, <code>process.env</code> harvesting near a network sink</td></tr>
                 <tr><td>Persistence</td><td class="mark yes">✓</td><td>writes to shell rc files, cron, launch agents</td></tr>
                 <tr><td>Obfuscation</td><td class="mark yes">✓</td><td>packed blob + computed-arg execution; minification alone is deliberately <em>not</em> flagged</td></tr>
-                <tr><td>Known CVEs</td><td class="mark yes">✓</td><td>OSV batch pre-check before download; never mutable by config</td></tr>
+                <tr><td>PyPI install-time execution</td><td class="mark yes">✓</td><td><code>setup.py</code> that runs code at <code>pip&nbsp;install</code> — subprocess/network at build, or <code>exec</code>/<code>eval</code> over a decoded blob (the sdist-dropper shape)</td></tr>
+                <tr><td>Known CVEs</td><td class="mark yes">✓</td><td>OSV batch pre-check before download, npm <em>and</em> PyPI; never mutable by config</td></tr>
                 <tr><td>Trojaned updates / takeover</td><td class="mark yes">✓</td><td><code>recheck</code> verdict-drift + version-drift monitoring</td></tr>
                 <tr><td>Artifact divergence</td><td class="mark yes">✓</td><td>published npm tarball diffed against the tagged GitHub source</td></tr>
                 <tr><td>MCP capability abuse</td><td class="mark yes">✓</td><td>capability-surface mismatch in the manifest audit (a <code>get_weather</code> that also takes a <code>command</code>)</td></tr>
                 <tr><td>Runtime tool drift</td><td class="mark yes">✓</td><td><code>mcp-proxy</code> re-audits on <code>tools/list_changed</code>; pinned-manifest drift is denied</td></tr>
                 <tr><td>Sequence-level tool-call chains</td><td class="mark part">◑</td><td><code>mcp-proxy</code> gates each call and scans results; no cross-call flow analysis</td></tr>
-                <tr><td>Dependency confusion / typosquats</td><td class="mark part">◑</td><td>callback beacons, repo- and provenance-mismatch signals; no name-similarity heuristic</td></tr>
+                <tr><td>Dependency confusion / typosquats / slopsquats</td><td class="mark part">◑</td><td>callback beacons, repo- and provenance-mismatch signals, and a registry-existence check that flags a hallucinated name the registry never published; no name-similarity heuristic yet</td></tr>
               </tbody>
             </table>
           </div>
@@ -501,15 +502,16 @@
               <h3>CI/CD</h3>
               <p>
                 Fail builds when a dependency crosses policy; scan the whole
-                lockfile and re-vet on a schedule with <code>recheck</code>.
+                lockfile — npm or PyPI — and re-vet on a schedule with
+                <code>recheck</code>.
               </p>
               <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/integrations/github-actions.md" rel="noopener noreferrer">GitHub Actions guide →</a>
             </article>
             <article class="fits-card">
               <h3>Developers</h3>
               <p>
-                Inspect an npm package before installation — one command, a cited
-                verdict, no account.
+                Inspect an npm or PyPI package before installation — one command,
+                a cited verdict, no account.
               </p>
               <a href="#install">Try it →</a>
             </article>
