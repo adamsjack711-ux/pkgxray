@@ -402,6 +402,21 @@ test("#6 a clipper that floods stdout and forges a stdout marker is still caught
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("#6 a clipper that patches global.fetch in a microtask is still caught (post-import settle)", { skip: process.platform === "win32" }, async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-clipper-defer-"));
+  await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "deferred", version: "1.0.0", main: "index.js" }));
+  // Defer the reassignment to a microtask scheduled AFTER import resolves — a
+  // purely synchronous diff would miss it; the probe's post-import settle catches it.
+  await fsp.writeFile(path.join(dir, "index.js"),
+    "const _f = globalThis.fetch;\n" +
+    "queueMicrotask(() => { globalThis.fetch = async (...a) => _f(...a); });\n" +
+    "module.exports = {};\n");
+  const result = await runCanarySandbox({ stagedPath: dir, allowExecution: true, timeoutMs: 8000, egressGraceMs: 100 });
+  assert.equal(result.verdict, "block");
+  assert.ok(result.findings.some((f) => f.category === "behavioral-runtime-hook"), `findings: ${JSON.stringify(result.findings)}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // --- hardening: encoded-exfil, bounded teardown, resource caps, net confinement ---
 
 const { tokenVariants, buildRlimitPrefix } = require("../src/sandbox");

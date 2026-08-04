@@ -649,7 +649,14 @@ function report(hooked) {
       process.stderr.write('import-phase: ' + (e && e.message || e));
     }
   } finally {
-    try { report(diffHooks(before)); } catch (e) { /* instrumentation must never break the run */ }
+    try {
+      // Let deferred patches land before diffing: a clipper can schedule the
+      // global reassignment in a microtask / setTimeout(...,0) just after import
+      // to dodge a purely synchronous check. A short settle drains the microtask
+      // queue and one 0ms macrotask before we snapshot.
+      await new Promise(function (r) { setTimeout(r, 50); });
+      report(diffHooks(before));
+    } catch (e) { /* instrumentation must never break the run */ }
   }
 })();
 `;

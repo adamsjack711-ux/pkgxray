@@ -1428,7 +1428,13 @@ const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
   "ci-workflow-injection",
   "self-deleting-dropper",
   "registry-self-publish",
-  "persistence"
+  "persistence",
+  // A staged-dropper (decode->write->run) HIGH in a package's OWN test/fixture
+  // file — not on its runtime path — is more likely a loader test than an
+  // install-time threat, so review it rather than auto-blocking (mirrors the
+  // other behavioral categories). Only touches HIGH findings; the medium
+  // remote-code-load from inspectRemoteCodeLoad is unaffected.
+  "remote-code-load"
 ]);
 
 // Behavioral categories downgraded when they originate from compiled BUILD
@@ -1548,7 +1554,7 @@ function auditFiles(files, findings, evidence) {
     inspectHiddenUnicode(file, content, findings);
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
-    inspectStagedDropper(file, content, findings, isInstallTimeReferenced, normalized, normChanged);
+    inspectStagedDropper(file, content, findings, normalized, normChanged);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
     inspectCloudMetadataAccess(
       file, content, lower, findings, isInstallTimeReferenced,
@@ -2272,27 +2278,45 @@ const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([^)]*,\s*['"]base64['"]\s*\)/
 const CHARCODE_DECODE_REGEX =
   /\bfrom(?:CharCode|CodePoint)\s*\(\s*(?:0x[0-9a-f]+|\d{1,7})(?:\s*,\s*(?:0x[0-9a-f]+|\d{1,7})){7,}|\bfrom(?:CharCode|CodePoint)\s*\.\s*apply\s*\(|\bfrom(?:CharCode|CodePoint)\s*\(\s*\.\.\./gi;
 // Aliased / indirect dynamic executor — the forms findDynamicEval MISSES because
-// they never spell `eval(` or `new Function(` literally. Packed malware captures
-// the executor under another name to dodge the literal-name matchers:
+// they never spell `eval(` or `new Function(` literally. Packed malware invokes
+// the executor indirectly to dodge the literal-name matchers:
 //   (0,_g)(code)          indirect call through a BAREWORD ref (classic (0,eval))
-//   const F = Function    / g = globalThis.eval   alias captured, invoked later
 //   ""["constructor"]["constructor"](code)   Function via the .constructor chain
 //   Function(code)        bare Function call (no `new`) on a computed argument
 // The `(0,IDENT)(` arm requires a bareword (no dot), so Babel/bundler interop
-// calls like `(0, _mod.fn)(...)` do NOT match. Consulted ONLY inside
-// inspectObfuscation, gated on a large encoded blob within ~600 chars, so the
-// looser shape cannot fire on ordinary code that carries no packed payload.
+// calls like `(0, _mod.fn)(...)` do NOT match. These are looser than
+// findDynamicEval, so hasDynamicExecutor only trusts them when a DECODE call
+// (DECODE_CALL_RE) also sits in the window — a bare `(0,cb)()` next to an
+// embedded base64 asset carries no decode step and must not fire. (An earlier
+// `= Function`/`= eval` ALIAS-assignment arm was dropped: a bare `const C =
+// Function` reference is not an executor, and the keyv payload is already caught
+// by the `(0,_g)(` CALL arm.)
 const INDIRECT_EVAL_REGEX =
-  /\(\s*0\s*,\s*[A-Za-z_$][\w$]*\s*\)\s*\(|(?:=|:)\s*(?:global(?:This)?\.)?(?:Function|eval)\b(?!\s*\()|\[\s*['"]constructor['"]\s*\]\s*\[\s*['"]constructor['"]\s*\]|\bFunction\s*\(\s*[A-Za-z_$]/;
+  /\(\s*0\s*,\s*[A-Za-z_$][\w$]*\s*\)\s*\(|\[\s*['"]constructor['"]\s*\]\s*\[\s*['"]constructor['"]\s*\]|\bFunction\s*\(\s*[A-Za-z_$]/;
+// A decode call near a blob — the sign the blob is being turned back into
+// code/data (base64/hex Buffer.from, atob, or a fromCharCode/fromCodePoint).
+const DECODE_CALL_RE =
+  /Buffer\.from\s*\([^)]*,\s*['"](?:base64|hex)['"]\s*\)|\batob\s*\(|\bfrom(?:CharCode|CodePoint)\s*\(/i;
+// A large inline numeric array — the ENCODED form of a charcode/byte payload
+// (`[114,101,116,…]`, 24+ elements). Required alongside a fromCharCode decode
+// before the charcode arm counts, so an escaping helper doing
+// fromCharCode.apply(null, someVar) with no inline payload array (a template
+// compiler's escapeHtml, say) is not mistaken for a packed charcode payload.
+const NUMERIC_ARRAY_BLOB_RE =
+  /\[\s*(?:0x[0-9a-f]+|\d{1,7})(?:\s*,\s*(?:0x[0-9a-f]+|\d{1,7})){23,}/i;
 const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
 // Hoisted out of the inner loop — the literal regex was being recompiled on
 // every base64-blob match in every file.
 const DATA_URI_REGEX = /data:[\w/+.-]+;base64,$/;
 
-// A dynamic code executor near a packed blob: literal eval/Function/vm
-// (findDynamicEval) OR an aliased/indirect executor (INDIRECT_EVAL_REGEX).
+// A dynamic code executor near a packed blob: a literal eval/Function/vm on a
+// computed arg (findDynamicEval, specific), OR an aliased/indirect executor
+// (INDIRECT_EVAL_REGEX) — but the looser indirect forms only signal a packed
+// payload when the blob is actually DECODED in the same window, so an embedded
+// base64 asset next to an ordinary `(0,cb)()` call doesn't false-positive.
 function hasDynamicExecutor(window) {
-  return findDynamicEval(window) !== -1 || INDIRECT_EVAL_REGEX.test(window);
+  if (findDynamicEval(window) !== -1) return true;
+  return INDIRECT_EVAL_REGEX.test(window) && DECODE_CALL_RE.test(window);
 }
 
 function inspectObfuscation(file, content, lower, findings) {
@@ -2335,9 +2359,14 @@ function inspectObfuscation(file, content, lower, findings) {
   const globalDecode = new RegExp(NODE_BASE64_DECODE_REGEX.source, "gi");
   let dm;
   while ((dm = globalDecode.exec(content)) !== null) decoderPositions.push(dm.index);
-  CHARCODE_DECODE_REGEX.lastIndex = 0;
-  let cm;
-  while ((cm = CHARCODE_DECODE_REGEX.exec(content)) !== null) decoderPositions.push(cm.index);
+  // Charcode decode only counts as a decoder when a large inline numeric array
+  // (the encoded payload) is also present — otherwise fromCharCode.apply used for
+  // ordinary string-building near a `new Function` compiler would false-positive.
+  if (NUMERIC_ARRAY_BLOB_RE.test(content)) {
+    CHARCODE_DECODE_REGEX.lastIndex = 0;
+    let cm;
+    while ((cm = CHARCODE_DECODE_REGEX.exec(content)) !== null) decoderPositions.push(cm.index);
+  }
   if (decoderPositions.length) {
     const evalIdx = findDynamicEval(content);
     const execIdx = lower.indexOf("execsync");
@@ -3577,7 +3606,7 @@ function matchIndexes(globalRe, text) {
   return out;
 }
 
-function inspectStagedDropper(file, content, findings, isLifecycle, normalized, normChanged) {
+function inspectStagedDropper(file, content, findings, normalized, normChanged) {
   const codeText = stripComments(content, file.path);
   const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
   const scan = (text) => {
@@ -3594,15 +3623,16 @@ function inspectStagedDropper(file, content, findings, isLifecycle, normalized, 
     }
     return -1;
   };
-  let idx = scan(codeText);
-  if (idx === -1 && normChanged) idx = scan(codeNorm);
-  if (idx === -1) return;
+  // stripComments is length-preserving, so a codeText offset maps 1:1 onto
+  // `content`; a codeNorm (de-obfuscated) offset does NOT, so only use idx for the
+  // snippet when the match came from codeText, else fall back to 0.
+  const idx = scan(codeText);
+  if (idx === -1 && !(normChanged && scan(codeNorm) !== -1)) return;
   findings.push({
     severity: "high",
     category: "remote-code-load",
     file: file.path,
-    keepHighInTests: true,
-    snippet: clipAround(content, idx),
+    snippet: clipAround(content, idx === -1 ? 0 : idx),
     rationale:
       "Decodes or unpacks a blob, writes it to a file, then executes that file on a computed path (require(tmpPath) / execFileSync(binPath, …)) within close proximity — the materialize-then-run dropper. The keyv \"Mini Shai-Hulud\" setup.mjs stage-1 works this way; running a freshly-written file sidesteps the in-process eval/Function detectors."
   });

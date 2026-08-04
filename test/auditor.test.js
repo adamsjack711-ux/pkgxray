@@ -603,6 +603,27 @@ test("staged-dropper: a bareword native-addon keyword in a string does not exemp
   );
 });
 
+test("staged-dropper: HIGH in the package's own test file downgrades to review", () => {
+  // A decode->write->require in a test/fixture file (not on the runtime path) is
+  // more likely a loader test than an install threat, so it reviews rather than
+  // auto-blocks the package on its own tests.
+  const report = auditEvidence({
+    packageName: "loadertest",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "loadertest", main: "index.js", repository: "https://github.com/example/x" }),
+      "index.js": "module.exports = {};\n",
+      "test/loader.test.js":
+        'const fs=require("fs"),os=require("os"),path=require("path");\n' +
+        'const f=path.join(os.tmpdir(),".x.js");\n' +
+        'fs.writeFileSync(f,Buffer.from("eA==","base64").toString());\n' +
+        "require(f);\n"
+    }
+  });
+  const rcl = report.findings.find((f) => f.category === "remote-code-load");
+  assert.ok(rcl, "the dropper finding is still surfaced");
+  assert.equal(rcl.severity, "medium", "a dropper in a test/fixture file is downgraded to review, not block");
+});
+
 // ---------------------------------------------------------------------------
 // Evasion-hardening regressions (red-team pass). Each loads a fixture under
 // test/fixtures/evasion/ that defeated a behavioral HIGH before the fix.
@@ -1240,6 +1261,48 @@ test("obfuscation: bulk fromCharCode string-building without an executor stays s
   assert.ok(
     !report.findings.some((f) => f.category === "obfuscation"),
     "fromCharCode string-building with no dynamic executor must not fire"
+  );
+});
+
+test("obfuscation: template compiler (new Function + fromCharCode escaping) stays safe", () => {
+  // new Function(computedBody) is a legit template compiler; String.fromCharCode.apply
+  // over a PARAMETER (no inline charcode-payload array) is ordinary escaping. The
+  // charcode arm now requires an inline numeric-array blob, so this no longer fires.
+  const report = auditEvidence({
+    packageName: "tmpl",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "tmpl", repository: "https://github.com/example/x" }),
+      "compile.js":
+        "function escapeHtml(codes){ return String.fromCharCode.apply(null, codes); }\n" +
+        'function compile(src){ const body = "return `" + src + "`;"; return new Function("data", body); }\n' +
+        "module.exports = { compile, escapeHtml };\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "fromCharCode escaping near new Function must not fire without an inline charcode payload array"
+  );
+});
+
+test("obfuscation: embedded base64 asset near an indirect call / Function ref stays safe", () => {
+  // An inlined base64 asset with NO decode step: a bare `Function` reference and a
+  // bareword `(0, cb)()` are not executors of the blob. hasDynamicExecutor now
+  // requires a decode call in the window for the loose indirect arms, so this
+  // asset-plus-callback shape no longer false-positives.
+  const blob = "QUJDRUZH".repeat(40); // 320-char base64-shaped run
+  const report = auditEvidence({
+    packageName: "asset",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "asset", repository: "https://github.com/example/x" }),
+      "asset.js":
+        'const ICON = "' + blob + '";\n' +
+        "const Ctor = Function;\n" +
+        "exports.run = function (cb) { return (0, cb)(ICON); };\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "an embedded base64 asset with no decode step must not fire on a bare Function ref / (0,cb)()"
   );
 });
 
