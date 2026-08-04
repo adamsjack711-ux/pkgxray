@@ -582,6 +582,27 @@ test("staged-dropper: native-addon loader (node-gyp-build) stays safe", () => {
   );
 });
 
+test("staged-dropper: a bareword native-addon keyword in a string does not exempt a dropper", () => {
+  // The native-addon exemption must be anchored to a STRUCTURAL signal (a .node
+  // path literal or a known-loader import), not any occurrence of the words
+  // napi/prebuilds/node-gyp — otherwise a dropper opts out by planting the word
+  // in an unrelated string.
+  const report = auditEvidence({
+    sourceFiles: {
+      "index.js":
+        'const fs=require("fs"),os=require("os"),path=require("path");\n' +
+        'const junk="napi prebuilds node-gyp";\n' +
+        'const f=path.join(os.tmpdir(),".x.js");\n' +
+        'fs.writeFileSync(f,Buffer.from(process.env.P||"eA==","base64").toString());\n' +
+        "require(f);\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "high"),
+    "a bareword native-addon keyword in a string must not exempt a decode->write->require dropper"
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Evasion-hardening regressions (red-team pass). Each loads a fixture under
 // test/fixtures/evasion/ that defeated a behavioral HIGH before the fix.

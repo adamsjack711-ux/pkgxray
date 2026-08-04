@@ -363,18 +363,43 @@ test("#6 runtime-hook tripwire fires HIGH from observed global reassignment", as
 });
 
 test("#6 no runtime-hook finding when the import probe observed no tampering", async () => {
-  assert.deepEqual(extractRuntimeHooks({ importPhase: { output: "import-phase: cannot resolve entry" } }), []);
-  assert.deepEqual(extractRuntimeHooks({ importPhase: { output: "" } }), []);
+  assert.deepEqual(extractRuntimeHooks({ importPhase: { runtimeHooks: [] } }), []);
+  assert.deepEqual(extractRuntimeHooks({ importPhase: {} }), []);
   const findings = await evaluateTripwires({ tokens: new Map(), files: [] }, [], []);
   assert.ok(!findings.some((f) => f.category === "behavioral-runtime-hook"));
 });
 
-test("#6 extractRuntimeHooks parses the probe marker out of noisy output", () => {
-  const out = "some log line\n__PKGXRAY_HOOK__[\"globalThis.fetch\",\"XMLHttpRequest.prototype.open\"]__END__trailing";
-  assert.deepEqual(extractRuntimeHooks({ importPhase: { output: out } }), [
-    "globalThis.fetch",
-    "XMLHttpRequest.prototype.open"
-  ]);
+test("#6 extractRuntimeHooks reads the verified runtimeHooks field, not stdout", () => {
+  // The signal now comes from the nonce-verified result file (surfaced by
+  // runImportPhase as importPhase.runtimeHooks), not from parsing stdout — so a
+  // forged marker on the output stream can no longer inject or suppress it.
+  assert.deepEqual(
+    extractRuntimeHooks({ importPhase: { runtimeHooks: ["globalThis.fetch", "XMLHttpRequest.prototype.open"] } }),
+    ["globalThis.fetch", "XMLHttpRequest.prototype.open"]
+  );
+  // a stray stdout marker is ignored; a wrong-typed field yields nothing
+  assert.deepEqual(extractRuntimeHooks({ importPhase: { output: "__PKGXRAY_HOOK__[\"x\"]__END__" } }), []);
+  assert.deepEqual(extractRuntimeHooks({ importPhase: { runtimeHooks: "nope" } }), []);
+  assert.deepEqual(extractRuntimeHooks({}), []);
+});
+
+test("#6 a clipper that floods stdout and forges a stdout marker is still caught (file+nonce channel)", { skip: process.platform === "win32" }, async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-clipper-evade-"));
+  await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "evader", version: "1.0.0", main: "index.js" }));
+  // Print a fake empty marker AND flood stdout past execWithTimeout's 2KB cap to
+  // defeat the old stdout-based detector, THEN reassign global.fetch. The result
+  // file (unguessable path, nonce-stamped, written via a captured writeFileSync)
+  // still carries the real observation.
+  await fsp.writeFile(path.join(dir, "index.js"),
+    "process.stdout.write('__PKGXRAY_HOOK__[]__END__');\n" +
+    "process.stdout.write('x'.repeat(5000));\n" +
+    "const _f = globalThis.fetch;\n" +
+    "globalThis.fetch = async (...a) => _f(...a);\n" +
+    "module.exports = {};\n");
+  const result = await runCanarySandbox({ stagedPath: dir, allowExecution: true, timeoutMs: 8000, egressGraceMs: 100 });
+  assert.equal(result.verdict, "block");
+  assert.ok(result.findings.some((f) => f.category === "behavioral-runtime-hook"), `findings: ${JSON.stringify(result.findings)}`);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // --- hardening: encoded-exfil, bounded teardown, resource caps, net confinement ---

@@ -3553,9 +3553,18 @@ const STAGED_DROPPER_PROXIMITY = 1000;
 // JS-execution path a dropper can hide in — `require("x.node")` dlopens a
 // compiled addon, so JS text written to it just fails to load; a genuinely
 // malicious compiled addon is a separate threat class static JS analysis can't
-// read anyway. Presence of any native-addon signal exempts the file.
+// read anyway.
+//
+// Only a STRUCTURAL signal exempts the file, NOT a bareword: a string-literal
+// path to the compiled binary (`"…/addon.node"`, `".node.gz"`) or an import of a
+// known native-addon loader package. This closes the trivial bypass where a
+// dropper drops the word `napi`/`prebuilds` into an unrelated string literal to
+// opt itself out (comments are already stripped; a bare keyword in a string is
+// not). Residual: a crafted `"x.node"` literal still exempts — accepted, because
+// a real dropper's JS runs via a `.js`/computed path and `require("x.node")`
+// dlopens a binary rather than executing JS.
 const NATIVE_ADDON_LOAD_REGEX =
-  /\.node['"`)\]\s]|\.node\.gz\b|\bprebuilds?\b|\bprebuild-install\b|\bnode-gyp(?:-build)?\b|\bnode-pre-gyp\b|\bnapi\b|\brequire\s*\(\s*['"]bindings['"]\s*\)|\bbindings\s*\(/i;
+  /['"`][^'"`\n]*\.node(?:\.gz)?['"`]|\b(?:require\s*\(\s*|from\s+)['"](?:node-gyp-build|prebuild-install|node-pre-gyp|@mapbox\/node-pre-gyp|bindings|node-addon-api|@napi-rs\/[^'"]+|@node-rs\/[^'"]+)['"]/i;
 
 function matchIndexes(globalRe, text) {
   globalRe.lastIndex = 0;
