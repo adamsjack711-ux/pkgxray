@@ -1078,6 +1078,47 @@ test("obfuscation: Buffer.from with a non-base64 encoding does not fire", () => 
   );
 });
 
+test("obfuscation: hex blob decoded and run via an aliased Function blocks (keyv Shai-Hulud shape)", () => {
+  // The 2026-08 keyv "Mini Shai-Hulud" Math_Symbol.js payload: a large HEX
+  // string literal, decoded with Buffer.from(_,'hex'), executed through an
+  // ALIASED Function (`_g = Function; (0,_g)(code)()`) — no literal `eval(` or
+  // `new Function(`. The blob is matched by the base64-run rule (hex ⊂ its
+  // charset) and the aliased executor by INDIRECT_EVAL_REGEX.
+  const hex = "61".repeat(200); // 400-char run, over the 240 blob threshold
+  const report = auditEvidence({
+    sourceFiles: {
+      "Math_Symbol.js":
+        "var _g = Function;\n" +
+        'var _c = "' + hex + '";\n' +
+        'var _d = Buffer.from(_c, "hex").toString("utf8");\n' +
+        "try { (0, _g)(_d)(); } catch (e) {}\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "obfuscation" && f.severity === "high"),
+    "expected HIGH obfuscation for a hex blob decoded and eval'd via an aliased Function"
+  );
+});
+
+test("obfuscation: bundler interop call (0, mod.fn)() near a blob does not fire", () => {
+  // The aliased-executor rule must not read Babel/rollup ESM-interop calls as an
+  // executor: `(0, _lib.parse)(x)` has a DOTTED callee, so the bareword-only
+  // `(0,IDENT)(` arm rejects it. A long blob is present to prove the guard, not
+  // the blob-proximity gate, is what keeps this from firing.
+  const blob = "QUJD".repeat(80); // 320-char base64-shaped run
+  const report = auditEvidence({
+    sourceFiles: {
+      "bundle.js":
+        'var TABLE = "' + blob + '";\n' +
+        "exports.run = function (_lib) { return (0, _lib.parse)(TABLE); };\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "dotted interop (0, mod.fn)() must not count as a dynamic executor"
+  );
+});
+
 test("credential-access: hex-escaped .ssh/id_rsa path is decoded and blocks", () => {
   // "\x2e\x73\x73\x68" is ".ssh" and "\x69\x64\x5f\x72\x73\x61" is "id_rsa".
   // The literal-substring regexes can't see through the escapes; the

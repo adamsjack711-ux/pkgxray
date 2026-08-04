@@ -2261,10 +2261,29 @@ const OBFUSCATION_CHILD_PROC_REGEX = /\b(?:child_process|spawn\s*\(|execSync\b)/
 // Buffer.from. Anchoring on a Buffer.from arg (no `)` before the "base64")
 // excludes the `.toString("base64")` encode.
 const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([^)]*,\s*['"]base64['"]\s*\)/i;
+// Aliased / indirect dynamic executor — the forms findDynamicEval MISSES because
+// they never spell `eval(` or `new Function(` literally. Packed malware captures
+// the executor under another name to dodge the literal-name matchers:
+//   (0,_g)(code)          indirect call through a BAREWORD ref (classic (0,eval))
+//   const F = Function    / g = globalThis.eval   alias captured, invoked later
+//   ""["constructor"]["constructor"](code)   Function via the .constructor chain
+//   Function(code)        bare Function call (no `new`) on a computed argument
+// The `(0,IDENT)(` arm requires a bareword (no dot), so Babel/bundler interop
+// calls like `(0, _mod.fn)(...)` do NOT match. Consulted ONLY inside
+// inspectObfuscation, gated on a large encoded blob within ~600 chars, so the
+// looser shape cannot fire on ordinary code that carries no packed payload.
+const INDIRECT_EVAL_REGEX =
+  /\(\s*0\s*,\s*[A-Za-z_$][\w$]*\s*\)\s*\(|(?:=|:)\s*(?:global(?:This)?\.)?(?:Function|eval)\b(?!\s*\()|\[\s*['"]constructor['"]\s*\]\s*\[\s*['"]constructor['"]\s*\]|\bFunction\s*\(\s*[A-Za-z_$]/;
 const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
 // Hoisted out of the inner loop — the literal regex was being recompiled on
 // every base64-blob match in every file.
 const DATA_URI_REGEX = /data:[\w/+.-]+;base64,$/;
+
+// A dynamic code executor near a packed blob: literal eval/Function/vm
+// (findDynamicEval) OR an aliased/indirect executor (INDIRECT_EVAL_REGEX).
+function hasDynamicExecutor(window) {
+  return findDynamicEval(window) !== -1 || INDIRECT_EVAL_REGEX.test(window);
+}
 
 function inspectObfuscation(file, content, lower, findings) {
   // Require base64 + execution primitive in close proximity (within ~600
@@ -2279,14 +2298,14 @@ function inspectObfuscation(file, content, lower, findings) {
     const windowStart = Math.max(0, blobIndex - 600);
     const windowEnd = Math.min(content.length, blobIndex + blob.length + 600);
     const window = content.slice(windowStart, windowEnd);
-    if (findDynamicEval(window) !== -1 || OBFUSCATION_CHILD_PROC_REGEX.test(window)) {
+    if (hasDynamicExecutor(window) || OBFUSCATION_CHILD_PROC_REGEX.test(window)) {
       findings.push({
         severity: "high",
         category: "obfuscation",
         file: file.path,
         snippet: clip(blob),
         rationale:
-          "Large encoded-looking blob within ~600 chars of a code executor (dynamic eval / new Function / child_process) — common packed-payload shape."
+          "Large encoded-looking blob within ~600 chars of a code executor (dynamic/aliased eval, new Function, or child_process) — common packed-payload shape."
       });
       return;
     }
@@ -2309,7 +2328,8 @@ function inspectObfuscation(file, content, lower, findings) {
   if (decoderPositions.length) {
     const evalIdx = findDynamicEval(content);
     const execIdx = lower.indexOf("execsync");
-    const execPositions = [evalIdx, execIdx].filter((i) => i !== -1);
+    const indirectIdx = content.search(INDIRECT_EVAL_REGEX);
+    const execPositions = [evalIdx, execIdx, indirectIdx].filter((i) => i !== -1);
     const OBF_PROXIMITY = 600;
     const near = decoderPositions.some((d) =>
       execPositions.some((e) => Math.abs(e - d) <= OBF_PROXIMITY)
