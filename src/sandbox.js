@@ -586,7 +586,35 @@ async function runLifecycleScripts({ pkgDir, env, timeoutMs, wrapper, rlimits })
 const IMPORT_PROBE_SOURCE = `'use strict';
 const { pathToFileURL } = require('node:url');
 const dir = process.argv[2];
+// Snapshot references to global network primitives BEFORE the package loads.
+// A response-rewriting clipper (the chalk/qix class) exfiltrates nothing for the
+// capture proxy to see — its entire behavior is REASSIGNING global fetch /
+// XMLHttpRequest / Response at import so it can tamper with requests/responses in
+// place. Comparing identity after import surfaces exactly that mutation. We only
+// flag a primitive that EXISTED before and had its identity replaced; a fresh
+// polyfill of a missing global (old-Node node-fetch) is not tampering.
+function snapshotHooks() {
+  const g = globalThis;
+  const R = typeof g.Response === 'function' ? g.Response.prototype : null;
+  const X = typeof g.XMLHttpRequest === 'function' ? g.XMLHttpRequest.prototype : null;
+  return {
+    'globalThis.fetch': g.fetch,
+    'Response.prototype.text': R ? R.text : undefined,
+    'Response.prototype.json': R ? R.json : undefined,
+    'XMLHttpRequest.prototype.open': X ? X.open : undefined,
+    'XMLHttpRequest.prototype.send': X ? X.send : undefined
+  };
+}
+function diffHooks(before) {
+  const after = snapshotHooks();
+  const hooked = [];
+  for (const k of Object.keys(before)) {
+    if (before[k] !== undefined && after[k] !== before[k]) hooked.push(k);
+  }
+  return hooked;
+}
 (async () => {
+  const before = snapshotHooks();
   let entry;
   try {
     entry = require.resolve(dir);
@@ -603,9 +631,32 @@ const dir = process.argv[2];
     } else {
       process.stderr.write('import-phase: ' + (e && e.message || e));
     }
+  } finally {
+    try {
+      const hooked = diffHooks(before);
+      if (hooked.length) process.stdout.write('__PKGXRAY_HOOK__' + JSON.stringify(hooked) + '__END__');
+    } catch (e) { /* probe instrumentation must never break the run */ }
   }
 })();
 `;
+
+// Parse the import probe's runtime-hook marker out of the captured import-phase
+// output. Emitted only when importing the package reassigned a global network
+// primitive in place — the clipper/response-rewriter tell the capture proxy
+// cannot see (nothing is exfiltrated).
+const HOOK_MARKER_RE = /__PKGXRAY_HOOK__(\[[^\]]*\])__END__/;
+function extractRuntimeHooks(execResult) {
+  const out = execResult && execResult.importPhase && execResult.importPhase.output;
+  if (typeof out !== "string") return [];
+  const m = out.match(HOOK_MARKER_RE);
+  if (!m) return [];
+  try {
+    const arr = JSON.parse(m[1]);
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 // The import-phase runner: load the package's entry point inside the SAME
 // sandbox (decoy HOME, capture proxy, OS wrapper, rlimits, process-group kill)
@@ -765,8 +816,27 @@ function execWithTimeout(command, { cwd, env, timeoutMs, wrapper, rlimits }) {
 }
 
 // Turn captured proxy hits + decoy atimes into behavioral findings.
-async function evaluateTripwires(canary, hits) {
+async function evaluateTripwires(canary, hits, runtimeHooks = []) {
   const findings = [];
+
+  // 0) Import-phase tampering of a global network primitive — the response-
+  // rewriting clipper shape (chalk/qix). Nothing leaves the box, so the egress
+  // tripwires below stay silent; the observed tell is that IMPORTING the package
+  // reassigned global.fetch / XMLHttpRequest / Response in place, so it can
+  // rewrite request or response bodies (swap a wallet address, inject a payload)
+  // on every call the host later makes. Static analysis can't distinguish this
+  // from legitimate middleware; behavioral execution can — it watched it happen.
+  if (Array.isArray(runtimeHooks) && runtimeHooks.length > 0) {
+    findings.push({
+      severity: "high",
+      category: "behavioral-runtime-hook",
+      file: "CANARY_SANDBOX",
+      snippet: runtimeHooks.join(", "),
+      rationale:
+        `Importing the package reassigned global network primitive(s) in place: ${runtimeHooks.join(", ")}. ` +
+        "Monkeypatching fetch / XMLHttpRequest / Response at import is the runtime-tampering (crypto-clipper / response-rewriter) shape — it alters requests or responses without exfiltrating a token, so it leaves no egress for the capture proxy to catch. Observed during sandboxed import, not statically inferred."
+    });
+  }
 
   // 1) DEFINITIVE: a canary token appeared in captured egress → the install
   // read that specific decoy AND tried to transmit it. Proof, not inference.
@@ -953,7 +1023,7 @@ async function runCanarySandbox(options = {}) {
     await proxy.close();
   }
 
-  const findings = await evaluateTripwires(canary, proxy.hits);
+  const findings = await evaluateTripwires(canary, proxy.hits, extractRuntimeHooks(execResult));
 
   if (!options.keepSandbox) {
     await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
@@ -1017,6 +1087,7 @@ module.exports = {
   startCaptureProxy,
   createCaptureServer,
   evaluateTripwires,
+  extractRuntimeHooks,
   matchTokens,
   tokenVariants,
   detectSandboxWrapper,

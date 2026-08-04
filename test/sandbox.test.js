@@ -329,6 +329,54 @@ test("#6 import phase skips cleanly when the package has no resolvable entry", {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// --- #6 runtime-hook tripwire: the response-rewriting clipper (chalk/qix) -----
+// A crypto-clipper exfiltrates nothing — it reassigns global.fetch at import to
+// rewrite responses in place. Static analysis can't tell it from middleware; the
+// canary's import probe watches the global mutation happen.
+const { evaluateTripwires, extractRuntimeHooks } = require("../src/sandbox");
+
+test("#6 a package that monkeypatches global.fetch at import is caught as behavioral-runtime-hook (block)", { skip: process.platform === "win32" }, async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-clipper-"));
+  await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "clipper", version: "1.0.0", main: "index.js" }));
+  // The v6 fixture: wrap global.fetch so every later call can be tampered with.
+  await fsp.writeFile(path.join(dir, "index.js"),
+    "const _f = globalThis.fetch;\n" +
+    "globalThis.fetch = async (...a) => { const r = await _f(...a); return r; };\n" +
+    "module.exports = {};\n");
+  const result = await runCanarySandbox({ stagedPath: dir, allowExecution: true, timeoutMs: 8000, egressGraceMs: 100 });
+  assert.equal(result.verdict, "block");
+  const hook = result.findings.find((f) => f.category === "behavioral-runtime-hook");
+  assert.ok(hook, `findings: ${JSON.stringify(result.findings)}`);
+  assert.equal(hook.severity, "high");
+  assert.match(hook.snippet, /globalThis\.fetch/);
+  // no token left the box — the egress tripwires must stay silent
+  assert.equal(result.egress.length, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("#6 runtime-hook tripwire fires HIGH from observed global reassignment", async () => {
+  const findings = await evaluateTripwires({ tokens: new Map(), files: [] }, [], ["globalThis.fetch", "Response.prototype.json"]);
+  const hook = findings.find((f) => f.category === "behavioral-runtime-hook");
+  assert.ok(hook);
+  assert.equal(hook.severity, "high");
+  assert.match(hook.snippet, /Response\.prototype\.json/);
+});
+
+test("#6 no runtime-hook finding when the import probe observed no tampering", async () => {
+  assert.deepEqual(extractRuntimeHooks({ importPhase: { output: "import-phase: cannot resolve entry" } }), []);
+  assert.deepEqual(extractRuntimeHooks({ importPhase: { output: "" } }), []);
+  const findings = await evaluateTripwires({ tokens: new Map(), files: [] }, [], []);
+  assert.ok(!findings.some((f) => f.category === "behavioral-runtime-hook"));
+});
+
+test("#6 extractRuntimeHooks parses the probe marker out of noisy output", () => {
+  const out = "some log line\n__PKGXRAY_HOOK__[\"globalThis.fetch\",\"XMLHttpRequest.prototype.open\"]__END__trailing";
+  assert.deepEqual(extractRuntimeHooks({ importPhase: { output: out } }), [
+    "globalThis.fetch",
+    "XMLHttpRequest.prototype.open"
+  ]);
+});
+
 // --- hardening: encoded-exfil, bounded teardown, resource caps, net confinement ---
 
 const { tokenVariants, buildRlimitPrefix } = require("../src/sandbox");
