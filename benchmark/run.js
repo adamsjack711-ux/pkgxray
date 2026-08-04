@@ -266,7 +266,7 @@ function glyph(outcome) {
 // `block`. Committed so a change that lowers it fails CI even if it stays above
 // any percentage threshold. Update deliberately (upward) when adding malicious
 // fixtures; never lower it to make a regression pass.
-const BLOCK_RECALL_FLOOR = 18;
+const BLOCK_RECALL_FLOOR = 23;
 
 function pick(r) {
   return { fixture: r.fixture, expect: r.expect, actual: r.actual, outcome: r.outcome, note: r.note };

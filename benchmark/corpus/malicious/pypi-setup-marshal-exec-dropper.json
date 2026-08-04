@@ -1,0 +1,21 @@
+{
+  "name": "pypi-setup-marshal-exec-dropper",
+  "expect": "block",
+  "expectFinding": "code-execution",
+  "cohort": "pypi",
+  "note": "setup.py exec()s a marshalled (compiled-bytecode) payload decoded from base64 at install time — a marshal.loads variant of the sdist dropper that hides the code even from a casual source read.",
+  "evidence": {
+    "packageName": "colorsafe",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup\nimport marshal, base64\n\n_code = marshal.loads(base64.b64decode(\"YwAAAAAAAAAAAAAAAAEAAABzBAAAAGQAUwApAU4pACkAKQByAQAAAPoAcgIAAAA=\"))\nexec(_code)\n\nsetup(name=\"colorsafe\", version=\"1.0.0\", py_modules=[\"colorsafe\"])\n"
+    },
+    "npmMetadata": {
+      "name": "colorsafe",
+      "version": "1.0.0",
+      "repository": null,
+      "maintainers": [{ "name": "cs-maint", "role": "Owner" }],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

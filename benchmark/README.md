@@ -65,6 +65,7 @@ Each file is one case:
   "expect": "block",                       // security-correct verdict for this input
   "expectFinding": "network-exfil-or-loader", // optional: a finding category that must be present
   "knownFalsePositive": true,                 // optional: documented misfire → XFAIL, non-gating (benign only)
+  "cohort": "pypi",                           // optional: ecosystem tag (default "npm"); enables --cohort pypi
   "note": "process.env POSTed to a hardcoded webhook",
   "evidence": {                            // passed verbatim to auditEvidence()
     "packageName": "helper-utils",
@@ -99,6 +100,34 @@ hides: a bare `curl | sh` to an unknown host and the `node-ipc` geo-bomb both
 reach `review`, not `block`, because pkgxray routes download-then-execute and
 geo/locale-gated destructive ops to a human by policy (see the
 [severity policy](../docs/reference.md#severity-policy-what-lands-in-block--review--info)).
+
+### Cohorts (npm vs PyPI)
+
+Every fixture belongs to a **cohort** — its ecosystem — via an optional
+`"cohort"` field that defaults to `"npm"`. The no-flag `npm run benchmark` run
+(what CI gates on) includes **all** cohorts, so the floor and false-block gates
+cover npm and PyPI together. `--cohort pypi` runs only the PyPI fixtures for a
+focused read; the recall floor is skipped under a cohort filter because the
+committed floor is defined over the full corpus.
+
+PyPI fixtures author the `evidence` bundle the same way, with two differences:
+
+- **The manifest is `setup.py` / `pyproject.toml`, not `package.json`.** A
+  malicious PyPI fixture is a `setup.py` that does more than declare metadata —
+  the sdist-dropper shape (`exec`/`eval`/`compile`/`__import__` over a
+  base64/marshal/zlib-decoded or network-fetched payload) blocks with a
+  `code-execution` finding; a generic install hook (subprocess / custom
+  `cmdclass` / in-tree `backend-path`) reviews.
+- **`npmMetadata` uses the PyPI-mapped shape** (`pypiMetadataForEvidence`):
+  `repository` from `project_urls`, `maintainers` from `ownership.roles`,
+  `deprecated` from `yanked`. Give a benign fixture a repository + ≥2
+  maintainers so no governance signal fires.
+
+Do **not** add a payload-in-a-plain-`.py`-module malicious PyPI fixture: the
+shared behavioral engine's obfuscation/exec-network detectors are still
+JS-primitive-shaped, so `exec(marshal.loads(...))` outside `setup.py` is a
+documented v1 blind spot — such a fixture would be a MISS hard-fail. That parity
+work is tracked for a later release.
 
 ## Adding a case
 

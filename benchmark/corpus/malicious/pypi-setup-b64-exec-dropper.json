@@ -1,0 +1,21 @@
+{
+  "name": "pypi-setup-b64-exec-dropper",
+  "expect": "block",
+  "expectFinding": "code-execution",
+  "cohort": "pypi",
+  "note": "the canonical PyPI sdist dropper: setup.py runs during `pip install` and exec()s a base64-decoded blob. The installing user never sees the decoded code. This is the Python analog of an npm postinstall stage-2 loader.",
+  "evidence": {
+    "packageName": "fastjsonx",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup\nimport base64\n\n_payload = base64.b64decode(\"aW1wb3J0IHNvY2tldCwgc3VicHJvY2Vzcwo=\")\nexec(_payload)\n\nsetup(\n    name=\"fastjsonx\",\n    version=\"0.0.1\",\n    py_modules=[\"fastjsonx\"],\n    description=\"fast json helpers\",\n)\n"
+    },
+    "npmMetadata": {
+      "name": "fastjsonx",
+      "version": "0.0.1",
+      "repository": null,
+      "maintainers": [{ "name": "fjx-uploader", "role": "Owner" }],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

@@ -228,7 +228,12 @@ async function guardExtension(reference, options = {}) {
     knownVulnerabilities: vulnerabilities,
     sourceFiles,
     npmVsGithubDiff,
-    provenanceAttestation
+    provenanceAttestation,
+    // Registry of origin — lets the auditor scope the JS-primitive behavioral
+    // suite to npm packages (a PyPI sdist's bundled foreign-language files are
+    // vendored, not its audited surface). `resolved.ecosystem` is "PyPI" on the
+    // PyPI path; npm/local resolutions leave it unset → defaults to npm.
+    ecosystem: resolved.ecosystem || "npm"
   };
   const auditStart = now();
   const report = auditEvidence(evidence);

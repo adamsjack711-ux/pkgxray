@@ -25,3 +25,6 @@ docs/demo/still-scratch.txt
 .claude/scheduled_tasks.lock
 .claude/scheduled_tasks.json
 # END swamp managed section
+
+# transient PyPI cohort at-scale run artifacts (reproduce via scripts/validate-at-scale.js --ecosystem pypi)
+validation/results/pypi/

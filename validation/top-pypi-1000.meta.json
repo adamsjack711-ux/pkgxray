@@ -1,0 +1,10 @@
+{
+  "source": "https://hugovk.github.io/top-pypi-packages/top-pypi-packages.min.json",
+  "dataset_last_update": "2026-08-01 06:34:08",
+  "fetched_date": "2026-08-04",
+  "rows_in_source": 15000,
+  "listed": 1000,
+  "order": "ranked by public download count (descending), PEP 503-normalized, deduped",
+  "list": "top-pypi",
+  "command": "node scripts/build-pypi-list.js"
+}

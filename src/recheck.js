@@ -1,6 +1,6 @@
 "use strict";
 
-const { parseLockfile, sanitizeForTerminal } = require("./lockfile");
+const { parseLockfile, sanitizeForTerminal, formatEcosystem } = require("./lockfile");
 const {
   loadDecisions,
   saveDecisions,
@@ -9,6 +9,7 @@ const {
 } = require("./triage");
 const { mapPool, defaultConcurrency } = require("./pool");
 const { newerCandidates } = require("./semver");
+const { newerPypiCandidates } = require("./pep440");
 
 // ---------------------------------------------------------------------------
 // recheck — the monitoring tier.
@@ -66,10 +67,10 @@ function classifyDrift(baseline, fresh) {
 // PKGXRAY_CACHE_URL is honoured automatically: guardExtension → github.js →
 // cache-client reads the env var, so a warm cache is shared with `guard`. We do
 // NOT pass anything that would disable it.
-function makeDefaultEvaluator(options) {
+function makeDefaultEvaluator(options, scheme = "npm") {
   const { guardExtension } = require("./quarantine");
   return async (dep) => {
-    const result = await guardExtension(`npm:${dep.name}@${dep.version}`, {
+    const result = await guardExtension(`${scheme}:${dep.name}@${dep.version}`, {
       vulnerabilityCheck: true, // OSV is the primary drift signal
       githubMetadata: options.githubMetadata !== false,
       // divergence (npm-vs-GitHub) is part of the intelligence recheck compares;
@@ -92,15 +93,18 @@ function makeDefaultEvaluator(options) {
 // passes failOnAvailableUpdates. Candidates are bounded (latest + latest-in-
 // major, ≤2 per dep) to keep registry/OSV cost sane.
 // ---------------------------------------------------------------------------
-async function versionDriftPass(depList, evaluate, options) {
-  const listVersions = options.listVersions || defaultListVersions(options);
+async function versionDriftPass(depList, evaluate, options, eco = { scheme: "npm" }) {
+  const listVersions = options.listVersions || defaultListVersions(options, eco);
+  // PyPI versions are PEP 440, not semver — pick the matching newer-candidate
+  // comparator so a `1!2.0.post1`-style version isn't mis-ordered as garbage.
+  const pickNewer = eco.scheme === "pypi" ? newerPypiCandidates : newerCandidates;
   const concurrency = options.concurrency || defaultConcurrency(depList.length);
 
   const results = await mapPool(depList, concurrency, async (dep) => {
     let candidates;
     try {
       const { versions } = await listVersions(dep.name);
-      const picked = newerCandidates(dep.version, versions || []);
+      const picked = pickNewer(dep.version, versions || []);
       candidates = [picked.latest, picked.latestInMajor].filter(Boolean);
     } catch (err) {
       // Registry unreachable — report as unknown, not "no update available".
@@ -154,17 +158,25 @@ async function versionDriftPass(depList, evaluate, options) {
   return { available, flagged, unknown };
 }
 
-function defaultListVersions(options) {
+function defaultListVersions(options, eco = { scheme: "npm" }) {
+  if (eco.scheme === "pypi") {
+    const { listPypiVersions } = require("./pypi");
+    return (name) => listPypiVersions(name);
+  }
   const { listNpmVersions } = require("./registry");
   return (name) => listNpmVersions(name, { registry: options.registry });
 }
 
 async function recheckLockfile(lockfilePath, options = {}) {
   const { format, deps } = await parseLockfile(lockfilePath);
+  // One lockfile = one ecosystem. This decides the guard scheme (npm:/pypi:),
+  // the registry version-lister, and the version-drift comparator (semver vs
+  // PEP 440), so a Python lockfile is never mis-scanned as npm.
+  const eco = formatEcosystem(format);
   const lockPath = options.lockPath || lockPathForLockfile(lockfilePath);
   const decisions = options.decisions || (await loadDecisions(lockPath));
 
-  const evaluate = options.evaluate || makeDefaultEvaluator(options);
+  const evaluate = options.evaluate || makeDefaultEvaluator(options, eco.scheme);
   const depList = Array.from(deps.values());
   const concurrency = options.concurrency || defaultConcurrency(depList.length);
   const nowIso = () => new Date().toISOString();
@@ -247,7 +259,7 @@ async function recheckLockfile(lockfilePath, options = {}) {
   // skip with { versionDrift: false }.
   let versionDrift = { available: [], flagged: [], unknown: [] };
   if (options.versionDrift !== false) {
-    versionDrift = await versionDriftPass(depList, evaluate, options);
+    versionDrift = await versionDriftPass(depList, evaluate, options, eco);
   }
 
   // Exit code keys off the worst *regression* target — not the worst absolute
