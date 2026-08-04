@@ -519,6 +519,69 @@ test("remote-code-load: normal fetch + JSON parse stays safe", () => {
   assert.ok(!report.findings.some((f) => f.category === "remote-code-load"));
 });
 
+test("staged-dropper: decode -> writeFile -> require(computed) blocks", () => {
+  // The v5 "drop-then-require" shape and the keyv setup.mjs stage-1: decode a
+  // blob, write it to a temp .js, then require() that path. No eval/Function/vm,
+  // so only the materialize-then-run detector catches it.
+  const report = auditEvidence({
+    sourceFiles: {
+      "index.js":
+        'const fs=require("fs"),os=require("os"),path=require("path");\n' +
+        'const blob=process.env.P||"eA==";\n' +
+        'const f=path.join(os.tmpdir(),".cache.js");\n' +
+        'fs.writeFileSync(f,Buffer.from(blob,"base64").toString("utf8"));\n' +
+        "require(f);\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "high"),
+    "decode -> writeFile -> require(computed) must raise a HIGH remote-code-load finding"
+  );
+});
+
+test("staged-dropper: writeFile then execSync on a LITERAL command stays safe", () => {
+  // Ordinary codegen — write a generated file, then run a fixed build command.
+  // The exec target is a STRING LITERAL ("tsc"), not the written path, so the
+  // computed-executor requirement must keep this from firing.
+  const report = auditEvidence({
+    packageName: "codegen",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "codegen", repository: "https://github.com/example/x" }),
+      "build.js":
+        'const fs=require("fs");\n' +
+        'const banner=Buffer.from("Ly8gZ2VuZXJhdGVk","base64").toString("utf8");\n' +
+        'fs.writeFileSync("out/generated.ts", banner + "\\nexport const x = 1;\\n");\n' +
+        'require("child_process").execSync("tsc -p tsconfig.json");\n'
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "remote-code-load"),
+    "writeFile + execSync on a literal command must not read as a dropper"
+  );
+});
+
+test("staged-dropper: native-addon loader (node-gyp-build) stays safe", () => {
+  // node-gyp-build / prebuild-install: gunzip a prebuilt .node binary, write it,
+  // then require() it. Same decode->write->require triad, but legitimate — you
+  // cannot hide JS execution behind require("x.node"). Must be exempt.
+  const report = auditEvidence({
+    packageName: "native-mod",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "native-mod", repository: "https://github.com/example/x" }),
+      "index.js":
+        'const fs=require("fs"),zlib=require("zlib"),path=require("path");\n' +
+        'const target=process.platform+"-"+process.arch;\n' +
+        'const out=path.join(__dirname,"prebuilds",target,"addon.node");\n' +
+        'fs.writeFileSync(out, zlib.gunzipSync(fs.readFileSync(out+".gz")));\n' +
+        "module.exports=require(out);\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "remote-code-load"),
+    "prebuilt .node addon loader must not read as a dropper"
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Evasion-hardening regressions (red-team pass). Each loads a fixture under
 // test/fixtures/evasion/ that defeated a behavioral HIGH before the fix.

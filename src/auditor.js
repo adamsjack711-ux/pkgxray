@@ -1548,6 +1548,7 @@ function auditFiles(files, findings, evidence) {
     inspectHiddenUnicode(file, content, findings);
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
+    inspectStagedDropper(file, content, findings, isInstallTimeReferenced, normalized, normChanged);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
     inspectCloudMetadataAccess(
       file, content, lower, findings, isInstallTimeReferenced,
@@ -3512,6 +3513,78 @@ function inspectRemoteCodeLoad(file, content, findings) {
       return;
     }
   }
+}
+
+// --- Staged-payload dropper: decode/unpack -> write to disk -> run the file --
+// The keyv "Mini Shai-Hulud" setup.mjs stage-1 (2026-08) and the generic
+// "drop-then-require" shape never call eval/Function/vm, so the obfuscation and
+// remote-code-load rules miss them. They DECODE or UNPACK a blob (or download
+// one), WRITE it to a file, then EXECUTE that file on a COMPUTED path —
+// `require(tmpPath)` or `execFileSync(binPath, …)`. Running a freshly-written
+// file sidesteps every in-process eval detector. The triad — a decoder, an fs
+// write, and a computed require/child_process exec with the write and exec in
+// close proximity — is the materialize-then-run dropper. Requiring the exec's
+// FIRST ARG to be computed (not a string literal) is what keeps ordinary codegen
+// (`writeFileSync(...)` then `execSync("tsc")` on a LITERAL command) from firing.
+const STAGED_DECODER_REGEX =
+  /Buffer\.from\s*\([^)]*,\s*['"](?:base64|hex)['"]\s*\)|\batob\s*\(|\b(?:gunzipSync|inflateSync|inflateRawSync|brotliDecompressSync|unzipSync)\s*\(/i;
+const STAGED_FS_WRITE_G =
+  /\b(?:writeFileSync|writeFile|createWriteStream|outputFile|appendFileSync|appendFile|cpSync|copyFileSync)\s*\(/g;
+// Computed-target executor: a child_process exec/spawn whose first arg is a
+// variable (the just-written path), OR a require/import of a computed module.
+const STAGED_COMPUTED_EXEC_G =
+  /(?<![.\w$])(?:execFileSync|execFile|execSync|spawnSync|spawn|fork|exec)\s*\(\s*(?!['"`])[A-Za-z_$][\w$.]*|(?<![.\w$])(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/g;
+const STAGED_DROPPER_PROXIMITY = 1000;
+// Native-addon loaders — node-gyp-build / prebuild-install / node-pre-gyp /
+// `bindings` — decompress a prebuilt `.node` binary, write it, then require it:
+// the same decode->write->require triad, but entirely legitimate. This is NOT a
+// JS-execution path a dropper can hide in — `require("x.node")` dlopens a
+// compiled addon, so JS text written to it just fails to load; a genuinely
+// malicious compiled addon is a separate threat class static JS analysis can't
+// read anyway. Presence of any native-addon signal exempts the file.
+const NATIVE_ADDON_LOAD_REGEX =
+  /\.node['"`)\]\s]|\.node\.gz\b|\bprebuilds?\b|\bprebuild-install\b|\bnode-gyp(?:-build)?\b|\bnode-pre-gyp\b|\bnapi\b|\brequire\s*\(\s*['"]bindings['"]\s*\)|\bbindings\s*\(/i;
+
+function matchIndexes(globalRe, text) {
+  globalRe.lastIndex = 0;
+  const out = [];
+  let m;
+  while ((m = globalRe.exec(text)) !== null) {
+    out.push(m.index);
+    if (m.index === globalRe.lastIndex) globalRe.lastIndex++; // zero-width guard
+  }
+  return out;
+}
+
+function inspectStagedDropper(file, content, findings, isLifecycle, normalized, normChanged) {
+  const codeText = stripComments(content, file.path);
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const scan = (text) => {
+    if (!STAGED_DECODER_REGEX.test(text)) return -1;
+    if (NATIVE_ADDON_LOAD_REGEX.test(text)) return -1; // prebuilt .node addon loader
+    const writes = matchIndexes(STAGED_FS_WRITE_G, text);
+    if (!writes.length) return -1;
+    const execs = matchIndexes(STAGED_COMPUTED_EXEC_G, text);
+    if (!execs.length) return -1;
+    for (const w of writes) {
+      for (const e of execs) {
+        if (Math.abs(e - w) <= STAGED_DROPPER_PROXIMITY) return Math.min(w, e);
+      }
+    }
+    return -1;
+  };
+  let idx = scan(codeText);
+  if (idx === -1 && normChanged) idx = scan(codeNorm);
+  if (idx === -1) return;
+  findings.push({
+    severity: "high",
+    category: "remote-code-load",
+    file: file.path,
+    keepHighInTests: true,
+    snippet: clipAround(content, idx),
+    rationale:
+      "Decodes or unpacks a blob, writes it to a file, then executes that file on a computed path (require(tmpPath) / execFileSync(binPath, …)) within close proximity — the materialize-then-run dropper. The keyv \"Mini Shai-Hulud\" setup.mjs stage-1 works this way; running a freshly-written file sidesteps the in-process eval/Function detectors."
+  });
 }
 
 // --- Alternate-runtime download+exec (#4) ----------------------------------
