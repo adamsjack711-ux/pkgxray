@@ -1428,7 +1428,13 @@ const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
   "ci-workflow-injection",
   "self-deleting-dropper",
   "registry-self-publish",
-  "persistence"
+  "persistence",
+  // A staged-dropper (decode->write->run) HIGH in a package's OWN test/fixture
+  // file — not on its runtime path — is more likely a loader test than an
+  // install-time threat, so review it rather than auto-blocking (mirrors the
+  // other behavioral categories). Only touches HIGH findings; the medium
+  // remote-code-load from inspectRemoteCodeLoad is unaffected.
+  "remote-code-load"
 ]);
 
 // Behavioral categories downgraded when they originate from compiled BUILD
@@ -1548,6 +1554,7 @@ function auditFiles(files, findings, evidence) {
     inspectHiddenUnicode(file, content, findings);
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
+    inspectStagedDropper(file, content, findings, normalized, normChanged);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
     inspectCloudMetadataAccess(
       file, content, lower, findings, isInstallTimeReferenced,
@@ -2261,10 +2268,56 @@ const OBFUSCATION_CHILD_PROC_REGEX = /\b(?:child_process|spawn\s*\(|execSync\b)/
 // Buffer.from. Anchoring on a Buffer.from arg (no `)` before the "base64")
 // excludes the `.toString("base64")` encode.
 const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([^)]*,\s*['"]base64['"]\s*\)/i;
+// A BULK String.fromCharCode / fromCodePoint decode — the charcode-array
+// obfuscation that turns `[114,101,…]` back into source. Three bulk forms:
+// eight-plus comma-separated numeric args, `.apply(null, arr)`, or spread
+// `(...arr)`. A one/two-arg fromCharCode (an escaped newline, a single glyph)
+// is deliberately NOT matched, so ordinary string-building doesn't count — only
+// the mass decode a packer emits. Treated like atob/base64 in the
+// decode-then-execute proximity check below.
+const CHARCODE_DECODE_REGEX =
+  /\bfrom(?:CharCode|CodePoint)\s*\(\s*(?:0x[0-9a-f]+|\d{1,7})(?:\s*,\s*(?:0x[0-9a-f]+|\d{1,7})){7,}|\bfrom(?:CharCode|CodePoint)\s*\.\s*apply\s*\(|\bfrom(?:CharCode|CodePoint)\s*\(\s*\.\.\./gi;
+// Aliased / indirect dynamic executor — the forms findDynamicEval MISSES because
+// they never spell `eval(` or `new Function(` literally. Packed malware invokes
+// the executor indirectly to dodge the literal-name matchers:
+//   (0,_g)(code)          indirect call through a BAREWORD ref (classic (0,eval))
+//   ""["constructor"]["constructor"](code)   Function via the .constructor chain
+//   Function(code)        bare Function call (no `new`) on a computed argument
+// The `(0,IDENT)(` arm requires a bareword (no dot), so Babel/bundler interop
+// calls like `(0, _mod.fn)(...)` do NOT match. These are looser than
+// findDynamicEval, so hasDynamicExecutor only trusts them when a DECODE call
+// (DECODE_CALL_RE) also sits in the window — a bare `(0,cb)()` next to an
+// embedded base64 asset carries no decode step and must not fire. (An earlier
+// `= Function`/`= eval` ALIAS-assignment arm was dropped: a bare `const C =
+// Function` reference is not an executor, and the keyv payload is already caught
+// by the `(0,_g)(` CALL arm.)
+const INDIRECT_EVAL_REGEX =
+  /\(\s*0\s*,\s*[A-Za-z_$][\w$]*\s*\)\s*\(|\[\s*['"]constructor['"]\s*\]\s*\[\s*['"]constructor['"]\s*\]|\bFunction\s*\(\s*[A-Za-z_$]/;
+// A decode call near a blob — the sign the blob is being turned back into
+// code/data (base64/hex Buffer.from, atob, or a fromCharCode/fromCodePoint).
+const DECODE_CALL_RE =
+  /Buffer\.from\s*\([^)]*,\s*['"](?:base64|hex)['"]\s*\)|\batob\s*\(|\bfrom(?:CharCode|CodePoint)\s*\(/i;
+// A large inline numeric array — the ENCODED form of a charcode/byte payload
+// (`[114,101,116,…]`, 24+ elements). Required alongside a fromCharCode decode
+// before the charcode arm counts, so an escaping helper doing
+// fromCharCode.apply(null, someVar) with no inline payload array (a template
+// compiler's escapeHtml, say) is not mistaken for a packed charcode payload.
+const NUMERIC_ARRAY_BLOB_RE =
+  /\[\s*(?:0x[0-9a-f]+|\d{1,7})(?:\s*,\s*(?:0x[0-9a-f]+|\d{1,7})){23,}/i;
 const BASE64_RUN_REGEX = /(?:^|[^A-Za-z0-9+/])([A-Za-z0-9+/]{240,}={0,2})(?:[^A-Za-z0-9+/]|$)/g;
 // Hoisted out of the inner loop — the literal regex was being recompiled on
 // every base64-blob match in every file.
 const DATA_URI_REGEX = /data:[\w/+.-]+;base64,$/;
+
+// A dynamic code executor near a packed blob: a literal eval/Function/vm on a
+// computed arg (findDynamicEval, specific), OR an aliased/indirect executor
+// (INDIRECT_EVAL_REGEX) — but the looser indirect forms only signal a packed
+// payload when the blob is actually DECODED in the same window, so an embedded
+// base64 asset next to an ordinary `(0,cb)()` call doesn't false-positive.
+function hasDynamicExecutor(window) {
+  if (findDynamicEval(window) !== -1) return true;
+  return INDIRECT_EVAL_REGEX.test(window) && DECODE_CALL_RE.test(window);
+}
 
 function inspectObfuscation(file, content, lower, findings) {
   // Require base64 + execution primitive in close proximity (within ~600
@@ -2279,14 +2332,14 @@ function inspectObfuscation(file, content, lower, findings) {
     const windowStart = Math.max(0, blobIndex - 600);
     const windowEnd = Math.min(content.length, blobIndex + blob.length + 600);
     const window = content.slice(windowStart, windowEnd);
-    if (findDynamicEval(window) !== -1 || OBFUSCATION_CHILD_PROC_REGEX.test(window)) {
+    if (hasDynamicExecutor(window) || OBFUSCATION_CHILD_PROC_REGEX.test(window)) {
       findings.push({
         severity: "high",
         category: "obfuscation",
         file: file.path,
         snippet: clip(blob),
         rationale:
-          "Large encoded-looking blob within ~600 chars of a code executor (dynamic eval / new Function / child_process) — common packed-payload shape."
+          "Large encoded-looking blob within ~600 chars of a code executor (dynamic/aliased eval, new Function, or child_process) — common packed-payload shape."
       });
       return;
     }
@@ -2306,10 +2359,19 @@ function inspectObfuscation(file, content, lower, findings) {
   const globalDecode = new RegExp(NODE_BASE64_DECODE_REGEX.source, "gi");
   let dm;
   while ((dm = globalDecode.exec(content)) !== null) decoderPositions.push(dm.index);
+  // Charcode decode only counts as a decoder when a large inline numeric array
+  // (the encoded payload) is also present — otherwise fromCharCode.apply used for
+  // ordinary string-building near a `new Function` compiler would false-positive.
+  if (NUMERIC_ARRAY_BLOB_RE.test(content)) {
+    CHARCODE_DECODE_REGEX.lastIndex = 0;
+    let cm;
+    while ((cm = CHARCODE_DECODE_REGEX.exec(content)) !== null) decoderPositions.push(cm.index);
+  }
   if (decoderPositions.length) {
     const evalIdx = findDynamicEval(content);
     const execIdx = lower.indexOf("execsync");
-    const execPositions = [evalIdx, execIdx].filter((i) => i !== -1);
+    const indirectIdx = content.search(INDIRECT_EVAL_REGEX);
+    const execPositions = [evalIdx, execIdx, indirectIdx].filter((i) => i !== -1);
     const OBF_PROXIMITY = 600;
     const near = decoderPositions.some((d) =>
       execPositions.some((e) => Math.abs(e - d) <= OBF_PROXIMITY)
@@ -3492,6 +3554,88 @@ function inspectRemoteCodeLoad(file, content, findings) {
       return;
     }
   }
+}
+
+// --- Staged-payload dropper: decode/unpack -> write to disk -> run the file --
+// The keyv "Mini Shai-Hulud" setup.mjs stage-1 (2026-08) and the generic
+// "drop-then-require" shape never call eval/Function/vm, so the obfuscation and
+// remote-code-load rules miss them. They DECODE or UNPACK a blob (or download
+// one), WRITE it to a file, then EXECUTE that file on a COMPUTED path —
+// `require(tmpPath)` or `execFileSync(binPath, …)`. Running a freshly-written
+// file sidesteps every in-process eval detector. The triad — a decoder, an fs
+// write, and a computed require/child_process exec with the write and exec in
+// close proximity — is the materialize-then-run dropper. Requiring the exec's
+// FIRST ARG to be computed (not a string literal) is what keeps ordinary codegen
+// (`writeFileSync(...)` then `execSync("tsc")` on a LITERAL command) from firing.
+const STAGED_DECODER_REGEX =
+  /Buffer\.from\s*\([^)]*,\s*['"](?:base64|hex)['"]\s*\)|\batob\s*\(|\b(?:gunzipSync|inflateSync|inflateRawSync|brotliDecompressSync|unzipSync)\s*\(/i;
+const STAGED_FS_WRITE_G =
+  /\b(?:writeFileSync|writeFile|createWriteStream|outputFile|appendFileSync|appendFile|cpSync|copyFileSync)\s*\(/g;
+// Computed-target executor: a child_process exec/spawn whose first arg is a
+// variable (the just-written path), OR a require/import of a computed module.
+const STAGED_COMPUTED_EXEC_G =
+  /(?<![.\w$])(?:execFileSync|execFile|execSync|spawnSync|spawn|fork|exec)\s*\(\s*(?!['"`])[A-Za-z_$][\w$.]*|(?<![.\w$])(?:require|import)\s*\(\s*(?!['"`])[A-Za-z_$]/g;
+const STAGED_DROPPER_PROXIMITY = 1000;
+// Native-addon loaders — node-gyp-build / prebuild-install / node-pre-gyp /
+// `bindings` — decompress a prebuilt `.node` binary, write it, then require it:
+// the same decode->write->require triad, but entirely legitimate. This is NOT a
+// JS-execution path a dropper can hide in — `require("x.node")` dlopens a
+// compiled addon, so JS text written to it just fails to load; a genuinely
+// malicious compiled addon is a separate threat class static JS analysis can't
+// read anyway.
+//
+// Only a STRUCTURAL signal exempts the file, NOT a bareword: a string-literal
+// path to the compiled binary (`"…/addon.node"`, `".node.gz"`) or an import of a
+// known native-addon loader package. This closes the trivial bypass where a
+// dropper drops the word `napi`/`prebuilds` into an unrelated string literal to
+// opt itself out (comments are already stripped; a bare keyword in a string is
+// not). Residual: a crafted `"x.node"` literal still exempts — accepted, because
+// a real dropper's JS runs via a `.js`/computed path and `require("x.node")`
+// dlopens a binary rather than executing JS.
+const NATIVE_ADDON_LOAD_REGEX =
+  /['"`][^'"`\n]*\.node(?:\.gz)?['"`]|\b(?:require\s*\(\s*|from\s+)['"](?:node-gyp-build|prebuild-install|node-pre-gyp|@mapbox\/node-pre-gyp|bindings|node-addon-api|@napi-rs\/[^'"]+|@node-rs\/[^'"]+)['"]/i;
+
+function matchIndexes(globalRe, text) {
+  globalRe.lastIndex = 0;
+  const out = [];
+  let m;
+  while ((m = globalRe.exec(text)) !== null) {
+    out.push(m.index);
+    if (m.index === globalRe.lastIndex) globalRe.lastIndex++; // zero-width guard
+  }
+  return out;
+}
+
+function inspectStagedDropper(file, content, findings, normalized, normChanged) {
+  const codeText = stripComments(content, file.path);
+  const codeNorm = normChanged ? stripComments(normalized, file.path) : codeText;
+  const scan = (text) => {
+    if (!STAGED_DECODER_REGEX.test(text)) return -1;
+    if (NATIVE_ADDON_LOAD_REGEX.test(text)) return -1; // prebuilt .node addon loader
+    const writes = matchIndexes(STAGED_FS_WRITE_G, text);
+    if (!writes.length) return -1;
+    const execs = matchIndexes(STAGED_COMPUTED_EXEC_G, text);
+    if (!execs.length) return -1;
+    for (const w of writes) {
+      for (const e of execs) {
+        if (Math.abs(e - w) <= STAGED_DROPPER_PROXIMITY) return Math.min(w, e);
+      }
+    }
+    return -1;
+  };
+  // stripComments is length-preserving, so a codeText offset maps 1:1 onto
+  // `content`; a codeNorm (de-obfuscated) offset does NOT, so only use idx for the
+  // snippet when the match came from codeText, else fall back to 0.
+  const idx = scan(codeText);
+  if (idx === -1 && !(normChanged && scan(codeNorm) !== -1)) return;
+  findings.push({
+    severity: "high",
+    category: "remote-code-load",
+    file: file.path,
+    snippet: clipAround(content, idx === -1 ? 0 : idx),
+    rationale:
+      "Decodes or unpacks a blob, writes it to a file, then executes that file on a computed path (require(tmpPath) / execFileSync(binPath, …)) within close proximity — the materialize-then-run dropper. The keyv \"Mini Shai-Hulud\" setup.mjs stage-1 works this way; running a freshly-written file sidesteps the in-process eval/Function detectors."
+  });
 }
 
 // --- Alternate-runtime download+exec (#4) ----------------------------------

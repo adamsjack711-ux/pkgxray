@@ -519,6 +519,111 @@ test("remote-code-load: normal fetch + JSON parse stays safe", () => {
   assert.ok(!report.findings.some((f) => f.category === "remote-code-load"));
 });
 
+test("staged-dropper: decode -> writeFile -> require(computed) blocks", () => {
+  // The v5 "drop-then-require" shape and the keyv setup.mjs stage-1: decode a
+  // blob, write it to a temp .js, then require() that path. No eval/Function/vm,
+  // so only the materialize-then-run detector catches it.
+  const report = auditEvidence({
+    sourceFiles: {
+      "index.js":
+        'const fs=require("fs"),os=require("os"),path=require("path");\n' +
+        'const blob=process.env.P||"eA==";\n' +
+        'const f=path.join(os.tmpdir(),".cache.js");\n' +
+        'fs.writeFileSync(f,Buffer.from(blob,"base64").toString("utf8"));\n' +
+        "require(f);\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "high"),
+    "decode -> writeFile -> require(computed) must raise a HIGH remote-code-load finding"
+  );
+});
+
+test("staged-dropper: writeFile then execSync on a LITERAL command stays safe", () => {
+  // Ordinary codegen — write a generated file, then run a fixed build command.
+  // The exec target is a STRING LITERAL ("tsc"), not the written path, so the
+  // computed-executor requirement must keep this from firing.
+  const report = auditEvidence({
+    packageName: "codegen",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "codegen", repository: "https://github.com/example/x" }),
+      "build.js":
+        'const fs=require("fs");\n' +
+        'const banner=Buffer.from("Ly8gZ2VuZXJhdGVk","base64").toString("utf8");\n' +
+        'fs.writeFileSync("out/generated.ts", banner + "\\nexport const x = 1;\\n");\n' +
+        'require("child_process").execSync("tsc -p tsconfig.json");\n'
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "remote-code-load"),
+    "writeFile + execSync on a literal command must not read as a dropper"
+  );
+});
+
+test("staged-dropper: native-addon loader (node-gyp-build) stays safe", () => {
+  // node-gyp-build / prebuild-install: gunzip a prebuilt .node binary, write it,
+  // then require() it. Same decode->write->require triad, but legitimate — you
+  // cannot hide JS execution behind require("x.node"). Must be exempt.
+  const report = auditEvidence({
+    packageName: "native-mod",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "native-mod", repository: "https://github.com/example/x" }),
+      "index.js":
+        'const fs=require("fs"),zlib=require("zlib"),path=require("path");\n' +
+        'const target=process.platform+"-"+process.arch;\n' +
+        'const out=path.join(__dirname,"prebuilds",target,"addon.node");\n' +
+        'fs.writeFileSync(out, zlib.gunzipSync(fs.readFileSync(out+".gz")));\n' +
+        "module.exports=require(out);\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "remote-code-load"),
+    "prebuilt .node addon loader must not read as a dropper"
+  );
+});
+
+test("staged-dropper: a bareword native-addon keyword in a string does not exempt a dropper", () => {
+  // The native-addon exemption must be anchored to a STRUCTURAL signal (a .node
+  // path literal or a known-loader import), not any occurrence of the words
+  // napi/prebuilds/node-gyp — otherwise a dropper opts out by planting the word
+  // in an unrelated string.
+  const report = auditEvidence({
+    sourceFiles: {
+      "index.js":
+        'const fs=require("fs"),os=require("os"),path=require("path");\n' +
+        'const junk="napi prebuilds node-gyp";\n' +
+        'const f=path.join(os.tmpdir(),".x.js");\n' +
+        'fs.writeFileSync(f,Buffer.from(process.env.P||"eA==","base64").toString());\n' +
+        "require(f);\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "high"),
+    "a bareword native-addon keyword in a string must not exempt a decode->write->require dropper"
+  );
+});
+
+test("staged-dropper: HIGH in the package's own test file downgrades to review", () => {
+  // A decode->write->require in a test/fixture file (not on the runtime path) is
+  // more likely a loader test than an install threat, so it reviews rather than
+  // auto-blocks the package on its own tests.
+  const report = auditEvidence({
+    packageName: "loadertest",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "loadertest", main: "index.js", repository: "https://github.com/example/x" }),
+      "index.js": "module.exports = {};\n",
+      "test/loader.test.js":
+        'const fs=require("fs"),os=require("os"),path=require("path");\n' +
+        'const f=path.join(os.tmpdir(),".x.js");\n' +
+        'fs.writeFileSync(f,Buffer.from("eA==","base64").toString());\n' +
+        "require(f);\n"
+    }
+  });
+  const rcl = report.findings.find((f) => f.category === "remote-code-load");
+  assert.ok(rcl, "the dropper finding is still surfaced");
+  assert.equal(rcl.severity, "medium", "a dropper in a test/fixture file is downgraded to review, not block");
+});
+
 // ---------------------------------------------------------------------------
 // Evasion-hardening regressions (red-team pass). Each loads a fixture under
 // test/fixtures/evasion/ that defeated a behavioral HIGH before the fix.
@@ -1075,6 +1180,129 @@ test("obfuscation: Buffer.from with a non-base64 encoding does not fire", () => 
   assert.ok(
     !report.findings.some((f) => f.category === "obfuscation"),
     "Buffer.from(hex) should not be treated as a base64 decoder"
+  );
+});
+
+test("obfuscation: hex blob decoded and run via an aliased Function blocks (keyv Shai-Hulud shape)", () => {
+  // The 2026-08 keyv "Mini Shai-Hulud" Math_Symbol.js payload: a large HEX
+  // string literal, decoded with Buffer.from(_,'hex'), executed through an
+  // ALIASED Function (`_g = Function; (0,_g)(code)()`) — no literal `eval(` or
+  // `new Function(`. The blob is matched by the base64-run rule (hex ⊂ its
+  // charset) and the aliased executor by INDIRECT_EVAL_REGEX.
+  const hex = "61".repeat(200); // 400-char run, over the 240 blob threshold
+  const report = auditEvidence({
+    sourceFiles: {
+      "Math_Symbol.js":
+        "var _g = Function;\n" +
+        'var _c = "' + hex + '";\n' +
+        'var _d = Buffer.from(_c, "hex").toString("utf8");\n' +
+        "try { (0, _g)(_d)(); } catch (e) {}\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "obfuscation" && f.severity === "high"),
+    "expected HIGH obfuscation for a hex blob decoded and eval'd via an aliased Function"
+  );
+});
+
+test("obfuscation: bundler interop call (0, mod.fn)() near a blob does not fire", () => {
+  // The aliased-executor rule must not read Babel/rollup ESM-interop calls as an
+  // executor: `(0, _lib.parse)(x)` has a DOTTED callee, so the bareword-only
+  // `(0,IDENT)(` arm rejects it. A long blob is present to prove the guard, not
+  // the blob-proximity gate, is what keeps this from firing.
+  const blob = "QUJD".repeat(80); // 320-char base64-shaped run
+  const report = auditEvidence({
+    sourceFiles: {
+      "bundle.js":
+        'var TABLE = "' + blob + '";\n' +
+        "exports.run = function (_lib) { return (0, _lib.parse)(TABLE); };\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "dotted interop (0, mod.fn)() must not count as a dynamic executor"
+  );
+});
+
+test("obfuscation: charcode-array decoded via fromCharCode.apply and eval'd blocks", () => {
+  // The v1 shape: an integer array folded back to source with
+  // String.fromCharCode.apply(null, arr), then eval'd. No base64 run (commas
+  // break it), so only the bulk-charcode decoder + dynamic-executor proximity
+  // catches it.
+  const arr = Array.from({ length: 40 }, (_, i) => 97 + (i % 26)).join(",");
+  const report = auditEvidence({
+    sourceFiles: {
+      "index.js":
+        "const c=[" + arr + "];\n" +
+        "const s=String.fromCharCode.apply(null,c);\n" +
+        "eval(s);\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "obfuscation" && f.severity === "high"),
+    "bulk fromCharCode decode feeding eval must raise HIGH obfuscation"
+  );
+});
+
+test("obfuscation: bulk fromCharCode string-building without an executor stays safe", () => {
+  // fromCharCode.apply is the idiomatic way to turn a byte array into a string
+  // (base64/utf decoders). With no dynamic executor nearby it is not the
+  // decode-then-execute shape and must not fire.
+  const arr = Array.from({ length: 40 }, (_, i) => 97 + (i % 26)).join(",");
+  const report = auditEvidence({
+    packageName: "byte-decoder",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "byte-decoder", repository: "https://github.com/example/x" }),
+      "index.js":
+        "function build(){ return String.fromCharCode.apply(null,[" + arr + "]); }\n" +
+        "module.exports = build;\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "fromCharCode string-building with no dynamic executor must not fire"
+  );
+});
+
+test("obfuscation: template compiler (new Function + fromCharCode escaping) stays safe", () => {
+  // new Function(computedBody) is a legit template compiler; String.fromCharCode.apply
+  // over a PARAMETER (no inline charcode-payload array) is ordinary escaping. The
+  // charcode arm now requires an inline numeric-array blob, so this no longer fires.
+  const report = auditEvidence({
+    packageName: "tmpl",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "tmpl", repository: "https://github.com/example/x" }),
+      "compile.js":
+        "function escapeHtml(codes){ return String.fromCharCode.apply(null, codes); }\n" +
+        'function compile(src){ const body = "return `" + src + "`;"; return new Function("data", body); }\n' +
+        "module.exports = { compile, escapeHtml };\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "fromCharCode escaping near new Function must not fire without an inline charcode payload array"
+  );
+});
+
+test("obfuscation: embedded base64 asset near an indirect call / Function ref stays safe", () => {
+  // An inlined base64 asset with NO decode step: a bare `Function` reference and a
+  // bareword `(0, cb)()` are not executors of the blob. hasDynamicExecutor now
+  // requires a decode call in the window for the loose indirect arms, so this
+  // asset-plus-callback shape no longer false-positives.
+  const blob = "QUJDRUZH".repeat(40); // 320-char base64-shaped run
+  const report = auditEvidence({
+    packageName: "asset",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "asset", repository: "https://github.com/example/x" }),
+      "asset.js":
+        'const ICON = "' + blob + '";\n' +
+        "const Ctor = Function;\n" +
+        "exports.run = function (cb) { return (0, cb)(ICON); };\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "an embedded base64 asset with no decode step must not fire on a bare Function ref / (0,cb)()"
   );
 });
 
