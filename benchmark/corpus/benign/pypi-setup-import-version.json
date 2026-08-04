@@ -1,0 +1,24 @@
+{
+  "name": "pypi-setup-import-version",
+  "expect": "safe",
+  "cohort": "pypi",
+  "note": "a declarative setup.py that opens the README and declares install_requires. No exec/subprocess/network — ordinary packaging. Must stay safe.",
+  "evidence": {
+    "packageName": "tinyhttp",
+    "sourceFiles": {
+      "setup.py": "import io\nfrom setuptools import setup\n\nsetup(\n    name=\"tinyhttp\",\n    version=\"2.3.1\",\n    packages=[\"tinyhttp\"],\n    install_requires=[\"idna>=3\", \"certifi\"],\n    long_description=io.open(\"README.rst\", encoding=\"utf-8\").read(),\n    long_description_content_type=\"text/x-rst\",\n)\n",
+      "tinyhttp/__init__.py": "from .client import request\n\n__all__ = [\"request\"]\n"
+    },
+    "npmMetadata": {
+      "name": "tinyhttp",
+      "version": "2.3.1",
+      "repository": { "url": "https://github.com/tinyhttp/tinyhttp", "type": "git" },
+      "maintainers": [
+        { "name": "th-owner", "role": "Owner" },
+        { "name": "th-maint", "role": "Maintainer" }
+      ],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

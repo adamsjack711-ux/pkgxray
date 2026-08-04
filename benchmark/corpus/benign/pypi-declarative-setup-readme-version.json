@@ -1,0 +1,24 @@
+{
+  "name": "pypi-declarative-setup-readme-version",
+  "expect": "safe",
+  "cohort": "pypi",
+  "note": "the overwhelmingly common real setup.py: read the README for long_description and regex the version out of the package __init__. No install-time execution beyond declaring metadata — must stay safe. False-block guard for inspectSetupPy.",
+  "evidence": {
+    "packageName": "widgetlib",
+    "sourceFiles": {
+      "setup.py": "import re, pathlib\nfrom setuptools import setup, find_packages\n\n_here = pathlib.Path(__file__).parent\n_long = (_here / \"README.md\").read_text(encoding=\"utf-8\")\n_version = re.search(r'__version__ = \"([^\"]+)\"', (_here / \"src/widgetlib/__init__.py\").read_text()).group(1)\n\nsetup(\n    name=\"widgetlib\",\n    version=_version,\n    packages=find_packages(\"src\"),\n    package_dir={\"\": \"src\"},\n    long_description=_long,\n    long_description_content_type=\"text/markdown\",\n    python_requires=\">=3.8\",\n)\n",
+      "src/widgetlib/__init__.py": "__version__ = \"1.4.0\"\n\ndef make_widget(kind):\n    return {\"kind\": kind}\n"
+    },
+    "npmMetadata": {
+      "name": "widgetlib",
+      "version": "1.4.0",
+      "repository": { "url": "https://github.com/acme/widgetlib", "type": "git" },
+      "maintainers": [
+        { "name": "acme-releases", "role": "Owner" },
+        { "name": "jane-dev", "role": "Maintainer" }
+      ],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

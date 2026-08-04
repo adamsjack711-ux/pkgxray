@@ -1,0 +1,24 @@
+{
+  "name": "pypi-pyproject-hatchling",
+  "expect": "safe",
+  "cohort": "pypi",
+  "note": "a PEP 621 package built with hatchling (another standard out-of-tree backend). No setup.py, no backend-path. Must stay safe — guards against inspectPyprojectBuild firing on any build-backend line.",
+  "evidence": {
+    "packageName": "glowlog",
+    "sourceFiles": {
+      "pyproject.toml": "[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n\n[project]\nname = \"glowlog\"\nversion = \"0.9.0\"\ndescription = \"structured logging helpers\"\nrequires-python = \">=3.10\"\n\n[project.urls]\nSource = \"https://github.com/glowlog/glowlog\"\n",
+      "glowlog/__init__.py": "import logging\n\ndef get_logger(name):\n    return logging.getLogger(name)\n"
+    },
+    "npmMetadata": {
+      "name": "glowlog",
+      "version": "0.9.0",
+      "repository": { "url": "https://github.com/glowlog/glowlog", "type": "git" },
+      "maintainers": [
+        { "name": "gl-owner", "role": "Owner" },
+        { "name": "gl-maint", "role": "Maintainer" }
+      ],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

@@ -24,8 +24,31 @@ quarantined download, behavioral scan, cited verdict.
   sdist executes `setup.py`; pkgxray blocks the dropper shape (dynamic exec over
   a decoded or network-fetched payload) and flags generic install-time execution
   (subprocess / custom `cmdclass` / in-tree `backend-path`) for review.
-- **No detection change for npm.** The shared behavioral engine is untouched;
-  ecosystem is threaded file-level from the manifest format. 27 new tests.
+- **`recheck` monitors PyPI lockfiles.** `pkgxray recheck requirements.txt`
+  now builds `pypi:` guard refs and pre-vets newer versions with a real PEP 440
+  comparator (`src/pep440.js`) — epochs, pre/post/dev ordering — instead of
+  mis-ordering PyPI versions through the semver path. npm lockfiles are
+  unaffected.
+- **Behavioral engine scoped to the languages it models.** The shared
+  JS-primitive behavioral detectors (env-harvest+network, dynamic-require,
+  persistence, credential-access, …) are calibrated for JavaScript and
+  false-fire on ordinary Python — a `os.environ` read read as a token-harvest, a
+  lexer's `.bashrc` filename string as an rc-file write. A top-1000 PyPI scan
+  measured a 7.9% heuristic false-block rate driven entirely by these detectors
+  on `.py`. They now skip source in a language the engine doesn't model (Python);
+  a Python sdist is audited by the `setup.py`/`pyproject` install-hook detectors,
+  OSV, metadata/governance, and the language-neutral checks (prompt-injection,
+  hidden-unicode) — which still run on every file. A `.py` a lifecycle script
+  actually executes is not skipped. **npm scanning is byte-for-byte unchanged**
+  (npm ships behavioral payloads in `.js`/`.sh`/`.gyp`, none of which are
+  gated). Deep per-`.py` behavioral parity is tracked for a later release.
+- **PyPI calibration.** A committed PyPI benchmark cohort (5 malicious sdist
+  droppers + 7 benign shapes) is gated in CI alongside the npm corpus, and
+  `scripts/validate-at-scale.js --ecosystem pypi` proves 0 heuristic false blocks
+  across the top-1000 most-downloaded PyPI packages — the same regression-gated
+  bar the npm claim rests on.
+- **No detection change for npm.** The shared behavioral engine is untouched for
+  npm; ecosystem is threaded file-level from the manifest format. 50 new tests.
 
 ## 1.0.6 (2026-07-30) — detection for the 2026 worm playbook
 

@@ -553,6 +553,26 @@ const SKIP_FILE_EXTENSIONS = [".d.ts", ".map", ".min.css", ".lock"];
 const MINIFIED_CODE_EXTENSIONS = [".min.js", ".min.mjs"];
 const DOCUMENTATION_EXTENSIONS = [".md", ".markdown", ".rst", ".txt"];
 
+// Source files in a language the behavioral (JS-primitive) engine does NOT
+// model. The co-location detectors (env-harvest+network, dynamic-require,
+// persistence, credential-access, …) are shaped around JavaScript idioms, so
+// running them over Python source false-fires on ordinary Python: a bulk
+// `os.environ` read reads as a JS token-harvest, `importlib`/`__import__` as a
+// computed require, a lexer's `.bashrc` filename string as an rc-file write. A
+// top-1000 PyPI scan measured a 7.9% heuristic false-block rate driven entirely
+// by these three detectors on `.py`. For a Python sdist the install-time exec
+// surface is covered separately (inspectSetupPy / inspectPyprojectBuild + OSV),
+// and the language-neutral checks (prompt-injection, hidden-unicode) still run
+// on every file — only the JS-primitive behavioral suite is skipped here.
+// Deep per-`.py` behavioral parity is tracked for a later release. A `.py` file
+// a lifecycle script actually executes is NOT skipped (see auditFiles).
+const UNMODELED_BEHAVIOR_SOURCE_EXTENSIONS = [".py", ".pyi", ".pyx", ".pxd", ".pxi"];
+
+function isUnmodeledBehaviorLanguage(path) {
+  const lower = path.toLowerCase();
+  return UNMODELED_BEHAVIOR_SOURCE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 function fileBaseName(path) {
   const lastSlash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return lastSlash === -1 ? path : path.slice(lastSlash + 1);
@@ -617,7 +637,12 @@ function normalizeEvidence(input) {
       evidence.sourceFiles || evidence.SOURCE_FILES || evidence.files || {}
     ),
     npmVsGithubDiff: evidence.npmVsGithubDiff || null,
-    provenanceAttestation: evidence.provenanceAttestation || null
+    provenanceAttestation: evidence.provenanceAttestation || null,
+    // Which registry this package came from. Drives whether the JS-primitive
+    // behavioral suite applies (see auditFiles) — a PyPI package's bundled
+    // non-Python files are vendored, not its audited execution surface. Defaults
+    // to npm so every existing caller behaves exactly as before.
+    ecosystem: stringValue(evidence.ecosystem) || "npm"
   };
 }
 
@@ -1317,6 +1342,9 @@ const SETUP_INSTALL_EXEC_RE =
 // share the same package can't match — Python's dangerous forms are the bare
 // builtins `exec(` / `compile(` / `__import__(` (and `eval(`).
 const PY_DYNAMIC_EXEC_RE = /(?<![.\w])(?:exec|eval|compile|__import__)\s*\(/;
+// Global-flag twin for matchAll — inspectSetupPy iterates every dynamic-exec
+// site to test decode/network proximity per occurrence.
+const PY_DYNAMIC_EXEC_RE_G = /(?<![.\w])(?:exec|eval|compile|__import__)\s*\(/g;
 // Decoders that turn an opaque blob back into runnable code/bytes.
 const PY_DECODE_RE = /\b(?:base64\.(?:b64decode|b85decode|a85decode)|marshal\.loads|zlib\.decompress|lzma\.decompress|codecs\.decode|binascii\.(?:unhexlify|a2b_base64)|bytes\.fromhex)\b/;
 const PY_NET_RE = /\b(?:urllib\.request\.urlopen|urlopen|requests\.(?:get|post)|http\.client|socket\.socket)\b/;
@@ -1327,18 +1355,33 @@ function inspectSetupPy(path, content, findings) {
   // fire (stripComments blanks with equal-length spaces, so indices still line
   // up with the original content for the snippet).
   const scan = stripComments(content, path);
-  const dynExec = PY_DYNAMIC_EXEC_RE.exec(scan);
+  const dynExecMatches = [...scan.matchAll(PY_DYNAMIC_EXEC_RE_G)];
+  const dynExec = dynExecMatches.length ? dynExecMatches[0] : null;
 
   // BLOCK: obfuscated or remote code execution AT INSTALL TIME. setup.py runs
-  // during `pip install`, so a dynamic exec fed a decoded blob (or paired with
-  // a network fetch) is the source-distribution dropper shape — not a review,
-  // a rejection. Contained to the manifest, so no FP risk to the wider engine.
-  if (dynExec && (PY_DECODE_RE.test(scan) || PY_NET_RE.test(scan))) {
+  // during `pip install`, so a dynamic exec fed a decoded blob (or a fetched
+  // body) is the source-distribution dropper shape — not a review, a rejection.
+  //
+  // Require the decode/network primitive NEAR the dynamic exec, not merely
+  // somewhere in the file: real droppers nest it in the call —
+  // `exec(base64.b64decode(...))`, `exec(urlopen(...).read())`,
+  // `exec(compile(zlib.decompress(...)))` — or assign it on the line above and
+  // exec the variable. A whole-file co-occurrence false-blocks the benign
+  // `exec(l.strip(), D)` version-string idiom that happens to share a big
+  // setup.py with an unrelated urllib/zlib import (reportlab). That benign case
+  // still surfaces as an install-hook REVIEW below.
+  const PROX_BEFORE = 120;
+  const PROX_AFTER = 220;
+  const dropper = dynExecMatches.find((m) => {
+    const win = scan.slice(Math.max(0, m.index - PROX_BEFORE), m.index + PROX_AFTER);
+    return PY_DECODE_RE.test(win) || PY_NET_RE.test(win);
+  });
+  if (dropper) {
     findings.push({
       severity: "high",
       category: "code-execution",
       file: path,
-      snippet: clipAround(content, Math.max(0, dynExec.index)),
+      snippet: clipAround(content, Math.max(0, dropper.index)),
       rationale:
         "setup.py runs during `pip install` and here executes a dynamically decoded or network-fetched payload (exec/eval/compile over base64/marshal/zlib, or a fetched body). This is the sdist-dropper shape — code the installing user never sees runs with their privileges at install time."
     });
@@ -1484,6 +1527,18 @@ function auditFiles(files, findings, evidence) {
   // over the whole set because the checks need package.json context.
   inspectAutoExecSurfaces(files, findings);
 
+  // The JS-primitive behavioral suite is calibrated for first-party npm
+  // JavaScript. For a non-npm ecosystem (PyPI) the package's audited execution
+  // surface is its manifest (setup.py/pyproject, handled in auditMetadata) + OSV
+  // + metadata; its bundled non-manifest files — vendored JS frontends, Go/Rust
+  // extension source, ops shell scripts, generated OpenAPI YAML — are NOT that
+  // surface, and the JS-shaped detectors false-fire on them (a top-1000 PyPI
+  // scan: 79 such false blocks). So for a non-npm ecosystem the behavioral suite
+  // is skipped for every file except one a lifecycle script actually runs, while
+  // the language-neutral checks (prompt-injection, hidden-unicode) still run on
+  // all of them. npm packages are unaffected (ecosystem defaults to "npm").
+  const nonNpmEcosystem = Boolean(evidence && evidence.ecosystem && evidence.ecosystem !== "npm");
+
   // Package-level signals for cross-file correlation (gap: a payload split so
   // env-harvest lives in one file and the exfil destination in another, dodging
   // the same-file co-location checks).
@@ -1523,6 +1578,28 @@ function auditFiles(files, findings, evidence) {
       continue;
     }
 
+    // Language-neutral checks run on EVERY source file regardless of language.
+    // Prompt-injection and hidden-unicode smuggling are text-level, not shaped
+    // around JavaScript, so they must still catch a payload smuggled into a
+    // `.py` module or any other source file.
+    inspectInjectionAttempt(file, lower, findings);
+    inspectConcealedInjection(file, false, findings);
+    inspectHiddenUnicode(file, content, findings);
+
+    // Skip the JS-primitive behavioral suite below when this file isn't a
+    // modeled behavioral target — either the package's ecosystem isn't npm (a
+    // PyPI sdist's bundled JS/Go/shell/YAML is vendored, not its audited
+    // surface) OR the file is source in a language the engine doesn't model (see
+    // isUnmodeledBehaviorLanguage): a Python `os.environ` read is not a JS
+    // token-harvest, `importlib`/`__import__` is not a computed require, a
+    // lexer's `.bashrc` filename string is not an rc-file write. A file a
+    // lifecycle script actually executes stays in scope (a real install-time
+    // surface regardless of language). npm source is JS-family in an npm package,
+    // so this changes nothing for npm; a Python sdist is audited by the setup.py
+    // / pyproject manifest detectors + OSV + the language-neutral checks above.
+    // Deep per-`.py` behavioral parity is tracked for a later release.
+    if ((nonNpmEcosystem || isUnmodeledBehaviorLanguage(file.path)) && !isRuntimeReferenced) continue;
+
     // Pre-compute bulk-env detection once per file — both
     // inspectCredentialAccess and inspectExecNetworkCombinations need it,
     // and the regex set used to run twice over the same content.
@@ -1538,8 +1615,6 @@ function auditFiles(files, findings, evidence) {
     );
     if (domain) exfilDomainFiles.push({ path: file.path, domain });
 
-    inspectInjectionAttempt(file, lower, findings);
-    inspectConcealedInjection(file, false, findings);
     if (!suppressObfuscationHeuristics) {
       inspectObfuscation(file, content, lower, findings);
     }
@@ -1551,7 +1626,6 @@ function auditFiles(files, findings, evidence) {
     if (!suppressObfuscationHeuristics) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
     }
-    inspectHiddenUnicode(file, content, findings);
     inspectLogicBomb(file, content, findings);
     inspectRemoteCodeLoad(file, content, findings);
     inspectStagedDropper(file, content, findings, normalized, normChanged);

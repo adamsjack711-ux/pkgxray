@@ -1,0 +1,24 @@
+{
+  "name": "pypi-setup-classifiers",
+  "expect": "safe",
+  "cohort": "pypi",
+  "note": "a plain declarative setup.py with classifiers and python_requires and nothing else. The simplest legitimate sdist. Must stay safe.",
+  "evidence": {
+    "packageName": "datewrangler",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup\n\nsetup(\n    name=\"datewrangler\",\n    version=\"3.1.0\",\n    packages=[\"datewrangler\"],\n    classifiers=[\n        \"Programming Language :: Python :: 3\",\n        \"License :: OSI Approved :: MIT License\",\n    ],\n    python_requires=\">=3.8\",\n)\n",
+      "datewrangler/__init__.py": "import datetime\n\ndef to_iso(d):\n    return d.isoformat()\n"
+    },
+    "npmMetadata": {
+      "name": "datewrangler",
+      "version": "3.1.0",
+      "repository": { "url": "https://github.com/dw/datewrangler", "type": "git" },
+      "maintainers": [
+        { "name": "dw-owner", "role": "Owner" },
+        { "name": "dw-maint", "role": "Maintainer" }
+      ],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "pypi-setup-entry-points",
+  "expect": "safe",
+  "cohort": "pypi",
+  "note": "a CLI package declaring a console_scripts entry point — a declaration, not install-time execution. entry_points is data passed to setup(); nothing runs during install. Must stay safe.",
+  "evidence": {
+    "packageName": "clitool",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup, find_packages\n\nsetup(\n    name=\"clitool\",\n    version=\"1.5.0\",\n    packages=find_packages(),\n    entry_points={\"console_scripts\": [\"clitool=clitool.cli:main\"]},\n    install_requires=[\"click>=8\"],\n)\n",
+      "clitool/cli.py": "import click\n\n@click.command()\ndef main():\n    click.echo(\"hello\")\n"
+    },
+    "npmMetadata": {
+      "name": "clitool",
+      "version": "1.5.0",
+      "repository": { "url": "https://github.com/clitool/clitool", "type": "git" },
+      "maintainers": [
+        { "name": "ct-owner", "role": "Owner" },
+        { "name": "ct-maint", "role": "Maintainer" }
+      ],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

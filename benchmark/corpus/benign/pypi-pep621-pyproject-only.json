@@ -1,0 +1,24 @@
+{
+  "name": "pypi-pep621-pyproject-only",
+  "expect": "safe",
+  "cohort": "pypi",
+  "note": "a modern PEP 621 package with no setup.py and a standard out-of-tree build backend (setuptools.build_meta). No backend-path, so inspectPyprojectBuild must NOT fire. False-block guard for the pyproject path.",
+  "evidence": {
+    "packageName": "confparse",
+    "sourceFiles": {
+      "pyproject.toml": "[build-system]\nrequires = [\"setuptools>=61.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"confparse\"\nversion = \"0.4.2\"\ndescription = \"tiny config parser\"\nreadme = \"README.md\"\nrequires-python = \">=3.9\"\ndependencies = [\"tomli; python_version < '3.11'\"]\n\n[project.urls]\nHomepage = \"https://github.com/confparse/confparse\"\n",
+      "confparse/__init__.py": "def load(text):\n    return {}\n"
+    },
+    "npmMetadata": {
+      "name": "confparse",
+      "version": "0.4.2",
+      "repository": { "url": "https://github.com/confparse/confparse", "type": "git" },
+      "maintainers": [
+        { "name": "cp-owner", "role": "Owner" },
+        { "name": "cp-co", "role": "Maintainer" }
+      ],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

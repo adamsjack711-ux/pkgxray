@@ -10,9 +10,14 @@
 // the list was captured) are recorded as `error`, never counted as a block.
 //
 // Usage:
-//   node scripts/validate-at-scale.js [--list <file>] [--limit N]
-//        [--concurrency N] [--timeout-ms N] [--out-dir <dir>]
+//   node scripts/validate-at-scale.js [--ecosystem <npm|pypi>] [--list <file>]
+//        [--limit N] [--concurrency N] [--timeout-ms N] [--out-dir <dir>]
 //        [--cohort <name>] [--emit-stats <file> --run-id <id>]
+//
+// --ecosystem picks the guard scheme (npm:/pypi:) and the default corpus list
+// (validation/top1000.txt vs validation/top-pypi-1000.txt). PyPI runs prove the
+// same "0 heuristic false blocks" claim against the top PyPI packages; pair with
+// `--cohort pypi` so the results directory never mixes with the npm numbers.
 //
 // Outputs (default --out-dir validation/results/):
 //   results.jsonl      one JSON object per package (decision, grade, findings)
@@ -34,9 +39,16 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const AUDIT = path.join(ROOT, 'bin', 'audit.js');
 
+// Guard schemes keyed by ecosystem, and the default corpus list for each.
+const ECOSYSTEMS = {
+  npm: { scheme: 'npm', defaultList: path.join(ROOT, 'validation', 'top1000.txt') },
+  pypi: { scheme: 'pypi', defaultList: path.join(ROOT, 'validation', 'top-pypi-1000.txt') },
+};
+
 function parseArgs(argv) {
   const a = {
-    list: path.join(ROOT, 'validation', 'top1000.txt'),
+    ecosystem: 'npm',
+    list: null, // resolved from --ecosystem after the loop unless overridden
     limit: Infinity,
     concurrency: 6,
     timeoutMs: 30000,
@@ -48,6 +60,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i++) {
     const v = argv[i + 1];
     switch (argv[i]) {
+      case '--ecosystem': a.ecosystem = String(v).toLowerCase(); i++; break;
       case '--list': a.list = path.resolve(v); i++; break;
       case '--limit': a.limit = Number(v); i++; break;
       case '--concurrency': a.concurrency = Number(v); i++; break;
@@ -57,12 +70,21 @@ function parseArgs(argv) {
       case '--emit-stats': a.emitStats = path.resolve(v); i++; break;
       case '--run-id': a.runId = v; i++; break;
       case '--help': case '-h':
-        console.log('node scripts/validate-at-scale.js [--list f] [--limit N] [--concurrency N] [--timeout-ms N] [--out-dir d] [--cohort name] [--emit-stats f --run-id id]');
+        console.log('node scripts/validate-at-scale.js [--ecosystem npm|pypi] [--list f] [--limit N] [--concurrency N] [--timeout-ms N] [--out-dir d] [--cohort name] [--emit-stats f --run-id id]');
         process.exit(0);
       default:
         console.error('unknown arg:', argv[i]); process.exit(2);
     }
   }
+  const eco = ECOSYSTEMS[a.ecosystem];
+  if (!eco) {
+    console.error(`unknown --ecosystem "${a.ecosystem}" (expected: ${Object.keys(ECOSYSTEMS).join(', ')})`);
+    process.exit(2);
+  }
+  a.scheme = eco.scheme;
+  // Default the corpus list to the ecosystem's canonical top-list unless the
+  // caller passed an explicit --list.
+  if (!a.list) a.list = eco.defaultList;
   // A cohort run keeps its results in its own directory so it can never be
   // conflated with the default (npm top-1000) numbers.
   if (!a.outDir) {
@@ -90,10 +112,10 @@ function readList(file, limit) {
 }
 
 // Run one guard, resolve to a normalized result record.
-function guardOne(pkg, timeoutMs) {
+function guardOne(pkg, timeoutMs, scheme) {
   return new Promise((resolve) => {
     const started = Date.now();
-    const child = spawn(process.execPath, [AUDIT, 'guard', `npm:${pkg}`, '--format', 'json'], {
+    const child = spawn(process.execPath, [AUDIT, 'guard', `${scheme}:${pkg}`, '--format', 'json'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -134,13 +156,13 @@ function guardOne(pkg, timeoutMs) {
 }
 
 // Bounded-concurrency pool with a live progress line.
-async function runPool(pkgs, concurrency, timeoutMs, onResult) {
+async function runPool(pkgs, concurrency, timeoutMs, scheme, onResult) {
   let idx = 0, done = 0;
   const total = pkgs.length;
   async function worker() {
     while (idx < total) {
       const my = idx++;
-      const rec = await guardOne(pkgs[my], timeoutMs);
+      const rec = await guardOne(pkgs[my], timeoutMs, scheme);
       done++;
       onResult(rec);
       if (done % 10 === 0 || done === total) {
@@ -163,18 +185,22 @@ function isVulnBlock(r) {
 }
 
 // Packages whose heuristic block is CORRECT/defensible (they genuinely perform
-// the flagged high-risk operation), audited and committed in defensible-blocks.json.
-// Excluded from the false-block gate the same way known-CVE blocks are.
-const DEFENSIBLE_BLOCKS = (() => {
+// the flagged high-risk operation), audited and committed in
+// defensible-blocks.json. Excluded from the false-block gate the same way
+// known-CVE blocks are. The file is keyed by ecosystem ({ npm: {...},
+// pypi: {...} }) so a defensible block in one registry never whitelists a
+// same-named package in another — load only THIS run's ecosystem.
+function loadDefensibleBlocks(ecosystem) {
   try {
     const p = path.join(ROOT, 'validation', 'defensible-blocks.json');
-    return new Set(Object.keys(JSON.parse(fs.readFileSync(p, 'utf8')).packages || {}));
+    const byEco = JSON.parse(fs.readFileSync(p, 'utf8')).packages || {};
+    return new Set(Object.keys(byEco[ecosystem] || {}));
   } catch {
     return new Set();
   }
-})();
-function isDefensibleBlock(r) {
-  return DEFENSIBLE_BLOCKS.has(r.package);
+}
+function isDefensibleBlock(r, defensible) {
+  return defensible.has(r.package);
 }
 
 // guard's JSON decision vocabulary is safe|review|block; older docs say allow.
@@ -222,13 +248,13 @@ function buildStatsArtifact(a, results, heuristicBlocks) {
     schemaVersion: 1,
     runId: a.runId,
     runDate,
-    cohort: a.cohort || 'npm',
+    cohort: a.cohort || a.ecosystem,
     pkgxray: {
       version,
       build: 'validation',
       commit,
       node: process.version,
-      command: 'pkgxray guard npm:<name>@<version> --format json',
+      command: `pkgxray guard ${a.scheme}:<name>@<version> --format json`,
     },
     headline: {
       packagesScanned: scanned,
@@ -264,12 +290,13 @@ function buildStatsArtifact(a, results, heuristicBlocks) {
 }
 
 function buildReport(a, pkgs, results, wallMs) {
+  const defensible = loadDefensibleBlocks(a.ecosystem);
   const by = { safe: [], review: [], block: [], error: [] };
   for (const r of results) (by[r.decision] || (by[r.decision] = [])).push(r);
   const allBlocks = by.block || [];
   const vulnBlocks = allBlocks.filter(isVulnBlock);
-  const defensibleBlocks = allBlocks.filter((r) => !isVulnBlock(r) && isDefensibleBlock(r));
-  const heuristicBlocks = allBlocks.filter((r) => !isVulnBlock(r) && !isDefensibleBlock(r));
+  const defensibleBlocks = allBlocks.filter((r) => !isVulnBlock(r) && isDefensibleBlock(r, defensible));
+  const heuristicBlocks = allBlocks.filter((r) => !isVulnBlock(r) && !isDefensibleBlock(r, defensible));
   const blocks = heuristicBlocks; // the false-positive candidates
   const reviews = by.review || [];
   const scanned = results.length;
@@ -288,7 +315,7 @@ function buildReport(a, pkgs, results, wallMs) {
   const L = [];
   L.push(a.cohort
     ? `# pkgxray at-scale validation — "${a.cohort}" cohort (reported separately, never merged into the npm numbers)`
-    : '# pkgxray at-scale validation — top-1000 npm packages');
+    : `# pkgxray at-scale validation — top-1000 ${a.ecosystem} packages`);
   L.push('');
   L.push(`Corpus: \`${path.relative(ROOT, a.list)}\` · ${pkgs.length} packages · concurrency ${a.concurrency} · ${(wallMs / 1000).toFixed(0)}s wall.`);
   L.push('');
@@ -362,10 +389,10 @@ async function main() {
   const reportPath = path.join(a.outDir, 'report.md');
   const stream = fs.createWriteStream(jsonlPath);
 
-  console.error(`validating ${pkgs.length} packages (concurrency ${a.concurrency}, timeout ${a.timeoutMs}ms) …`);
+  console.error(`validating ${pkgs.length} ${a.ecosystem} packages (concurrency ${a.concurrency}, timeout ${a.timeoutMs}ms) …`);
   const results = [];
   const t0 = Date.now();
-  await runPool(pkgs, a.concurrency, a.timeoutMs, (rec) => {
+  await runPool(pkgs, a.concurrency, a.timeoutMs, a.scheme, (rec) => {
     results.push(rec);
     stream.write(JSON.stringify(rec) + '\n');
   });
@@ -375,10 +402,11 @@ async function main() {
   const report = buildReport(a, pkgs, results, wallMs);
   fs.writeFileSync(reportPath, report + '\n');
 
+  const defensible = loadDefensibleBlocks(a.ecosystem);
   const allBlocks = results.filter((r) => r.decision === 'block');
   const vulnBlocks = allBlocks.filter(isVulnBlock);
-  const defensibleBlocks = allBlocks.filter((r) => !isVulnBlock(r) && isDefensibleBlock(r));
-  const heuristicBlocks = allBlocks.filter((r) => !isVulnBlock(r) && !isDefensibleBlock(r));
+  const defensibleBlocks = allBlocks.filter((r) => !isVulnBlock(r) && isDefensibleBlock(r, defensible));
+  const heuristicBlocks = allBlocks.filter((r) => !isVulnBlock(r) && !isDefensibleBlock(r, defensible));
   const counts = results.reduce((m, r) => ((m[r.decision] = (m[r.decision] || 0) + 1), m), {});
   console.error('');
   console.error('=== summary ===');

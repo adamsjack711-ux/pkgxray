@@ -1,0 +1,24 @@
+{
+  "name": "pypi-requests-client-library",
+  "expect": "safe",
+  "cohort": "pypi",
+  "note": "a normal HTTP-client library: a module makes an outbound requests.get in library code (not setup.py), the way thousands of real PyPI packages do. Ordinary network use, no exec, no install hook — must stay safe. This is the calibration guard that the shared behavioral engine does not false-block ordinary Python network code.",
+  "evidence": {
+    "packageName": "weatherfetch",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup\n\nsetup(\n    name=\"weatherfetch\",\n    version=\"1.2.0\",\n    packages=[\"weatherfetch\"],\n    install_requires=[\"requests>=2.0\"],\n)\n",
+      "weatherfetch/__init__.py": "import requests\n\nAPI = \"https://api.example.com/weather\"\n\ndef current(city):\n    resp = requests.get(API, params={\"city\": city}, timeout=10)\n    resp.raise_for_status()\n    return resp.json()\n"
+    },
+    "npmMetadata": {
+      "name": "weatherfetch",
+      "version": "1.2.0",
+      "repository": { "url": "https://github.com/weatherfetch/weatherfetch", "type": "git" },
+      "maintainers": [
+        { "name": "wf-owner", "role": "Owner" },
+        { "name": "wf-maint", "role": "Maintainer" }
+      ],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

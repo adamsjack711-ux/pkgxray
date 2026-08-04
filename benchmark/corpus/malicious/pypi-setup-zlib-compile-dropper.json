@@ -1,0 +1,21 @@
+{
+  "name": "pypi-setup-zlib-compile-dropper",
+  "expect": "block",
+  "expectFinding": "code-execution",
+  "cohort": "pypi",
+  "note": "setup.py compiles and exec()s a zlib-decompressed blob at install time — compile()+exec() over a decompressed payload, another obfuscated sdist-dropper shape. Package name typosquats `numpy`.",
+  "evidence": {
+    "packageName": "numpyy",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup\nimport zlib, base64\n\n_blob = base64.b64decode(\"eJwLSS0uUShJLS5RSMwrKUosSVUoLknMK04FAKW8CJU=\")\nexec(compile(zlib.decompress(_blob), \"<config>\", \"exec\"))\n\nsetup(name=\"numpyy\", version=\"1.26.0\", py_modules=[\"numpyy\"])\n"
+    },
+    "npmMetadata": {
+      "name": "numpyy",
+      "version": "1.26.0",
+      "repository": null,
+      "maintainers": [{ "name": "np-y", "role": "Owner" }],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}

