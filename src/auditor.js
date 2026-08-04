@@ -2262,6 +2262,15 @@ const OBFUSCATION_CHILD_PROC_REGEX = /\b(?:child_process|spawn\s*\(|execSync\b)/
 // Buffer.from. Anchoring on a Buffer.from arg (no `)` before the "base64")
 // excludes the `.toString("base64")` encode.
 const NODE_BASE64_DECODE_REGEX = /Buffer\.from\s*\([^)]*,\s*['"]base64['"]\s*\)/i;
+// A BULK String.fromCharCode / fromCodePoint decode — the charcode-array
+// obfuscation that turns `[114,101,…]` back into source. Three bulk forms:
+// eight-plus comma-separated numeric args, `.apply(null, arr)`, or spread
+// `(...arr)`. A one/two-arg fromCharCode (an escaped newline, a single glyph)
+// is deliberately NOT matched, so ordinary string-building doesn't count — only
+// the mass decode a packer emits. Treated like atob/base64 in the
+// decode-then-execute proximity check below.
+const CHARCODE_DECODE_REGEX =
+  /\bfrom(?:CharCode|CodePoint)\s*\(\s*(?:0x[0-9a-f]+|\d{1,7})(?:\s*,\s*(?:0x[0-9a-f]+|\d{1,7})){7,}|\bfrom(?:CharCode|CodePoint)\s*\.\s*apply\s*\(|\bfrom(?:CharCode|CodePoint)\s*\(\s*\.\.\./gi;
 // Aliased / indirect dynamic executor — the forms findDynamicEval MISSES because
 // they never spell `eval(` or `new Function(` literally. Packed malware captures
 // the executor under another name to dodge the literal-name matchers:
@@ -2326,6 +2335,9 @@ function inspectObfuscation(file, content, lower, findings) {
   const globalDecode = new RegExp(NODE_BASE64_DECODE_REGEX.source, "gi");
   let dm;
   while ((dm = globalDecode.exec(content)) !== null) decoderPositions.push(dm.index);
+  CHARCODE_DECODE_REGEX.lastIndex = 0;
+  let cm;
+  while ((cm = CHARCODE_DECODE_REGEX.exec(content)) !== null) decoderPositions.push(cm.index);
   if (decoderPositions.length) {
     const evalIdx = findDynamicEval(content);
     const execIdx = lower.indexOf("execsync");

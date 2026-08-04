@@ -1182,6 +1182,46 @@ test("obfuscation: bundler interop call (0, mod.fn)() near a blob does not fire"
   );
 });
 
+test("obfuscation: charcode-array decoded via fromCharCode.apply and eval'd blocks", () => {
+  // The v1 shape: an integer array folded back to source with
+  // String.fromCharCode.apply(null, arr), then eval'd. No base64 run (commas
+  // break it), so only the bulk-charcode decoder + dynamic-executor proximity
+  // catches it.
+  const arr = Array.from({ length: 40 }, (_, i) => 97 + (i % 26)).join(",");
+  const report = auditEvidence({
+    sourceFiles: {
+      "index.js":
+        "const c=[" + arr + "];\n" +
+        "const s=String.fromCharCode.apply(null,c);\n" +
+        "eval(s);\n"
+    }
+  });
+  assert.ok(
+    report.findings.some((f) => f.category === "obfuscation" && f.severity === "high"),
+    "bulk fromCharCode decode feeding eval must raise HIGH obfuscation"
+  );
+});
+
+test("obfuscation: bulk fromCharCode string-building without an executor stays safe", () => {
+  // fromCharCode.apply is the idiomatic way to turn a byte array into a string
+  // (base64/utf decoders). With no dynamic executor nearby it is not the
+  // decode-then-execute shape and must not fire.
+  const arr = Array.from({ length: 40 }, (_, i) => 97 + (i % 26)).join(",");
+  const report = auditEvidence({
+    packageName: "byte-decoder",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "byte-decoder", repository: "https://github.com/example/x" }),
+      "index.js":
+        "function build(){ return String.fromCharCode.apply(null,[" + arr + "]); }\n" +
+        "module.exports = build;\n"
+    }
+  });
+  assert.ok(
+    !report.findings.some((f) => f.category === "obfuscation"),
+    "fromCharCode string-building with no dynamic executor must not fire"
+  );
+});
+
 test("credential-access: hex-escaped .ssh/id_rsa path is decoded and blocks", () => {
   // "\x2e\x73\x73\x68" is ".ssh" and "\x69\x64\x5f\x72\x73\x61" is "id_rsa".
   // The literal-substring regexes can't see through the escapes; the
