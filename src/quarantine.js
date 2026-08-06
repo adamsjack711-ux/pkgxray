@@ -236,7 +236,9 @@ async function guardExtension(reference, options = {}) {
     ecosystem: resolved.ecosystem || "npm"
   };
   const auditStart = now();
-  const report = auditEvidence(evidence);
+  // typosquat is scan CONFIG, not evidence: `true` from the CLI flag, or the
+  // validated tuning object from .pkgxray.json — passed through unchanged.
+  const report = auditEvidence(evidence, { typosquat: options.typosquat });
   timings.auditMs = elapsed(auditStart);
   const decision = decisionForReport(report, options.policy || "safe-only");
 

@@ -31,7 +31,7 @@ function printUsage() {
       "Usage: pkgxray <command> [options]",
       "",
       "Common commands — vet before you install or connect:",
-      "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps]",
+      "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps] [--typosquat]",
       "                     # vet a package before install (static; no package code runs).",
       "                     # --deps also OSV-scans the package's DIRECT dependencies (transitive worm entry point)",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
@@ -214,6 +214,8 @@ function parseArgs(argv) {
       options.force = true;
     } else if (arg === "--no-source-scan") {
       options.sourceScan = false;
+    } else if (arg === "--typosquat") {
+      options.typosquat = true;
     } else if (arg === "--deps") {
       options.scanDependencies = true;
     } else if (arg === "--yes-run-untrusted-code") {
@@ -317,6 +319,11 @@ async function main() {
   // Keep the existing --policy semantics working downstream (guardExtension,
   // decisionForReport) by carrying the effective policy back onto options.
   options.policy = config.policy;
+  // Config supplies enablement AND tuning ({maxDistance,minLen}) for the opt-in
+  // typosquat heuristic; it wins over the bare --typosquat flag so file-configured
+  // tuning is always honored. The flag alone (config disabled) still enables with
+  // defaults via options.typosquat = true set during arg parsing.
+  if (config.typosquat) options.typosquat = config.typosquat;
 
   if (options.command === "guard") {
     if (!options.reference) {
@@ -564,7 +571,7 @@ async function main() {
     process.exitCode = cfg.exitCodeForVerdict(verdict, config);
     return;
   }
-  const report = auditEvidence(evidence);
+  const report = auditEvidence(evidence, { typosquat: options.typosquat });
 
   // Apply the shared policy: this path has full identity (packageName/version)
   // from the evidence, and an optional sha256 the caller may pass so a pinned

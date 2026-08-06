@@ -732,7 +732,8 @@ async function runDeep(results, options, scheme = "npm") {
         vulnerabilityCheck: false, // already done by the lockfile pass
         githubMetadata: options.githubMetadata !== false,
         githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
-        quarantineRoot: options.quarantineRoot
+        quarantineRoot: options.quarantineRoot,
+        typosquat: options.typosquat
       });
       r.deep = {
         verdict: result.report.verdict,
