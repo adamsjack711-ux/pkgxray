@@ -29,10 +29,12 @@
 //     The achieved level is reported as `isolation`.
 
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const tls = require("node:tls");
 const { spawn, spawnSync } = require("node:child_process");
 
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -143,14 +145,31 @@ function isRawIpHost(host) {
   return /^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/.test(String(host || ""));
 }
 
+// Bare hostname from a CONNECT authority ("host:port" or "[v6]:port"), used both
+// as the per-host cert cache key and the leaf's subjectAltName.
+function connectHostname(authority) {
+  let h = String(authority || "").trim();
+  if (h.startsWith("[")) {
+    const end = h.indexOf("]");
+    h = end > 0 ? h.slice(1, end) : h.slice(1);
+  } else {
+    const colon = h.indexOf(":");
+    if (colon >= 0) h = h.slice(0, colon);
+  }
+  return h.toLowerCase() || "localhost";
+}
+
 // The capture HTTP/HTTPS server, factored out so the in-process proxy and the
 // in-netns file-capture proxy (below) share ONE implementation of request
 // parsing, token scanning, and CONNECT refusal. Plaintext requests are read in
 // full (URL, headers, body) and scanned for canary tokens; HTTPS CONNECTs
-// record the target host only. NOTHING is forwarded — captured egress never
-// leaves the machine. `onHit(hit)` fires for every recorded hit; the socket set
-// it returns lets the caller force-destroy lingering connections on teardown.
-function createCaptureServer(tokenSet, onHit) {
+// record the target host only by default. NOTHING is forwarded — captured
+// egress never leaves the machine. With `serverOptions.tlsMitm` + an ephemeral
+// CA, CONNECT tunnels are terminated locally against a per-host leaf so the
+// decrypted request body is scanned too (still never forwarded upstream).
+// `onHit(hit)` fires for every recorded hit; the socket set it returns lets the
+// caller force-destroy lingering connections on teardown.
+function createCaptureServer(tokenSet, onHit, serverOptions = {}) {
   const sockets = new Set();
   // Precompute each token's encoded variants ONCE — they depend only on the
   // token, never the request — so the capture hot path doesn't re-encode all
@@ -164,6 +183,23 @@ function createCaptureServer(tokenSet, onHit) {
     return seen;
   };
   const record = (hit) => { try { onHit(hit); } catch { /* onHit must never break capture */ } };
+
+  const tlsMitm =
+    serverOptions.tlsMitm === true &&
+    serverOptions.ca && serverOptions.ca.key && serverOptions.ca.cert;
+  // Per-host TLS secure contexts, minted lazily from the CONNECT/SNI hostname
+  // and cached for the session (a host is minted + signed at most once).
+  const tlsContexts = new Map();
+  const contextForHost = (rawHost) => {
+    const hostname = connectHostname(rawHost);
+    let ctx = tlsContexts.get(hostname);
+    if (!ctx) {
+      const leaf = mintHostLeaf(serverOptions.ca, hostname);
+      ctx = tls.createSecureContext({ key: leaf.key, cert: leaf.cert });
+      tlsContexts.set(hostname, ctx);
+    }
+    return ctx;
+  };
 
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -202,20 +238,108 @@ function createCaptureServer(tokenSet, onHit) {
     socket.on("close", () => sockets.delete(socket));
   });
 
-  server.on("connect", (req, clientSocket) => {
+  server.on("connect", (req, clientSocket, head) => {
     sockets.add(clientSocket);
     clientSocket.on("close", () => sockets.delete(clientSocket));
     const host = req.url; // host:port
     const authTokens = scan(host);
-    record({ transport: "https-connect", method: "CONNECT", host, url: `https://${host}`, tokensSeen: authTokens, bodyBytes: 0 });
-    // No MITM: record the intended destination and refuse the tunnel so
-    // nothing actually egresses.
-    try {
-      clientSocket.write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
-      clientSocket.end();
-    } catch {
-      /* client already gone */
+
+    // Record the CONNECT destination UNCONDITIONALLY (parity with the non-MITM
+    // path) so a rejected handshake, connection reset, or the teardown timer
+    // killing a keep-alive socket still leaves an egress record for the host.
+    // In MITM mode the decrypted body is folded into THIS hit (held by
+    // reference — onHit pushes it, we mutate it) as additive detail when the
+    // handshake succeeds; it is never the sole source of the record.
+    const hit = {
+      transport: tlsMitm ? "https-mitm" : "https-connect",
+      method: "CONNECT",
+      host,
+      url: `https://${host}`,
+      tokensSeen: authTokens,
+      bodyBytes: 0
+    };
+    record(hit);
+
+    if (!tlsMitm) {
+      // No MITM: record the intended destination and refuse the tunnel so
+      // nothing actually egresses.
+      try {
+        clientSocket.write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+        clientSocket.end();
+      } catch {
+        /* client already gone */
+      }
+      return;
     }
+
+    // TLS MITM: acknowledge the CONNECT, then present a per-host leaf whose
+    // subjectAltName matches the hostname so a validating client (Node included)
+    // completes the handshake instead of aborting with ALTNAME_INVALID, and scan
+    // the decrypted HTTP request. Still never forwards upstream.
+    try {
+      clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    } catch {
+      return;
+    }
+    const hostname = connectHostname(host);
+    hit.sni = hostname;
+    let tlsSocket;
+    try {
+      tlsSocket = new tls.TLSSocket(clientSocket, {
+        isServer: true,
+        secureContext: contextForHost(hostname),
+        // Honor SNI when the client's servername differs from the CONNECT
+        // authority; each distinct host is minted + cached once.
+        SNICallback: (servername, cb) => {
+          try { cb(null, contextForHost(servername)); } catch (err) { cb(err); }
+        },
+        rejectUnauthorized: false
+      });
+    } catch (err) {
+      hit.mitmError = String((err && err.message) || err);
+      try { clientSocket.destroy(); } catch { /* noop */ }
+      return;
+    }
+    sockets.add(tlsSocket);
+    if (head && head.length) tlsSocket.unshift(head);
+
+    const chunks = [];
+    let bodyBytes = 0;
+    let finalized = false;
+    // Fold whatever plaintext was decrypted into the existing hit, exactly once,
+    // on the FIRST terminal event (end / error / close). A single scan — so a
+    // socket torn down before a clean 'end' still reflects its captured body,
+    // and no per-chunk rescanning is added to the data path.
+    const finalize = () => {
+      if (finalized) return;
+      finalized = true;
+      if (!chunks.length) return;
+      const raw = Buffer.concat(chunks).toString("latin1");
+      const merged = new Set(hit.tokensSeen);
+      for (const t of scan(raw)) merged.add(t);
+      hit.tokensSeen = Array.from(merged);
+      hit.bodyBytes = bodyBytes;
+    };
+    tlsSocket.on("data", (chunk) => {
+      if (bodyBytes < MAX_CAPTURED_BODY) {
+        chunks.push(chunk);
+        bodyBytes += chunk.length;
+      }
+    });
+    tlsSocket.on("end", () => {
+      finalize();
+      try {
+        tlsSocket.write("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
+        tlsSocket.end();
+      } catch {
+        /* client already gone */
+      }
+    });
+    tlsSocket.on("error", () => {
+      finalize();
+      try { tlsSocket.destroy(); } catch { /* noop */ }
+    });
+    tlsSocket.on("close", () => { sockets.delete(tlsSocket); finalize(); });
   });
   server.on("clientError", (_err, socket) => { try { socket.destroy(); } catch { /* noop */ } });
 
@@ -247,8 +371,9 @@ function createCaptureServer(tokenSet, onHit) {
 // not). Both listeners feed one shared `hits` array.
 function startCaptureProxy(tokenSet, options = {}) {
   const hits = [];
-  const tcp = createCaptureServer(tokenSet, (hit) => hits.push(hit));
-  const unix = options.unixPath ? createCaptureServer(tokenSet, (hit) => hits.push(hit)) : null;
+  const serverOptions = { tlsMitm: options.tlsMitm === true, ca: options.ca };
+  const tcp = createCaptureServer(tokenSet, (hit) => hits.push(hit), serverOptions);
+  const unix = options.unixPath ? createCaptureServer(tokenSet, (hit) => hits.push(hit), serverOptions) : null;
   return new Promise((resolve, reject) => {
     tcp.server.listen(0, "127.0.0.1", () => {
       const { port } = tcp.server.address();
@@ -264,6 +389,171 @@ function startCaptureProxy(tokenSet, options = {}) {
       unix.server.listen(options.unixPath, finish);
     });
   });
+}
+
+// --- ephemeral X.509 minting, node:crypto only (no openssl subprocess) ------
+//
+// --tls-mitm needs a session CA plus a per-host leaf whose subjectAltName
+// matches the CONNECT/SNI hostname; a validating client (Node included) aborts
+// with ERR_TLS_CERT_ALTNAME_INVALID against a SAN-less one-leaf-for-all cert, so
+// the MITM would observe nothing. node:crypto can PARSE X.509 but not ISSUE it,
+// so we hand-encode the minimal DER ourselves and sign with crypto.sign. This
+// removes any openssl dependency entirely. Only what a leaf needs for hostname
+// validation is emitted: basicConstraints + subjectAltName; the public key comes
+// from the key object's own SPKI DER so we never encode the RSA structure by hand.
+function derLen(n) {
+  if (n < 0x80) return Buffer.from([n]);
+  const bytes = [];
+  let v = n;
+  while (v > 0) { bytes.unshift(v & 0xff); v = Math.floor(v / 256); }
+  return Buffer.from([0x80 | bytes.length, ...bytes]);
+}
+function derTlv(tag, content) {
+  return Buffer.concat([Buffer.from([tag]), derLen(content.length), content]);
+}
+function derSeq(...parts) { return derTlv(0x30, Buffer.concat(parts)); }
+function derSet(...parts) { return derTlv(0x31, Buffer.concat(parts)); }
+function derExplicit(n, content) { return derTlv(0xa0 | n, content); }
+function derNull() { return Buffer.from([0x05, 0x00]); }
+function derBool(v) { return derTlv(0x01, Buffer.from([v ? 0xff : 0x00])); }
+function derSmallInt(n) { return derTlv(0x02, Buffer.from([n])); }
+function derBitString(buf) { return derTlv(0x03, Buffer.concat([Buffer.from([0x00]), buf])); }
+function derOctet(buf) { return derTlv(0x04, buf); }
+function derUtf8(s) { return derTlv(0x0c, Buffer.from(s, "utf8")); }
+function derInteger(mag) {
+  // Positive DER INTEGER from a big-endian magnitude: drop redundant leading
+  // 0x00 bytes, then prepend one if the high bit would read as negative.
+  let buf = Buffer.from(mag);
+  let i = 0;
+  while (i < buf.length - 1 && buf[i] === 0x00 && (buf[i + 1] & 0x80) === 0) i++;
+  buf = buf.subarray(i);
+  if (buf[0] & 0x80) buf = Buffer.concat([Buffer.from([0x00]), buf]);
+  return derTlv(0x02, buf);
+}
+function derOid(dotted) {
+  const parts = dotted.split(".").map(Number);
+  const bytes = [40 * parts[0] + parts[1]];
+  for (let i = 2; i < parts.length; i++) {
+    let v = parts[i];
+    const stack = [v & 0x7f];
+    v = Math.floor(v / 128);
+    while (v > 0) { stack.unshift((v & 0x7f) | 0x80); v = Math.floor(v / 128); }
+    bytes.push(...stack);
+  }
+  return derTlv(0x06, Buffer.from(bytes));
+}
+function derUtcTime(date) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  const s =
+    p2(date.getUTCFullYear() % 100) + p2(date.getUTCMonth() + 1) + p2(date.getUTCDate()) +
+    p2(date.getUTCHours()) + p2(date.getUTCMinutes()) + p2(date.getUTCSeconds()) + "Z";
+  return derTlv(0x17, Buffer.from(s, "ascii"));
+}
+// Name = single CN RDN. CN is capped at the X.509 ub-common-name of 64 chars
+// (a longer host still validates via the SAN, which is the field clients check).
+function derNameCn(cn) {
+  return derSeq(derSet(derSeq(derOid("2.5.4.3"), derUtf8(String(cn).slice(0, 64)))));
+}
+function derExtension(oidStr, critical, valueDer) {
+  const parts = [derOid(oidStr)];
+  if (critical) parts.push(derBool(true));
+  parts.push(derOctet(valueDer));
+  return derSeq(...parts);
+}
+// subjectAltName: a raw IPv4 host becomes an iPAddress GeneralName, everything
+// else a dNSName — so the leaf validates whether the CONNECT authority is a
+// hostname or a dotted-quad.
+function derSubjectAltName(hostname) {
+  const gname = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+    ? derTlv(0x87, Buffer.from(hostname.split(".").map(Number)))
+    : derTlv(0x82, Buffer.from(hostname, "ascii"));
+  return derExtension("2.5.29.17", false, derSeq(gname));
+}
+// sha256WithRSAEncryption — cached at module scope (constant).
+const SIG_ALG_SHA256_RSA = derSeq(derOid("1.2.840.113549.1.1.11"), derNull());
+
+function buildCertDer({ subjectDer, issuerDer, spkiDer, signingKey, notBefore, notAfter, extensions }) {
+  const tbs = derSeq(
+    derExplicit(0, derSmallInt(2)), // version v3
+    derInteger(crypto.randomBytes(16)),
+    SIG_ALG_SHA256_RSA,
+    issuerDer,
+    derSeq(derUtcTime(notBefore), derUtcTime(notAfter)),
+    subjectDer,
+    spkiDer, // SubjectPublicKeyInfo — already a DER SEQUENCE from the key object
+    derExplicit(3, derSeq(...extensions))
+  );
+  const signature = crypto.sign("sha256", tbs, signingKey);
+  return derSeq(tbs, SIG_ALG_SHA256_RSA, derBitString(signature));
+}
+function derToPem(der, label) {
+  const body = der.toString("base64").match(/.{1,64}/g).join("\n");
+  return `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----\n`;
+}
+
+/**
+ * Generate an ephemeral session CA (self-signed) plus a shared leaf keypair,
+ * using node:crypto only. The returned bundle carries everything the capture
+ * proxy needs to mint per-host leaf certs on the fly (see mintHostLeaf). The CA
+ * cert is written to `dir` so it can be handed to the child via
+ * NODE_EXTRA_CA_CERTS. One leaf KEY is reused across hosts (only the cert
+ * differs per SAN) so per-host minting is cheap — no RSA keygen in the hot path.
+ */
+function generateEphemeralCa(dir) {
+  const caKeys = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const leafKeys = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const issuerDer = derNameCn("pkgxray-canary-ephemeral");
+  const notBefore = new Date(Date.now() - 60 * 60 * 1000); // 1h back-date for clock skew
+  const notAfter = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+  const caCertDer = buildCertDer({
+    subjectDer: issuerDer,
+    issuerDer,
+    spkiDer: caKeys.publicKey.export({ type: "spki", format: "der" }),
+    signingKey: caKeys.privateKey,
+    notBefore,
+    notAfter,
+    extensions: [derExtension("2.5.29.19", true, derSeq(derBool(true)))] // basicConstraints CA:TRUE
+  });
+  const cert = derToPem(caCertDer, "CERTIFICATE");
+  const certPath = path.join(dir, "ca-cert.pem");
+  fs.writeFileSync(certPath, cert);
+  return {
+    key: caKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+    cert,
+    certPath,
+    // minting internals (consumed by mintHostLeaf):
+    caPrivateKey: caKeys.privateKey,
+    issuerDer,
+    leafKeyPem: leafKeys.privateKey.export({ type: "pkcs8", format: "pem" }),
+    leafSpkiDer: leafKeys.publicKey.export({ type: "spki", format: "der" }),
+    notBefore,
+    notAfter
+  };
+}
+
+/**
+ * Mint a per-host leaf cert (basicConstraints CA:FALSE + a subjectAltName for
+ * `hostname`) signed by the session CA in `bundle`. Returns { key, cert } PEMs
+ * ready for tls.createSecureContext. Cheap: reuses the bundle's shared leaf key,
+ * so only a small DER encode + one RSA signature per host.
+ */
+function mintHostLeaf(bundle, hostname) {
+  const host = String(hostname || "localhost");
+  const certDer = buildCertDer({
+    subjectDer: derNameCn(host),
+    issuerDer: bundle.issuerDer,
+    spkiDer: bundle.leafSpkiDer,
+    signingKey: bundle.caPrivateKey,
+    notBefore: bundle.notBefore,
+    notAfter: bundle.notAfter,
+    extensions: [
+      derExtension("2.5.29.19", true, derSeq()), // basicConstraints CA:FALSE
+      derSubjectAltName(host)
+    ]
+  });
+  // Present leaf + CA so a client that trusts the CA can build the chain even if
+  // it isn't preloaded as an anchor.
+  return { key: bundle.leafKeyPem, cert: derToPem(certDer, "CERTIFICATE") + bundle.cert };
 }
 
 // TCP→Unix forwarder, run INSIDE the sandbox's network namespace. It listens on
@@ -998,12 +1288,20 @@ async function runCanarySandbox(options = {}) {
   }
 
   const canary = await seedCanaryFilesystem(home, runId);
+  // OPT-IN TLS MITM: mint an ephemeral session CA (node:crypto, no openssl) so
+  // the capture proxy can terminate HTTPS CONNECTs against a per-host leaf and
+  // scan the decrypted request body. Off by default — the default path records
+  // the CONNECT destination host only and never inspects bodies.
+  const mitmCa = options.tlsMitm === true ? generateEphemeralCa(root) : null;
   // Under netns, the sandbox cannot reach the host TCP loopback, so the capture
   // proxy also opens a Unix socket the in-netns forwarder connects to, and the
   // payload's proxy env points at the forwarder's inner loopback port instead.
   const proxy = await startCaptureProxy(
     new Set(canary.tokens.keys()),
-    netns ? { unixPath: netns.sockPath } : {}
+    {
+      ...(netns ? { unixPath: netns.sockPath } : {}),
+      ...(mitmCa ? { tlsMitm: true, ca: mitmCa } : {})
+    }
   );
 
   const proxyUrl = netns ? `http://127.0.0.1:${netns.innerPort}` : `http://127.0.0.1:${proxy.port}`;
@@ -1024,7 +1322,14 @@ async function runCanarySandbox(options = {}) {
     npm_config_https_proxy: proxyUrl,
     // A no-op registry through the proxy; nothing should actually resolve.
     NO_PROXY: "",
-    no_proxy: ""
+    no_proxy: "",
+    // When MITM is on, hand the ephemeral CA to the child so a validating TLS
+    // client (Node included) trusts the per-host leaf and completes the
+    // handshake — otherwise it aborts before sending a body and we observe
+    // nothing. A client that ignores these still just looks CONNECT-only.
+    ...(mitmCa
+      ? { NODE_EXTRA_CA_CERTS: mitmCa.certPath, SSL_CERT_FILE: mitmCa.certPath }
+      : {})
   };
 
   let execResult;
@@ -1108,7 +1413,10 @@ async function runCanarySandbox(options = {}) {
         : "Malicious behavior was OBSERVED and captured. Note the inverse still holds for anything NOT seen: " +
           "sandbox-aware malware can hide additional behavior behind environment/time/geo/C2/interaction gates.",
     limits:
-      "HTTPS bodies are not inspected (CONNECT destination host recorded, no MITM); plaintext/base64/hex/url-encoded canary tokens are matched but compressed or encrypted exfil bodies are not; " +
+      `${mitmCa
+        ? "HTTPS bodies ARE inspected for a validating TLS client (opt-in --tls-mitm: CONNECT terminated against a per-host ephemeral-CA leaf, decrypted request scanned); a client that pins certs or ignores the CA still records CONNECT-host-only"
+        : "HTTPS bodies are not inspected (CONNECT destination host recorded, no MITM)"}; ` +
+      "plaintext/base64/hex/url-encoded canary tokens are matched but compressed or encrypted exfil bodies are not; " +
       `${wrapperInfo.netConfined !== true ? "raw-socket/dgram/non-proxied egress can still leave (net shared to keep the proxy reachable)" : "non-loopback egress is denied at the OS boundary (raw-socket egress blocked, not just unobserved)"}; ` +
       `process isolation level: ${wrapperInfo.level}. Absence of a finding is not evidence of safety.`
   };
@@ -1124,6 +1432,8 @@ module.exports = {
   matchTokens,
   tokenVariants,
   detectSandboxWrapper,
+  generateEphemeralCa,
+  mintHostLeaf,
   makeRunId,
   DECOY_SPECS,
   // exported for tests: the two phase runners + their composition
