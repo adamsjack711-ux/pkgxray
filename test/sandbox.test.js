@@ -763,23 +763,30 @@ test("#6 --tls-mitm: a validating TLS client completes the handshake for an arbi
 test("#6 --tls-mitm: a client that aborts the TLS handshake still leaves an egress record for the host", async () => {
   const { dir, proxy } = await startMitmProxy([]);
   try {
-    await new Promise((resolve) => {
-      const raw = net.connect(proxy.port, "127.0.0.1", () => {
-        raw.write("CONNECT aborted.example:443 HTTP/1.1\r\nHost: aborted.example:443\r\n\r\n");
-      });
-      raw.on("error", () => resolve());
-      raw.once("data", () => {
-        // No `ca` → the client cannot verify the leaf and aborts the handshake.
-        const t = tls.connect({ socket: raw, servername: "aborted.example", rejectUnauthorized: true }, () => {});
-        t.on("error", () => { try { t.destroy(); } catch { /* noop */ } resolve(); });
-        t.on("close", resolve);
-      });
+    const raw = net.connect(proxy.port, "127.0.0.1", () => {
+      raw.write("CONNECT aborted.example:443 HTTP/1.1\r\nHost: aborted.example:443\r\n\r\n");
     });
-    await new Promise((r) => setTimeout(r, 50));
+    raw.on("error", () => { /* the aborted handshake tears the socket down; ignore */ });
+    // Wait for the proxy's 200, then start a validating handshake with no CA so it
+    // fails. Resolve as soon as the handshake is INITIATED — the egress hit is
+    // recorded server-side at CONNECT time, independent of the handshake outcome,
+    // and a rejected handshake does not reliably emit a client-side error/close on
+    // every platform (Windows in particular), so the test must not wait on those.
+    await new Promise((resolve) => {
+      raw.once("data", () => {
+        const t = tls.connect({ socket: raw, servername: "aborted.example", rejectUnauthorized: true }, () => {});
+        t.on("error", () => { try { t.destroy(); } catch { /* noop */ } });
+        resolve();
+      });
+      setTimeout(resolve, 1000); // never hang if the 200 is slow/absent
+    });
+    // Give the server's connect handler a beat to have recorded the hit.
+    await new Promise((r) => setTimeout(r, 100));
     const hit = proxy.hits.find((h) => h.host === "aborted.example:443");
     assert.ok(hit, `rejected handshake recorded no egress: ${JSON.stringify(proxy.hits)}`);
     assert.equal(hit.transport, "https-mitm");
     assert.equal(hit.bodyBytes, 0, "no decrypted body should have been captured on an aborted handshake");
+    try { raw.destroy(); } catch { /* noop */ }
   } finally {
     await proxy.close();
     fs.rmSync(dir, { recursive: true, force: true });
