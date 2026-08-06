@@ -590,6 +590,9 @@ function handleRequest(request) {
       // default, so the agent surface can be tightened centrally in config.
       const guardOpts = { ...args, keepStaging: true };
       if (guardOpts.policy === undefined) guardOpts.policy = MCP_CONFIG.policy;
+      // The opt-in typosquat heuristic is a config knob, not a tool argument —
+      // .pkgxray.json is the single switch for the agent surface.
+      guardOpts.typosquat = CONFIG.typosquat;
       // packageScanFirst (default true): the agent surface insists on a static
       // package scan before it will vouch for anything. Only when config
       // explicitly disables it (and the caller didn't ask for a scan) do we let
@@ -626,7 +629,9 @@ function handleRequest(request) {
     if (name === LOCKFILE_AUDIT_TOOL_NAME) {
       const fileError = validateLockfileExists(args.lockfilePath);
       if (fileError) return invalidParams(id, fileError);
-      return auditLockfile(args.lockfilePath, args).then((result) => {
+      // Thread the config's typosquat setting into the deep-scan path (the
+      // shallow pass is OSV-only; typosquat applies wherever auditEvidence runs).
+      return auditLockfile(args.lockfilePath, { ...args, typosquat: CONFIG.typosquat }).then((result) => {
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(result, null, 2)
@@ -662,6 +667,9 @@ function handleRequest(request) {
       };
       return triageLockfile(args.lockfilePath, {
         ...args,
+        // Honor the config typosquat setting through triage's deep scan
+        // (triageLockfile spreads options into auditLockfile → runDeep).
+        typosquat: CONFIG.typosquat,
         stdout: fakeStdout,
         stderr: fakeStderr,
         isTTY: true // skip the !isTTY refusal — auto mode runs without input
@@ -682,7 +690,7 @@ function handleRequest(request) {
     }
 
     // audit_agent_extension_supply_chain
-    const report = auditEvidence(args);
+    const report = auditEvidence(args, { typosquat: CONFIG.typosquat });
     const text =
       args.outputFormat === "json"
         ? JSON.stringify(report, null, 2)
