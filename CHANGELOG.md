@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — PyPI ecosystem support
+## 1.1.0 — 2026-08-05 — PyPI ecosystem support
 
 **In plain terms:** pkgxray now scans **Python packages**, not just npm. Point it
 at a Python lockfile or a `pypi:` package and it runs the same engine — OSV,
