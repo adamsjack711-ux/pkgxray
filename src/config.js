@@ -438,6 +438,24 @@ function verdictForScanError(config) {
   return (config && config.scanErrorPolicy) === "fail-open" ? "safe" : "review";
 }
 
+// What a PARTIAL scan gap maps to — one check could not run (e.g. OSV was
+// unreachable) but the rest of the pipeline completed and produced real
+// evidence. Distinct from verdictForScanError, which is the all-or-nothing
+// case: here we keep every finding we did gather and only refuse to call the
+// result clean.
+//
+//   block  -> block   static evidence is conclusive on its own; a CVE feed
+//                     being down never makes malware safe.
+//   other  -> review  under fail-closed, because "safe" would assert something
+//                     we did not actually check. fail-open leaves it as-is.
+//
+// Verdict-neutral: works on both the report vocabulary (safe/review/block) and
+// the decision vocabulary (allow/review/block).
+function floorVerdictForScanGap(verdict, hasGap, config) {
+  if (!hasGap || verdict === "block") return verdict;
+  return verdictForScanError(config) === "safe" ? verdict : "review";
+}
+
 // --- rendering -------------------------------------------------------------
 
 // Lines describing what the config changed, to append to EVERY report so a
@@ -493,6 +511,7 @@ module.exports = {
   applyConfig,
   exitCodeForVerdict,
   verdictForScanError,
+  floorVerdictForScanGap,
   renderConfigEffects,
   mcpConfig,
   mcpToolAllowed,

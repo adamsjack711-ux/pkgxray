@@ -590,6 +590,11 @@ function handleRequest(request) {
       // default, so the agent surface can be tightened centrally in config.
       const guardOpts = { ...args, keepStaging: true };
       if (guardOpts.policy === undefined) guardOpts.policy = MCP_CONFIG.policy;
+      // Set AFTER the spread on purpose: `args` is caller-controlled, and a
+      // scan-error policy is the server operator's decision, not the calling
+      // agent's. This also stops a caller from passing scanErrorPolicy:
+      // "fail-open" to talk the server out of a scan-gap review.
+      guardOpts.scanErrorPolicy = CONFIG.scanErrorPolicy;
       // packageScanFirst (default true): the agent surface insists on a static
       // package scan before it will vouch for anything. Only when config
       // explicitly disables it (and the caller didn't ask for a scan) do we let
@@ -787,7 +792,18 @@ function applyConfigToGuardResult(result, policy) {
   });
   // Re-derive the policy-folded decision from the (possibly allowlisted) verdict
   // so the top-line Decision can't disagree with the adjusted report verdict.
-  const decision = decisionForReport(adjustedReport, policy || "safe-only");
+  // Re-apply the scan-gap floor afterwards — this re-derivation would otherwise
+  // drop the floor guardExtension set (e.g. OSV unreachable). An explicit
+  // pinned allowlist entry still wins; that's a human decision on record.
+  const rederived = decisionForReport(adjustedReport, policy || "safe-only");
+  const decision =
+    adjustedReport.configEffects && adjustedReport.configEffects.allowlisted
+      ? rederived
+      : cfg.floorVerdictForScanGap(
+          rederived,
+          Boolean(result.vulnerabilityPrecheck && result.vulnerabilityPrecheck.error),
+          CONFIG
+        );
   return { ...result, decision, report: adjustedReport, configEffects: adjustedReport.configEffects };
 }
 
