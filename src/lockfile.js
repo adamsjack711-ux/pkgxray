@@ -4,6 +4,11 @@ const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const path = require("node:path");
 
+// Sent on every outbound request so OSV/GitHub can attribute pkgxray traffic to
+// a real release. Derived from package.json — hardcoding it meant four modules
+// drifted to four different stale versions.
+const USER_AGENT = `pkgxray/${require("../package.json").version}`;
+
 // ---------------------------------------------------------------------------
 // Lockfile parsers — return Map<name@version, { name, version, paths: [] }>
 // `paths` is the dependency chain(s) that led to this dep (useful for "why is
@@ -560,7 +565,7 @@ function postBatch(queries) {
         headers: {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body),
-          "user-agent": "pkgxray/0.9.0"
+          "user-agent": USER_AGENT
         },
         agent: OSV_AGENT
       },

@@ -120,8 +120,9 @@ These are **real limitations**; `result.limits` repeats them on every run.
   destination host is recorded. A token exfiltrated inside an HTTPS body is
   caught as *"phoned `<host>` after reading a decoy,"* not as a proven token
   leak. Compressed or encrypted bodies also defeat token matching (only
-  reversible encodings — base64/hex/url — are decoded). *(Future: optional TLS
-  termination with an ephemeral CA — see below.)*
+  reversible encodings — base64/hex/url — are decoded). *(Opt-in `--tls-mitm`
+  terminates HTTPS against an ephemeral per-host CA and scans the decrypted body
+  — see Hardening status below.)*
 - **Raw-socket / `dgram` / non-proxied egress** is not seen by an HTTP proxy.
   On **`sandbox-exec` (macOS)** it is now **blocked** at the OS boundary
   (`netConfined: true`), so it can't leave — but it also isn't *recorded*. On
@@ -164,11 +165,21 @@ pkgxray canary <ref> --yes-run-untrusted-code   # required opt-in
                      --format json|markdown
 ```
 
+## Hardening status
+
+- **TLS termination** — **shipped, opt-in via `--tls-mitm`.** A per-run ephemeral
+  session CA (minted with `node:crypto` alone, no `openssl`) mints a per-host leaf
+  carrying the correct `subjectAltName`, injected into the child via
+  `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`. A validating TLS client (Node included)
+  completes the handshake and its decrypted request body is scanned, so a token
+  exfiltrated inside an HTTPS body is caught (not just "phoned a host"). The
+  CONNECT destination host is still recorded unconditionally, so a client that
+  pins certs or ignores the CA degrades to CONNECT-host-only, never to nothing.
+  **Off by default** — the default path records the destination host and never
+  inspects bodies.
+
 ## Planned hardening
 
-- **TLS termination** with a per-run ephemeral CA injected via
-  `NODE_EXTRA_CA_CERTS`/`SSL_CERT_FILE`, so a token exfiltrated inside an HTTPS
-  body is provable (not just "phoned a host").
 - **Loopback-only network namespace on Linux** (`--unshare-net` with the capture
   proxy reachable inside it), so *all* non-proxied egress is blocked by having no
   route out — extending the macOS raw-socket block (`netConfined: true`, already

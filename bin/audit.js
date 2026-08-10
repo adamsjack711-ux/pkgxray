@@ -34,6 +34,9 @@ function printUsage() {
       "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps] [--typosquat]",
       "                     # vet a package before install (static; no package code runs).",
       "                     # --deps also OSV-scans the package's DIRECT dependencies (transitive worm entry point)",
+      "                     # --no-vulnerability-check skips the OSV lookup entirely (offline / air-gapped use).",
+      "                     #   If OSV is merely unreachable you don't need this: the static scan still runs and",
+      "                     #   the report cites the missing CVE check.",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
       "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
       "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
@@ -50,11 +53,13 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "",
       "Advanced:",
-      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox] [--no-import-phase]",
+      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox] [--tls-mitm] [--no-import-phase]",
       "                     # OPT-IN: EXECUTES untrusted package code (install + import) inside the sandbox — the one path that",
       "                     # runs the package. Decoy-credential HOME behind a capture proxy that never forwards egress; confirms",
       "                     # exfil behaviorally (cannot clear a pkg). Requires --yes-run-untrusted-code (or PKGXRAY_ALLOW_EXECUTION=1).",
-      "                     # --require-sandbox fails closed without an OS sandbox (bwrap/sandbox-exec). See docs/canary-threat-model.md",
+      "                     # --require-sandbox fails closed without an OS sandbox (bwrap/sandbox-exec).",
+      "                     # --tls-mitm: terminate HTTPS with an ephemeral per-host CA (node:crypto, no openssl) to scan decrypted",
+      "                     #   request bodies; off by default (default records the CONNECT host only). See docs/canary-threat-model.md",
       "  pkgxray mcp-proxy [flags] [--] <command [args...]>                         # run a stdio MCP server behind a per-call runtime gate: every tools/call",
       "                     [--policy strict|balanced|permissive]                   #   is checked in-memory (µs), the manifest is re-audited on every",
       "                     [--pin] [--lock <path>] [--no-recheck]                  #   tools/list_changed, drifted tools are denied until re-pinned,",
@@ -224,6 +229,8 @@ function parseArgs(argv) {
       options.keepSandbox = true;
     } else if (arg === "--require-sandbox") {
       options.requireSandbox = true;
+    } else if (arg === "--tls-mitm") {
+      options.tlsMitm = true;
     } else if (arg === "--no-import-phase") {
       options.importPhase = false;
     } else if (arg === "--timeout") {
@@ -333,7 +340,11 @@ async function main() {
     // printed Quarantine path; non-interactive callers reap it by default.
     let result;
     try {
-      result = await guardExtension(options.reference, { ...options, keepStaging: true });
+      result = await guardExtension(options.reference, {
+        ...options,
+        scanErrorPolicy: config.scanErrorPolicy,
+        keepStaging: true
+      });
     } catch (error) {
       // A guard that crashes / times out must not exit to an unclear state.
       // Route it through the config's scan-error policy (fail-closed → review),
@@ -378,7 +389,19 @@ async function main() {
     result.configEffects = adjusted.configEffects;
     // Fold the policy promotion (--policy allow-review) over the config verdict
     // so the guard's reported decision + exit code stay consistent with today.
-    const finalVerdict = promoteVerdict(adjusted.verdict, config.policy);
+    // Re-apply the scan-gap floor: applyConfig/promoteVerdict recompute the
+    // verdict from the report, which would otherwise discard the floor
+    // guardExtension already applied to result.decision. An allowlist hit in
+    // .pkgxray.json still wins — that is an explicit, pinned human decision.
+    const promoted = promoteVerdict(adjusted.verdict, config.policy);
+    const finalVerdict =
+      adjusted.configEffects && adjusted.configEffects.allowlisted
+        ? promoted
+        : cfg.floorVerdictForScanGap(
+            promoted,
+            Boolean(result.vulnerabilityPrecheck && result.vulnerabilityPrecheck.error),
+            config
+          );
     result.decision = finalVerdict;
 
     if (options.format === "json") {
@@ -422,6 +445,7 @@ async function main() {
       timeoutMs: options.timeoutMs,
       keepSandbox: options.keepSandbox,
       requireSandbox: options.requireSandbox,
+      tlsMitm: options.tlsMitm,
       importPhase: options.importPhase
     });
     if (options.format === "json") {

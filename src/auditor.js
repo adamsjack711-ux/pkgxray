@@ -633,6 +633,10 @@ function normalizeEvidence(input) {
     webPresence: evidence.webPresence || evidence.WEB_PRESENCE || evidence.web || null,
     knownVulnerabilities:
       evidence.knownVulnerabilities || evidence.vulnerabilities || evidence.osvVulnerabilities || [],
+    // Set when the CVE lookup itself failed (OSV unreachable / rate-limited /
+    // offline). An empty knownVulnerabilities array is ambiguous on its own —
+    // this disambiguates "checked, nothing found" from "could not check".
+    vulnerabilityScanError: stringValue(evidence.vulnerabilityScanError),
     sourceFiles: normalizeSourceFiles(
       evidence.sourceFiles || evidence.SOURCE_FILES || evidence.files || {}
     ),
@@ -836,6 +840,7 @@ const BAND_DEFINITIONS = [
   { band: "bulk-env", label: "bulk-env-access", categories: ["environment-access"], rationale: "Reads the entire process environment in bulk; risky paired with network." },
   { band: "clipboard", label: "clipboard-access", categories: ["data-access"], rationale: "Reads or writes the system clipboard — can expose copied secrets." },
   { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
+  { band: "vulnerability-data-unavailable", label: "vulnerability-data-unavailable", categories: ["vulnerability-data-unavailable"], rationale: "The OSV vulnerability database could not be reached, so published CVEs were not checked. Static analysis still ran — only this dimension is missing." },
   { band: "missing-metadata", label: "missing-metadata", categories: ["missing-metadata", "supply-chain-signal", "github-fetch"], rationale: "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped." },
   { band: "metadata-mimicry", label: "metadata-mimicry", categories: ["metadata-mimicry"], rationale: "Publishes under a name that disagrees with its declared repository while running a consumer install hook. Ordinary for monorepos and multi-artifact repos; also how a typosquat borrows a trusted project's identity. Evidence only — it never changes a verdict." },
   { band: "github-mismatch", label: "github-mismatch", categories: ["github-mismatch"], rationale: "package.json points at a GitHub repo that doesn't exist or doesn't match — strong typosquat / impersonation signal." },
@@ -909,6 +914,7 @@ function auditMetadata(evidence, findings) {
   inspectGithubMetadata(evidence, findings);
   inspectProvenance(evidence, findings);
   inspectKnownVulnerabilities(evidence.knownVulnerabilities, findings);
+  inspectVulnerabilityScanGap(evidence, findings);
   inspectNpmVsGithubDiff(evidence, findings);
 }
 
@@ -1158,6 +1164,25 @@ function inspectGithubMetadata(evidence, findings) {
       rationale: "Repo has not seen a push in over two years; consider whether it's still maintained."
     });
   }
+}
+
+// The CVE feed never answered. Cite it as an evidence gap so the report is
+// explicit that the vulnerability dimension is unchecked — the verdict floor
+// that acts on it lives in the caller (config.floorVerdictForScanGap), because
+// whether an unchecked dimension blocks promotion is a POLICY question
+// (scanErrorPolicy), not a property of the evidence. Severity stays info: this
+// finding describes what we don't know, and absence of knowledge is not itself
+// a risk indicator.
+function inspectVulnerabilityScanGap(evidence, findings) {
+  if (!evidence.vulnerabilityScanError) return;
+  findings.push({
+    severity: "info",
+    category: "vulnerability-data-unavailable",
+    file: "VULNERABILITY_INTELLIGENCE",
+    snippet: clip(`OSV lookup did not complete: ${evidence.vulnerabilityScanError}`),
+    rationale:
+      "The known-vulnerability database could not be reached, so this package/version was not checked against published CVEs. Static analysis of the package contents still ran and every finding below stands; only the CVE dimension is missing."
+  });
 }
 
 function inspectKnownVulnerabilities(vulnerabilities, findings) {
@@ -4249,6 +4274,12 @@ function evidenceCompletenessScore(findings, evidence, weight) {
   if (findings.some((finding) => finding.file === "GITHUB_METADATA")) {
     score -= 5;
   }
+  // An unreachable CVE feed leaves a real hole in the evidence, so the
+  // completeness parameter reflects it — this is the score that exists to say
+  // "how much did we actually get to look at".
+  if (findings.some((finding) => finding.category === "vulnerability-data-unavailable")) {
+    score -= 15;
+  }
 
   score = Math.max(0, score);
   return {
@@ -4257,7 +4288,12 @@ function evidenceCompletenessScore(findings, evidence, weight) {
     weight,
     weightedScore: score * weight,
     findingCount: findings.filter((finding) =>
-      ["missing-evidence", "missing-package-json", "missing-metadata"].includes(finding.category)
+      [
+        "missing-evidence",
+        "missing-package-json",
+        "missing-metadata",
+        "vulnerability-data-unavailable"
+      ].includes(finding.category)
     ).length
   };
 }
