@@ -53,11 +53,13 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "",
       "Advanced:",
-      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox] [--no-import-phase]",
+      "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox] [--tls-mitm] [--no-import-phase]",
       "                     # OPT-IN: EXECUTES untrusted package code (install + import) inside the sandbox — the one path that",
       "                     # runs the package. Decoy-credential HOME behind a capture proxy that never forwards egress; confirms",
       "                     # exfil behaviorally (cannot clear a pkg). Requires --yes-run-untrusted-code (or PKGXRAY_ALLOW_EXECUTION=1).",
-      "                     # --require-sandbox fails closed without an OS sandbox (bwrap/sandbox-exec). See docs/canary-threat-model.md",
+      "                     # --require-sandbox fails closed without an OS sandbox (bwrap/sandbox-exec).",
+      "                     # --tls-mitm: terminate HTTPS with an ephemeral per-host CA (node:crypto, no openssl) to scan decrypted",
+      "                     #   request bodies; off by default (default records the CONNECT host only). See docs/canary-threat-model.md",
       "  pkgxray mcp-proxy [flags] [--] <command [args...]>                         # run a stdio MCP server behind a per-call runtime gate: every tools/call",
       "                     [--policy strict|balanced|permissive]                   #   is checked in-memory (µs), the manifest is re-audited on every",
       "                     [--pin] [--lock <path>] [--no-recheck]                  #   tools/list_changed, drifted tools are denied until re-pinned,",
@@ -225,6 +227,8 @@ function parseArgs(argv) {
       options.keepSandbox = true;
     } else if (arg === "--require-sandbox") {
       options.requireSandbox = true;
+    } else if (arg === "--tls-mitm") {
+      options.tlsMitm = true;
     } else if (arg === "--no-import-phase") {
       options.importPhase = false;
     } else if (arg === "--timeout") {
@@ -434,6 +438,7 @@ async function main() {
       timeoutMs: options.timeoutMs,
       keepSandbox: options.keepSandbox,
       requireSandbox: options.requireSandbox,
+      tlsMitm: options.tlsMitm,
       importPhase: options.importPhase
     });
     if (options.format === "json") {
