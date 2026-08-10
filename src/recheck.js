@@ -76,7 +76,8 @@ function makeDefaultEvaluator(options, scheme = "npm") {
       // divergence (npm-vs-GitHub) is part of the intelligence recheck compares;
       // leave it at guardExtension's default (enabled) unless the caller opts out.
       githubDiff: options.githubDiff === true ? true : options.githubDiff,
-      quarantineRoot: options.quarantineRoot
+      quarantineRoot: options.quarantineRoot,
+      typosquat: options.typosquat
     });
     return { verdict: result.report.verdict, report: result.report };
   };
@@ -435,5 +436,7 @@ module.exports = {
   classifyDrift,
   verdictRank,
   worstVerdict,
-  VERDICT_RANK
+  VERDICT_RANK,
+  // exported for tests
+  makeDefaultEvaluator
 };

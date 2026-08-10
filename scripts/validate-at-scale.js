@@ -41,7 +41,7 @@ const AUDIT = path.join(ROOT, 'bin', 'audit.js');
 
 // Guard schemes keyed by ecosystem, and the default corpus list for each.
 const ECOSYSTEMS = {
-  npm: { scheme: 'npm', defaultList: path.join(ROOT, 'validation', 'top1000.txt') },
+  npm: { scheme: 'npm', defaultList: path.join(ROOT, 'src', 'data', 'top1000.txt') },
   pypi: { scheme: 'pypi', defaultList: path.join(ROOT, 'validation', 'top-pypi-1000.txt') },
 };
 

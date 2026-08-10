@@ -64,6 +64,11 @@ const DEFAULTS = Object.freeze({
   scanErrorPolicy: "fail-closed",
   allow: [],
   mute: [],
+  // Opt-in name-similarity typosquat heuristic (high FP risk on short names).
+  // `true` enables with defaults; `{ maxDistance, minLen }` enables and tunes.
+  // Validated to `false` or a tuning object, so surfaces can pass
+  // `config.typosquat` straight through as the auditEvidence option.
+  typosquat: false,
   mcp: DEFAULT_MCP
 });
 
@@ -266,6 +271,27 @@ function validateMcp(raw, warnings) {
   return mcp;
 }
 
+// `typosquat` accepts true|false or a tuning object. Normalized to `false`
+// (disabled) or an object usable directly as typosquatFindings options —
+// empty when enabled with defaults. Bad tuning values fall back to the
+// heuristic's defaults, loudly.
+function validateTyposquat(raw, warnings) {
+  if (raw === undefined || raw === false) return false;
+  if (raw === true) return {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const out = {};
+    for (const key of ["maxDistance", "minLen"]) {
+      if (raw[key] === undefined) continue;
+      const n = Number(raw[key]);
+      if (Number.isInteger(n) && n >= 1) out[key] = n;
+      else warnings.push(`typosquat.${key}: "${raw[key]}" is not an integer >= 1; using the default`);
+    }
+    return out;
+  }
+  warnings.push(`typosquat: expected true|false or { maxDistance, minLen }; got "${raw}" — disabled`);
+  return false;
+}
+
 function validateConfig(raw, warnings) {
   const config = {
     schemaVersion: SCHEMA_VERSION,
@@ -280,10 +306,14 @@ function validateConfig(raw, warnings) {
     ),
     allow: [],
     mute: [],
+    typosquat: validateTyposquat(raw.typosquat, warnings),
     mcp: validateMcp(raw.mcp, warnings)
   };
   if (config.policy === "allow-review") {
     warnings.push('policy "allow-review" promotes review-grade packages — this is a loosening of the default safe-only.');
+  }
+  if (config.typosquat) {
+    warnings.push("typosquat heuristic enabled — an opt-in name-similarity check with a high false-positive rate on short/intentional names.");
   }
   for (const entry of Array.isArray(raw.allow) ? raw.allow : []) {
     const v = validateAllowEntry(entry, warnings);

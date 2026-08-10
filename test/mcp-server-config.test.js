@@ -161,6 +161,72 @@ test("with no mcp.tools, all four tools are still exposed", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// 1b. `typosquat` in .pkgxray.json is honored on the MCP surface — the evidence
+//     audit tool (offline) must pick up the config toggle AND its tuning.
+// ---------------------------------------------------------------------------
+
+async function auditFindingCategories(server, packageName) {
+  const res = await server.call("tools/call", {
+    name: "audit_agent_extension_supply_chain",
+    arguments: {
+      packageName,
+      sourceFiles: { "index.js": "module.exports = 1;" },
+      outputFormat: "json"
+    }
+  });
+  return res.result.structuredContent.findings.map((f) => f.category);
+}
+
+test("typosquat:true in .pkgxray.json is honored by the MCP audit tool", async () => {
+  const dir = await tmpDir();
+  await writeConfig(dir, { typosquat: true });
+
+  const server = startServer(dir);
+  try {
+    await server.call("initialize", { protocolVersion: "2024-11-05" });
+    const categories = await auditFindingCategories(server, "roolup");
+    assert.ok(
+      categories.includes("typosquat-similarity"),
+      `expected typosquat-similarity, got: ${categories.join(", ")}`
+    );
+  } finally {
+    await server.stop();
+  }
+});
+
+test("without typosquat in config, the MCP audit tool stays quiet on near-miss names", async () => {
+  const dir = await tmpDir();
+  await writeConfig(dir, {});
+
+  const server = startServer(dir);
+  try {
+    await server.call("initialize", { protocolVersion: "2024-11-05" });
+    const categories = await auditFindingCategories(server, "roolup");
+    assert.ok(!categories.includes("typosquat-similarity"), "heuristic must stay opt-in");
+  } finally {
+    await server.stop();
+  }
+});
+
+test("typosquat tuning from config is honored on the MCP surface", async () => {
+  const dir = await tmpDir();
+  await writeConfig(dir, { typosquat: { maxDistance: 1 } });
+
+  const server = startServer(dir);
+  try {
+    await server.call("initialize", { protocolVersion: "2024-11-05" });
+    // lodahs is distance 2 from lodash — silenced under maxDistance 1...
+    const far = await auditFindingCategories(server, "lodahs");
+    assert.ok(!far.includes("typosquat-similarity"), "maxDistance:1 must silence a distance-2 name");
+    // ...while roolup is distance 1 from rollup and still flags.
+    const near = await auditFindingCategories(server, "roolup");
+    assert.ok(near.includes("typosquat-similarity"));
+  } finally {
+    await server.stop();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // 2. A pinned allow (matching sha256) applied to a guard result forces `safe`
 //    and the response text shows the allowlist notice.
 //

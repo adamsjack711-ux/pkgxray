@@ -642,6 +642,9 @@ function normalizeEvidence(input) {
     ),
     npmVsGithubDiff: evidence.npmVsGithubDiff || null,
     provenanceAttestation: evidence.provenanceAttestation || null,
+    // Per-input opt-in for the typosquat heuristic (raw-evidence callers); the
+    // CLI/config path enables it via the auditEvidence `options` argument instead.
+    typosquat: evidence.typosquat === true,
     // Which registry this package came from. Drives whether the JS-primitive
     // behavioral suite applies (see auditFiles) — a PyPI package's bundled
     // non-Python files are vendored, not its audited execution surface. Defaults
@@ -752,12 +755,25 @@ function applySelfScanDowngrade(findings) {
   });
 }
 
-function auditEvidence(input) {
+function auditEvidence(input, options = {}) {
   const evidence = normalizeEvidence(input);
   const findings = [];
 
   auditMetadata(evidence, findings);
   auditFiles(evidence.sourceFiles, findings, evidence);
+
+  // Opt-in typosquat heuristic. Enablement threads from config/CLI through
+  // `options.typosquat` (true, or an object carrying maxDistance/minLen tuning —
+  // the shape validateConfig produces); evidence-level `typosquat: true` remains
+  // a per-input opt-in for raw-evidence callers. Off by default: edit-distance
+  // against popular names has a high false-positive rate on short names.
+  const typosquat = options.typosquat || evidence.typosquat;
+  if (typosquat) {
+    const { typosquatFindings } = require("./typosquat");
+    findings.push(
+      ...typosquatFindings(evidence.packageName, typeof typosquat === "object" ? typosquat : {})
+    );
+  }
 
   // The antivirus-flags-itself downgrade — see isVerifiedSelfScan above.
   // Runs after all inspectors so it sees the final severity of every finding,
