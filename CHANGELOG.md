@@ -1,5 +1,50 @@
 # Changelog
 
+## Unreleased
+
+**In plain terms:** an OSV outage used to switch pkgxray off. If the
+vulnerability database was unreachable — a real outage, a rate limit, a
+corporate proxy, an air-gapped box — the guard threw away the **entire** static
+scan and returned a bare `REVIEW` with no findings. Now the local analysis runs
+regardless, and the report says plainly that the CVE check is the one thing
+missing.
+
+### Fixed
+- **An unreachable OSV no longer disables the static engine.** The OSV precheck
+  in `guardExtension` was an unguarded `await`, and it runs *before* the tarball
+  download and source collection (both gated on its result), so any network
+  failure unwound the whole guard before a single byte of package code was read.
+  Every other network fetch in that pipeline (GitHub metadata, provenance,
+  dependency scan) already degraded gracefully; this one now matches. Impact was
+  not theoretical: with OSV down, a package carrying a credential-exfil payload
+  returned `REVIEW` with zero findings under the default policy, and — because
+  the abort routed through `scanErrorPolicy` — **`SAFE`, exit 0, under
+  `fail-open`**. Both now return `BLOCK`, exit 2, on the static evidence alone.
+- **Missing CVE data is now cited, not silently implied clean.** A failed lookup
+  adds an INFO `vulnerability-data-unavailable` finding naming the underlying
+  error, and docks the `evidenceCompleteness` parameter. `vulnerabilityPrecheck`
+  in the JSON output gained `completed` and `error`, so a consumer reading
+  `vulnerabilityCount: 0` can distinguish "OSV said clean" from "OSV never
+  answered".
+- **Verdict floor is policy-driven, not hardcoded.** A scan gap floors a clean
+  result at `REVIEW` under the default `fail-closed` (calling it safe would
+  assert a check that never ran) and leaves it alone under `fail-open`. A
+  `BLOCK` always stands. The floor is re-applied after the CLI and MCP surfaces
+  re-derive their decision from the adjusted report — the seam where it was
+  otherwise dropped. An explicit pinned allowlist entry still wins.
+- **MCP guard hardening.** The server now pins `scanErrorPolicy` from its own
+  config *after* spreading caller arguments, so a calling agent can't pass
+  `scanErrorPolicy: "fail-open"` to talk the server out of a scan-gap review.
+- **Stale `User-Agent` strings.** Four modules had independently drifted
+  (`pkgxray/0.6.0`, `0.9.0`, `0.10.0`) on a 1.1.0 package; all now derive from
+  `package.json`.
+
+### Added
+- `--no-vulnerability-check` is documented in `--help`. It was already
+  implemented but undiscoverable. It skips the OSV lookup outright for
+  offline/air-gapped runs — not needed merely because OSV is unreachable, since
+  the static scan now completes on its own.
+
 ## 1.1.0 — 2026-08-05 — PyPI ecosystem support
 
 **In plain terms:** pkgxray now scans **Python packages**, not just npm. Point it

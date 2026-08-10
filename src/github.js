@@ -9,7 +9,7 @@ const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const cacheClient = require("./cache-client");
 
-const USER_AGENT = "pkgxray/0.6.0";
+const USER_AGENT = `pkgxray/${require("../package.json").version}`;
 const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "github");
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FETCH_TIMEOUT_MS = 3000;

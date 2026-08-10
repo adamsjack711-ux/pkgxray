@@ -38,7 +38,7 @@ const os = require("node:os");
 const path = require("node:path");
 const https = require("node:https");
 
-const USER_AGENT = "pkgxray/0.10.0";
+const USER_AGENT = `pkgxray/${require("../package.json").version}`;
 const CACHE_DIR = path.join(os.homedir(), ".cache", "pkgxray", "attestations");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const FETCH_TIMEOUT_MS = 4000;

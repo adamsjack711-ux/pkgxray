@@ -17,6 +17,11 @@ const {
 } = require("./github");
 const { diffNpmVsGithub } = require("./diff");
 const { fetchProvenanceAttestation } = require("./attestation");
+const cfg = require("./config");
+
+// Identifies pkgxray to the registries/APIs it queries. Derived from
+// package.json so it tracks releases instead of drifting.
+const USER_AGENT = `pkgxray/${require("../package.json").version}`;
 
 // Shared keep-alive HTTPS agent. Three of the four network layers (npm
 // metadata, npm tarball download, npm provenance) all hit registry.npmjs.org
@@ -159,10 +164,24 @@ async function guardExtension(reference, options = {}) {
           });
 
   const vulnerabilityStart = now();
-  const vulnerabilities =
-    options.vulnerabilityCheck === false
-      ? []
-      : await precheckVulnerabilities(resolved, stagedPath);
+  // OSV is a REMOTE service; the rest of this pipeline is local. Letting an OSV
+  // failure throw would unwind the whole guard before the tarball is even read
+  // (the download and source scan below are gated on this result), so a
+  // third-party outage — or an air-gapped / proxied network — would silently
+  // cost us the ENTIRE static analysis and report a bare "review" with zero
+  // findings. Worse, under scanErrorPolicy=fail-open it reported live malware
+  // as SAFE. Every other network fetch here already degrades (GitHub metadata,
+  // provenance, dependency scan); this one now matches. The gap is recorded as
+  // evidence and re-applied as a verdict floor once the report exists.
+  let vulnerabilities = [];
+  let vulnerabilityScanError = null;
+  if (options.vulnerabilityCheck !== false) {
+    try {
+      vulnerabilities = await precheckVulnerabilities(resolved, stagedPath);
+    } catch (error) {
+      vulnerabilityScanError = error.message;
+    }
+  }
   timings.vulnerabilityPrecheckMs = elapsed(vulnerabilityStart);
 
   if (vulnerabilities.length === 0 && resolved.needsDownload) {
@@ -226,6 +245,10 @@ async function guardExtension(reference, options = {}) {
     githubMetadata,
     webPresence: null,
     knownVulnerabilities: vulnerabilities,
+    // Non-null when the CVE lookup could not run. The auditor turns this into a
+    // cited evidence gap so the report says WHY it can't clear the package,
+    // rather than implying the CVE feed came back clean.
+    vulnerabilityScanError,
     sourceFiles,
     npmVsGithubDiff,
     provenanceAttestation,
@@ -238,7 +261,13 @@ async function guardExtension(reference, options = {}) {
   const auditStart = now();
   const report = auditEvidence(evidence);
   timings.auditMs = elapsed(auditStart);
-  const decision = decisionForReport(report, options.policy || "safe-only");
+  // A missing CVE check can't clear a package, but it must not un-block one
+  // either — static evidence stands on its own. See floorVerdictForScanGap.
+  const decision = cfg.floorVerdictForScanGap(
+    decisionForReport(report, options.policy || "safe-only"),
+    Boolean(vulnerabilityScanError),
+    options
+  );
 
   const result = {
     schemaVersion: 1,
@@ -252,6 +281,11 @@ async function guardExtension(reference, options = {}) {
     vulnerabilityPrecheck: {
       enabled: options.vulnerabilityCheck !== false,
       database: "OSV",
+      // `completed: false` distinguishes "OSV said this version is clean" from
+      // "OSV never answered". A JSON consumer that only reads vulnerabilityCount
+      // would otherwise read an outage as a clean bill of health.
+      completed: vulnerabilityScanError === null,
+      error: vulnerabilityScanError,
       vulnerabilityCount: vulnerabilities.length,
       vulnerabilities
     },
@@ -1031,7 +1065,7 @@ function parseNpmSpecifier(specifier) {
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
     https
-      .get(url, { headers: { "user-agent": "pkgxray/0.9.0" }, agent: HTTPS_AGENT }, (response) => {
+      .get(url, { headers: { "user-agent": USER_AGENT }, agent: HTTPS_AGENT }, (response) => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
           const error = new Error(`HTTP ${response.statusCode} from ${url}`);
           error.statusCode = response.statusCode;
@@ -1348,7 +1382,7 @@ function downloadFile(url, destination, options = {}) {
           hostname: parsed.hostname,
           port: parsed.port || (parsed.protocol === "http:" ? 80 : 443),
           path: parsed.pathname + parsed.search,
-          headers: { "user-agent": "pkgxray/0.9.0" },
+          headers: { "user-agent": USER_AGENT },
           // Re-use the shared agent when downloading from https hosts so the
           // npm metadata fetch and the tarball download share a TCP+TLS
           // session. Plain http stays on the default agent.
