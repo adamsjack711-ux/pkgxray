@@ -99,7 +99,7 @@ function foot() {
   return `    </main>
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
     </footer>
   </body>
 </html>
@@ -149,7 +149,7 @@ function renderStatsPage(run, { isLatest, allRuns }) {
     ? `<ul class="corrections-log">${log
         .map(
           (c) =>
-            `<li><strong>${esc(c.date)}</strong> — ${esc(c.what)}${
+            `<li><strong>${esc(c.date)}</strong>: ${esc(c.what)}${
               c.newRun ? ` (superseded by <a href="./${esc(c.newRun)}.html">${esc(c.newRun)}</a>)` : ""
             }</li>`
         )
@@ -172,7 +172,7 @@ function renderStatsPage(run, { isLatest, allRuns }) {
 
   return (
     head(
-      `pkgxray calibration — ${run.runId}`,
+      `pkgxray calibration: ${run.runId}`,
       `Aggregate calibration of pkgxray: ${commas(h.packagesScanned)} packages scanned, ${pct(fb.rate)} false blocks on the top 1,000, ${pct(cr.rate)} known-malware catch rate. Run ${run.runId}.`,
       canonical
     ) +
@@ -180,11 +180,11 @@ function renderStatsPage(run, { isLatest, allRuns }) {
       <section class="section stats-hero">
         <div class="section-inner">
           <p class="section-eyebrow">Calibration${isLatest ? " · latest run" : " · archived run"}</p>
-          <h1 class="stats-title">How well does pkgxray call it?</h1>
+          <h1 class="stats-title">How accurate is pkgxray?</h1>
           <p class="section-lead">
-            An at-scale, code-only static scan of published packages, measured
-            against a committed known-malware corpus. Four numbers, adjudicated
-            by hand, reproducible from the inputs below.
+            A large static scan of published packages, code only, measured
+            against a committed known-malware corpus. Four numbers, all checked
+            by hand, all reproducible from the inputs below.
           </p>
 
           <div class="stat-grid">
@@ -216,8 +216,8 @@ function renderStatsPage(run, { isLatest, allRuns }) {
         <div class="section-inner">
           <h2>Corrections</h2>
           <p class="section-lead">
-            Published runs are immutable. If a number is wrong we publish a new
-            dated run and note it here — we never silently edit a number in place.
+            Published runs never change. If a number is wrong we publish a new
+            dated run and note it here. We do not edit a number in place.
             Contest a figure at
             <a href="${esc(corr.contact || "#")}" rel="noopener noreferrer">the tracker</a>.
           </p>
@@ -259,7 +259,7 @@ function renderMethodology(run) {
           ${sc.denominator
             .map(
               (d) =>
-                `<li><strong>${commas(d.count)} — ${esc(d.name)}</strong>: ${esc(
+                `<li><strong>${commas(d.count)} ${esc(d.name)}</strong>: ${esc(
                   d.role
                 )}. <a href="${esc(d.source)}" rel="noopener noreferrer">inputs</a></li>`
             )
@@ -273,7 +273,7 @@ function renderMethodology(run) {
           ${sc.separateSets
             .map(
               (s) =>
-                `<li><strong>${commas(s.count)} — ${esc(s.name)}</strong>: ${esc(
+                `<li><strong>${commas(s.count)} ${esc(s.name)}</strong>: ${esc(
                   s.role
                 )}. <a href="${esc(s.source)}" rel="noopener noreferrer">inputs</a></li>`
             )
@@ -287,7 +287,7 @@ function renderMethodology(run) {
         </p>`;
   return (
     head(
-      "pkgxray calibration — methodology",
+      "pkgxray calibration: methodology",
       "How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs.",
       canonical
     ) +
@@ -297,9 +297,8 @@ function renderMethodology(run) {
           <p class="section-eyebrow">Calibration · methodology</p>
           <h1 class="stats-title">How the numbers are made</h1>
           <p class="section-lead">
-            A calibration claim you cannot reproduce is marketing. Everything
-            needed to re-run the ${esc(run.runId)} scan and re-derive the four
-            numbers is here.
+            Everything you need to re-run the ${esc(run.runId)} scan and derive
+            the four numbers again is on this page.
           </p>
         </div>
       </section>
@@ -318,7 +317,7 @@ function renderMethodology(run) {
         ${run.pkgxray.releaseStatus
           ? `<p>
           Engine <code>${esc(run.pkgxray.version)}</code> was a
-          ${esc(run.pkgxray.releaseStatus)} — <code>npx pkgxray@${esc(run.pkgxray.version)}</code>
+          ${esc(run.pkgxray.releaseStatus)}, so <code>npx pkgxray@${esc(run.pkgxray.version)}</code>
           will not resolve. The public npm release at run time was
           <code>${esc(run.pkgxray.publicReleaseAtRunTime)}</code>. To reproduce on the
           exact engine, check out the commit:
@@ -326,38 +325,39 @@ function renderMethodology(run) {
         <pre class="code-block"><code>${esc(run.pkgxray.reproCommand || run.pkgxray.command)}</code></pre>`
           : ""}
         <p>
-          Static only — the scanner reads the tarball's bytes and queries OSV; the
-          static scan never executes package code and never connected to any hosted
+          The scan is static. It reads the bytes of the tarball and queries OSV.
+          It never executes package code and never connected to any hosted
           endpoint. Exit codes: <code>0</code> safe, <code>2</code> block,
           <code>3</code> review. A scan that failed to produce a parseable verdict is
-          recorded as a <em>scan error</em>, never counted as safe.
+          recorded as a <em>scan error</em>, and is never counted as safe.
         </p>
 
-        <h2>How false blocks were adjudicated</h2>
+        <h2>How false blocks were judged</h2>
         <p>
-          A block has two very different causes, and they are split before
-          anything is called a false positive:
+          A block has two very different causes. We separate them before calling
+          anything a false positive:
         </p>
         <ul>
           <li>
-            <strong>OSV block</strong> — the only high finding is a known CVE.
-            Blocking here is by design and is <em>not</em> a false positive.
+            <strong>OSV block</strong>: the only high finding is a known CVE.
+            Blocking here is by design, and is not a false positive.
           </li>
           <li>
-            <strong>Heuristic block</strong> — a malware-signal finding (install
-            hook, exec, exfil, obfuscation, credential/agent access…). These are
-            the reputation-staking calls, and <strong>every one was read by hand.</strong>
+            <strong>Heuristic block</strong>: a malware-signal finding, such as an
+            install hook, exec, exfiltration, obfuscation, or credential and agent
+            access. These are the calls that stake our reputation, so
+            <strong>a person read every one of them.</strong>
           </li>
         </ul>
         ${h.topThousandFalseBlocks.count === 0
           ? `<p>
-          <strong>Every top-1000 block was a real CVE</strong> (OSV, by design);
-          <strong>zero were heuristic false positives</strong>. The one pre-retune
-          heuristic false positive — a ~30-line utility that reads <code>.npmrc</code>
-          solely to return the configured registry URL, never touching the auth token,
-          with no network egress at all — was minimized into a benign corpus fixture
-          and the over-firing heuristic retuned, so on this engine it resolves to
-          <code>review</code>. Re-running the full ${commas(h.topThousandFalseBlocks.of)}-package
+          <strong>Every top-1000 block was a real CVE</strong> (OSV, by design), and
+          <strong>none were heuristic false positives</strong>. Before the retune there
+          was one heuristic false positive: a 30-line utility that reads <code>.npmrc</code>
+          only to return the configured registry URL. It never touches the auth token and
+          sends nothing over the network. We cut that case down into a benign corpus
+          fixture and retuned the heuristic that over-fired, so on this engine it resolves
+          to <code>review</code>. Re-running the full ${commas(h.topThousandFalseBlocks.of)}-package
           list on the fixed engine confirms
           <strong>${pct(h.topThousandFalseBlocks.rate)}</strong> =
           ${h.topThousandFalseBlocks.count} / ${commas(h.topThousandFalseBlocks.of)},
@@ -366,62 +366,61 @@ function renderMethodology(run) {
           : `<p>
           Of the four blocks in the top-1000, three were real CVEs (OSV, by design)
           and <strong>one was a confirmed heuristic false positive</strong>: a
-          ~30-line utility that reads <code>.npmrc</code> solely to return the
-          configured registry URL — it never touches the auth token and the package
-          has no network egress at all. That single case was minimized into a benign
-          corpus fixture and the over-firing heuristic was retuned.
+          30-line utility that reads <code>.npmrc</code> only to return the
+          configured registry URL. It never touches the auth token and sends nothing
+          over the network. We cut that case down into a benign corpus fixture and
+          retuned the heuristic that over-fired.
           <strong>${pct(h.topThousandFalseBlocks.rate)}</strong> =
           ${h.topThousandFalseBlocks.count} / ${commas(h.topThousandFalseBlocks.of)}.
         </p>`}
 
-        <h2 class="coherence">Reconciliation note (read this)</h2>
+        <h2 class="coherence">How this run relates to the earlier one</h2>
         ${h.topThousandFalseBlocks.count === 0
           ? `<p>
           This run is the <strong>re-scan on the retuned engine</strong>. An earlier
-          provisional run
+          run
           (<a href="./${esc(run.runId.replace(/-retuned$/, ""))}.html">${esc(run.runDate)}</a>,
-          kept unedited in run history) published the <em>as-measured</em> pre-retune
-          figure of one top-1000 false block, flagged as pending a re-run. It now has
-          one: re-running the full ${commas(h.packagesScanned)}-package scan on the
-          fixed engine yields <strong>zero</strong> top-1000 false blocks, and the
-          earlier run's number was left in place rather than silently edited. This is
-          also the scoping correction that reconciled the README's earlier
-          "0 false blocks" line: that claim held only on a stale 2019 dependents list;
-          the figure here is corpus-gated and scoped to "the top-1000 most-downloaded."
+          still in run history and unedited) published the measured pre-retune
+          figure of one top-1000 false block, marked as pending a re-run. That re-run
+          has now happened: the full ${commas(h.packagesScanned)}-package scan on the
+          fixed engine yields <strong>zero</strong> top-1000 false blocks. We left the
+          earlier run's number in place. This also corrects the scope of the README's
+          earlier "0 false blocks" line, which held only on a stale 2019 dependents
+          list. The figure here is corpus-gated and scoped to the top-1000
+          most-downloaded packages.
         </p>`
           : `<p>
-          The false-block figure is the <em>as-measured</em> number from the
-          at-scale scan — the number that <em>motivated</em> the retune. The engine
-          has since been fixed so that case no longer blocks, but we have
-          <strong>not</strong> re-run the full ${commas(h.packagesScanned)}-package
-          scan on the fixed engine, so we do not claim zero. We publish the higher,
-          measured number rather than an unmeasured zero. This is the same scoping
-          correction that reconciled the README's earlier "0 false blocks" line: that
-          claim was true only on a stale 2019 dependents list that never contained
-          this package; it is now corpus-gated and scoped to "the top-1000
-          most-downloaded."
+          The false-block figure is the number we measured in the large scan, and it
+          is what prompted the retune. The engine has since been fixed so that case no
+          longer blocks, but we have <strong>not</strong> re-run the full
+          ${commas(h.packagesScanned)}-package scan on the fixed engine, so we do not
+          claim zero. We publish the higher measured number instead of an unmeasured
+          zero. This also corrects the scope of the README's earlier "0 false blocks"
+          line, which held only on a stale 2019 dependents list that never contained
+          this package. The figure is now corpus-gated and scoped to the top-1000
+          most-downloaded packages.
         </p>`}
 
         <h2>Catch rate and the corpus</h2>
         <p>
-          npm removes confirmed malware, so <strong>live-registry recall is
-          untestable</strong> — of 22 curated known-malicious versions, only one is
-          still downloadable. Catch rate is therefore measured against a committed,
-          reconstructed corpus run through the real static engine
-          (<code>node benchmark/run.js</code>):
+          npm removes confirmed malware, so <strong>recall against the live registry
+          cannot be tested</strong>: of 22 curated known-malicious versions, only one is
+          still downloadable. We therefore measure catch rate against a committed,
+          rebuilt corpus, run through the real static engine
+          (<code>node benchmark/run.js</code>).
           <strong>${h.knownMalwareCatchRate.blocked} of
           ${h.knownMalwareCatchRate.of}</strong> malicious samples block outright
           (${pct(h.knownMalwareCatchRate.rate)}), and
-          <strong>${h.knownMalwareCatchRate.passedAsSafe} passed as safe</strong> —
-          the remainder are routed to <code>review</code> by policy
-          (download-then-exec and geo/locale-gated payloads), not missed. CI hard-fails
-          on any false block, any full miss, and any recall regression.
+          <strong>${h.knownMalwareCatchRate.passedAsSafe} passed as safe</strong>.
+          Policy routes the rest to <code>review</code> rather than missing them:
+          download-then-exec payloads, and payloads gated on region or locale. CI fails
+          the build on any false block, any full miss, and any drop in recall.
         </p>
 
         <h2>Reproduce it</h2>
         <p>
-          The committed top-1000 target list (names, versions, and download counts —
-          inputs only, no verdicts) is here:
+          The committed top-1000 target list holds names, versions, and download
+          counts. It is inputs only, with no verdicts:
           <a href="${esc(run.reproInputs)}" rel="noopener noreferrer">${esc(run.reproInputs)}</a>.
         </p>
         <p>
@@ -436,9 +435,10 @@ function renderMethodology(run) {
         </p>
 
         <p class="fineprint">
-          Aggregate figures only. This page does not publish per-package verdicts —
-          a public "package → verdict" lookup would be a free detection oracle for an
-          attacker tuning against the scanner. <a href="./${run.runId}.html">Back to the ${run.runId} run →</a>
+          Aggregate figures only. This page does not publish per-package verdicts,
+          because a public "package to verdict" lookup would give an attacker a free
+          way to test payloads against the scanner.
+          <a href="./${run.runId}.html">Back to the ${run.runId} run →</a>
         </p>
       </div></section>
     ` +

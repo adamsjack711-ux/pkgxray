@@ -3,19 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pkgxray calibration — 2026-07-21</title>
+    <title>pkgxray calibration: 2026-07-21</title>
     <meta name="description" content="Aggregate calibration of pkgxray: 5,000 packages scanned, 0.0% false blocks on the top 1,000, 95.2% known-malware catch rate. Run 2026-07-21." />
     <meta name="theme-color" content="#1c1510" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://pkgxray.ca/stats/2026-07-21" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="pkgxray" />
-    <meta property="og:title" content="pkgxray calibration — 2026-07-21" />
+    <meta property="og:title" content="pkgxray calibration: 2026-07-21" />
     <meta property="og:description" content="Aggregate calibration of pkgxray: 5,000 packages scanned, 0.0% false blocks on the top 1,000, 95.2% known-malware catch rate. Run 2026-07-21." />
     <meta property="og:url" content="https://pkgxray.ca/stats/2026-07-21" />
     <meta property="og:image" content="https://pkgxray.ca/assets/og.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="pkgxray calibration — 2026-07-21" />
+    <meta name="twitter:title" content="pkgxray calibration: 2026-07-21" />
     <meta name="twitter:description" content="Aggregate calibration of pkgxray: 5,000 packages scanned, 0.0% false blocks on the top 1,000, 95.2% known-malware catch rate. Run 2026-07-21." />
     <meta name="twitter:image" content="https://pkgxray.ca/assets/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -45,11 +45,11 @@
       <section class="section stats-hero">
         <div class="section-inner">
           <p class="section-eyebrow">Calibration · latest run</p>
-          <h1 class="stats-title">How well does pkgxray call it?</h1>
+          <h1 class="stats-title">How accurate is pkgxray?</h1>
           <p class="section-lead">
-            An at-scale, code-only static scan of published packages, measured
-            against a committed known-malware corpus. Four numbers, adjudicated
-            by hand, reproducible from the inputs below.
+            A large static scan of published packages, code only, measured
+            against a committed known-malware corpus. Four numbers, all checked
+            by hand, all reproducible from the inputs below.
           </p>
 
           <div class="stat-grid">
@@ -92,12 +92,12 @@
         <div class="section-inner">
           <h2>Corrections</h2>
           <p class="section-lead">
-            Published runs are immutable. If a number is wrong we publish a new
-            dated run and note it here — we never silently edit a number in place.
+            Published runs never change. If a number is wrong we publish a new
+            dated run and note it here. We do not edit a number in place.
             Contest a figure at
             <a href="https://github.com/adamsjack711-ux/pkgxray/issues?q=is%3Aissue%20label%3Acalibration" rel="noopener noreferrer">the tracker</a>.
           </p>
-          <ul class="corrections-log"><li><strong>2026-07-21</strong> — Widened validation past the top-1000 calibration list into two deeper, non-overlapping download-ranked sweeps (1,000 and 3,000 packages) to hunt false blocks the head never exercised. The deeper sweeps surfaced 16 wrongly-blocked popular packages: 14 were genuine heuristic false positives across six detectors (OID/version dotted-quads read as IPs, benign public DNS, HTTP-cookie identifiers read as the browser cookie DB, the metaMask web3 connector name read as a wallet read, shell-rc paths named in doc/comments, Sentry&#39;s getTransaction read as an on-chain loader, and env/require co-location inside bundled megafiles), and 2 (bun, firebase-tools) genuinely perform the flagged high-risk operation and are recorded as defensible true positives. Every fix strictly relaxes a heuristic, so nothing new can block. The top-1000 calibration list was then re-scanned on the fixed engine (1.0.6): 0 / 1,000 heuristic false blocks, unchanged.</li><li><strong>2026-07-26</strong> — Metadata-only clarification (no measured number changed): (1) recorded that engine 1.0.6 (commit 76c0768) was a pre-release build never published to npm — the public npm release at run time was 1.0.4 — and added a commit-checkout reproduction command, since `npx pkgxray@1.0.6` would not resolve; (2) added the explicit 5,000-package composition (top-1000 calibration list + two deeper download-ranked sweeps of 1,000 and 3,000) and recorded that the 300-package MCP cohort and the 21-sample reconstructed known-malware corpus are separate sets, not part of the 5,000 denominator; (3) noted that the 4,000 extended-sweep targets were selected from the committed download-rank pool but the resolved snapshot was not committed.</li></ul>
+          <ul class="corrections-log"><li><strong>2026-07-21</strong>: Widened validation past the top-1000 calibration list into two deeper, non-overlapping download-ranked sweeps (1,000 and 3,000 packages) to hunt false blocks the head never exercised. The deeper sweeps surfaced 16 wrongly-blocked popular packages: 14 were genuine heuristic false positives across six detectors (OID/version dotted-quads read as IPs, benign public DNS, HTTP-cookie identifiers read as the browser cookie DB, the metaMask web3 connector name read as a wallet read, shell-rc paths named in doc/comments, Sentry&#39;s getTransaction read as an on-chain loader, and env/require co-location inside bundled megafiles), and 2 (bun, firebase-tools) genuinely perform the flagged high-risk operation and are recorded as defensible true positives. Every fix strictly relaxes a heuristic, so nothing new can block. The top-1000 calibration list was then re-scanned on the fixed engine (1.0.6): 0 / 1,000 heuristic false blocks, unchanged.</li><li><strong>2026-07-26</strong>: Metadata-only clarification (no measured number changed): (1) recorded that engine 1.0.6 (commit 76c0768) was a pre-release build never published to npm — the public npm release at run time was 1.0.4 — and added a commit-checkout reproduction command, since `npx pkgxray@1.0.6` would not resolve; (2) added the explicit 5,000-package composition (top-1000 calibration list + two deeper download-ranked sweeps of 1,000 and 3,000) and recorded that the 300-package MCP cohort and the 21-sample reconstructed known-malware corpus are separate sets, not part of the 5,000 denominator; (3) noted that the 4,000 extended-sweep targets were selected from the committed download-rank pool but the resolved snapshot was not committed.</li></ul>
         </div>
       </section>
 
@@ -116,7 +116,7 @@
         </main>
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
     </footer>
   </body>
 </html>

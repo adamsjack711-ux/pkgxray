@@ -3,20 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pkgxray — Analyze packages before you install them</title>
+    <title>pkgxray: analyze packages before you install them</title>
     <meta
       name="description"
-      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. The static scanner never executes package code."
+      content="Supply-chain security for npm packages, MCP servers, and AI agents. No dependencies, runs locally, and static scans never execute package code."
     />
     <meta name="theme-color" content="#1c1510" />
     <link rel="canonical" href="https://pkgxray.ca/" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://pkgxray.ca/" />
     <meta property="og:site_name" content="pkgxray" />
-    <meta property="og:title" content="pkgxray — Analyze packages before you install them" />
+    <meta property="og:title" content="pkgxray: analyze packages before you install them" />
     <meta
       property="og:description"
-      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. The static scanner never executes package code."
+      content="Supply-chain security for npm packages, MCP servers, and AI agents. No dependencies, runs locally, and static scans never execute package code."
     />
     <meta property="og:image" content="https://pkgxray.ca/assets/og.jpg" />
     <meta property="og:image:width" content="1200" />
@@ -26,10 +26,10 @@
       content="pkgxray blocking a trojaned package: dataAccess grade F and a HIGH credential-access finding citing wallet-read and exfiltration code"
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="pkgxray — Analyze packages before you install them" />
+    <meta name="twitter:title" content="pkgxray: analyze packages before you install them" />
     <meta
       name="twitter:description"
-      content="Supply-chain security for AI agents, npm packages, and MCP servers. Zero-dependency Node. Runs locally. The static scanner never executes package code."
+      content="Supply-chain security for npm packages, MCP servers, and AI agents. No dependencies, runs locally, and static scans never execute package code."
     />
     <meta name="twitter:image" content="https://pkgxray.ca/assets/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -74,7 +74,7 @@
           </h1>
           <p class="headline">Analyze packages before you install them.</p>
           <p class="support">
-            Zero-dependency · runs locally · static scans never execute package code
+            No dependencies · runs locally · static scans never execute package code
           </p>
           <div class="cta-row">
             <button
@@ -174,13 +174,14 @@
         </div>
       </section>
 
-      <!-- 2. Why it matters — Sonatype / MCP numbers -->
+      <!-- 2. Why it matters: Sonatype and MCP numbers -->
       <section class="section why-section" id="why" aria-labelledby="why-title">
         <div class="section-inner">
           <h2 id="why-title">npm is the primary target for open-source malware.</h2>
           <p class="section-lead">
-            Agents install packages and connect to MCP servers at machine speed.
-            The registry they pull from is under industrial-scale attack.
+            Agents install packages and connect to MCP servers faster than anyone
+            can review them, and npm takes in hundreds of thousands of malicious
+            packages a year.
           </p>
 
           <div class="why-board" data-why-board>
@@ -239,8 +240,8 @@
 
           <p class="why-bridge">
             CVE scanners find known bugs.
-            <strong>pkgxray asks what the code does</strong> — before a single
-            line runs on your machine.
+            <strong>pkgxray reads what the code does</strong>, before any of it
+            runs on your machine.
           </p>
           <p class="why-sources">
             Each figure links to its supporting report. Sources include
@@ -253,15 +254,15 @@
         </div>
       </section>
 
-      <!-- 2b. Calibration — real numbers, right under the npm threat stats -->
+      <!-- 2b. Calibration: measured numbers, under the npm threat stats -->
       <section class="section calibration-band" id="calibration" aria-labelledby="cal-title">
         <div class="section-inner">
           <p class="section-eyebrow">Calibration · scanned 2026-07-21</p>
-          <h2 id="cal-title">So how often does it call it right?</h2>
+          <h2 id="cal-title">How often does it get the call right?</h2>
           <p class="section-lead">
-            We ran the scanner over 5,000 published packages — code only, no
-            execution — read every block by hand, and measured recall against a
-            committed, reconstructed known-malware corpus.
+            We scanned 5,000 published packages without running any of their
+            code. We read every block by hand and measured recall against a
+            committed corpus of rebuilt known malware.
           </p>
           <div class="stat-grid">
             <div class="stat-card">
@@ -289,10 +290,10 @@
       <!-- 3. Interactive scan demo -->
       <section class="section scan-section" id="scan" aria-labelledby="scan-title">
         <div class="section-inner">
-          <h2 id="scan-title">Watch a verdict form</h2>
+          <h2 id="scan-title">How a verdict comes together</h2>
           <p class="section-lead">
-            Pick a package. This demo replays real fixtures — it does not download
-            or execute anything in your browser.
+            Pick a package. The demo replays recorded output. It downloads and
+            runs nothing in your browser.
           </p>
 
           <div class="scan-demo" data-scan-demo>
@@ -359,10 +360,10 @@
               loop
               playsinline
               preload="metadata"
-              aria-label="Real recording: pkgxray guard clearing express with SAFE A+, then blocking a trojaned sample"
+              aria-label="Terminal recording: pkgxray guard clearing express with SAFE A+, then blocking a trojaned sample"
             ></video>
             <figcaption>
-              Real terminal recording — express clears, then a corpus trojan is blocked with cited evidence.
+              Terminal recording: express clears, then a corpus trojan is blocked with cited evidence.
             </figcaption>
           </figure>
         </div>
@@ -371,7 +372,7 @@
       <!-- 4. Verdicts -->
       <section class="section" id="verdicts" aria-labelledby="verdicts-title">
         <div class="section-inner">
-          <h2 id="verdicts-title">Three verdicts. Stable exit codes.</h2>
+          <h2 id="verdicts-title">Three verdicts, with stable exit codes</h2>
           <p class="section-lead">
             Click a verdict to see what it means for install, CI, and agents.
           </p>
@@ -392,8 +393,8 @@
           </div>
           <div class="verdict-detail" data-verdict-detail>
             <p>
-              No high- or medium-risk indicators. Default policy promotes out of
-              quarantine. Install.
+              No high or medium risk findings. The default policy promotes the
+              package out of quarantine, so you can install it.
             </p>
           </div>
         </div>
@@ -404,8 +405,8 @@
         <div class="section-inner">
           <h2 id="catches-title">What it catches</h2>
           <p class="section-lead">
-            Deterministic heuristics — no LLM in the verdict path, so injected
-            text can't steer them.
+            Fixed rules produce the verdict. No LLM runs in that path, so text
+            planted in a package cannot steer it.
           </p>
           <div class="table-scroll">
             <table class="data-table">
@@ -413,28 +414,28 @@
                 <tr><th>Threat</th><th>Coverage</th><th>How pkgxray sees it</th></tr>
               </thead>
               <tbody>
-                <tr><td>Credential theft</td><td class="mark yes">✓</td><td>reads of <code>.ssh</code> / <code>.aws</code> / <code>.npmrc</code> / <code>.env</code> / keychains / wallets, incl. split-fragment paths (<code>".s"+"sh"</code>)</td></tr>
-                <tr><td>Prompt injection</td><td class="mark yes">✓</td><td>tiered detection in docs, comments, metadata; deterministic verdict path can't be steered</td></tr>
-                <tr><td>Unicode smuggling</td><td class="mark yes">✓</td><td>invisible tag-block characters + Trojan Source bidi / zero-width</td></tr>
-                <tr><td>Base64 payloads</td><td class="mark yes">✓</td><td>encoded envelopes in docs/comments; blobs decoded into computed-arg <code>eval</code> / <code>new Function</code> / <code>child_process</code></td></tr>
-                <tr><td>Exfiltration &amp; loaders</td><td class="mark yes">✓</td><td>cross-file correlation: stage-2 loaders, <code>curl | sh</code>, <code>process.env</code> harvesting near a network sink</td></tr>
-                <tr><td>Persistence</td><td class="mark yes">✓</td><td>writes to shell rc files, cron, launch agents</td></tr>
-                <tr><td>Obfuscation</td><td class="mark yes">✓</td><td>packed blob + computed-arg execution; minification alone is deliberately <em>not</em> flagged</td></tr>
-                <tr><td>PyPI install-time execution</td><td class="mark yes">✓</td><td><code>setup.py</code> that runs code at <code>pip&nbsp;install</code> — subprocess/network at build, or <code>exec</code>/<code>eval</code> over a decoded blob (the sdist-dropper shape)</td></tr>
-                <tr><td>Known CVEs</td><td class="mark yes">✓</td><td>OSV batch pre-check before download, npm <em>and</em> PyPI; never mutable by config</td></tr>
-                <tr><td>Trojaned updates / takeover</td><td class="mark yes">✓</td><td><code>recheck</code> verdict-drift + version-drift monitoring</td></tr>
+                <tr><td>Credential theft</td><td class="mark yes">✓</td><td>reads of <code>.ssh</code>, <code>.aws</code>, <code>.npmrc</code>, <code>.env</code>, keychains, and wallets, including paths split across fragments (<code>".s"+"sh"</code>)</td></tr>
+                <tr><td>Prompt injection</td><td class="mark yes">✓</td><td>tiered detection in docs, comments, and metadata; the verdict path runs on fixed rules and cannot be steered</td></tr>
+                <tr><td>Unicode smuggling</td><td class="mark yes">✓</td><td>invisible tag-block characters, plus Trojan Source bidi and zero-width characters</td></tr>
+                <tr><td>Base64 payloads</td><td class="mark yes">✓</td><td>encoded blocks in docs and comments; blobs decoded and passed to <code>eval</code>, <code>new Function</code>, or <code>child_process</code></td></tr>
+                <tr><td>Exfiltration and loaders</td><td class="mark yes">✓</td><td>cross-file correlation: stage-2 loaders, <code>curl | sh</code>, and <code>process.env</code> harvesting near a network sink</td></tr>
+                <tr><td>Persistence</td><td class="mark yes">✓</td><td>writes to shell rc files, cron, and launch agents</td></tr>
+                <tr><td>Obfuscation</td><td class="mark yes">✓</td><td>a packed blob plus execution with a computed argument; minification on its own is not flagged</td></tr>
+                <tr><td>PyPI install-time execution</td><td class="mark yes">✓</td><td><code>setup.py</code> that runs code at <code>pip&nbsp;install</code>: a subprocess or network call at build time, or <code>exec</code> and <code>eval</code> over a decoded blob</td></tr>
+                <tr><td>Known CVEs</td><td class="mark yes">✓</td><td>OSV batch check before download, for npm and PyPI; config cannot turn it off</td></tr>
+                <tr><td>Trojaned updates and takeover</td><td class="mark yes">✓</td><td><code>recheck</code> watches for verdict drift and version drift</td></tr>
                 <tr><td>Artifact divergence</td><td class="mark yes">✓</td><td>published npm tarball diffed against the tagged GitHub source</td></tr>
-                <tr><td>MCP capability abuse</td><td class="mark yes">✓</td><td>capability-surface mismatch in the manifest audit (a <code>get_weather</code> that also takes a <code>command</code>)</td></tr>
-                <tr><td>Runtime tool drift</td><td class="mark yes">✓</td><td><code>mcp-proxy</code> re-audits on <code>tools/list_changed</code>; pinned-manifest drift is denied</td></tr>
+                <tr><td>MCP capability abuse</td><td class="mark yes">✓</td><td>capability mismatch in the manifest audit, such as a <code>get_weather</code> that also takes a <code>command</code></td></tr>
+                <tr><td>Runtime tool drift</td><td class="mark yes">✓</td><td><code>mcp-proxy</code> re-audits on <code>tools/list_changed</code>; drift from a pinned manifest is denied</td></tr>
                 <tr><td>Sequence-level tool-call chains</td><td class="mark part">◑</td><td><code>mcp-proxy</code> gates each call and scans results; no cross-call flow analysis</td></tr>
-                <tr><td>Dependency confusion / typosquats / slopsquats</td><td class="mark part">◑</td><td>callback beacons, repo- and provenance-mismatch signals, and a registry-existence check that flags a hallucinated name the registry never published; no name-similarity heuristic yet</td></tr>
+                <tr><td>Dependency confusion, typosquats, slopsquats</td><td class="mark part">◑</td><td>callback beacons, repository and provenance mismatches, and a registry check that flags a made-up name npm never published; no name-similarity check yet</td></tr>
               </tbody>
             </table>
           </div>
           <p class="fineprint">
-            ✓ detected · ◑ partial / indirect. <strong>Known blind spot:</strong>
-            a package that downloads its real payload <em>after</em> install can
-            ship a clean tree — pair pkgxray with runtime sandboxing when that risk
+            ✓ detected · ◑ partial or indirect. <strong>Known blind spot:</strong>
+            a package that downloads its real payload after install can ship a
+            clean tree. Pair pkgxray with runtime sandboxing when that risk
             matters.
             <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/threat-model.md" rel="noopener noreferrer">Full threat model →</a>
           </p>
@@ -444,7 +445,7 @@
       <!-- 5. Surfaces as a flow -->
       <section class="section surfaces" aria-labelledby="surfaces-title">
         <div class="section-inner">
-          <h2 id="surfaces-title">One engine. Every surface.</h2>
+          <h2 id="surfaces-title">One engine across every surface</h2>
           <p class="section-lead">
             CLI, MCP, install hook, and CI all share the same policy and the same
             evidence rules.
@@ -457,8 +458,8 @@
             <li class="flow-step" data-step="1">
               <strong>mcp</strong>
               <span
-                >Vet a server before connect — most public MCP servers ship with
-                static keys and little verification</span
+                >Check a server before you connect. Most public MCP servers ship
+                with static keys and little verification</span
               >
             </li>
             <li class="flow-step" data-step="2">
@@ -478,15 +479,15 @@
         <div class="section-inner">
           <h2 id="fits-title">Where pkgxray fits</h2>
           <p class="section-lead">
-            One engine, wherever packages enter your stack. Each path has a setup
-            guide in the repo.
+            Use the same engine wherever packages enter your stack. Each path has
+            a setup guide in the repo.
           </p>
           <div class="fits-grid">
             <article class="fits-card">
               <h3>Coding agents</h3>
               <p>
-                Gate package installs before an agent runs them — Codex, Claude
-                Code, Cursor, Windsurf.
+                Gate package installs before an agent runs them, in Codex, Claude
+                Code, Cursor, and Windsurf.
               </p>
               <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/integrations/coding-agents.md" rel="noopener noreferrer">Coding-agent guide →</a>
             </article>
@@ -501,8 +502,8 @@
             <article class="fits-card">
               <h3>CI/CD</h3>
               <p>
-                Fail builds when a dependency crosses policy; scan the whole
-                lockfile — npm or PyPI — and re-vet on a schedule with
+                Fail builds when a dependency crosses policy. Scan the whole
+                lockfile, npm or PyPI, and re-check on a schedule with
                 <code>recheck</code>.
               </p>
               <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/integrations/github-actions.md" rel="noopener noreferrer">GitHub Actions guide →</a>
@@ -510,8 +511,8 @@
             <article class="fits-card">
               <h3>Developers</h3>
               <p>
-                Inspect an npm or PyPI package before installation — one command,
-                a cited verdict, no account.
+                Inspect an npm or PyPI package before you install it. One
+                command, a cited verdict, no account.
               </p>
               <a href="#install">Try it →</a>
             </article>
@@ -524,10 +525,10 @@
         <div class="section-inner">
           <h2 id="comparison-title">How pkgxray compares</h2>
           <p class="section-lead">
-            Run it <em>alongside</em> <code>npm audit</code> and OSV-Scanner, not
-            instead of them — they answer <em>"known CVE?"</em>. The comparison
-            that matters is against tools in the same lane: behavioral
-            supply-chain vetting.
+            Run it alongside <code>npm audit</code> and OSV-Scanner, which answer
+            a different question: is there a known CVE? The table below compares
+            pkgxray with tools that do the same job it does, checking package
+            behavior.
           </p>
           <div class="table-scroll">
             <table class="data-table">
@@ -535,25 +536,24 @@
                 <tr><th>Capability</th><th>Socket.dev</th><th>OpenSSF Pkg Analysis</th><th>Cisco MCP Scanner</th><th>pkgxray</th></tr>
               </thead>
               <tbody>
-                <tr><td>Fully local, zero-dependency, no account or cloud upload</td><td class="mark no">—</td><td class="mark part">◑</td><td class="mark part">◑</td><td class="mark yes">✓</td></tr>
+                <tr><td>Fully local, no dependencies, no account or cloud upload</td><td class="mark no">✗</td><td class="mark part">◑</td><td class="mark part">◑</td><td class="mark yes">✓</td></tr>
                 <tr><td>Static behavior analysis of package code</td><td class="mark yes">✓</td><td class="mark yes">✓</td><td class="mark yes">✓</td><td class="mark yes">✓</td></tr>
-                <tr><td>Sandboxed execution (dynamic analysis)</td><td class="mark no">—</td><td class="mark yes">✓</td><td class="mark part">◑</td><td class="mark part">◑ opt-in <code>canary</code></td></tr>
-                <tr><td>npm ↔ GitHub artifact divergence</td><td class="mark unk">unknown</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✓</td></tr>
-                <tr><td>Deterministic verdict path — no LLM an injection can steer</td><td class="mark no">—</td><td class="mark yes">✓</td><td class="mark part">◑</td><td class="mark yes">✓</td></tr>
-                <tr><td>Pre-install gate with a quarantined copy to review</td><td class="mark part">◑</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✓</td></tr>
-                <tr><td>MCP server vetting before connect</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✓</td><td class="mark yes">✓</td></tr>
-                <tr><td>Per-call runtime gating of live MCP traffic</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✓ <code>mcp-proxy</code></td></tr>
-                <tr><td>Verdict-drift monitoring vs. a stored baseline</td><td class="mark yes">✓ cloud</td><td class="mark no">—</td><td class="mark no">—</td><td class="mark yes">✓ local <code>recheck</code></td></tr>
+                <tr><td>Sandboxed execution (dynamic analysis)</td><td class="mark no">✗</td><td class="mark yes">✓</td><td class="mark part">◑</td><td class="mark part">◑ opt-in <code>canary</code></td></tr>
+                <tr><td>npm ↔ GitHub artifact divergence</td><td class="mark unk">unknown</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓</td></tr>
+                <tr><td>Verdict path on fixed rules, with no LLM an injection can steer</td><td class="mark no">✗</td><td class="mark yes">✓</td><td class="mark part">◑</td><td class="mark yes">✓</td></tr>
+                <tr><td>Pre-install gate with a quarantined copy to review</td><td class="mark part">◑</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓</td></tr>
+                <tr><td>MCP server checks before connect</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓</td><td class="mark yes">✓</td></tr>
+                <tr><td>Per-call runtime gating of live MCP traffic</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓ <code>mcp-proxy</code></td></tr>
+                <tr><td>Verdict-drift monitoring against a stored baseline</td><td class="mark yes">✓ cloud</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓ local <code>recheck</code></td></tr>
               </tbody>
             </table>
           </div>
           <p class="fineprint">
-            <strong>Last reviewed against public documentation: 2026-07-21</strong>
-            (re-reviewed every 60–90 days). A <strong>—</strong> means no
-            equivalent capability was found in the public documentation reviewed
-            on that date — not that it was tested and found absent;
-            <em>unknown</em> means not publicly documented either way. Full
-            per-tool notes:
+            <strong>Last reviewed against public documentation on 2026-07-21</strong>,
+            and reviewed again every 60 to 90 days. A <strong>✗</strong> means the
+            documentation reviewed on that date described no equivalent
+            capability. We did not test for it. <em>unknown</em> means the
+            documentation does not say either way. Full per-tool notes:
             <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/comparison.md" rel="noopener noreferrer">comparison.md →</a>
           </p>
         </div>
@@ -563,7 +563,7 @@
       <section class="section install-section" id="install" aria-labelledby="install-title">
         <div class="section-inner narrow">
           <h2 id="install-title">Install</h2>
-          <p class="section-lead">Lowest friction first contact — no global install required.</p>
+          <p class="section-lead">Start with one command. No global install required.</p>
 
           <div class="install-blocks">
             <button
@@ -613,7 +613,7 @@
 
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
     </footer>
 
     <script src="./app.js?v=scan8" type="module"></script>

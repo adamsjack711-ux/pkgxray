@@ -12,7 +12,7 @@ const DEMOS = {
       { t: 5400, html: `` },
       {
         t: 5900,
-        html: `<span class="muted">No high- or medium-risk indicators were found.</span>`,
+        html: `<span class="muted">No high- or medium-risk findings.</span>`,
       },
       {
         t: 7000,
@@ -24,7 +24,7 @@ const DEMOS = {
       pill: "● SAFE",
       grade: "A+ · 99/100",
       summary:
-        "No high- or medium-risk indicators. Default policy promotes out of quarantine.",
+        "No high or medium risk findings. The default policy promotes the package out of quarantine.",
       findings: [],
     },
   },
@@ -59,11 +59,11 @@ const DEMOS = {
       pill: "● BLOCK",
       grade: "F · 12/100",
       summary:
-        "High-severity cited evidence. Do not install. Modeled on the 2024 @solana/web3.js compromise.",
+        "High-severity findings with cited evidence. Do not install. Based on the 2024 @solana/web3.js compromise.",
       findings: [
         {
           title: "HIGH credential-access",
-          body: "lib/index.js — wallet-read + network exfiltration",
+          body: "lib/index.js: wallet read and network exfiltration",
         },
       ],
     },
@@ -95,11 +95,11 @@ const DEMOS = {
       pill: "● REVIEW",
       grade: "C · 61/100",
       summary:
-        "Privileged capability that needs a human — install scripts, computed eval, or incomplete evidence.",
+        "A privileged capability that needs a human: install scripts, computed eval, or incomplete evidence.",
       findings: [
         {
           title: "MEDIUM install-script",
-          body: "package.json postinstall — review before promote",
+          body: "package.json postinstall: review before promoting",
         },
       ],
     },
@@ -107,11 +107,11 @@ const DEMOS = {
 };
 
 const VERDICT_COPY = {
-  safe: "No high- or medium-risk indicators. Default policy promotes out of quarantine. Install. Exit code 0.",
+  safe: "No high or medium risk findings. The default policy promotes the package out of quarantine, so you can install it. Exit code 0.",
   review:
-    "Incomplete evidence, or a privileged capability that needs a human — install scripts, computed eval, npm↔GitHub divergence. Inspect the quarantined copy. Exit code 3.",
+    "Evidence is incomplete, or the package uses a privileged capability that needs a human to look: install scripts, computed eval, or npm↔GitHub divergence. Inspect the quarantined copy. Exit code 3.",
   block:
-    "High-severity, cited evidence — prompt injection, credential access, persistence, obfuscation + execution, or a known CVE. Do not install. Exit code 2.",
+    "High-severity findings with cited evidence: prompt injection, credential access, persistence, obfuscation plus execution, or a known CVE. Do not install. Exit code 2.",
 };
 
 const WHY_PANELS = {
@@ -122,7 +122,7 @@ const WHY_PANELS = {
     label: "npm package downloads in 2025",
     danger: false,
     copy:
-      "That’s ~21.8 billion downloads every day — over 80% of all traffic across npm, PyPI, Maven Central, and NuGet combined. The registry holds 5.59 million packages and shipped 11.18 million new releases last year.",
+      "That is about 21.8 billion downloads a day, over 80% of all traffic across npm, PyPI, Maven Central, and NuGet combined. npm holds 5.59 million packages and shipped 11.18 million new releases last year.",
     note: "Sonatype 2026 State of the Software Supply Chain. npm downloads up 65% year over year.",
     source: {
       label: "Sonatype: software infrastructure growth",
@@ -137,11 +137,11 @@ const WHY_PANELS = {
     label: "new malicious open-source packages identified in 2025",
     danger: true,
     copy:
-      "Sonatype identified 394,877 malicious packages in Q4 2025 alone; over 99% of 2025’s open-source malware originated from npm. The count includes repository abuse and potentially unwanted applications as well as credential theft, loaders, and backdoors.",
+      "Sonatype found 394,877 malicious packages in Q4 2025 alone, and over 99% of 2025’s open-source malware came from npm. The count covers repository abuse and unwanted applications as well as credential theft, loaders, and backdoors.",
     note:
-      "Sonatype’s public figure is “more than 454,600” new malicious packages in 2025 across npm, PyPI, Maven Central, NuGet and Hugging Face — a count of what Sonatype detected, not an estimate of the chance any downloaded package is malicious. Automated npm spam campaigns inflate the tail and the npm share.",
+      "Sonatype’s public figure is “more than 454,600” new malicious packages in 2025 across npm, PyPI, Maven Central, NuGet, and Hugging Face. It counts what Sonatype detected. It is not an estimate of the odds that a package you download is malicious. Automated npm spam campaigns inflate both the tail and the npm share.",
     source: {
-      label: "Sonatype: 2026 State of the Software Supply Chain — open-source malware",
+      label: "Sonatype 2026 State of the Software Supply Chain: open-source malware",
       url: "https://www.sonatype.com/state-of-the-software-supply-chain/2026/open-source-malware",
     },
   },
@@ -149,10 +149,10 @@ const WHY_PANELS = {
     value: 2.6,
     decimals: 1,
     unit: "billion",
-    label: "combined weekly downloads — chalk/debug, Sept 2025",
+    label: "combined weekly downloads for chalk and debug, Sept 2025",
     danger: true,
     copy:
-      "Eighteen packages compromised in one maintainer-account incident. A freshly trojaned package often has no CVE yet — which is exactly the gap pkgxray is built for.",
+      "Eighteen packages were compromised in one maintainer-account incident. A newly trojaned package usually has no CVE yet, so a CVE scanner has nothing to match.",
     note: "The 2.6 billion figure is combined weekly downloads, not confirmed affected installs.",
     source: {
       label: "Palo Alto Networks: September 2025 incident analysis",
@@ -166,8 +166,8 @@ const WHY_PANELS = {
     label: "of ClawHub skills found malicious",
     danger: true,
     copy:
-      "This figure is about malicious ClawHub skills, not MCP servers. Separately, an MCP security review found only 8.5% of servers use OAuth, 53% rely on long-lived static secrets, and 15.4% of official-registry entries have no source repository.",
-    note: "The cited report distinguishes malicious marketplace listings, weak authentication, opaque servers, and known vulnerabilities.",
+      "This figure covers malicious ClawHub skills, not MCP servers. Separately, an MCP security review found that only 8.5% of servers use OAuth, 53% rely on long-lived static secrets, and 15.4% of official-registry entries have no source repository.",
+    note: "The cited report keeps four categories apart: malicious marketplace listings, weak authentication, servers with no published source, and known vulnerabilities.",
     source: {
       label: "NimbleBrain: State of MCP Security 2026",
       url: "https://nimblebrain.ai/blog/state-of-mcp-security-2026/",

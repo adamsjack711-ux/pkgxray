@@ -3,19 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pkgxray calibration — 2026-07-19-retuned</title>
+    <title>pkgxray calibration: 2026-07-19-retuned</title>
     <meta name="description" content="Aggregate calibration of pkgxray: 1,301 packages scanned, 0.0% false blocks on the top 1,000, 95.0% known-malware catch rate. Run 2026-07-19-retuned." />
     <meta name="theme-color" content="#1c1510" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://pkgxray.ca/stats/2026-07-19-retuned" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="pkgxray" />
-    <meta property="og:title" content="pkgxray calibration — 2026-07-19-retuned" />
+    <meta property="og:title" content="pkgxray calibration: 2026-07-19-retuned" />
     <meta property="og:description" content="Aggregate calibration of pkgxray: 1,301 packages scanned, 0.0% false blocks on the top 1,000, 95.0% known-malware catch rate. Run 2026-07-19-retuned." />
     <meta property="og:url" content="https://pkgxray.ca/stats/2026-07-19-retuned" />
     <meta property="og:image" content="https://pkgxray.ca/assets/og.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="pkgxray calibration — 2026-07-19-retuned" />
+    <meta name="twitter:title" content="pkgxray calibration: 2026-07-19-retuned" />
     <meta name="twitter:description" content="Aggregate calibration of pkgxray: 1,301 packages scanned, 0.0% false blocks on the top 1,000, 95.0% known-malware catch rate. Run 2026-07-19-retuned." />
     <meta name="twitter:image" content="https://pkgxray.ca/assets/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -45,11 +45,11 @@
       <section class="section stats-hero">
         <div class="section-inner">
           <p class="section-eyebrow">Calibration · archived run</p>
-          <h1 class="stats-title">How well does pkgxray call it?</h1>
+          <h1 class="stats-title">How accurate is pkgxray?</h1>
           <p class="section-lead">
-            An at-scale, code-only static scan of published packages, measured
-            against a committed known-malware corpus. Four numbers, adjudicated
-            by hand, reproducible from the inputs below.
+            A large static scan of published packages, code only, measured
+            against a committed known-malware corpus. Four numbers, all checked
+            by hand, all reproducible from the inputs below.
           </p>
 
           <div class="stat-grid">
@@ -92,12 +92,12 @@
         <div class="section-inner">
           <h2>Corrections</h2>
           <p class="section-lead">
-            Published runs are immutable. If a number is wrong we publish a new
-            dated run and note it here — we never silently edit a number in place.
+            Published runs never change. If a number is wrong we publish a new
+            dated run and note it here. We do not edit a number in place.
             Contest a figure at
             <a href="https://github.com/adamsjack711-ux/pkgxray/issues?q=is%3Aissue%20label%3Acalibration" rel="noopener noreferrer">the tracker</a>.
           </p>
-          <ul class="corrections-log"><li><strong>2026-07-19</strong> — Re-scan of the 2026-07-19 calibration campaign on the retuned engine. Supersedes the provisional 2026-07-19 run, whose top-1000 false-block figure was the as-measured pre-retune number pending a re-run. The full 1,000-package scan was re-run on the fixed engine: the single pre-retune heuristic false block now resolves to review, with no new false block, giving 0 / 1,000.</li></ul>
+          <ul class="corrections-log"><li><strong>2026-07-19</strong>: Re-scan of the 2026-07-19 calibration campaign on the retuned engine. Supersedes the provisional 2026-07-19 run, whose top-1000 false-block figure was the as-measured pre-retune number pending a re-run. The full 1,000-package scan was re-run on the fixed engine: the single pre-retune heuristic false block now resolves to review, with no new false block, giving 0 / 1,000.</li></ul>
         </div>
       </section>
 
@@ -116,7 +116,7 @@
         </main>
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
     </footer>
   </body>
 </html>

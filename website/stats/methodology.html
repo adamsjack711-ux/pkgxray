@@ -3,19 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pkgxray calibration — methodology</title>
+    <title>pkgxray calibration: methodology</title>
     <meta name="description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs." />
     <meta name="theme-color" content="#1c1510" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://pkgxray.ca/stats/methodology" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="pkgxray" />
-    <meta property="og:title" content="pkgxray calibration — methodology" />
+    <meta property="og:title" content="pkgxray calibration: methodology" />
     <meta property="og:description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs." />
     <meta property="og:url" content="https://pkgxray.ca/stats/methodology" />
     <meta property="og:image" content="https://pkgxray.ca/assets/og.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="pkgxray calibration — methodology" />
+    <meta name="twitter:title" content="pkgxray calibration: methodology" />
     <meta name="twitter:description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs." />
     <meta name="twitter:image" content="https://pkgxray.ca/assets/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -47,9 +47,8 @@
           <p class="section-eyebrow">Calibration · methodology</p>
           <h1 class="stats-title">How the numbers are made</h1>
           <p class="section-lead">
-            A calibration claim you cannot reproduce is marketing. Everything
-            needed to re-run the 2026-07-21 scan and re-derive the four
-            numbers is here.
+            Everything you need to re-run the 2026-07-21 scan and derive
+            the four numbers again is on this page.
           </p>
         </div>
       </section>
@@ -62,17 +61,17 @@
           <strong>2026-07-21</strong>:
         </p>
         <ul>
-          <li><strong>1,000 — top-1000 calibration list</strong>: the false-block denominator; committed with resolved name@version rows. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">inputs</a></li>
-          <li><strong>1,000 — deeper download-ranked sweep (first)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
-          <li><strong>3,000 — deeper download-ranked sweep (second)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>1,000 top-1000 calibration list</strong>: the false-block denominator; committed with resolved name@version rows. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>1,000 deeper download-ranked sweep (first)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>3,000 deeper download-ranked sweep (second)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
         </ul>
         <p>
           Counted <em>separately</em> and <strong>not</strong> part of the
           5,000-package denominator above:
         </p>
         <ul>
-          <li><strong>300 — MCP cohort</strong>: hunting list — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/mcp-registry-targets.txt" rel="noopener noreferrer">inputs</a></li>
-          <li><strong>21 — reconstructed known-malware corpus</strong>: catch-rate corpus — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/benchmark/corpus/malicious" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>300 MCP cohort</strong>: hunting list — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/mcp-registry-targets.txt" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>21 reconstructed known-malware corpus</strong>: catch-rate corpus — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/benchmark/corpus/malicious" rel="noopener noreferrer">inputs</a></li>
         </ul>
         <p class="fineprint">The top-1000 list is committed with resolved name@version rows. The 4,000 extended-sweep targets were selected from the committed download-rank pool (validation/calibration-2026-07-22/pool-npm-high-impact-1.13.0.json) via scripts/build-extended-target-list.js --want 4000; the resolved 4,000-name snapshot was not committed, so that portion is reproducible in method but not byte-identical.</p>
 
@@ -85,85 +84,86 @@
         <pre class="code-block"><code>pkgxray guard npm:&lt;name&gt;@&lt;version&gt; --format json</code></pre>
         <p>
           Engine <code>1.0.6</code> was a
-          pre-release build, not published to npm — <code>npx pkgxray@1.0.6</code>
+          pre-release build, not published to npm, so <code>npx pkgxray@1.0.6</code>
           will not resolve. The public npm release at run time was
           <code>1.0.4</code>. To reproduce on the
           exact engine, check out the commit:
         </p>
         <pre class="code-block"><code>git checkout 76c0768 &amp;&amp; node bin/audit.js guard npm:&lt;name&gt;@&lt;version&gt; --format json</code></pre>
         <p>
-          Static only — the scanner reads the tarball's bytes and queries OSV; the
-          static scan never executes package code and never connected to any hosted
+          The scan is static. It reads the bytes of the tarball and queries OSV.
+          It never executes package code and never connected to any hosted
           endpoint. Exit codes: <code>0</code> safe, <code>2</code> block,
           <code>3</code> review. A scan that failed to produce a parseable verdict is
-          recorded as a <em>scan error</em>, never counted as safe.
+          recorded as a <em>scan error</em>, and is never counted as safe.
         </p>
 
-        <h2>How false blocks were adjudicated</h2>
+        <h2>How false blocks were judged</h2>
         <p>
-          A block has two very different causes, and they are split before
-          anything is called a false positive:
+          A block has two very different causes. We separate them before calling
+          anything a false positive:
         </p>
         <ul>
           <li>
-            <strong>OSV block</strong> — the only high finding is a known CVE.
-            Blocking here is by design and is <em>not</em> a false positive.
+            <strong>OSV block</strong>: the only high finding is a known CVE.
+            Blocking here is by design, and is not a false positive.
           </li>
           <li>
-            <strong>Heuristic block</strong> — a malware-signal finding (install
-            hook, exec, exfil, obfuscation, credential/agent access…). These are
-            the reputation-staking calls, and <strong>every one was read by hand.</strong>
+            <strong>Heuristic block</strong>: a malware-signal finding, such as an
+            install hook, exec, exfiltration, obfuscation, or credential and agent
+            access. These are the calls that stake our reputation, so
+            <strong>a person read every one of them.</strong>
           </li>
         </ul>
         <p>
-          <strong>Every top-1000 block was a real CVE</strong> (OSV, by design);
-          <strong>zero were heuristic false positives</strong>. The one pre-retune
-          heuristic false positive — a ~30-line utility that reads <code>.npmrc</code>
-          solely to return the configured registry URL, never touching the auth token,
-          with no network egress at all — was minimized into a benign corpus fixture
-          and the over-firing heuristic retuned, so on this engine it resolves to
-          <code>review</code>. Re-running the full 1,000-package
+          <strong>Every top-1000 block was a real CVE</strong> (OSV, by design), and
+          <strong>none were heuristic false positives</strong>. Before the retune there
+          was one heuristic false positive: a 30-line utility that reads <code>.npmrc</code>
+          only to return the configured registry URL. It never touches the auth token and
+          sends nothing over the network. We cut that case down into a benign corpus
+          fixture and retuned the heuristic that over-fired, so on this engine it resolves
+          to <code>review</code>. Re-running the full 1,000-package
           list on the fixed engine confirms
           <strong>0.0%</strong> =
           0 / 1,000,
           with no new false block.
         </p>
 
-        <h2 class="coherence">Reconciliation note (read this)</h2>
+        <h2 class="coherence">How this run relates to the earlier one</h2>
         <p>
           This run is the <strong>re-scan on the retuned engine</strong>. An earlier
-          provisional run
+          run
           (<a href="./2026-07-21.html">2026-07-21</a>,
-          kept unedited in run history) published the <em>as-measured</em> pre-retune
-          figure of one top-1000 false block, flagged as pending a re-run. It now has
-          one: re-running the full 5,000-package scan on the
-          fixed engine yields <strong>zero</strong> top-1000 false blocks, and the
-          earlier run's number was left in place rather than silently edited. This is
-          also the scoping correction that reconciled the README's earlier
-          "0 false blocks" line: that claim held only on a stale 2019 dependents list;
-          the figure here is corpus-gated and scoped to "the top-1000 most-downloaded."
+          still in run history and unedited) published the measured pre-retune
+          figure of one top-1000 false block, marked as pending a re-run. That re-run
+          has now happened: the full 5,000-package scan on the
+          fixed engine yields <strong>zero</strong> top-1000 false blocks. We left the
+          earlier run's number in place. This also corrects the scope of the README's
+          earlier "0 false blocks" line, which held only on a stale 2019 dependents
+          list. The figure here is corpus-gated and scoped to the top-1000
+          most-downloaded packages.
         </p>
 
         <h2>Catch rate and the corpus</h2>
         <p>
-          npm removes confirmed malware, so <strong>live-registry recall is
-          untestable</strong> — of 22 curated known-malicious versions, only one is
-          still downloadable. Catch rate is therefore measured against a committed,
-          reconstructed corpus run through the real static engine
-          (<code>node benchmark/run.js</code>):
+          npm removes confirmed malware, so <strong>recall against the live registry
+          cannot be tested</strong>: of 22 curated known-malicious versions, only one is
+          still downloadable. We therefore measure catch rate against a committed,
+          rebuilt corpus, run through the real static engine
+          (<code>node benchmark/run.js</code>).
           <strong>20 of
           21</strong> malicious samples block outright
           (95.2%), and
-          <strong>0 passed as safe</strong> —
-          the remainder are routed to <code>review</code> by policy
-          (download-then-exec and geo/locale-gated payloads), not missed. CI hard-fails
-          on any false block, any full miss, and any recall regression.
+          <strong>0 passed as safe</strong>.
+          Policy routes the rest to <code>review</code> rather than missing them:
+          download-then-exec payloads, and payloads gated on region or locale. CI fails
+          the build on any false block, any full miss, and any drop in recall.
         </p>
 
         <h2>Reproduce it</h2>
         <p>
-          The committed top-1000 target list (names, versions, and download counts —
-          inputs only, no verdicts) is here:
+          The committed top-1000 target list holds names, versions, and download
+          counts. It is inputs only, with no verdicts:
           <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19</a>.
         </p>
         <p>
@@ -178,15 +178,16 @@
         </p>
 
         <p class="fineprint">
-          Aggregate figures only. This page does not publish per-package verdicts —
-          a public "package → verdict" lookup would be a free detection oracle for an
-          attacker tuning against the scanner. <a href="./2026-07-21.html">Back to the 2026-07-21 run →</a>
+          Aggregate figures only. This page does not publish per-package verdicts,
+          because a public "package to verdict" lookup would give an attacker a free
+          way to test payloads against the scanner.
+          <a href="./2026-07-21.html">Back to the 2026-07-21 run →</a>
         </p>
       </div></section>
         </main>
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
     </footer>
   </body>
 </html>

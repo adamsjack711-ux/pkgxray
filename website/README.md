@@ -4,7 +4,7 @@ Marketing site for [pkgxray](https://github.com/adamsjack711-ux/pkgxray),
 served from this directory of the main repo. Live at
 <https://pkgxray.ca/>.
 
-Warm CLI palette (stik-latte) with mint x-ray accents. Static files only — no build step.
+Warm CLI palette (stik-latte) with mint x-ray accents. Static files only, no build step.
 
 > **Canonical source.** This directory is the source of truth. The separate
 > [`pkgxray-site`](https://github.com/adamsjack711-ux/pkgxray-site) repo is a
