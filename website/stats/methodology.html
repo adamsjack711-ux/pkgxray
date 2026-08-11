@@ -61,19 +61,19 @@
           <strong>2026-07-21</strong>:
         </p>
         <ul>
-          <li><strong>1,000 top-1000 calibration list</strong>: the false-block denominator; committed with resolved name@version rows. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">inputs</a></li>
-          <li><strong>1,000 deeper download-ranked sweep (first)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
-          <li><strong>3,000 deeper download-ranked sweep (second)</strong>: false-block hunt beyond the head. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>1,000 top-1000 calibration list</strong>: the false-block denominator, committed with resolved name@version rows. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>1,000 deeper download-ranked sweep (first)</strong>: false-block hunt beyond the head of the download ranking. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>3,000 deeper download-ranked sweep (second)</strong>: false-block hunt beyond the head of the download ranking. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-22" rel="noopener noreferrer">inputs</a></li>
         </ul>
         <p>
           Counted <em>separately</em> and <strong>not</strong> part of the
           5,000-package denominator above:
         </p>
         <ul>
-          <li><strong>300 MCP cohort</strong>: hunting list — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/mcp-registry-targets.txt" rel="noopener noreferrer">inputs</a></li>
-          <li><strong>21 reconstructed known-malware corpus</strong>: catch-rate corpus — NOT part of the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/benchmark/corpus/malicious" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>300 MCP cohort</strong>: hunting list, counted separately from the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/mcp-registry-targets.txt" rel="noopener noreferrer">inputs</a></li>
+          <li><strong>21 reconstructed known-malware corpus</strong>: catch-rate corpus, counted separately from the 5,000 denominator. <a href="https://github.com/adamsjack711-ux/pkgxray/tree/main/benchmark/corpus/malicious" rel="noopener noreferrer">inputs</a></li>
         </ul>
-        <p class="fineprint">The top-1000 list is committed with resolved name@version rows. The 4,000 extended-sweep targets were selected from the committed download-rank pool (validation/calibration-2026-07-22/pool-npm-high-impact-1.13.0.json) via scripts/build-extended-target-list.js --want 4000; the resolved 4,000-name snapshot was not committed, so that portion is reproducible in method but not byte-identical.</p>
+        <p class="fineprint">The top-1000 list is committed with resolved name@version rows. The 4,000 extended-sweep targets were selected from the committed download-rank pool (validation/calibration-2026-07-22/pool-npm-high-impact-1.13.0.json) using scripts/build-extended-target-list.js --want 4000. The resolved 4,000-name snapshot was not committed, so you can reproduce that portion by method but not byte for byte.</p>
 
         <h2>Exact tool and command</h2>
         <p>

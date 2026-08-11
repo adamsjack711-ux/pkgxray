@@ -27,14 +27,18 @@
   "reproInputs": "https://github.com/adamsjack711-ux/pkgxray/tree/main/validation/calibration-2026-07-19",
   "corrections": {
     "contact": "https://github.com/adamsjack711-ux/pkgxray/issues?q=is%3Aissue%20label%3Acalibration",
-    "policy": "Versioned runs are immutable. A corrected number is published as a new dated run; corrections are listed on the page, never silently edited.",
+    "policy": "Published numbers never change in place. A corrected number is published as a new dated run, and every correction is listed on the page.",
     "log": [
       {
         "date": "2026-07-19",
-        "what": "Full 1,000-package scan re-run on the retuned engine; the single pre-retune heuristic false block now resolves to review, with no new false block.",
+        "what": "The full 1,000-package scan was re-run on the retuned engine. The single pre-retune heuristic false block now resolves to review, and no new false block appeared.",
         "newRun": "2026-07-19-retuned"
+      },
+      {
+        "date": "2026-08-11",
+        "what": "Copy edit only. No measured number, input list, or source URL changed. Reworded the notes and the earlier entries on this page for plainer language and shorter sentences."
       }
     ]
   },
-  "notes": "Aggregate calibration of a one-time at-scale static scan. Catch rate is measured against the committed reconstructed known-malware corpus (npm removes live malware, so live recall is untestable). The one top-1000 false block is the as-measured figure that drove the retune; the full scan was not re-run on the fixed engine. See methodology."
+  "notes": "Aggregate calibration from a single large static scan. Catch rate is measured against the committed corpus of rebuilt known malware, because npm removes live malware and recall against the live registry cannot be tested. The one top-1000 false block is the figure as measured, and it is what prompted the retune. The full scan was not re-run on the fixed engine. See the methodology page."
 }
