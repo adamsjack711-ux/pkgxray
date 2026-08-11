@@ -72,7 +72,7 @@
     "log": [
       {
         "date": "2026-07-21",
-        "what": "Widened validation past the top-1000 calibration list into two deeper download-ranked sweeps of 1,000 and 3,000 packages that do not overlap, to hunt false blocks the head of the list never exercised. The deeper sweeps turned up 16 wrongly-blocked popular packages. 14 were genuine heuristic false positives across six detectors: OID and version dotted-quads read as IP addresses, benign public DNS, HTTP-cookie identifiers read as the browser cookie database, the metaMask web3 connector name read as a wallet read, shell-rc paths named in docs and comments, Sentry's getTransaction read as an on-chain loader, and env and require calls sitting next to each other inside bundled megafiles. The other 2, bun and firebase-tools, do perform the flagged high-risk operation and are recorded as defensible true positives. Every fix relaxes a heuristic, so no fix can cause a new block. The top-1000 calibration list was then re-scanned on the fixed engine (1.0.6): 0 / 1,000 heuristic false blocks, unchanged."
+        "what": "Widened validation past the top-1000 calibration list into two deeper download-ranked sweeps of 1,000 and 3,000 packages that do not overlap, to hunt false blocks the head of the list never exercised. The deeper sweeps turned up 16 wrongly-blocked popular packages. 14 were genuine heuristic false positives across several detectors: OID and version dotted-quads read as IP addresses, benign public DNS, HTTP-cookie identifiers read as the browser cookie database, the metaMask web3 connector name read as a wallet read, shell-rc paths named in docs and comments, Sentry's getTransaction read as an on-chain loader, and env and require calls sitting next to each other inside bundled megafiles. The other 2, bun and firebase-tools, do perform the flagged high-risk operation and are recorded as defensible true positives. Every fix relaxes a heuristic, so no fix can cause a new block. The top-1000 calibration list was then re-scanned on the fixed engine (1.0.6): 0 / 1,000 heuristic false blocks, unchanged."
       },
       {
         "date": "2026-07-26",
@@ -80,7 +80,7 @@
       },
       {
         "date": "2026-08-11",
-        "what": "Copy edit only. No measured number, input list, or source URL changed. Reworded the notes and the earlier entries on this page for plainer language and shorter sentences."
+        "what": "Copy edit. No measured headline number, input list, or source URL changed. Reworded the notes and the earlier entries on this page for plainer language and shorter sentences. One count was withdrawn: the 2026-07-21 entry said the 14 false positives spanned \"six detectors\" and then listed seven examples. The count could not be reconciled against the fix commits, so it now reads \"several detectors\". The seven examples are unchanged."
       }
     ]
   },

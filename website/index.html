@@ -261,9 +261,9 @@
           <h2 id="cal-title">Accuracy on 5,000 published packages</h2>
           <p class="section-lead">
             One static pass over 5,000 published packages, without running any
-            of their code. Every package that blocked was checked against its
-            source and classified. Recall is measured against a committed corpus
-            of rebuilt malware.
+            of their code. Every heuristic block was read by hand against the
+            package source and classified. Recall is measured against a
+            committed corpus of rebuilt malware.
           </p>
           <div class="stat-grid">
             <div class="stat-card">
@@ -429,7 +429,7 @@
                 <tr><td>MCP capability abuse</td><td class="mark yes">✓</td><td>capability mismatch in the manifest audit, such as a <code>get_weather</code> that also takes a <code>command</code></td></tr>
                 <tr><td>Runtime tool drift</td><td class="mark yes">✓</td><td><code>mcp-proxy</code> re-audits on <code>tools/list_changed</code>; drift from a pinned manifest is denied</td></tr>
                 <tr><td>Sequence-level tool-call chains</td><td class="mark part">◑</td><td><code>mcp-proxy</code> gates each call and scans results; no cross-call flow analysis</td></tr>
-                <tr><td>Dependency confusion, typosquats, slopsquats</td><td class="mark part">◑</td><td>callback beacons, repository and provenance mismatches, and a registry check that flags a made-up name npm never published; no name-similarity check yet</td></tr>
+                <tr><td>Dependency confusion, typosquats, slopsquats</td><td class="mark part">◑</td><td>callback beacons, repository and provenance mismatches, and a registry check that flags a made-up name npm never published, plus an opt-in name-similarity check that is off by default</td></tr>
               </tbody>
             </table>
           </div>

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pkgxray calibration stats — static site generator (Stage 1)
+// pkgxray calibration stats: static site generator (Stage 1)
 // ----------------------------------------------------------------
 // Reads reviewed aggregate artifacts from ./data/<runId>.json and renders
 // frozen, versioned pages. NO network. NO live query path to the scan data:
@@ -345,8 +345,8 @@ function renderMethodology(run) {
           <li>
             <strong>Heuristic block</strong>: a malware-signal finding, such as an
             install hook, exec, exfiltration, obfuscation, or credential and agent
-            access. <strong>Each one was checked against the package source</strong>
-            before it was classified.
+            access. <strong>Each one was read by hand</strong> against the package
+            source before it was classified.
           </li>
         </ul>
         ${h.topThousandFalseBlocks.count === 0
@@ -470,4 +470,4 @@ console.log(`  index.html            -> latest (${latest.runId})`);
 writeFileSync(join(HERE, "methodology.html"), renderMethodology(latest));
 console.log(`  methodology.html`);
 
-console.log(`\ndone — ${runs.length} run(s) rendered.`);
+console.log(`\ndone: ${runs.length} run(s) rendered.`);
