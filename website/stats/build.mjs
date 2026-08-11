@@ -99,7 +99,7 @@ function foot() {
   return `    </main>
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
+      <span class="footer-muted">Static analysis for npm and PyPI packages.</span>
     </footer>
   </body>
 </html>
@@ -180,11 +180,11 @@ function renderStatsPage(run, { isLatest, allRuns }) {
       <section class="section stats-hero">
         <div class="section-inner">
           <p class="section-eyebrow">Calibration${isLatest ? " · latest run" : " · archived run"}</p>
-          <h1 class="stats-title">How accurate is pkgxray?</h1>
+          <h1 class="stats-title">Calibration results</h1>
           <p class="section-lead">
-            A large static scan of published packages, code only, measured
-            against a committed known-malware corpus. Four numbers, all checked
-            by hand, all reproducible from the inputs below.
+            A static scan of published packages, code only, measured against a
+            committed known-malware corpus. Four numbers, each reproducible from
+            the inputs below.
           </p>
 
           <div class="stat-grid">
@@ -288,7 +288,7 @@ function renderMethodology(run) {
   return (
     head(
       "pkgxray calibration: methodology",
-      "How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs.",
+      "How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, how false blocks were classified, corpus contents, and reproduction inputs.",
       canonical
     ) +
     `
@@ -297,8 +297,8 @@ function renderMethodology(run) {
           <p class="section-eyebrow">Calibration · methodology</p>
           <h1 class="stats-title">How the numbers are made</h1>
           <p class="section-lead">
-            Everything you need to re-run the ${esc(run.runId)} scan and derive
-            the four numbers again is on this page.
+            The inputs, the engine build, and the commands used to produce the
+            four numbers in the ${esc(run.runId)} run.
           </p>
         </div>
       </section>
@@ -345,8 +345,8 @@ function renderMethodology(run) {
           <li>
             <strong>Heuristic block</strong>: a malware-signal finding, such as an
             install hook, exec, exfiltration, obfuscation, or credential and agent
-            access. These are the calls that stake our reputation, so
-            <strong>a person read every one of them.</strong>
+            access. <strong>Each one was checked against the package source</strong>
+            before it was classified.
           </li>
         </ul>
         ${h.topThousandFalseBlocks.count === 0

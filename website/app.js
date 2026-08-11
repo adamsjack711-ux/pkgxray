@@ -152,7 +152,7 @@ const WHY_PANELS = {
     label: "combined weekly downloads for chalk and debug, Sept 2025",
     danger: true,
     copy:
-      "Eighteen packages were compromised in one maintainer-account incident. A newly trojaned package usually has no CVE yet, so a CVE scanner has nothing to match.",
+      "Eighteen packages were compromised in one maintainer-account incident. The trojaned versions were live on npm before any advisory existed to match them against.",
     note: "The 2.6 billion figure is combined weekly downloads, not confirmed affected installs.",
     source: {
       label: "Palo Alto Networks: September 2025 incident analysis",

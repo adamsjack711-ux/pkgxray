@@ -4,19 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>pkgxray calibration: methodology</title>
-    <meta name="description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs." />
+    <meta name="description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, how false blocks were classified, corpus contents, and reproduction inputs." />
     <meta name="theme-color" content="#1c1510" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://pkgxray.ca/stats/methodology" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="pkgxray" />
     <meta property="og:title" content="pkgxray calibration: methodology" />
-    <meta property="og:description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs." />
+    <meta property="og:description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, how false blocks were classified, corpus contents, and reproduction inputs." />
     <meta property="og:url" content="https://pkgxray.ca/stats/methodology" />
     <meta property="og:image" content="https://pkgxray.ca/assets/og.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="pkgxray calibration: methodology" />
-    <meta name="twitter:description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, false-block adjudication, corpus contents, and reproduction inputs." />
+    <meta name="twitter:description" content="How the pkgxray calibration numbers are produced: target-list construction, exact version and flags, how false blocks were classified, corpus contents, and reproduction inputs." />
     <meta name="twitter:image" content="https://pkgxray.ca/assets/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -47,8 +47,8 @@
           <p class="section-eyebrow">Calibration · methodology</p>
           <h1 class="stats-title">How the numbers are made</h1>
           <p class="section-lead">
-            Everything you need to re-run the 2026-07-21 scan and derive
-            the four numbers again is on this page.
+            The inputs, the engine build, and the commands used to produce the
+            four numbers in the 2026-07-21 run.
           </p>
         </div>
       </section>
@@ -111,8 +111,8 @@
           <li>
             <strong>Heuristic block</strong>: a malware-signal finding, such as an
             install hook, exec, exfiltration, obfuscation, or credential and agent
-            access. These are the calls that stake our reputation, so
-            <strong>a person read every one of them.</strong>
+            access. <strong>Each one was checked against the package source</strong>
+            before it was classified.
           </li>
         </ul>
         <p>
@@ -187,7 +187,7 @@
         </main>
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
+      <span class="footer-muted">Static analysis for npm and PyPI packages.</span>
     </footer>
   </body>
 </html>

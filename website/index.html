@@ -179,9 +179,9 @@
         <div class="section-inner">
           <h2 id="why-title">npm is the primary target for open-source malware.</h2>
           <p class="section-lead">
-            Agents install packages and connect to MCP servers faster than anyone
-            can review them, and npm takes in hundreds of thousands of malicious
-            packages a year.
+            Agents install packages and connect to MCP servers without a person
+            checking each one. Sonatype counted more than 454,600 new malicious
+            packages across public registries in 2025.
           </p>
 
           <div class="why-board" data-why-board>
@@ -239,9 +239,9 @@
           </div>
 
           <p class="why-bridge">
-            CVE scanners find known bugs.
-            <strong>pkgxray reads what the code does</strong>, before any of it
-            runs on your machine.
+            A CVE scanner only matches a package against published
+            vulnerabilities. <strong>pkgxray reads the code itself</strong>, so
+            it can flag a package that has no CVE yet.
           </p>
           <p class="why-sources">
             Each figure links to its supporting report. Sources include
@@ -258,11 +258,12 @@
       <section class="section calibration-band" id="calibration" aria-labelledby="cal-title">
         <div class="section-inner">
           <p class="section-eyebrow">Calibration · scanned 2026-07-21</p>
-          <h2 id="cal-title">How often does it get the call right?</h2>
+          <h2 id="cal-title">Accuracy on 5,000 published packages</h2>
           <p class="section-lead">
-            We scanned 5,000 published packages without running any of their
-            code. We read every block by hand and measured recall against a
-            committed corpus of rebuilt known malware.
+            One static pass over 5,000 published packages, without running any
+            of their code. Every package that blocked was checked against its
+            source and classified. Recall is measured against a committed corpus
+            of rebuilt malware.
           </p>
           <div class="stat-grid">
             <div class="stat-card">
@@ -290,7 +291,7 @@
       <!-- 3. Interactive scan demo -->
       <section class="section scan-section" id="scan" aria-labelledby="scan-title">
         <div class="section-inner">
-          <h2 id="scan-title">How a verdict comes together</h2>
+          <h2 id="scan-title">Example scans</h2>
           <p class="section-lead">
             Pick a package. The demo replays recorded output. It downloads and
             runs nothing in your browser.
@@ -372,7 +373,7 @@
       <!-- 4. Verdicts -->
       <section class="section" id="verdicts" aria-labelledby="verdicts-title">
         <div class="section-inner">
-          <h2 id="verdicts-title">Three verdicts, with stable exit codes</h2>
+          <h2 id="verdicts-title">Verdicts and exit codes</h2>
           <p class="section-lead">
             Click a verdict to see what it means for install, CI, and agents.
           </p>
@@ -405,8 +406,8 @@
         <div class="section-inner">
           <h2 id="catches-title">What it catches</h2>
           <p class="section-lead">
-            Fixed rules produce the verdict. No LLM runs in that path, so text
-            planted in a package cannot steer it.
+            Fixed rules produce the verdict. No model reads the package to
+            decide it, so text planted in the package cannot change the outcome.
           </p>
           <div class="table-scroll">
             <table class="data-table">
@@ -415,7 +416,7 @@
               </thead>
               <tbody>
                 <tr><td>Credential theft</td><td class="mark yes">✓</td><td>reads of <code>.ssh</code>, <code>.aws</code>, <code>.npmrc</code>, <code>.env</code>, keychains, and wallets, including paths split across fragments (<code>".s"+"sh"</code>)</td></tr>
-                <tr><td>Prompt injection</td><td class="mark yes">✓</td><td>tiered detection in docs, comments, and metadata; the verdict path runs on fixed rules and cannot be steered</td></tr>
+                <tr><td>Prompt injection</td><td class="mark yes">✓</td><td>detection in docs, comments, and metadata, graded by confidence</td></tr>
                 <tr><td>Unicode smuggling</td><td class="mark yes">✓</td><td>invisible tag-block characters, plus Trojan Source bidi and zero-width characters</td></tr>
                 <tr><td>Base64 payloads</td><td class="mark yes">✓</td><td>encoded blocks in docs and comments; blobs decoded and passed to <code>eval</code>, <code>new Function</code>, or <code>child_process</code></td></tr>
                 <tr><td>Exfiltration and loaders</td><td class="mark yes">✓</td><td>cross-file correlation: stage-2 loaders, <code>curl | sh</code>, and <code>process.env</code> harvesting near a network sink</td></tr>
@@ -445,7 +446,7 @@
       <!-- 5. Surfaces as a flow -->
       <section class="section surfaces" aria-labelledby="surfaces-title">
         <div class="section-inner">
-          <h2 id="surfaces-title">One engine across every surface</h2>
+          <h2 id="surfaces-title">The four commands</h2>
           <p class="section-lead">
             CLI, MCP, install hook, and CI all share the same policy and the same
             evidence rules.
@@ -453,18 +454,18 @@
           <ol class="flow" data-flow>
             <li class="flow-step is-lit" data-step="0">
               <strong>guard</strong>
-              <span>Quarantine a package, audit bytes, promote only if allowed</span>
+              <span>Quarantine a package, scan its files, and promote it only if policy allows</span>
             </li>
             <li class="flow-step" data-step="1">
               <strong>mcp</strong>
               <span
-                >Check a server before you connect. Most public MCP servers ship
-                with static keys and little verification</span
+                >Check a server before you connect. Most public MCP servers
+                authenticate with long-lived static secrets</span
               >
             </li>
             <li class="flow-step" data-step="2">
               <strong>hookshot</strong>
-              <span>Intercept agent <code>npm install</code> with cited deny</span>
+              <span>Intercept an agent's <code>npm install</code> and deny it with cited evidence</span>
             </li>
             <li class="flow-step" data-step="3">
               <strong>recheck</strong>
@@ -525,10 +526,9 @@
         <div class="section-inner">
           <h2 id="comparison-title">How pkgxray compares</h2>
           <p class="section-lead">
-            Run it alongside <code>npm audit</code> and OSV-Scanner, which answer
-            a different question: is there a known CVE? The table below compares
-            pkgxray with tools that do the same job it does, checking package
-            behavior.
+            <code>npm audit</code> and OSV-Scanner check for published CVEs, and
+            pkgxray does not replace them. The table compares pkgxray with tools
+            that also analyze what package code does.
           </p>
           <div class="table-scroll">
             <table class="data-table">
@@ -540,7 +540,7 @@
                 <tr><td>Static behavior analysis of package code</td><td class="mark yes">✓</td><td class="mark yes">✓</td><td class="mark yes">✓</td><td class="mark yes">✓</td></tr>
                 <tr><td>Sandboxed execution (dynamic analysis)</td><td class="mark no">✗</td><td class="mark yes">✓</td><td class="mark part">◑</td><td class="mark part">◑ opt-in <code>canary</code></td></tr>
                 <tr><td>npm ↔ GitHub artifact divergence</td><td class="mark unk">unknown</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓</td></tr>
-                <tr><td>Verdict path on fixed rules, with no LLM an injection can steer</td><td class="mark no">✗</td><td class="mark yes">✓</td><td class="mark part">◑</td><td class="mark yes">✓</td></tr>
+                <tr><td>Verdict decided by fixed rules rather than a model</td><td class="mark no">✗</td><td class="mark yes">✓</td><td class="mark part">◑</td><td class="mark yes">✓</td></tr>
                 <tr><td>Pre-install gate with a quarantined copy to review</td><td class="mark part">◑</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓</td></tr>
                 <tr><td>MCP server checks before connect</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓</td><td class="mark yes">✓</td></tr>
                 <tr><td>Per-call runtime gating of live MCP traffic</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark no">✗</td><td class="mark yes">✓ <code>mcp-proxy</code></td></tr>
@@ -563,7 +563,7 @@
       <section class="section install-section" id="install" aria-labelledby="install-title">
         <div class="section-inner narrow">
           <h2 id="install-title">Install</h2>
-          <p class="section-lead">Start with one command. No global install required.</p>
+          <p class="section-lead">No global install required.</p>
 
           <div class="install-blocks">
             <button
@@ -613,7 +613,7 @@
 
     <footer class="footer">
       <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Inspect what gets installed, before anything executes.</span>
+      <span class="footer-muted">Static analysis for npm and PyPI packages.</span>
     </footer>
 
     <script src="./app.js?v=scan8" type="module"></script>
