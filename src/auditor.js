@@ -4411,7 +4411,7 @@ function renderMarkdown(report) {
     lines.push(`${verb}:`);
     for (const band of report.riskBands) {
       const examples = band.examples && band.examples.length > 0
-        ? ` (${band.examples.slice(0, 2).map((e) => `\`${safe(e)}\``).join(", ")}${band.count > band.examples.length ? `, +${band.count - band.examples.length} more` : ""})`
+        ? ` (${band.examples.map((e) => `\`${safe(e)}\``).join(", ")}${band.count > band.examples.length ? `, +${band.count - band.examples.length} more` : ""})`
         : "";
       lines.push(`- **${band.severity.toUpperCase()} ${safe(band.label)}** — ${safe(band.rationale)}${examples}`);
     }
@@ -4456,5 +4456,7 @@ module.exports = {
   VERDICT_ORDER,
   // Exported for the self-scan regression tests.
   isVerifiedSelfScan,
-  SELF_CANONICAL
+  SELF_CANONICAL,
+  // Exported for the risk-band summary regression tests.
+  computeRiskBands
 };
