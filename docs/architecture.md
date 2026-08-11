@@ -9,26 +9,27 @@
 Every package flows through the same stages, regardless of which surface
 invoked the scan:
 
-1. **Acquisition** — resolve the reference (`npm:name@version`, a local
-   directory, or supplied evidence), query OSV for known vulnerabilities
-   *before* downloading anything, and fetch the tarball plus registry /
-   GitHub / provenance metadata.
-2. **Quarantine** — stage the package in a private sandboxed directory.
-   Nothing is ever installed: no `npm install`, no lifecycle scripts, no build
-   steps, no package code.
-3. **Static analysis** — run the calibrated heuristics over the staged bytes:
-   credential access, persistence, obfuscation + execution, prompt injection,
-   concealed/encoded envelopes, cross-file behavioral correlation.
-4. **Policy** — apply `.pkgxray.json` (allowlist, mutes, strictness) and
-   resolve every finding into one verdict: `SAFE` / `REVIEW` / `BLOCK`, with
-   each finding citing the file and evidence that produced it.
-5. **Promotion** (guard flow only) — copy the package out of quarantine only
-   when the policy allows it.
+1. **Acquisition.** Resolve the reference: `npm:name@version`, a local
+   directory, or supplied evidence. Query OSV for known vulnerabilities *before*
+   downloading anything, then fetch the tarball along with the registry, GitHub,
+   and provenance metadata.
+2. **Quarantine.** Stage the package in a private sandboxed directory. Nothing
+   is ever installed: no `npm install`, no lifecycle scripts, no build steps, no
+   package code.
+3. **Static analysis.** Run the calibrated heuristics over the staged bytes.
+   They cover credential access, persistence, obfuscation plus execution, prompt
+   injection, concealed and encoded envelopes, and behavioral correlation across
+   files.
+4. **Policy.** Apply `.pkgxray.json`, which holds the allowlist, mutes, and
+   strictness, then resolve every finding into one verdict: `SAFE`, `REVIEW`, or
+   `BLOCK`. Each finding cites the file and evidence that produced it.
+5. **Promotion** (guard flow only). Copy the package out of quarantine, but only
+   when policy allows it.
 
 ## One engine, many surfaces
 
-The same analysis engine and the same policy loader back every surface, so a
-verdict — and your policy — cannot drift depending on how a package arrived:
+The same analysis engine and the same policy loader sit behind every surface, so
+neither a verdict nor your policy can drift based on how a package arrived:
 
 | Surface | Entry point |
 |---|---|
@@ -43,21 +44,21 @@ verdict — and your policy — cannot drift depending on how a package arrived:
 
 ## Design principles
 
-- **Never execute untrusted code in the default static-analysis path.** Analysis operates on bytes in quarantine.
-  (The sole, deliberate exception is the opt-in [`canary`](canary-threat-model.md)
-  surface, which is gated behind an explicit flag and carries its own threat
-  model.)
-- **Report only citable evidence.** Every finding names the file and the
-  matched content. No un-attributable scores.
-- **Explainability over black-box scoring.** Verdicts come from deterministic
-  heuristics you can read, not from a model.
-- **Minimize false positives.** A false block costs trust; calibration is
-  regression-gated by the [benchmark](benchmark.md).
-- **Operate offline whenever possible.** Local static analysis needs no
-  network; network layers (OSV, registry, GitHub, provenance) degrade
-  gracefully and scan errors [fail closed](configuration.md).
-- **Zero runtime dependencies.** Plain Node; nothing to supply-chain-attack in
-  the supply-chain scanner.
+- **Never execute untrusted code in the default static-analysis path.** Analysis
+  works on bytes in quarantine. There is one deliberate exception, the opt-in
+  [`canary`](canary-threat-model.md) surface, which sits behind an explicit flag
+  and carries its own threat model.
+- **Report only evidence you can cite.** Every finding names the file and the
+  matched content. No scores you cannot trace back.
+- **Explain the verdict instead of scoring in a black box.** Verdicts come from
+  fixed heuristics you can read, not from a model.
+- **Keep false positives low.** A false block costs trust, so the
+  [benchmark](benchmark.md) gates calibration against regressions.
+- **Work offline where possible.** Local static analysis needs no network. The
+  network layers, OSV, registry, GitHub, and provenance, degrade gracefully, and
+  scan errors [fail closed](configuration.md).
+- **No runtime dependencies.** Plain Node, so there is nothing to
+  supply-chain-attack inside the supply-chain scanner.
 
 See [design.md](design.md) for the reasoning behind these, and
 [design/](design/) for the internal working notes.

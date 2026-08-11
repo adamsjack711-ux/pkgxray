@@ -22,15 +22,16 @@ in [`docs/screenshots/`](../screenshots/README.md) with the same theme and
 window (vhs requires a video `Output`, so they also write a disposable
 `still-scratch.txt`, which is gitignored).
 
-[`setup.sh`](setup.sh) materializes the malicious sample from the
-calibration-corpus fixture
-[`benchmark/corpus/malicious/advisory-solana-web3-keytheft.json`](../../benchmark/corpus/malicious/advisory-solana-web3-keytheft.json)
-(modeled on the 2024 `@solana/web3.js` compromise — the same fixture the
-retired `cli-guard-block.png` screenshot used) plus a two-dependency
-`package-lock.json` that pins `lodash@4.17.11` for the audit act. It also
-stages the paced MCP session driver for the mcp-proxy still and builds
-`pkgxray-guard` from the hookshot checkout (`$HOOKSHOT_CHECKOUT`, default
-`~/Documents/GitHub/hookshot`) for the hookshot still.
+[`setup.sh`](setup.sh) builds the malicious sample from the calibration-corpus
+fixture
+[`benchmark/corpus/malicious/advisory-solana-web3-keytheft.json`](../../benchmark/corpus/malicious/advisory-solana-web3-keytheft.json),
+which is modeled on the 2024 `@solana/web3.js` compromise. It is the same fixture
+the retired `cli-guard-block.png` screenshot used. The script also writes a
+`package-lock.json` with two dependencies, pinning `lodash@4.17.11` for the audit
+act. Then it stages the paced MCP session driver for the mcp-proxy still, and
+builds `pkgxray-guard` from the hookshot checkout for the hookshot still. That
+checkout is `$HOOKSHOT_CHECKOUT`, which defaults to
+`~/Documents/GitHub/hookshot`.
 
 ## hero.gif
 
@@ -45,12 +46,12 @@ sample (its one-line source `cat`-ed first, then blocked, then `echo $?`
 showing exit code 2), and `pkgxray audit package-lock.json` catching the
 vulnerable `lodash` pin via OSV.
 
-The README embeds a copy rehosted as a GitHub attachment (a bare
-`github.com/user-attachments/assets/…` URL is the only form GitHub renders as
-an inline player — committed files, release assets, and `<video>` tags all
-render as plain links). After re-recording, re-upload by dragging the new
-`.mp4` into any GitHub markdown box (an unsubmitted issue comment works),
-copy the inserted URL, and swap it into README.md.
+The README embeds a copy rehosted as a GitHub attachment. A bare
+`github.com/user-attachments/assets/…` URL is the only form GitHub renders as an
+inline player. Committed files, release assets, and `<video>` tags all render as
+plain links. After you re-record, upload the new `.mp4` by dragging it into any
+GitHub markdown box, such as an issue comment you never submit. Then copy the URL
+it inserts and swap that into README.md.
 
 ## Gotcha: `Set Framerate 8`
 
