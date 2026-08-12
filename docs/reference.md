@@ -10,44 +10,69 @@ see [compatibility.md](compatibility.md).
 
 ## Severity policy (what lands in block / review / info)
 
-- **block** (HIGH) — verdict-forcing / rule-overriding prompt-injection text (in
-  docs *or* a code comment); credential reads near a filesystem-read primitive
-  (including paths assembled from split fragments — `".s"+"sh"` — folded by a
-  light de-obfuscation pass); persistence writes; execution/outbound-network plus
-  a hardcoded public IP / shortener / webhook; bulk `process.env` harvest in the
-  same file as outbound network (sinks include `sendBeacon` / `EventSource` /
-  `dns.*` / `dgram` / remote `import()`); a dynamic `require`/`import` of a
-  computed name co-located with an env harvest; a stage-2 loader that reads an
-  opaque blob and `eval`s it; a large encoded blob decoded into a **computed-arg**
-  `eval` / `new Function` / `child_process`; split token-exfil across files;
-  **concealed/encoded injection** — instructions smuggled in invisible Unicode
-  tag characters, or a base64 blob in docs/comments, that decode to a
-  verdict-forcing prompt; a read of the cloud instance-metadata service or a
-  managed secret store from install-time code (or next to an exfiltration
-  sink); a CI/CD workflow written into the consuming repository by install-time
-  code; an install-time script that deletes its own file after fetching or
-  executing a payload; publishing to the package registry from install-time
-  code, or enumerating which packages the current credentials can publish to
-  and then publishing.
-- **review** (MEDIUM) — install/postinstall scripts; `eval` / `new Function` /
-  vm on a **computed** argument; weaker prompt-injection (reworded steering,
-  chat/role scaffolding like `<|im_start|>` / `<<SYS>>` / `[INST]`, identity
-  reassignment); a lone dynamic `require`/`import` by computed name; a lone bulk
-  `process.env` harvest; a path/domain assembled from split fragments; Trojan
-  Source Unicode; **invisible Unicode tag characters** (text-smuggling channel)
-  even when they don't decode to a known prompt; a geo/locale-gated destructive
-  op; download-then-execute;
-  clipboard access; a lone exfil/callback domain; a cloud-metadata / secret-store
-  read that forwards to a second host from ordinary runtime code; a CI/CD
-  workflow written by an explicitly-invoked scaffolder; self-deletion without a
-  fetch/exec stage; npm↔GitHub divergence; missing package.json or entrypoint.
-- **info** — child_process/fetch/network in isolation; `eval` / `new Function` on
-  a **string literal** (bundler `eval-source-map` wrapper, feature-detection
-  probe — the executed text is in the artifact and scanned as code); a package
-  name that disagrees with its declared repository while a consumer install hook
-  is present (`metadata-mimicry` — ordinary for monorepos and multi-artifact
-  repos, and indistinguishable from a typosquat without publisher data, so it is
-  evidence only). Recorded, does not gate.
+**block** (HIGH). Any one of these:
+
+- prompt-injection text that forces a verdict or overrides rules, in docs *or* in
+  a code comment
+- a credential read near a filesystem-read primitive. This includes paths built
+  from split fragments (`".s"+"sh"`), which a light de-obfuscation pass folds
+  back together.
+- persistence writes
+- execution or outbound network, plus a hardcoded public IP, link shortener, or
+  webhook
+- a bulk `process.env` harvest in the same file as outbound network. Sinks
+  include `sendBeacon`, `EventSource`, `dns.*`, `dgram`, and remote `import()`.
+- a dynamic `require` or `import` of a computed name, sitting next to an env
+  harvest
+- a stage-2 loader that reads an opaque blob and `eval`s it
+- a large encoded blob decoded into a **computed-arg** `eval`, `new Function`, or
+  `child_process`
+- token exfiltration split across files
+- **concealed or encoded injection**: instructions smuggled in invisible Unicode
+  tag characters, or a base64 blob in docs or comments, that decode to a
+  verdict-forcing prompt
+- a read of the cloud instance-metadata service or a managed secret store from
+  install-time code, or next to an exfiltration sink
+- a CI/CD workflow written into the consuming repository by install-time code
+- an install-time script that deletes its own file after it fetches or executes a
+  payload
+- publishing to the package registry from install-time code. This also covers
+  code that lists which packages the current credentials can publish to and then
+  publishes.
+
+**review** (MEDIUM). Any one of these:
+
+- install or postinstall scripts
+- `eval`, `new Function`, or vm on a **computed** argument
+- weaker prompt injection: reworded steering, chat or role scaffolding such as
+  `<|im_start|>`, `<<SYS>>`, or `[INST]`, and identity reassignment
+- a lone dynamic `require` or `import` by computed name
+- a lone bulk `process.env` harvest
+- a path or domain assembled from split fragments
+- Trojan Source Unicode
+- **invisible Unicode tag characters**, a channel for smuggling text, even when
+  they do not decode to a known prompt
+- a destructive operation gated on region or locale
+- download-then-execute
+- clipboard access
+- a lone exfiltration or callback domain
+- a cloud-metadata or secret-store read that forwards to a second host from
+  ordinary runtime code
+- a CI/CD workflow written by a scaffolder you invoked yourself
+- self-deletion with no fetch or exec stage
+- npm↔GitHub divergence
+- a missing package.json or entrypoint
+
+**info**. Recorded as evidence, and does not gate the verdict:
+
+- child_process, fetch, or network in isolation
+- `eval` or `new Function` on a **string literal**, such as a bundler
+  `eval-source-map` wrapper or a feature-detection probe. The executed text is in
+  the artifact, and it is scanned as code.
+- a package name that disagrees with its declared repository while a consumer
+  install hook is present (`metadata-mimicry`). This is ordinary for monorepos
+  and multi-artifact repos, and without publisher data it looks the same as a
+  typosquat, so it stays evidence only.
 
 `.d.ts`, `.map`, `.min.js`, `.lock` files are skipped. Tarballs up to 20,000
 entries / 256 MB uncompressed are scanned.

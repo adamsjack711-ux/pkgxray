@@ -4,10 +4,10 @@ Status: pkgxray's MCP metadata and runtime entry point ship in the released
 `pkgxray@1.0.5` (`mcpName` marker + the `mcp-server` launcher). The entry
 `io.github.adamsjack711-ux/pkgxray` is **currently listed** (v1.0.5,
 re-published 2026-07-29). The Registry is still in
-**preview and periodically resets its data**, so a live lookup may occasionally
-return nothing, in which case the entry must be **re-submitted**
-(`mcp-publisher publish` — see "Manual Registry publication" below). Local and
-`npx`-based setup does not depend on the Registry.
+**preview, and it resets its data from time to time**. A live lookup can come
+back empty, and then you have to **submit the entry again** with
+`mcp-publisher publish`. See "Manual Registry publication" below. Setup that is
+local or uses `npx` does not depend on the Registry at all.
 
 ## Prepared metadata
 
@@ -41,8 +41,8 @@ keep the three versions in lockstep on every future bump.
 
 6. Send `initialize`, `tools/list`, and one inert evidence audit over stdio.
    Confirm the reported server version matches the package.
-7. Confirm every advertised tool has a title, description, input schema, and
-   read/destructive/idempotent/open-world annotations.
+7. Confirm each tool you advertise has a title, a description, an input schema,
+   and its read, destructive, idempotent, and open-world annotations.
 8. Verify a lockfile inside `PKGXRAY_MCP_ALLOWED_ROOTS` succeeds, a path outside
    it fails, and a symlink cannot escape it.
 
@@ -56,9 +56,9 @@ npx --yes --package pkgxray@<VERSION> pkgxray --version
 ```
 
 The returned `mcpName` must be exactly
-`io.github.adamsjack711-ux/pkgxray`. Publishing npm requires the maintainer's
-npm account, protected release environment approval, and configured npm trusted
-publishing/provenance. None of those credentials belong in `server.json`.
+`io.github.adamsjack711-ux/pkgxray`. Publishing to npm needs three things: the maintainer's npm account, approval on
+the protected release environment, and npm trusted publishing and provenance
+already configured. None of those credentials belong in `server.json`.
 
 ## Manual Registry publication
 

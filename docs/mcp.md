@@ -53,17 +53,17 @@ the `mcp` block (`tools`, `packageScanFirst`, `timeoutMs`); see
 
 ### Filesystem boundary
 
-MCP tool arguments cannot grant themselves filesystem access. Local package
-references, lockfiles, promotion targets, and caller-selected quarantine roots
-must resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`. Multiple roots use the platform
-path delimiter (`:` on macOS/Linux, `;` on Windows). Symlink escapes are
-rejected.
+MCP tool arguments cannot grant themselves access to the filesystem. Four kinds
+of path have to resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`: local package
+references, lockfiles, promotion targets, and quarantine roots the caller picks.
+Separate multiple roots with the platform's path delimiter, `:` on macOS and
+Linux, `;` on Windows. Symlinks that escape a root are rejected.
 
-When the variable is omitted, only the server's startup working directory is
-allowed. Set an absolute project root in host configuration rather than relying
-on an application-wide home-directory working directory. Set the variable to an
-empty string to disable all caller-selected filesystem paths; registry package
-scans still use pkgxray's internal OS quarantine.
+Leave the variable out and only the server's startup working directory is
+allowed. Set an absolute project root in the host config, rather than leaning on
+a working directory that points at the whole home directory. Set the variable to
+an empty string to turn off every caller-selected path. Registry package scans
+still use pkgxray's own OS quarantine.
 
 The agent controls tool arguments and supplied evidence. The operator controls
 the process environment, working directory, `.pkgxray.json`, and executable
@@ -71,9 +71,9 @@ version. Do not allow untrusted prompts to edit those controls.
 
 ## Vetting MCP servers: `pkgxray mcp`
 
-`pkgxray mcp` connects to a server (stdio or streamable HTTP), performs the
-read-only handshake, and enumerates the tool manifest via `tools/list` —
-never calling a tool, reading a resource, or invoking a prompt.
+`pkgxray mcp` connects to a server over stdio or streamable HTTP, runs the
+read-only handshake, and lists the tool manifest with `tools/list`. It never
+calls a tool, reads a resource, or invokes a prompt.
 
 ```bash
 # Vet the server package statically FIRST, then connect and audit the manifest
@@ -93,17 +93,17 @@ The manifest audit looks for:
 
 - prompt injection in tool descriptions and the server's `instructions` blurb
 - concealed Unicode / base64 envelopes
-- **capability-surface mismatch** — an MCP-specific check for a tool whose
-  schema exceeds its stated purpose (a `get_weather` that also takes a
-  `command`)
+- **capability-surface mismatch**, an MCP-specific check for a tool whose schema
+  reaches past its stated purpose, such as a `get_weather` that also takes a
+  `command`
 
-> **The one caveat:** everything else pkgxray does is static, but enumerating
-> a stdio server means spawning and running it. `pkgxray mcp` narrows the risk
-> (an allowlist-scrubbed environment, a hard timeout, bounded output, its
-> process group killed after listing), but the safe order is
-> **package-scan first** — pass `--package <ref>` so the no-execution scan
-> clears the server before anything connects. `--no-package-scan` skips it
-> explicitly.
+> **The one caveat.** Everything else pkgxray does is static, but listing a stdio
+> server's tools means spawning and running it. `pkgxray mcp` narrows that risk:
+> it scrubs the environment down to an allowlist, sets a hard timeout, bounds the
+> output, and kills the process group once listing finishes. The safe order is
+> still **package scan first**. Pass `--package <ref>` so the scan that runs
+> nothing clears the server before anything connects. `--no-package-scan` skips
+> that step, and you have to ask for it.
 
 ## Per-call runtime gate: `pkgxray mcp-proxy`
 

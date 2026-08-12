@@ -11,26 +11,26 @@ and never runs what it inspects. `canary` is the one deliberate exception — it
    `require` — the flatmap-stream shape — is triggered and observed too. Disable
    with `--no-import-phase` to run install-only.
 
-Both phases run inside the **same** sandbox (decoy HOME, capture proxy, OS
-wrapper, resource caps, process-group timeout kill). That turns a static "this
-code *could* read `~/.aws/credentials` and POST it somewhere" into a behavioral
-"this package *did* read the decoy AWS key on import and *did* try to send it to
-`<host>`."
+Both phases run inside the **same** sandbox: a decoy HOME, a capture proxy, an OS
+wrapper, resource caps, and a process-group kill on timeout. That changes the
+finding from a static one, "this code *could* read `~/.aws/credentials` and POST
+it somewhere," to one about behavior, "this package *did* read the decoy AWS key
+on import and *did* try to send it to `<host>`."
 
 Because it runs untrusted code, it is opt-in at every entry point
-(`--yes-run-untrusted-code` / `PKGXRAY_ALLOW_EXECUTION=1`) and its guarantees —
-and their limits — are stated here rather than implied.
+(`--yes-run-untrusted-code` or `PKGXRAY_ALLOW_EXECUTION=1`). This page states
+what it guarantees, and where those guarantees stop, rather than implying either.
 
-**Import-phase ceiling (stated, not hidden):** the staged package is detonated
-*without its dependencies installed*, so if its entry point `require()`s an
-uninstalled dependency on the first line, that throws before the payload runs —
-the same ceiling any without-install detonation faces. The phase is best-effort:
-it triggers and observes side effects, it does not guarantee the module fully
-loaded. And on Linux the network namespace is still shared with the host (see
-[isolation levels](#isolation-levels)), so the import phase — like the install
-phase — relies on the capture proxy rather than an OS network boundary there;
-`sandbox-exec` on macOS is the only tier that denies non-loopback egress at the
-kernel today.
+**The import phase has a ceiling, and we state it rather than hide it.** The
+staged package runs *without its dependencies installed*. If its entry point
+`require()`s an uninstalled dependency on the first line, that throws before the
+payload runs. Every detonation that skips the install faces the same ceiling. The
+phase is best effort: it triggers side effects and observes them, and it does not
+guarantee the module finished loading. On Linux the network namespace is still
+shared with the host, as the [isolation levels](#isolation-levels) explain. So
+the import phase leans on the capture proxy there, not an OS network boundary,
+exactly as the install phase does. Today `sandbox-exec` on macOS is the only tier
+that denies non-loopback egress at the kernel.
 
 ## The governing principle: asymmetric evidence
 
@@ -64,9 +64,9 @@ this out. Never wire a green canary into an auto-promote path.
 
 ### Isolation levels
 
-`result.isolation` reports the FS/process confinement achieved and
-`result.netConfined` reports whether **non-loopback network egress is denied at
-the OS boundary** (not merely unobserved by the proxy):
+`result.isolation` reports how far the filesystem and process were confined.
+`result.netConfined` reports whether **the OS boundary denies non-loopback
+network egress**, rather than the proxy merely not seeing it:
 
 | Level | FS confinement | `netConfined` | How to get it |
 |---|---|---|---|
@@ -128,14 +128,18 @@ These are **real limitations**; `result.limits` repeats them on every run.
   (`netConfined: true`), so it can't leave — but it also isn't *recorded*. On
   **`bwrap`/`env-only`** the network namespace is shared, so such traffic can
   still leave uncaptured. *(Future: a loopback-only network namespace on Linux.)*
-- **Sandbox-aware / dormant malware** evades observation by fingerprinting
-  **(1) environment** (a set `HTTP(S)_PROXY`, a HOME under `/tmp`, decoy-shaped
-  dotfiles, missing shell/browser history, VM/CI hostnames), **(2) time**
-  (delayed / date-gated activation outlasting the scan window), **(3) geo/locale**
-  (only firing in a target region — the node-ipc shape), **(4) network** (a C2
-  that is offline/benign during the scan), **(5) interaction** (waiting for real
-  developer/runtime signals the install phase never produces). This is the
-  fundamental reason a quiet canary is not a clearance.
+- **Sandbox-aware or dormant malware** avoids being observed by fingerprinting
+  the run. It can read five things:
+  - **the environment**: a set `HTTP(S)_PROXY`, a HOME under `/tmp`,
+    decoy-shaped dotfiles, no shell or browser history, VM and CI hostnames
+  - **time**: activation that is delayed or gated on a date, so it outlasts the
+    scan window
+  - **region or locale**: firing only in a target region, the node-ipc shape
+  - **the network**: a C2 server that is offline or benign during the scan
+  - **interaction**: waiting for real developer or runtime signals that the
+    install phase never produces
+
+  This is the basic reason a quiet canary run is not a clearance.
 - **Sandbox escape.** `bwrap`/`sandbox-exec` reduce, but do not eliminate,
   kernel/wrapper-level escape risk. Treat the host as potentially exposed.
 - **Only lifecycle scripts run.** Malice that triggers on `require()`/import or

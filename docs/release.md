@@ -6,15 +6,15 @@ not itself a release.
 
 ## Version selection
 
-- Patch: bug fixes, documentation, calibration changes, and improved detection
-  on an unchanged stable interface.
-- Minor: additive commands, flags, JSON fields, or supported surfaces.
-- Major: removal or incompatible change to a stable CLI, configuration, JSON,
-  exit-code, or MCP contract.
+- Patch: bug fixes, docs, calibration changes, and better detection, all on a
+  stable interface that has not changed.
+- Minor: new commands, flags, JSON fields, or supported surfaces.
+- Major: a stable CLI, config, JSON, exit-code, or MCP contract that is removed
+  or changed in a way that breaks callers.
 
-Detection may change a package from `SAFE` to `REVIEW` or `BLOCK` in a patch
-release when new evidence is recognized. Such changes require regression
-fixtures, benchmark review, and release notes.
+A patch release can move a package from `SAFE` to `REVIEW` or `BLOCK`, when
+detection starts to recognize new evidence. Any such change needs regression
+fixtures, a benchmark review, and release notes.
 
 ## Maintainer checklist
 
@@ -30,25 +30,25 @@ fixtures, benchmark review, and release notes.
    npm pack --dry-run
    ```
 
-4. Confirm the benchmark has zero false blocks, zero full misses, and no recall
-   regression.
-5. Inspect `npm pack --dry-run` for unexpected files, secrets, fixtures, or
-   missing documentation.
-6. Run the release workflow in dry-run mode and review its packed-artifact
-   self-guard result.
-7. Create a signed/reviewed release tag and publish only through the protected
-   release workflow.
-8. Verify the npm package version, provenance attestation, registry signature,
-   CLI `--version`, and a fresh `npx` safe-package scan.
-9. If MCP registry metadata is part of the release, follow its separate
-   ownership, authentication, publication, and registry-API checklist after npm
-   publication.
+4. Confirm the benchmark shows zero false blocks, zero full misses, and no drop
+   in recall.
+5. Look through `npm pack --dry-run` for files you did not expect, secrets,
+   fixtures, or missing docs.
+6. Run the release workflow in dry-run mode, and read the result of its
+   self-guard on the packed artifact.
+7. Create a release tag that is signed and reviewed. Publish only through the
+   protected release workflow.
+8. Check the npm package version, the provenance attestation, the registry
+   signature, the CLI `--version`, and a fresh `npx` scan of a safe package.
+9. If the release includes MCP registry metadata, work through its own checklist
+   after you publish to npm. That checklist covers ownership, authentication,
+   publication, and the registry API.
 
-Never bypass failing tests, benchmark gates, provenance, or protected
-environment review to ship a release.
+Never ship a release by working around failing tests, benchmark gates,
+provenance, or review of a protected environment.
 
 ## Supported releases
 
-Security fixes are applied to the latest released `1.x` version on `main`.
-Users should upgrade before reporting a vulnerability. See
-[SECURITY.md](../SECURITY.md) for private reporting and scope.
+Security fixes go to the latest released `1.x` version on `main`. Upgrade before
+you report a vulnerability. See [SECURITY.md](../SECURITY.md) for private
+reporting and scope.

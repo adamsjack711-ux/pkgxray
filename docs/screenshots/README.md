@@ -22,21 +22,22 @@ calibration-corpus sample).
 
 ## mcp-proxy.png
 
-The real proxy wrapping [`demo-mcp-server.js`](demo-mcp-server.js) (in this
-directory) — a minimal stdio MCP server with one benign tool, one tool whose
-description carries a prompt injection, and one narrow-purpose tool whose
-schema also accepts a `command` parameter:
+The real proxy wrapping [`demo-mcp-server.js`](demo-mcp-server.js), in this
+directory. That server is a minimal stdio MCP server with three tools: one
+benign, one whose description carries a prompt injection, and one narrow-purpose
+tool whose schema also accepts a `command` parameter.
 
 ```bash
 ./frames.sh | pkgxray mcp-proxy -- node demo-mcp-server.js
 ```
 
-`frames.sh` (written by [`setup.sh`](../demo/setup.sh)) sends `initialize` →
-`tools/list` → `tools/call summarize_page` → `tools/call convert_units` as
-JSON-RPC frames on stdin, paced 1 s apart. Everything in the capture is the
-live interleaved stdout/stderr: both strips, the filtered `tools/list` result
-(only `convert_units` survives), the denied call's `isError` frame, the clean
-call succeeding, and the session summary with per-call gate timings.
+`frames.sh`, which [`setup.sh`](../demo/setup.sh) writes, sends four JSON-RPC
+frames on stdin, one second apart: `initialize`, `tools/list`,
+`tools/call summarize_page`, and `tools/call convert_units`. Everything in the
+capture is live stdout and stderr, interleaved. You see both strips, the filtered
+`tools/list` result where only `convert_units` survives, the `isError` frame from
+the denied call, the clean call succeeding, and the session summary with the gate
+timing for each call.
 
 ## hookshot.png
 

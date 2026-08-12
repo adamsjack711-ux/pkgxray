@@ -58,8 +58,10 @@ test("registry checklist states the launcher ships in the published release", ()
   // The Registry is in preview and resets data; the doc must stay honest that a
   // live lookup may return nothing and the entry may need re-submission, rather
   // than overclaiming a permanent listing.
-  assert.match(guide, /preview and periodically resets/i);
-  assert.match(guide, /re-submitted/i);
+  assert.match(guide, /preview/i);
+  assert.match(guide, /resets its data/i);
+  assert.match(guide, /live lookup can come\s+back empty/i);
+  assert.match(guide, /submit the entry again/i);
   assert.match(guide, /Published `pkgxray@1\.0\.5` already carries `mcpName`/);
   assert.match(guide, /mcp-publisher login github/);
   assert.match(guide, /mcp-publisher publish/);

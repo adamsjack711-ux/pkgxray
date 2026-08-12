@@ -22,45 +22,45 @@ Please include:
 - a minimal reproduction or proof of concept,
 - the impact you believe it has.
 
-You can expect an initial acknowledgement within a few days. Once a fix is
-released, the advisory will be published with credit to the reporter unless
-you prefer to remain anonymous.
+You can expect a first reply within a few days. Once a fix ships, we publish the
+advisory and credit the reporter, unless you would rather stay anonymous.
 
 ## Scope
 
-Normal `guard`, `audit`, and evidence scans run locally, are zero-dependency,
-and do not execute audited package code, run lifecycle scripts, or perform
-`npm install`.
+Normal `guard`, `audit`, and evidence scans run locally and have no
+dependencies. They do not execute audited package code, run lifecycle scripts,
+or perform `npm install`.
 
-Two explicitly opt-in surfaces do execute child code:
+Two surfaces do execute child code, and both are opt-in:
 
 - `pkgxray canary --yes-run-untrusted-code` runs lifecycle scripts inside the
-  documented OS sandbox and should be used only on a disposable host.
+  documented OS sandbox. Use it only on a host you can throw away.
 - `pkgxray mcp` (after its package-scan-first gate) and `pkgxray mcp-proxy`
   spawn the configured MCP server to inspect or proxy its protocol.
 
-Their threat models and containment failures are in security scope.
-Security reports of particular interest include:
+Their threat models and any containment failure are in security scope. Reports
+we especially want:
 
-- sandbox/quarantine escapes that let audited package code execute,
+- sandbox or quarantine escapes that let audited package code execute,
 - path-traversal or symlink issues during tarball extraction or staging,
-- the self-hostable cache server leaking tokens or serving poisoned content
-  (note its documented trust model: it is a caching proxy, **not** an auth
-  boundary — see the README),
-- ways to make the static auditor return `safe`/`allow` for genuinely
+- the self-hostable cache server leaking tokens or serving poisoned content.
+  Note its documented trust model: it is a caching proxy, **not** an auth
+  boundary. See the README.
+- ways to make the static auditor return `safe` or `allow` for genuinely
   malicious evidence (false-negative bypasses).
 
 ## Incorrect verdicts
 
-A reproducible false positive on benign code may use the public
-**Incorrect verdict** issue form. Do not publicly attach credentials, private
-source, active malware, or a working scanner bypass.
+Use the public **Incorrect verdict** issue form for a false positive on benign
+code that you can reproduce. Do not publicly attach credentials, private source,
+active malware, or a working scanner bypass.
 
-Report a suspected false negative or bypass privately when the package may be
-live malware, when the reproduction demonstrates evasion, or when disclosure
-would help an attacker tune around detection. The maintainers can reduce a
-private sample into a safe regression fixture before publishing details.
+Report a suspected false negative or bypass privately in any of these cases: the
+package may be live malware, the reproduction shows how to evade detection, or
+disclosure would help an attacker tune around the scanner. The maintainers can
+cut a private sample down into a safe regression fixture before any details go
+public.
 
-Disputes about published aggregate calibration numbers may use a public issue
-when they contain no per-package verdicts or sensitive samples. Include the run
-URL, the exact disputed statement, and reproducible calculations.
+You can dispute a published calibration number in a public issue, as long as the
+issue holds no per-package verdicts and no sensitive samples. Include the run
+URL, the exact statement you dispute, and calculations someone else can repeat.

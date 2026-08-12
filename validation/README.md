@@ -64,12 +64,12 @@ cohort exists to measure that number — **separately**. MCP results live in
 their own out-dir and their own stats artifact; they are never folded into the
 top-1000 / npm figures.
 
-The target list is sourced from the **official MCP Registry**
-(`registry.modelcontextprotocol.io`): latest versions, active servers, npm
-packages only, deduped, collected in registry cursor order until the cap
-(the registry has no download ranking; the file is sorted by identifier for
-stable diffs), sized for one scan pass. Inputs only — names and versions,
-no verdicts:
+The target list comes from the **official MCP Registry**
+(`registry.modelcontextprotocol.io`). It holds latest versions of active servers,
+npm packages only, with duplicates removed, and it is sized for one scan pass.
+Entries are collected in registry cursor order up to the cap, because the
+registry has no download ranking, and the file is sorted by identifier so diffs
+stay stable. It records inputs only, names and versions, and no verdicts:
 
 - [`mcp-registry-targets.txt`](mcp-registry-targets.txt) — the list
 - [`mcp-registry-targets.meta.json`](mcp-registry-targets.meta.json) — source,
@@ -107,23 +107,31 @@ are **not** false blocks and are reported separately:
 - **errors** — the package no longer resolves (unpublished/renamed since the
   corpus snapshot). Recorded as `error`, never as a block.
 
-`review` is **not** a false positive either — it is the by-design middle tier for
-governance/provenance signals (single-maintainer, missing provenance, a build
-artifact diverging from git, a dual-use URL shortener in an error link, …).
+`review` is **not** a false positive either. It is the middle tier, and it exists
+for governance and provenance signals: a single maintainer, missing provenance, a
+build artifact that diverges from git, a dual-use URL shortener in an error link,
+and so on.
 
 ## The corpus
 
-[`top1000.txt`](top1000.txt) is the canonical "most depended-upon" ranking
+[`top1000.txt`](../src/data/top1000.txt) is the canonical "most depended-upon" ranking
 ([source](https://gist.github.com/anvaka/8e8fa57c7ee1350e3491)). It is a fixed,
-committed snapshot so runs are reproducible; some entries have since been
-unpublished and show up as `error`.
+committed snapshot, so runs are reproducible. Some entries have been unpublished
+since, and they show up as `error`.
 
 ## Feeding results back into the engine
 
 Every genuine false block this surfaces becomes a **benign fixture** in
-`benchmark/corpus/benign/` so the calibration gate in CI locks the fix in
-permanently. The top-1000 run that motivated this harness turned up 22 false
-blocks across ~7 detectors (dual-use shorteners, shell-completion installers,
-transform test-fixtures, minified-bundle decode/eval co-location, build
-artifacts diverging from git, example IPs and license URLs in comments, deleted
-repos); each was calibrated and captured as a regression fixture.
+`benchmark/corpus/benign/`, so the calibration gate in CI locks the fix in
+permanently. The top-1000 run that prompted this harness turned up 22 false
+blocks across about 7 detectors:
+
+- dual-use link shorteners
+- shell-completion installers
+- transform test fixtures
+- a decode and an `eval` sitting together in a minified bundle
+- build artifacts that diverge from git
+- example IPs and license URLs in comments
+- deleted repos
+
+Each one was calibrated and captured as a regression fixture.

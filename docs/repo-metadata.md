@@ -1,14 +1,13 @@
 # GitHub repository metadata (manual maintainer settings)
 
-GitHub's "About" description and topics are repository settings, not files, so
-they cannot be changed from a pull request. Apply these in **Settings → General**
-and the **About** gear on the repository landing page. Keep them in sync with
-this file.
+GitHub's "About" description and topics are repository settings, not files, so a
+pull request cannot change them. Apply them in **Settings → General** and in the
+**About** gear on the repository landing page. Keep them in sync with this file.
 
 ## About description
 
-Do **not** use an absolute "never executes untrusted code" claim — the opt-in
-`canary` mode deliberately executes package code in a sandbox. Recommended:
+Do **not** make a flat "never executes untrusted code" claim. The opt-in `canary`
+mode deliberately executes package code in a sandbox. Use this instead:
 
 > Pre-install security for AI agents, npm packages, and MCP servers. Zero-dep
 > local static analysis; normal scans never execute package code.
@@ -35,10 +34,11 @@ supply-chain-security
 devsecops
 ```
 
-These mirror `package.json#keywords` where they overlap; the extra entries
-(`ai-agents`, `prompt-injection`, `devsecops`) are GitHub-topic conventions.
+These mirror `package.json#keywords` where the two overlap. The extra entries,
+`ai-agents`, `prompt-injection`, and `devsecops`, follow GitHub topic
+conventions.
 
 ## Review cadence
 
-Re-check the About text and topics whenever the pitch or capabilities change,
-and confirm the description still avoids the absolute no-execution claim.
+Re-check the About text and the topics whenever the pitch or the capabilities
+change. Confirm the description still avoids the flat no-execution claim.
