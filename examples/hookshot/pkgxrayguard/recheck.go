@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -85,10 +84,7 @@ type RecheckReport struct {
 // set, leaving the fail-open/closed choice to the policy layer — never a silent
 // "nothing regressed".
 func (rc Rechecker) Recheck(ctx context.Context, lockfilePath string) RecheckReport {
-	bin := rc.Bin
-	if bin == "" {
-		bin = "pkgxray"
-	}
+	bin := ResolveBin(rc.Bin)
 	timeout := rc.Timeout
 	if timeout == 0 {
 		timeout = 300 * time.Second
@@ -98,8 +94,12 @@ func (rc Rechecker) Recheck(ctx context.Context, lockfilePath string) RecheckRep
 
 	args := append([]string{"recheck", lockfilePath, "--format", "json"}, rc.ExtraArgs...)
 	cmd := exec.CommandContext(cctx, bin, args...)
+	// The child needs the standard install prefixes on PATH: pkgxray is a
+	// node script, so both it and its interpreter have to be findable even
+	// when the hook itself was launched with a minimal environment.
+	cmd.Env = ChildEnv()
 	if rc.CacheURL != "" {
-		cmd.Env = append(os.Environ(), "PKGXRAY_CACHE_URL="+rc.CacheURL)
+		cmd.Env = append(cmd.Env, "PKGXRAY_CACHE_URL="+rc.CacheURL)
 	}
 	stdout, runErr := cmd.Output()
 

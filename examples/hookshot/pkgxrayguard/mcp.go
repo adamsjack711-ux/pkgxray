@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -195,10 +194,7 @@ func (g Guard) checkMcp(ctx context.Context, spec InstallSpec) Result {
 		}
 	}
 
-	bin := g.Bin
-	if bin == "" {
-		bin = "pkgxray"
-	}
+	bin := ResolveBin(g.Bin)
 	timeout := g.Timeout
 	if timeout == 0 {
 		timeout = 60 * time.Second
@@ -207,8 +203,12 @@ func (g Guard) checkMcp(ctx context.Context, spec InstallSpec) Result {
 	defer cancel()
 
 	cmd := exec.CommandContext(cctx, bin, "mcp", spec.Ref, "--format", "json")
+	// The child needs the standard install prefixes on PATH: pkgxray is a
+	// node script, so both it and its interpreter have to be findable even
+	// when the hook itself was launched with a minimal environment.
+	cmd.Env = ChildEnv()
 	if g.CacheURL != "" {
-		cmd.Env = append(os.Environ(), "PKGXRAY_CACHE_URL="+g.CacheURL)
+		cmd.Env = append(cmd.Env, "PKGXRAY_CACHE_URL="+g.CacheURL)
 	}
 	stdout, runErr := cmd.Output()
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -88,10 +87,7 @@ func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
 		}
 	}
 
-	bin := g.Bin
-	if bin == "" {
-		bin = "pkgxray"
-	}
+	bin := ResolveBin(g.Bin)
 	timeout := g.Timeout
 	if timeout == 0 {
 		timeout = 60 * time.Second
@@ -105,8 +101,12 @@ func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
 	// upstream fetches through the cache server). A child inherits our env, but
 	// forward it explicitly so it still reaches the CLI if the host ever
 	// sanitizes the hook's child environment.
+	// The child needs the standard install prefixes on PATH: pkgxray is a
+	// node script, so both it and its interpreter have to be findable even
+	// when the hook itself was launched with a minimal environment.
+	cmd.Env = ChildEnv()
 	if g.CacheURL != "" {
-		cmd.Env = append(os.Environ(), "PKGXRAY_CACHE_URL="+g.CacheURL)
+		cmd.Env = append(cmd.Env, "PKGXRAY_CACHE_URL="+g.CacheURL)
 	}
 	stdout, runErr := cmd.Output()
 
