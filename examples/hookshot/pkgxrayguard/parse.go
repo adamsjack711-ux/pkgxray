@@ -48,44 +48,158 @@ type InstallSpec struct {
 // apply to them.
 func ParseInstalls(command string) []InstallSpec {
 	var out []InstallSpec
-	for _, seg := range splitSegments(command) {
+	for _, seg := range splitSegments(stripHeredocs(command)) {
 		out = append(out, parseSegment(seg)...)
 	}
 	return dedupe(out)
 }
 
-// splitSegments breaks a command line into independently-executed pieces on
-// newlines and the shell operators && || ; and |.
-func splitSegments(command string) []string {
-	fields := replaceAll(command, []string{"\n", "&&", "||", ";", "|"}, "\x00")
-	var segs []string
-	for _, s := range strings.Split(fields, "\x00") {
-		if s = strings.TrimSpace(s); s != "" {
-			segs = append(segs, s)
+// stripHeredocs removes here-document bodies from a command line. A body is
+// data the command reads on stdin, not a command the shell runs, so parsing it
+// yields packages that were never going to be fetched: writing a README, a CI
+// config, or a test fixture that merely quotes an install command is enough to
+// trip the gate on whatever the quoted text happens to contain.
+//
+// The scan is deliberately literal — find the redirection, take the delimiter
+// word after it, drop lines until that word stands alone. An unterminated body
+// is dropped to the end of the input, which is what the shell does with one too.
+func stripHeredocs(command string) string {
+	lines := strings.Split(command, "\n")
+	var out []string
+	for i := 0; i < len(lines); i++ {
+		out = append(out, lines[i])
+		delim, ok := heredocDelimiter(lines[i])
+		if !ok {
+			continue
+		}
+		for i+1 < len(lines) && strings.TrimSpace(lines[i+1]) != delim {
+			i++
+		}
+		i++ // consume the closing delimiter line as well
+	}
+	return strings.Join(out, "\n")
+}
+
+// heredocDelimiter returns the delimiter word of the last here-document opened
+// on a line. The quoted form (<<'EOF') and the leading-tab form (<<-EOF) are
+// both accepted; a <<< here-string is a single-line construct with no body, and
+// << followed by no word at all is not a heredoc.
+func heredocDelimiter(line string) (string, bool) {
+	delim, found := "", false
+	for i := 0; i+1 < len(line); i++ {
+		if line[i] != '<' || line[i+1] != '<' {
+			continue
+		}
+		// Skip the interior of a longer run of <, so the last two characters of
+		// a <<< here-string are not mistaken for a heredoc open.
+		if i > 0 && line[i-1] == '<' {
+			continue
+		}
+		rest := line[i+2:]
+		if strings.HasPrefix(rest, "<") { // <<< here-string
+			continue
+		}
+		rest = strings.TrimPrefix(rest, "-")
+		rest = strings.TrimLeft(rest, " \t")
+		if rest == "" {
+			continue
+		}
+		var word string
+		if q := rest[0]; q == '\'' || q == '"' {
+			end := strings.IndexByte(rest[1:], q)
+			if end < 0 {
+				continue
+			}
+			word = rest[1 : 1+end]
+		} else {
+			fields := strings.FieldsFunc(rest, func(r rune) bool {
+				return r == ' ' || r == '\t' || r == '|' || r == ';' || r == '&' || r == '>' || r == '<'
+			})
+			if len(fields) == 0 {
+				continue
+			}
+			word = fields[0]
+		}
+		if word != "" {
+			delim, found = word, true
 		}
 	}
+	return delim, found
+}
+
+// splitSegments breaks a command line into independently-executed pieces on
+// newlines and the shell operators && || ; | and a lone & (backgrounding).
+//
+// The & cases need care, because & also appears inside redirections: `&>file`
+// redirects both streams and `2>&1` duplicates a descriptor. Splitting on those
+// would tear a redirection in half and leave its tail looking like an argument.
+func splitSegments(command string) []string {
+	var segs []string
+	var cur strings.Builder
+	flush := func() {
+		if s := strings.TrimSpace(cur.String()); s != "" {
+			segs = append(segs, s)
+		}
+		cur.Reset()
+	}
+	rs := []rune(command)
+	for i := 0; i < len(rs); i++ {
+		r := rs[i]
+		switch {
+		case r == '\n' || r == ';':
+			flush()
+		case r == '|':
+			if i+1 < len(rs) && rs[i+1] == '|' {
+				i++
+			}
+			flush()
+		case r == '&':
+			switch {
+			case i+1 < len(rs) && rs[i+1] == '&': // && — a separator
+				i++
+				flush()
+			case i+1 < len(rs) && rs[i+1] == '>': // &>file — a redirection
+				cur.WriteRune(r)
+			case lastNonSpace(cur.String()) == '>': // 2>&1 — an fd duplication
+				cur.WriteRune(r)
+			default: // a lone & backgrounds the command before it
+				flush()
+			}
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	flush()
 	return segs
 }
 
-func replaceAll(s string, olds []string, new string) string {
-	for _, o := range olds {
-		s = strings.ReplaceAll(s, o, new)
+// lastNonSpace returns the final non-whitespace rune of s, or 0 if there is none.
+func lastNonSpace(s string) rune {
+	for i := len(s) - 1; i >= 0; i-- {
+		if r := rune(s[i]); r != ' ' && r != '\t' {
+			return r
+		}
 	}
-	return s
+	return 0
 }
 
 func parseSegment(seg string) []InstallSpec {
+	// Redirections are shell plumbing, not arguments — drop them once, up front,
+	// so every path below (MCP add, the `--` recursion, the installers) sees the
+	// same clean token list and their indices agree.
+	toks := stripRedirections(tokenize(seg))
+
 	// `<cli> mcp add …` (claude today; the shape is CLI-agnostic on purpose):
 	// registering an MCP server. Handled before the generic `--` recursion so
 	// URL forms without a `--` are seen too.
-	if specs := parseMcpAdd(tokenize(seg)); specs != nil {
+	if specs := parseMcpAdd(toks); specs != nil {
 		return specs
 	}
 
 	// `claude mcp add <name> -- <launcher…>` (and similar wrappers): the real
 	// package lives in the launcher command after the `--` separator.
-	if i := indexToken(seg, "--"); i >= 0 {
-		rhs := strings.Join(tokenize(seg)[i+1:], " ")
+	if i := indexOf(toks, "--"); i >= 0 {
+		rhs := strings.Join(toks[i+1:], " ")
 		if rhs != "" {
 			if specs := parseSegment(rhs); len(specs) > 0 {
 				return specs
@@ -93,7 +207,6 @@ func parseSegment(seg string) []InstallSpec {
 		}
 	}
 
-	toks := tokenize(seg)
 	if len(toks) == 0 {
 		return nil
 	}
@@ -118,6 +231,30 @@ var installSubcommands = map[string]bool{
 	"install": true, "i": true, "add": true, "in": true,
 }
 
+// valueFlags take their value as a SEPARATE token, so the token after them is a
+// config value and not a package. Without this, `--tag latest` reports "latest"
+// as a dependency and `-w api <pkg>` reports the workspace name.
+//
+// The list is deliberate rather than a blanket "skip whatever follows a flag":
+// skipping the token after every flag would hide the package in `-g <pkg>`. A
+// value-taking flag missing from this list keeps the old behavior, so add new
+// ones as the package managers grow them. Entries cover npm, pnpm, yarn and bun.
+var valueFlags = map[string]bool{
+	"--prefix": true, "-C": true, "--dir": true, "--cwd": true,
+	"--registry": true, "--cache": true, "--store-dir": true,
+	"--userconfig": true, "--globalconfig": true, "--config": true,
+	"--loglevel": true, "--tag": true, "--backend": true,
+	"--omit": true, "--include": true, "--filter": true,
+	"--workspace": true, "-w": true, "--workspace-root": false,
+	"--before": true, "--script-shell": true, "--shell": true,
+	"--install-strategy": true, "--save-prefix": true,
+	"--node-options": true, "--auth-type": true, "--node-linker": true,
+	"--access": true, "--otp": true, "--depth": true,
+	"--user-agent": true, "--fetch-timeout": true,
+	"--fetch-retries": true, "--maxsockets": true,
+	"--call": true, "-c": true, "--cpu": true, "--os": true,
+}
+
 func parseInstaller(bin string, args []string) []InstallSpec {
 	// Skip a leading "global" (yarn global add / bun global add).
 	if len(args) > 0 && args[0] == "global" {
@@ -132,8 +269,13 @@ func parseInstaller(bin string, args []string) []InstallSpec {
 	}
 
 	var specs []InstallSpec
-	for _, tok := range args[1:] {
+	rest := args[1:]
+	for i := 0; i < len(rest); i++ {
+		tok := rest[i]
 		if isFlag(tok) {
+			if valueFlags[tok] {
+				i++ // the next token is this flag's value, not a package
+			}
 			continue
 		}
 		kind, ok := classifySpec(tok)
@@ -165,6 +307,9 @@ func parseRunner(bin string, args []string) []InstallSpec {
 			return runnerSpec(v)
 		}
 		if isFlag(tok) {
+			if valueFlags[tok] {
+				i++ // skip this flag's value; the package comes after it
+			}
 			continue
 		}
 		// First bare token is the package npx resolves and runs.
@@ -228,8 +373,19 @@ func flagValue(tok, name string) (string, bool) {
 	return "", false
 }
 
+// redirectMarker stands in for a shell redirection operator (> >> < << 2> &>
+// >&) in the token stream. A NUL byte cannot appear in a real command-line
+// argument, so the marker can never collide with one.
+const redirectMarker = "\x00redirect"
+
 // tokenize splits a segment on whitespace while honoring single/double quotes
 // so a quoted spec stays intact. Quotes are stripped from the result.
+//
+// Redirection operators become redirectMarker tokens rather than ordinary
+// words, whether or not whitespace separates them from their target. Without
+// this, a command ending in `> out.txt` yields two extra "packages" — ">" and
+// "out.txt" — and the second is a plausible enough name that the resulting
+// denial reads as a genuine finding rather than a parser artifact.
 func tokenize(seg string) []string {
 	var toks []string
 	var cur strings.Builder
@@ -242,7 +398,9 @@ func tokenize(seg string) []string {
 			inTok = false
 		}
 	}
-	for _, r := range seg {
+	rs := []rune(seg)
+	for i := 0; i < len(rs); i++ {
+		r := rs[i]
 		switch {
 		case quote != 0:
 			if r == quote {
@@ -256,6 +414,30 @@ func tokenize(seg string) []string {
 			inTok = true
 		case r == ' ' || r == '\t':
 			flush()
+		case r == '>' || r == '<':
+			// A bare descriptor number belongs to the operator, not to the word
+			// before it: `2>` redirects fd 2, it does not name a package "2".
+			if inTok && isAllDigits(cur.String()) {
+				cur.Reset()
+				inTok = false
+			}
+			flush()
+			// Consume the rest of the operator: >> << >& <&.
+			if i+1 < len(rs) && (rs[i+1] == r || rs[i+1] == '&') {
+				i++
+			}
+			toks = append(toks, redirectMarker)
+		case r == '&':
+			// Only `&>` (and `&>>`) is a redirection here; a lone & has already
+			// been consumed as a separator by splitSegments.
+			flush()
+			if i+1 < len(rs) && rs[i+1] == '>' {
+				i++
+				if i+1 < len(rs) && rs[i+1] == '>' {
+					i++
+				}
+				toks = append(toks, redirectMarker)
+			}
 		default:
 			cur.WriteRune(r)
 			inTok = true
@@ -265,9 +447,36 @@ func tokenize(seg string) []string {
 	return toks
 }
 
-// indexToken returns the index of the first token exactly equal to want.
-func indexToken(seg, want string) int {
-	for i, t := range tokenize(seg) {
+// stripRedirections drops every redirection operator and the target that
+// follows it, leaving only the words that are really arguments to the command.
+func stripRedirections(toks []string) []string {
+	var out []string
+	for i := 0; i < len(toks); i++ {
+		if toks[i] == redirectMarker {
+			i++ // also skip the redirect target, when one is present
+			continue
+		}
+		out = append(out, toks[i])
+	}
+	return out
+}
+
+// isAllDigits reports whether s is one or more ASCII digits and nothing else.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// indexOf returns the index of the first token exactly equal to want.
+func indexOf(toks []string, want string) int {
+	for i, t := range toks {
 		if t == want {
 			return i
 		}

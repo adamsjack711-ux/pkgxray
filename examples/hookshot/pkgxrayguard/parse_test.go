@@ -102,3 +102,145 @@ func TestParseInstallsDedupes(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+// Shell redirections are plumbing, not arguments. Before they were understood,
+// the redirect and its target were parsed as package names, so an ordinary
+// install that merely piped its output was denied for a package that does not
+// exist — "2>&1" being the one that turned up in practice.
+func TestRedirectionsAreNotPackages(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  string
+		want []string
+	}{
+		// The forms that denied real installs.
+		{"stderr merge after local path", "npm install -g ./pkg.tgz 2>&1", []string{}},
+		{"stderr to devnull", "npm install -g ./pkg.tgz 2>/dev/null", []string{}},
+		{"stderr merge, piped", "npm install -g ./pkg.tgz 2>&1 | tail -3", []string{}},
+		// A redirect after a named package leaves only the package. The spaced
+		// form is the dangerous one: "out.txt" reads as a plausible name.
+		{"spaced redirect", "npm i express > out.txt", []string{"npm:express"}},
+		{"attached redirect", "npm i express >out.txt", []string{"npm:express"}},
+		{"append redirect", "npm i express >> log.txt", []string{"npm:express"}},
+		{"fd redirect", "npm i express 2> err.log", []string{"npm:express"}},
+		{"both streams", "npm i express &> all.log", []string{"npm:express"}},
+		{"fd duplication", "npm i express 1>&2", []string{"npm:express"}},
+		{"stdin redirect", "npm i express < input.txt", []string{"npm:express"}},
+		// A trailing & backgrounds the command; it is not a package.
+		{"backgrounded", "npm i express &", []string{"npm:express"}},
+		{"background separates commands", "npm i express & npm i lodash", []string{"npm:express", "npm:lodash"}},
+		// Redirects survive chaining, on both sides of the operator.
+		{"chained with redirects", "npm i express 2>&1 && pnpm add lodash > /dev/null", []string{"npm:express", "npm:lodash"}},
+		// Every manager, not just npm.
+		{"yarn", "yarn add left-pad 2>&1", []string{"npm:left-pad"}},
+		{"bun", "bun add zod 2>/dev/null", []string{"npm:zod"}},
+		{"pnpm dlx", "pnpm dlx prettier --write . > out.log", []string{"npm:prettier"}},
+		{"npx", "npx cowsay hi 2>/dev/null", []string{"npm:cowsay"}},
+		// A quoted spec containing > is still one token, not a redirect.
+		{"quoted range", `npm i "lodash@>=4"`, []string{"npm:lodash@>=4"}},
+		// The MCP-add path shares the token list, so it must stay intact too.
+		{"mcp add launcher with redirect", "claude mcp add weather -- npx -y @acme/weather-mcp 2>&1", []string{"npm:@acme/weather-mcp"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := refs(ParseInstalls(tc.cmd)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("ParseInstalls(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}
+
+// Flags whose value is a separate token must not have that value read as a
+// package — and a real package named after such a flag must still be caught.
+func TestSeparateFlagValuesAreNotPackages(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  string
+		want []string
+	}{
+		{"npm tag", "npm i --tag latest express", []string{"npm:express"}},
+		{"npm workspace short", "npm i -w api express", []string{"npm:express"}},
+		{"npm workspace long", "npm i --workspace api express", []string{"npm:express"}},
+		{"npm omit", "npm i --omit dev express", []string{"npm:express"}},
+		{"npm prefix", "npm install --prefix /tmp/foo express", []string{"npm:express"}},
+		{"pnpm filter", "pnpm add --filter web lodash", []string{"npm:lodash"}},
+		{"pnpm store-dir", "pnpm add --store-dir /tmp/store lodash", []string{"npm:lodash"}},
+		{"registry value", "npm i --registry https://r.example.com express", []string{"npm:express"}},
+		{"runner registry value", "npx --registry https://r.example.com cowsay", []string{"npm:cowsay"}},
+		// --flag=value keeps working; only the separate-token form is new.
+		{"equals form", "npm i --tag=latest express", []string{"npm:express"}},
+		// Boolean flags must NOT swallow the token after them.
+		{"global short", "npm i -g express", []string{"npm:express"}},
+		{"save-dev", "npm install --save-dev typescript", []string{"npm:typescript"}},
+		{"npx yes", "npx -y cowsay hello", []string{"npm:cowsay"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := refs(ParseInstalls(tc.cmd)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("ParseInstalls(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}
+
+// A here-document body is data the command reads on stdin, not a command the
+// shell runs. Parsing it meant that writing a README, a CI config, or a test
+// fixture that merely quoted an install command tripped the gate on whatever
+// the quoted text contained.
+func TestHeredocBodiesAreNotCommands(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  string
+		want []string
+	}{
+		{"quoted delimiter", "cat > doc.md <<'EOF'\nnpm install some-hallucinated-pkg\nEOF", []string{}},
+		{"bare delimiter", "cat > doc.md <<EOF\nnpm i another-fake-pkg\nEOF", []string{}},
+		{"leading-tab form", "cat > doc.md <<-EOF\n\tyarn add indented-fake\n\tEOF", []string{}},
+		{"custom delimiter word", "cat > x.md <<'PY'\npnpm add fake-in-docs\nPY", []string{}},
+		{"real install after body", "cat > doc.md <<'EOF'\nnpm i fake-in-docs\nEOF\nnpm i express", []string{"npm:express"}},
+		{"real install before body", "npm i express\ncat > doc.md <<'EOF'\nnpm i fake-in-docs\nEOF", []string{"npm:express"}},
+		{"unterminated body runs to end", "cat <<EOF\nnpm i fake-in-docs", []string{}},
+		{"here-string is one line", "cat <<< hello\nnpm i express", []string{"npm:express"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := refs(ParseInstalls(tc.cmd)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("ParseInstalls(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}
+
+// heredocDelimiter must not panic or claim a delimiter on malformed input.
+func TestHeredocDelimiterEdgeCases(t *testing.T) {
+	for _, line := range []string{"cat <<", "cat << |", "cat <<<", "x=$((1 << 2))", "cat <<'unterminated"} {
+		if d, ok := heredocDelimiter(line); ok && d == "" {
+			t.Errorf("heredocDelimiter(%q) reported an empty delimiter", line)
+		}
+	}
+	if d, ok := heredocDelimiter("cat <<'EOF'"); !ok || d != "EOF" {
+		t.Errorf(`heredocDelimiter("cat <<'EOF'") = (%q,%v), want ("EOF",true)`, d, ok)
+	}
+	if d, ok := heredocDelimiter("cmd <<A <<B"); !ok || d != "B" {
+		t.Errorf(`heredocDelimiter("cmd <<A <<B") = (%q,%v), want ("B",true)`, d, ok)
+	}
+}
+
+// The gate must keep denying what it was built to deny: none of the shell-syntax
+// handling above may let a genuine registry install slip past unparsed.
+func TestRealInstallsStillParsedAlongsideShellSyntax(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want []string
+	}{
+		{"npm i some-package-that-does-not-exist-xyz 2>&1", []string{"npm:some-package-that-does-not-exist-xyz"}},
+		{"npm i evil-pkg > /dev/null 2>&1 &", []string{"npm:evil-pkg"}},
+		{"cat <<'EOF'\nnot a command\nEOF\nnpm i evil-pkg", []string{"npm:evil-pkg"}},
+		{"npm i --tag latest evil-pkg", []string{"npm:evil-pkg"}},
+	}
+	for _, tc := range cases {
+		if got := refs(ParseInstalls(tc.cmd)); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("ParseInstalls(%q) = %v, want %v", tc.cmd, got, tc.want)
+		}
+	}
+}
