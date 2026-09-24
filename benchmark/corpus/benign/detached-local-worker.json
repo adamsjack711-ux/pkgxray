@@ -1,0 +1,12 @@
+{
+  "name": "Ordinary detached local worker",
+  "expect": "safe",
+  "note": "Pairs the concealed-process capabilities with a transparent harmless target.",
+  "evidence": {
+    "sourceFiles": {
+      "package.json": "{\"name\":\"fixture\",\"version\":\"1.0.0\",\"main\":\"index.js\"}",
+      "index.js": "const path=require('path'); const {spawn}=require('child_process'); const child=spawn('node',[path.join(__dirname,'worker.js')],{detached:true,stdio:'ignore',windowsHide:true});child.unref();",
+      "worker.js": "module.exports = 42;"
+    }
+  }
+}

@@ -51,10 +51,12 @@ of this at the session layer:
 
 - every `tools/call` gets its own verdict. Denied and unknown tools never reach
   the server, and denied tools are stripped from the listing entirely.
-- every tool **result** is scanned for injection payloads before the model reads
-  it. That cuts off the main steering channel used to assemble such a chain.
-- a manifest that changes mid-session is re-audited before another call passes.
-  This covers `tools/list_changed` and drift from a pinned manifest.
+- model-visible text in tool results, errors and initialization instructions is
+  screened, including resource links and media metadata. Binary content and
+  other protocol methods are not covered. Result screening can be disabled.
+- a `tools/list_changed` notification triggers re-enumeration before another
+  call passes. Pinning detects changes to enumerated manifests; it cannot detect
+  changed implementation behavior behind an unchanged manifest.
 
 Here is what it does **not** do: track dataflow across calls. The proxy judges
 each call against the audited manifest, and keeps no record of what earlier calls

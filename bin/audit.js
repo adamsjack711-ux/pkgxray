@@ -31,13 +31,15 @@ function printUsage() {
       "Usage: pkgxray <command> [options]",
       "",
       "Common commands — vet before you install or connect:",
+      "  pkgxray guard npm:<name>@<version> --archive <file.tgz> --integrity <SRI> [--receipt-only]",
       "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps] [--typosquat]",
       "                     # vet a package before install (static; no package code runs).",
       "                     # --deps also OSV-scans the package's DIRECT dependencies (transitive worm entry point)",
       "                     # --no-vulnerability-check skips the OSV lookup entirely (offline / air-gapped use).",
       "                     #   If OSV is merely unreachable you don't need this: the static scan still runs and",
       "                     #   the report cites the missing CVE check.",
-      "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json>  # batch OSV scan of every dep",
+      "  pkgxray install [project-dir] [--format json]  # install approved npm lockfile archives offline; lifecycle scripts disabled",
+      "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json> [--deep|--deep-all]  # OSV; --deep scans blocked deps, --deep-all scans all resolved deps",
       "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
       "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
       "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
@@ -63,6 +65,8 @@ function printUsage() {
       "  pkgxray mcp-proxy [flags] [--] <command [args...]>                         # run a stdio MCP server behind a per-call runtime gate: every tools/call",
       "                     [--policy strict|balanced|permissive]                   #   is checked in-memory (µs), the manifest is re-audited on every",
       "                     [--pin] [--lock <path>] [--no-recheck]                  #   tools/list_changed, drifted tools are denied until re-pinned,",
+      "                     [--sandbox] [--sandbox-read PATH] [--sandbox-write PATH] # OS confinement: network denied, explicit file access",
+      "                     [--env NAME]                                         #   explicitly pass a required environment variable (repeatable)",
       "                     [--no-scan-results] [--timing]                          #   and tool RESULTS are scanned for injection (use in host config)",
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
       "  pkgxray triage --resume                                                  #   resume interrupted triage",
@@ -80,6 +84,18 @@ function printUsage() {
 
 function parseArgs(argv) {
   const options = { command: "audit", format: "markdown", file: null };
+  if (argv[0] === "install") {
+    options.command = "install";
+    argv = argv.slice(1);
+    options.project = argv[0] && !argv[0].startsWith("-") ? argv.shift() : ".";
+    while (argv.length) {
+      const arg = argv.shift();
+      if (arg === "--help" || arg === "-h") options.help = true;
+      else if (arg === "--format" && ["json", "markdown"].includes(argv[0])) options.format = argv.shift();
+      else throw new Error(`Unsupported install option: ${arg}`);
+    }
+    return options;
+  }
   if (argv[0] === "--version" || argv[0] === "-V") {
     options.command = "version";
     argv = [];
@@ -162,6 +178,17 @@ function parseArgs(argv) {
         if (!["strict", "balanced", "permissive"].includes(options.policy)) {
           throw new Error("--policy must be strict, balanced or permissive");
         }
+      } else if (arg === "--sandbox") {
+        options.sandbox = true;
+      } else if (arg === "--sandbox-read" || arg === "--sandbox-write") {
+        const value = argv.shift();
+        if (!value || value.startsWith('--')) throw new Error(`${arg} requires a path`);
+        const key = arg === "--sandbox-read" ? "sandboxRead" : "sandboxWrite";
+        (options[key] ||= []).push(value);
+      } else if (arg === "--env") {
+        const name = argv.shift();
+        if (!name || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error("--env requires a variable NAME (not a value)");
+        (options.envNames ||= []).push(name);
       } else if (arg === "--pin") {
         options.pin = true;
       } else if (arg === "--lock") {
@@ -178,6 +205,7 @@ function parseArgs(argv) {
         throw new Error(`Unknown mcp-proxy argument: ${arg}`);
       }
     }
+    if ((options.sandboxRead || options.sandboxWrite) && !options.sandbox) throw new Error("Sandbox path grants require --sandbox");
     if (argv[0] === "--") argv = argv.slice(1);
     if (argv.length > 0) {
       if (/^https?:\/\//i.test(argv[0])) {
@@ -245,6 +273,14 @@ function parseArgs(argv) {
       options.githubDiff = false;
     } else if (arg === "--no-github-diff") {
       options.githubDiff = false;
+    } else if (arg === "--receipt-only") {
+      options.receiptOnly = true;
+    } else if (arg === "--archive") {
+      options.artifact = { ...options.artifact, archivePath: argv[++i] };
+    } else if (arg === "--integrity") {
+      options.artifact = { ...options.artifact, integrity: argv[++i] };
+    } else if (arg === "--artifact-url") {
+      options.artifact = { ...options.artifact, resolved: argv[++i] };
     } else if (arg === "--deep") {
       options.deep = true;
     } else if (arg === "--deep-all") {
@@ -317,7 +353,7 @@ async function main() {
   // and env). Every warning is printed LOUD to stderr — a loosening or a
   // misconfig must never be silent.
   const { config, warnings } = cfg.loadConfig({
-    cwd: process.cwd(),
+    cwd: options.command === "install" ? require("node:path").resolve(options.project) : process.cwd(),
     overrides: options.policy ? { policy: options.policy } : {}
   });
   for (const warning of warnings) {
@@ -332,18 +368,31 @@ async function main() {
   // defaults via options.typosquat = true set during arg parsing.
   if (config.typosquat) options.typosquat = config.typosquat;
 
+  if (options.command === "install") {
+    let result;
+    try { result = await require("../src/install").installProject(options.project); }
+    catch (error) { result = { decision: "review", installed: false, error: error.message }; }
+    if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    else if (result.error) process.stderr.write(`Installation refused: ${result.error}\n`);
+    else process.stdout.write(`Installed ${result.installed} approved packages; lifecycle scripts disabled.\nReceipt: ${result.receiptPath}\n${result.backupPath ? `Previous node_modules: ${result.backupPath}\n` : ""}`);
+    process.exitCode = result.decision === "allow" ? 0 : 3;
+    return;
+  }
+
   if (options.command === "guard") {
     if (!options.reference) {
       throw new Error("guard requires an extension reference");
     }
+    if (options.artifact && (!options.artifact.archivePath || !options.artifact.integrity)) throw new Error("--archive and --integrity must be supplied together");
     // Keep the staging tree so the user can inspect / promote it from the
     // printed Quarantine path; non-interactive callers reap it by default.
     let result;
     try {
       result = await guardExtension(options.reference, {
         ...options,
+        config,
         scanErrorPolicy: config.scanErrorPolicy,
-        keepStaging: true
+        keepStaging: !options.artifact
       });
     } catch (error) {
       // A guard that crashes / times out must not exit to an unclear state.
@@ -373,39 +422,11 @@ async function main() {
       return;
     }
 
-    // Apply the shared policy to the guard's report before deciding: mutes are
-    // kept-but-excluded, a pinned+matching-sha256 allow can force safe. The
-    // resolved identity + tarball sha256 come off result.resolved (sha256 is
-    // set by the npm download path in quarantine.js; absent for local refs, in
-    // which case a pinned allow simply won't match).
-    const adjusted = cfg.applyConfig(result.report, {
-      config,
-      packageName: result.resolved && result.resolved.packageName,
-      version: result.resolved && result.resolved.version,
-      sha256: result.resolved && result.resolved.sha256,
-      evidence: { sourceFiles: Object.keys(result.sourceFiles || {}).map(() => ({})) }
-    });
-    result.report = adjusted;
-    result.configEffects = adjusted.configEffects;
-    // Fold the policy promotion (--policy allow-review) over the config verdict
-    // so the guard's reported decision + exit code stay consistent with today.
-    // Re-apply the scan-gap floor: applyConfig/promoteVerdict recompute the
-    // verdict from the report, which would otherwise discard the floor
-    // guardExtension already applied to result.decision. An allowlist hit in
-    // .pkgxray.json still wins — that is an explicit, pinned human decision.
-    const promoted = promoteVerdict(adjusted.verdict, config.policy);
-    const finalVerdict =
-      adjusted.configEffects && adjusted.configEffects.allowlisted
-        ? promoted
-        : cfg.floorVerdictForScanGap(
-            promoted,
-            Boolean(result.vulnerabilityPrecheck && result.vulnerabilityPrecheck.error),
-            config
-          );
-    result.decision = finalVerdict;
+    const adjusted = result.report;
+    const finalVerdict = result.decision;
 
     if (options.format === "json") {
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify(options.receiptOnly ? { ...result, sourceFiles: undefined } : result, null, 2)}\n`);
     } else {
       const lines = [renderGuardMarkdown(result), ...cfg.renderConfigEffects(adjusted.configEffects)];
       process.stdout.write(`${lines.join("\n")}\n`);
@@ -608,7 +629,10 @@ async function main() {
     sha256: evidence.sha256 || (evidence.dist && evidence.dist.sha256) || null,
     evidence
   });
-  const finalVerdict = promoteVerdict(adjusted.verdict, config.policy);
+  const finalVerdict = cfg.guardDecision(adjusted, {
+    policy: config.policy, config, sourceCoverage: evidence.sourceCoverage,
+    dependencyAudit: evidence.dependencyAudit, vulnerabilityScanError: evidence.vulnerabilityScanError
+  });
 
   if (options.format === "json") {
     process.stdout.write(`${JSON.stringify(adjusted, null, 2)}\n`);
@@ -762,6 +786,18 @@ function renderGuardMarkdown(result) {
     ""
   ];
 
+  if (result.assessment) {
+    const checks = result.assessment.checks;
+    lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,
+      "A passing verdict means no blocking findings within these checks; it is not proof of harmlessness.", "");
+  }
+
+  if (result.sourceCoverage) {
+    const c = result.sourceCoverage;
+    lines.push(`Source coverage: ${c.complete ? "complete" : "incomplete"}; ${c.scannedFiles} files read, ${c.skippedFiles} skipped, ${c.truncatedFiles} truncated.`,
+      `Behavioral scope: ${sanitizeForTerminal(c.behavioralScope || "unspecified")}.`, "");
+  }
+
   if (result.promotedPath) {
     lines.push(`Promoted to: \`${sanitizeForTerminal(result.promotedPath)}\``, "");
   }
@@ -779,7 +815,9 @@ function renderGuardMarkdown(result) {
       if (da.note) lines.push(`  _${sanitizeForTerminal(da.note)}_`);
       lines.push("");
     } else {
-      lines.push(`Dependency scan: ${da.scanned} direct dependencies, none with known OSV vulnerabilities.`);
+      lines.push(da.complete === false
+        ? `Dependency scan: incomplete; ${(da.unresolved || []).length} direct dependencies remain unvetted.`
+        : `Dependency scan: ${da.scanned} direct dependencies, none with known OSV vulnerabilities.`);
       if (da.note) lines.push(`  _${sanitizeForTerminal(da.note)}_`);
       lines.push("");
     }

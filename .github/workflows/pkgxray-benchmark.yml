@@ -34,3 +34,15 @@ jobs:
       # Zero runtime dependencies — the benchmark drives src/auditor.js directly.
       - name: Run calibration benchmark
         run: node ./benchmark/run.js
+
+      # Preserve per-case detection and benign severity. Diagnostics also
+      # require zero SAFE misses/false blocks in these frozen synthetic inputs.
+      - name: Check adversarial baseline
+        run: |
+          node ./benchmark/adversarial/run.js --check-baseline
+          node ./benchmark/adversarial/run.js
+
+      - name: Check frozen internal holdout baseline
+        run: |
+          node ./benchmark/adversarial/run.js --holdout --check-baseline
+          node ./benchmark/adversarial/run.js --holdout

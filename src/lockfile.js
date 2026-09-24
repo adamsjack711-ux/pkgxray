@@ -83,7 +83,7 @@ function parseNpmLockfile(text) {
       const segments = key.split("node_modules/").slice(1);
       if (segments.length === 0) continue; // workspace/local package, not a registry dep
       const name = entry.name || segments[segments.length - 1].replace(/\/$/, "");
-      add(deps, name, entry.version, [key]);
+      add(deps, name, entry.version, [key], entry);
     }
     return deps;
   }
@@ -92,7 +92,7 @@ function parseNpmLockfile(text) {
     if (!obj) return;
     for (const [name, entry] of Object.entries(obj)) {
       if (!entry || !entry.version) continue;
-      add(deps, name, entry.version, [chain.concat(name).join(" > ")]);
+      add(deps, name, entry.version, [chain.concat(name).join(" > ")], entry);
       if (entry.dependencies) walk(entry.dependencies, chain.concat(name));
     }
   }
@@ -288,13 +288,19 @@ function stripRange(range) {
   return v;
 }
 
-function add(deps, name, version, paths) {
+function add(deps, name, version, paths, artifactEntry) {
   const key = `${name}@${version}`;
   const existing = deps.get(key);
   if (existing) {
     if (paths) existing.paths.push(...paths);
   } else {
     deps.set(key, { name, version, paths: paths || [] });
+  }
+  if (artifactEntry) {
+    const dep = deps.get(key);
+    const identity = { resolved: artifactEntry.resolved || null, integrity: artifactEntry.integrity || null };
+    dep.artifacts ||= [];
+    if (!dep.artifacts.some(a => a.resolved === identity.resolved && a.integrity === identity.integrity)) dep.artifacts.push(identity);
   }
 }
 
@@ -555,42 +561,17 @@ function batchOsvQuery(deps, ecosystem = "npm") {
   return Promise.all(chunks.map(postBatch)).then((results) => results.flat());
 }
 
-function postBatch(queries) {
+async function postBatch(queries) {
   const body = JSON.stringify({ queries });
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      "https://api.osv.dev/v1/querybatch",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "content-length": Buffer.byteLength(body),
-          "user-agent": USER_AGENT
-        },
-        agent: OSV_AGENT
-      },
-      (res) => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          res.resume();
-          return reject(new Error(`OSV HTTP ${res.statusCode}`));
-        }
-        let buf = "";
-        res.setEncoding("utf8");
-        res.on("data", (c) => (buf += c));
-        res.on("end", () => {
-          try {
-            const parsed = JSON.parse(buf);
-            resolve(parsed.results || []);
-          } catch (e) {
-            reject(e);
-          }
-        });
-      }
-    );
-    req.on("error", reject);
-    req.write(body);
-    req.end();
+  const parsed = await require("./http-client").requestJson("https://api.osv.dev/v1/querybatch", {
+    body, agent: OSV_AGENT,
+    headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "user-agent": USER_AGENT }
   });
+  if (!Array.isArray(parsed.results) || parsed.results.length !== queries.length ||
+      parsed.results.some(r => !r || typeof r !== "object" || Array.isArray(r) || (r.vulns !== undefined && !Array.isArray(r.vulns)))) {
+    throw new Error("OSV returned incomplete or invalid batch results");
+  }
+  return parsed.results;
 }
 
 // ---------------------------------------------------------------------------
@@ -681,6 +662,7 @@ async function auditLockfile(filePath, options = {}) {
     results.push({
       name: dep.name,
       version: dep.version,
+      artifacts: dep.artifacts || [],
       paths: dep.paths.slice(0, 3),
       decision,
       vulnerabilities: vulns.map((v) => ({ id: v.id, aliases: v.aliases || [] })),
@@ -693,7 +675,7 @@ async function auditLockfile(filePath, options = {}) {
   // run full guardExtension to surface richer bands. Bounded concurrency
   // keeps it fast on large lockfiles.
   let deepMs = 0;
-  if (options.deep) {
+  if (options.deep || options.deepAll) {
     const deepStart = Date.now();
     const targets = options.deepAll
       ? results
@@ -721,6 +703,11 @@ async function auditLockfile(filePath, options = {}) {
     uniqueDeps: queries.length,
     timings: { osvMs, deepMs, totalMs: Date.now() - start },
     summary: { safe, reviewed, blocked },
+    coverage: { vulnerabilityCheck: options.vulnerabilityCheck !== false,
+      vulnerabilities: { enabled: options.vulnerabilityCheck !== false,
+        completed: options.vulnerabilityCheck !== false && !Array.isArray(options.osvResults),
+        evidenceOrigin: Array.isArray(options.osvResults) ? "caller-supplied" : options.vulnerabilityCheck === false ? "none" : "OSV" },
+      sourceScan: options.deepAll ? "all-resolved" : options.deep ? "blocked-only" : "none", deepFailures: results.filter(r => r.deep && r.deep.error).length },
     worstDecision: blocked > 0 ? "block" : reviewed > 0 ? "review" : "safe",
     results
   };
@@ -733,7 +720,12 @@ async function runDeep(results, options, scheme = "npm") {
   const { mapPool } = require("./pool");
   await mapPool(results, Math.min(DEEP_CONCURRENCY, results.length), async (r) => {
     try {
+      const identities = r.artifacts || [];
+      if (scheme === "npm" && (identities.length !== 1 || !identities[0].resolved || !identities[0].integrity)) {
+        throw new Error("Exact artifact identity unavailable or conflicting; cannot bind deep approval to lockfile bytes");
+      }
       const result = await guardExtension(`${scheme}:${r.name}@${r.version}`, {
+        artifact: scheme === "npm" ? identities[0] : undefined,
         vulnerabilityCheck: false, // already done by the lockfile pass
         githubMetadata: options.githubMetadata !== false,
         githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
@@ -742,6 +734,8 @@ async function runDeep(results, options, scheme = "npm") {
       });
       r.deep = {
         verdict: result.report.verdict,
+        approval: result.approval || null,
+        artifactVerified: Boolean(result.approval),
         grade: result.report.grade,
         riskBands: result.report.riskBands || []
       };
@@ -753,6 +747,7 @@ async function runDeep(results, options, scheme = "npm") {
       }
     } catch (error) {
       r.deep = { error: error.message };
+      if (r.decision !== "block") r.decision = "review";
     }
   });
 }
@@ -782,6 +777,7 @@ function renderLockfileMarkdown(result) {
   lines.push(`Lockfile: \`${sanitizeForTerminal(result.file)}\` (${result.format})`);
   lines.push(`Total deps: ${result.totalDeps}  ·  scan time: ${result.timings.totalMs} ms`);
   lines.push("");
+  if (result.coverage) lines.push(`Source scan: ${result.coverage.sourceScan}; failed deep scans: ${result.coverage.deepFailures}`);
   lines.push(`Decision: **${result.worstDecision.toUpperCase()}**`);
   lines.push(`  safe: ${result.summary.safe}  ·  review: ${result.summary.reviewed}  ·  block: ${result.summary.blocked}`);
   lines.push("");
@@ -810,6 +806,9 @@ function renderLockfileMarkdown(result) {
     }
   } else {
     lines.push("No blocked packages.");
+  }
+  for (const r of result.results.filter(r => r.deep && r.deep.error)) {
+    lines.push(`- REVIEW ${sanitizeForTerminal(r.name)}@${sanitizeForTerminal(r.version)}: deep scan failed — ${sanitizeForTerminal(r.deep.error)}`);
   }
   if (result.timings.deepMs > 0) {
     lines.push("");

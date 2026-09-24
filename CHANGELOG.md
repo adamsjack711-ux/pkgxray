@@ -2,6 +2,71 @@
 
 ## Unreleased
 
+- Remediate the September 23 audit: unify MCP path authorization and runtime option allowlists; remove temporary MCP staging after scans.
+- Preserve abstract aliases and branch/try/closure effects with bounded graph snapshots and joins. Unsupported runtime syntax now reports lexical-only coverage; eight additional benign challenge cases intentionally require review (historical baseline retained).
+- Add version-2 approval authorization with mandatory coverage holds, enforced by the registry proxy and installer; include all nested runtime/parser files in build identity. Legacy approvals must be rescanned.
+- Enforce MCP server metadata pin drift and pin-store failures; bound queues, outstanding/held calls, manifests and timing storage.
+- Share connection-bound address checks across downloads and MCP HTTP operations, and bound HTTP/cache acquisition time and bytes end-to-end.
+- Make release advisory verification and published-archive digest matching mandatory; no blanket REVIEW or post-publish failure exception.
+
+- Reject links and special files in npm/GitHub archives and verify extracted trees before scanning.
+- Inspect JavaScript class bodies and additional socket, subprocess, reflection and Bun environment flows; report unmodeled executable syntax as REVIEW.
+- Add unmutable Python behavioral-coverage REVIEW findings and prevent behavioral gaps from passing guard or evidence CLI `allow-review`. Four benign Python challenge cases now explicitly require review; corpus labels are unchanged.
+- Screen MCP resource-link descriptions, media/resource metadata and initialization instructions within shared budgets; strict mode withholds REVIEW results.
+- Use explicit cross-platform test discovery for core and example tests. Clarify unchanged-manifest behavior limits and binary result exclusions.
+- Close array/Map alias and promise-constructor flow gaps that could incorrectly allow credential export or fetched-code execution.
+- Scan MCP output schemas, annotations, icons, extension metadata, textual blobs, SVG bodies and non-tool responses; include the expanded tool surface in drift pins.
+- Reject extracted control-character filenames while allowing ordinary regular filenames containing link-like text.
+
+- Add pinned, MIT-licensed Acorn parsing and bounded scope/assignment/local-module flow analysis. Catch the remaining frozen template, reassignment, request-alias, remote-import and cross-file cases; tokenize shell credential uploads. Emit REVIEW on flow budgets, cycles and missing local modules.
+- Add opt-in `mcp-proxy --sandbox`, read/write path grants, isolated temporary HOME and denied networking. macOS confinement is tested; Linux bubblewrap setup fails closed and has a new mandatory native CI check pending execution.
+- Preserve all corpus labels and historical results. Current challenge/former-holdout diagnostics have zero SAFE misses or benign false blocks; the ten newly caught cases are REVIEW. Add third-party parser provenance and browser license attribution.
+
+- Isolate authenticated cache metadata from anonymous and other authenticated clients; bypass shared storage/deduplication and retire the old mixed-trust metadata directory.
+
+- Scrub MCP proxy child environments by default; add repeatable `--env NAME` opt-ins and controlled launcher resolution. Pause host input when the child exits.
+- Pin cache upstream origins and validate actual DNS answers on every connection; reject unsafe redirects in metadata, cached tarballs and live streams. Private/HTTP upstreams require `--allow-private-upstream`.
+- Separate release validation, publishing and verification jobs; disable lifecycle scripts and publish the exact checked archive after SHA-256 verification.
+- Recognize flat credential destructuring and literal environment reflection. Challenge SAFE misses fall from 12 to 6; the former holdout retains 4 misses and benign reviews fall from 3 to 2. These are synthetic corpus results, not real-world accuracy estimates.
+- Replace a literal NUL in the MCP pin validator with its equivalent escape, allowing source inventory to inspect that module as text.
+
+- Add 180 paired adversarial cases plus a frozen 20-case internal holdout, preserved before/after results, and per-case regression gates. Keep known SAFE misses and benign overflags visible.
+- Surface modeled credential exports and remote VM execution as REVIEW using bounded lexical hints; synchronize browser behavior across all 270 calibration/challenge fixtures.
+
+- Add `pkgxray install` for npm lockfile v2/v3: approve exact archives, install offline with lifecycle scripts disabled, verify installed file hashes, and preserve the previous tree for rollback. Reject unsupported sources, incomplete approvals, changed inputs and unexpected installed bytes.
+
+- Bind npm archive scan receipts to SHA-256, manifest identity, scanner source build, policy fingerprint and check completion. Add `guard --archive --integrity --receipt-only`.
+- Preserve npm lockfile download URLs and SRI hashes for deep scans; missing or conflicting identities produce REVIEW.
+- Hold proxy tarballs until that exact snapshot is approved. Reject unbound receipts, incomplete checks and stale refresh failures; invalidate cache approvals on byte/build/policy changes.
+
+- Inventory artifact files before source selection; prioritize declared entrypoints and literal local imports regardless of extension, with bounded resolution and explicit gaps for missing or binary targets.
+- Fold direct-dependency findings into the final report before policy and promotion. Check exact pins only; ranges, non-registry sources and failed requests remain REVIEW.
+- Scan JSON-RPC error messages/data and decoded structured-result strings, preserving clean errors and withholding poisoned errors.
+- Include an assessment record with engine version, artifact identity, effective policy fingerprint and per-check completion states.
+
+- Close MCP proxy sessions on oversized frames; withhold results beyond the text inspection budget, including embedded resource text.
+- Report source collection coverage and prevent unread or truncated code from silently clearing a package.
+- Apply guard configuration before promotion and share the final decision helper across adapters.
+- Treat failed deep scans as REVIEW, preserving existing BLOCK decisions; expose scan scope in lockfile output.
+- Bound registry/OSV requests and archive subprocesses with shared resource-limit helpers.
+- Clarify browser policy limitations, PyPI coverage, and deep-scan modes.
+- Refresh the browser engine and fix base64 decoding without Node globals; check browser/Node verdict and finding parity across the calibration corpus.
+
+
+## Unreleased
+
+- Add pinned, MIT-licensed Acorn parsing and bounded scope/assignment/local-module flow analysis. Catch the remaining frozen template, reassignment, request-alias, remote-import and cross-file cases; tokenize shell credential uploads. Emit REVIEW on flow budgets, cycles and missing local modules.
+- Add opt-in `mcp-proxy --sandbox`, read/write path grants, isolated temporary HOME and denied networking. macOS confinement is tested; Linux bubblewrap setup fails closed and has a new mandatory native CI check pending execution.
+- Preserve all corpus labels and historical results. Current challenge/former-holdout diagnostics have zero SAFE misses or benign false blocks; the ten newly caught cases are REVIEW. Add third-party parser provenance and browser license attribution.
+
+- Isolate authenticated cache metadata from anonymous and other authenticated clients; bypass shared storage/deduplication and retire the old mixed-trust metadata directory.
+
+- Scrub MCP proxy child environments by default; add repeatable `--env NAME` opt-ins and controlled launcher resolution. Pause host input when the child exits.
+- Pin cache upstream origins and validate actual DNS answers on every connection; reject unsafe redirects in metadata, cached tarballs and live streams. Private/HTTP upstreams require `--allow-private-upstream`.
+- Separate release validation, publishing and verification jobs; disable lifecycle scripts and publish the exact checked archive after SHA-256 verification.
+- Recognize flat credential destructuring and literal environment reflection. Challenge SAFE misses fall from 12 to 6; the former holdout retains 4 misses and benign reviews fall from 3 to 2. These are synthetic corpus results, not real-world accuracy estimates.
+- Replace a literal NUL in the MCP pin validator with its equivalent escape, allowing source inventory to inspect that module as text.
+
 **In plain terms:** an OSV outage used to switch pkgxray off. If the
 vulnerability database was unreachable — a real outage, a rate limit, a
 corporate proxy, an air-gapped box — the guard threw away the **entire** static

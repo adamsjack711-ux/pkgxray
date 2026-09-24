@@ -101,10 +101,15 @@ function decisionsFromJson(json) {
   return map;
 }
 
-async function loadDecisions(lockPath) {
+async function loadDecisions(lockPath, { strict = false } = {}) {
   try {
     const text = await fsp.readFile(lockPath, "utf8");
-    return decisionsFromJson(JSON.parse(text));
+    const json = JSON.parse(text);
+    if (strict && (!json || json.schemaVersion !== SCHEMA_VERSION || !Array.isArray(json.decisions) ||
+        json.decisions.some(d => !normalizeRecord(d) || (d.manifest !== undefined && !normalizeManifestPin(d.manifest))))) {
+      throw new Error("Invalid pin store structure");
+    }
+    return decisionsFromJson(json);
   } catch (error) {
     if (error.code === "ENOENT") return new Map();
     throw error;

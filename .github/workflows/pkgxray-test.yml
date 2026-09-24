@@ -11,6 +11,8 @@ on:
       - "src/**"
       - "bin/**"
       - "test/**"
+      - "scripts/run-tests.js"
+      - "examples/pkgxray-proxy/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/pkgxray-test.yml"
@@ -19,6 +21,8 @@ on:
       - "src/**"
       - "bin/**"
       - "test/**"
+      - "scripts/run-tests.js"
+      - "examples/pkgxray-proxy/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/pkgxray-test.yml"
@@ -42,10 +46,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      # Zero runtime dependencies — nothing to install. The suite is Node
-      # built-ins only (node --test), so this is just the test run.
+      # Zero runtime dependencies — no setup install. Tests use Node built-ins
+      # and bundled npm to install inert local fixtures offline.
       - name: Run tests
-        run: node --test
+        run: npm test
 
   # Cross-platform coverage. The Node matrix above is thorough but Linux-only,
   # which leaves real claims unexercised:
@@ -102,7 +106,7 @@ jobs:
       # Deliberately NOT applied to the Linux job above — that is the
       # established gate and this run is the one in discovery.
       - name: Run tests
-        run: node --test --test-timeout=60000
+        run: npm test -- --test-timeout=60000
 
       # The calibration corpus exercises the auditor's path handling
       # (normalizeRelPath, the require-graph walk, lifecycle reachability) on
@@ -110,3 +114,18 @@ jobs:
       # drift with the platform's path separator.
       - name: Calibration benchmark
         run: node ./benchmark/run.js
+
+  sandbox-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+      - name: Install OS confinement backend
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Require real Linux confinement tests
+        env:
+          PKGXRAY_REQUIRE_OS_SANDBOX_TESTS: "1"
+        run: node --test --test-timeout=30000 test/mcp-sandbox.test.js test/mcp-proxy.test.js

@@ -1,0 +1,13 @@
+{
+  "name": "Inert structural model of a hidden local loader",
+  "expect": "block",
+  "expectFinding": "hidden-local-loader",
+  "note": "Static synthetic evidence only. Models the indexed-btree runtime-to-obfuscated-file relationship using harmless module names; no malicious payload or endpoints.",
+  "evidence": {
+    "sourceFiles": {
+      "package.json": "{\"name\":\"fixture\",\"version\":\"1.0.0\",\"main\":\"index.js\"}",
+      "index.js": "const path=require('path'); const {spawn}=require('child_process'); exports.update=function(value){if(value===100){const child=spawn('node',[path.join(__dirname,'extended','worker.min.js')],{detached:true,stdio:'ignore',windowsHide:true});child.unref()}};",
+      "extended/worker.min.js": "const words=['events','util','a','b','c','d','e','f'];words.push(words.shift());function word(i){return words[i]}require(word(0));"
+    }
+  }
+}

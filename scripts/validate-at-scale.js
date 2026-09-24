@@ -203,7 +203,7 @@ function isDefensibleBlock(r, defensible) {
   return defensible.has(r.package);
 }
 
-// guard's JSON decision vocabulary is safe|review|block; older docs say allow.
+// Guard decisions use allow; direct audit verdicts use safe. Accept both.
 function clearBucket(d) { return d === 'safe' || d === 'allow'; }
 
 // Build a stats-site artifact in the exact shape of website/stats/data/*.json.
@@ -292,7 +292,10 @@ function buildStatsArtifact(a, results, heuristicBlocks) {
 function buildReport(a, pkgs, results, wallMs) {
   const defensible = loadDefensibleBlocks(a.ecosystem);
   const by = { safe: [], review: [], block: [], error: [] };
-  for (const r of results) (by[r.decision] || (by[r.decision] = [])).push(r);
+  for (const r of results) {
+    const bucket = clearBucket(r.decision) ? 'safe' : r.decision;
+    (by[bucket] || (by[bucket] = [])).push(r);
+  }
   const allBlocks = by.block || [];
   const vulnBlocks = allBlocks.filter(isVulnBlock);
   const defensibleBlocks = allBlocks.filter((r) => !isVulnBlock(r) && isDefensibleBlock(r, defensible));
@@ -302,12 +305,11 @@ function buildReport(a, pkgs, results, wallMs) {
   const scanned = results.length;
   const resolved = scanned - (by.error ? by.error.length : 0);
 
-  // review-reason breakdown (by highest-signal finding category)
+  // Count packages with each category, not the number of per-file findings.
   const reasonCounts = new Map();
   for (const r of reviews) {
-    for (const f of r.findings) {
-      if (f.severity === 'info') continue;
-      reasonCounts.set(f.category, (reasonCounts.get(f.category) || 0) + 1);
+    for (const category of new Set(r.findings.filter(f => f.severity !== 'info').map(f => f.category))) {
+      reasonCounts.set(category, (reasonCounts.get(category) || 0) + 1);
     }
   }
   const topReasons = [...reasonCounts.entries()].sort((x, y) => y[1] - x[1]);
@@ -315,7 +317,7 @@ function buildReport(a, pkgs, results, wallMs) {
   const L = [];
   L.push(a.cohort
     ? `# pkgxray at-scale validation — "${a.cohort}" cohort (reported separately, never merged into the npm numbers)`
-    : `# pkgxray at-scale validation — top-1000 ${a.ecosystem} packages`);
+    : `# pkgxray at-scale validation — ${pkgs.length} selected ${a.ecosystem} packages`);
   L.push('');
   L.push(`Corpus: \`${path.relative(ROOT, a.list)}\` · ${pkgs.length} packages · concurrency ${a.concurrency} · ${(wallMs / 1000).toFixed(0)}s wall.`);
   L.push('');
@@ -324,7 +326,8 @@ function buildReport(a, pkgs, results, wallMs) {
   L.push('A block that carries a **known-vulnerability** finding is a *true* positive —');
   L.push('the package has a published CVE and pkgxray must never allow it away — so');
   L.push('vuln blocks are reported separately, not counted against the target. `review`');
-  L.push('is by design (governance/provenance signals). Packages that no longer resolve');
+  L.push('includes incomplete analysis and governance/provenance signals; its rate');
+  L.push('must be evaluated separately from false blocks. Packages that no longer resolve');
   L.push('are `error`, never `block`.');
   L.push('');
   L.push('## Headline');
@@ -426,4 +429,5 @@ async function main() {
   process.exit(heuristicBlocks.length === 0 ? 0 : 1);
 }
 
-main().catch((e) => { console.error(e); process.exit(2); });
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(2); });
+module.exports = { buildReport };

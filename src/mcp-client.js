@@ -24,7 +24,6 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
-const dns = require("node:dns");
 const net = require("node:net");
 const path = require("node:path");
 
@@ -101,6 +100,10 @@ const ENV_DENYLIST = new Set(
   ].map((k) => k.toUpperCase())
 );
 
+function isAllowedEnvOverride(key) {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && !ENV_DENYLIST.has(key.toUpperCase());
+}
+
 function scrubbedEnv(extraEnv) {
   const env = {};
   for (const key of ENV_ALLOWLIST) {
@@ -114,7 +117,7 @@ function scrubbedEnv(extraEnv) {
   if (extraEnv && typeof extraEnv === "object") {
     for (const [key, value] of Object.entries(extraEnv)) {
       if (typeof value !== "string") continue;
-      if (ENV_DENYLIST.has(String(key).toUpperCase())) continue;
+      if (!isAllowedEnvOverride(key)) continue;
       env[key] = value;
     }
   }
@@ -224,8 +227,12 @@ function normalizeTool(tool) {
     description: typeof tool.description === "string" ? tool.description : "",
     inputSchema:
       tool.inputSchema && typeof tool.inputSchema === "object" ? tool.inputSchema : null,
+    outputSchema:
+      tool.outputSchema && typeof tool.outputSchema === "object" ? tool.outputSchema : null,
     annotations:
-      tool.annotations && typeof tool.annotations === "object" ? tool.annotations : null
+      tool.annotations && typeof tool.annotations === "object" ? tool.annotations : null,
+    icons: Array.isArray(tool.icons) ? tool.icons : null,
+    _meta: tool._meta && typeof tool._meta === "object" ? tool._meta : null
   };
 }
 
@@ -556,33 +563,7 @@ function allowPrivateHosts() {
 // metadata IP), CGNAT, and their IPv6 equivalents (loopback ::1, ULA fc00::/7,
 // link-local fe80::/10, and IPv4-mapped forms).
 function isBlockedIp(ip) {
-  const type = net.isIP(ip);
-  if (type === 4) {
-    const octets = ip.split(".").map((n) => parseInt(n, 10));
-    const [a, b] = octets;
-    if (a === 127) return true; // 127.0.0.0/8 loopback
-    if (a === 10) return true; // 10.0.0.0/8
-    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-    if (a === 192 && b === 168) return true; // 192.168.0.0/16
-    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local + metadata IP
-    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
-    if (a === 0) return true; // 0.0.0.0/8 "this host"
-    return false;
-  }
-  if (type === 6) {
-    let v6 = ip.toLowerCase();
-    const zone = v6.indexOf("%");
-    if (zone !== -1) v6 = v6.slice(0, zone);
-    if (v6 === "::1" || v6 === "::") return true; // loopback / unspecified
-    // IPv4-mapped / -compatible (::ffff:a.b.c.d) — check the embedded v4.
-    const mapped = v6.match(/(?:::ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (mapped && net.isIP(mapped[1]) === 4) return isBlockedIp(mapped[1]);
-    if (v6.startsWith("fe8") || v6.startsWith("fe9") || v6.startsWith("fea") || v6.startsWith("feb"))
-      return true; // fe80::/10 link-local
-    if (v6.startsWith("fc") || v6.startsWith("fd")) return true; // fc00::/7 ULA
-    return false;
-  }
-  return false; // not an IP literal
+  return !require("./cache-upstream-policy").isPublicAddress(ip);
 }
 
 function assertUrlAllowed(parsed, addresses) {
@@ -601,99 +582,35 @@ function assertUrlAllowed(parsed, addresses) {
   }
 }
 
-// Resolve every A/AAAA record for the host. A bare IP literal short-circuits
-// DNS. Returns the vetted list of addresses so the caller can pin one.
-function resolveHostAddresses(hostname) {
-  return new Promise((resolve, reject) => {
-    if (net.isIP(hostname)) {
-      resolve([{ address: hostname, family: net.isIP(hostname) }]);
-      return;
-    }
-    dns.lookup(hostname, { all: true, verbatim: true }, (err, results) => {
-      if (err) {
-        reject(rpcError(`could not resolve host: ${err.code || err.message}`, "transport"));
-        return;
-      }
-      resolve(results);
-    });
-  });
-}
-
-async function httpPostChecked(url, headers, body, timeoutMs) {
+// Every operation, including session DELETE, uses the same socket-bound policy.
+async function httpPostChecked(url, headers, body, timeoutMs, method = "POST") {
   const parsed = new URL(url);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw rpcError(`unsupported URL protocol: ${parsed.protocol}`, "transport");
   }
-  // Plain http:// to anything but a deliberately opted-in target is refused —
-  // cleartext to a remote host is both an SSRF-in-the-clear and a downgrade risk.
   if (parsed.protocol === "http:" && !allowPrivateHosts()) {
-    throw rpcError(
-      "refusing plain http:// (use https, or set PKGXRAY_MCP_ALLOW_PRIVATE=1 for a trusted private endpoint)",
-      "ssrf"
-    );
+    throw rpcError("refusing plain http:// (use https, or explicitly opt into a trusted private endpoint)", "ssrf");
   }
-
-  let pinnedAddress = null;
   if (!allowPrivateHosts()) {
-    const addresses = await resolveHostAddresses(parsed.hostname);
-    assertUrlAllowed(parsed, addresses.map((a) => a.address));
-    // Pin the vetted address to defeat DNS rebinding between check and connect.
-    if (addresses.length > 0 && net.isIP(addresses[0].address)) {
-      pinnedAddress = addresses[0];
-    }
+    const literal = parsed.hostname.replace(/^\\[|\\]$/g, "");
+    assertUrlAllowed(parsed, net.isIP(literal) ? [literal] : []);
   }
-
-  return httpPost(url, headers, body, timeoutMs, pinnedAddress);
-}
-
-function httpPost(url, headers, body, timeoutMs, pinnedAddress) {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      reject(rpcError(`unsupported URL protocol: ${parsed.protocol}`, "transport"));
-      return;
-    }
-    const lib = parsed.protocol === "https:" ? https : http;
-    const requestOptions = { method: "POST", headers };
-    if (pinnedAddress) {
-      // Connect to the vetted IP but keep the Host/SNI as the original hostname
-      // (servername for TLS, Host header via the URL). This closes the rebind
-      // window: DNS is not consulted again at connect time.
-      requestOptions.lookup = (_hostname, _opts, cb) =>
-        cb(null, pinnedAddress.address, pinnedAddress.family);
-      if (parsed.protocol === "https:") requestOptions.servername = parsed.hostname;
-    }
-    const request = lib.request(
-      parsed,
-      requestOptions,
-      (response) => {
-        let bytes = 0;
-        const chunks = [];
-        response.on("data", (chunk) => {
-          bytes += chunk.length;
-          if (bytes > MAX_OUTPUT_BYTES) {
-            request.destroy(rpcError("server response exceeded the output cap", "transport"));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        response.on("end", () => {
-          resolve({
-            status: response.statusCode,
-            headers: response.headers,
-            body: Buffer.concat(chunks).toString("utf8")
-          });
-        });
-      }
-    );
-    request.setTimeout(timeoutMs, () => {
-      request.destroy(rpcError(`request timed out after ${timeoutMs}ms`, "timeout"));
+  let checked;
+  try {
+    checked = require("./cache-upstream-policy").createUpstreamPolicy(parsed.origin, {
+      allowPrivateUpstream: allowPrivateHosts()
+    })(parsed);
+  } catch (error) { throw rpcError(error.message, "ssrf"); }
+  try {
+    const response = await require("./http-client").requestText(checked.url, {
+      transport: parsed.protocol === "https:" ? https : http, agent: false,
+      lookup: checked.lookup, method, headers, body, timeoutMs, maxBytes: MAX_OUTPUT_BYTES
     });
-    request.on("error", (error) => {
-      reject(error.phase ? error : rpcError(`request failed: ${error.message}`, "transport"));
-    });
-    request.end(body);
-  });
+    return { status: response.statusCode, headers: response.headers || {}, body: response.body };
+  } catch (error) {
+    throw rpcError(error.message, /timed out/.test(error.message) ? "timeout" :
+      /non-public/.test(error.message) ? "ssrf" : "transport");
+  }
 }
 
 async function httpRpc(url, message, { sessionId, protocolVersion, timeoutMs }) {
@@ -739,75 +656,46 @@ async function httpRpc(url, message, { sessionId, protocolVersion, timeoutMs }) 
 }
 
 async function enumerateHttp(url, options = {}) {
-  if (typeof url !== "string" || url.length === 0) {
-    throw new Error("http enumeration requires a URL");
-  }
-  const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
-  const warnings = [];
-  let nextId = 1;
-  let sessionId = null;
-  let protocolVersion = null;
-
-  const init = await httpRpc(url, initializeRequest(nextId++), { timeoutMs });
-  sessionId = init.sessionId;
-  const initResult = init.result || {};
-  protocolVersion =
-    typeof initResult.protocolVersion === "string" ? initResult.protocolVersion : null;
-
-  await httpRpc(url, INITIALIZED_NOTIFICATION, { sessionId, protocolVersion, timeoutMs });
-
-  const tools = [];
-  let cursor;
-  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
-    const { result } = await httpRpc(url, toolsListRequest(nextId++, cursor), {
-      sessionId,
-      protocolVersion,
-      timeoutMs
-    });
-    if (result && Array.isArray(result.tools)) tools.push(...result.tools);
-    cursor = result && typeof result.nextCursor === "string" && result.nextCursor.length > 0
-      ? result.nextCursor
-      : null;
-    if (!cursor) break;
-    if (page === MAX_LIST_PAGES - 1) {
-      warnings.push(`tools/list pagination stopped after ${MAX_LIST_PAGES} pages`);
-    }
-  }
-
-  // Session hygiene: streamable-HTTP clients should terminate their session.
-  // Best-effort only — enumeration already succeeded.
-  if (sessionId) {
-    try {
-      const parsed = new URL(url);
-      const lib = parsed.protocol === "https:" ? https : http;
-      await new Promise((resolve) => {
-        const request = lib.request(
-          parsed,
-          { method: "DELETE", headers: { "mcp-session-id": sessionId } },
-          (response) => {
-            response.resume();
-            response.on("end", resolve);
-          }
-        );
-        request.setTimeout(2000, () => {
-          request.destroy();
-          resolve();
-        });
-        request.on("error", resolve);
-        request.end();
+  if (typeof url !== "string" || url.length === 0) throw new Error("http enumeration requires a URL");
+  const deadline = Date.now() + (options.timeoutMs || DEFAULT_TIMEOUT_MS);
+  const remaining = () => {
+    const ms = deadline - Date.now();
+    if (ms <= 0) throw rpcError("enumeration timed out", "timeout");
+    return ms;
+  };
+  let nextId = 1, sessionId = null, protocolVersion = null;
+  try {
+    const init = await httpRpc(url, initializeRequest(nextId++), { timeoutMs: remaining() });
+    sessionId = init.sessionId;
+    const initResult = init.result || {};
+    protocolVersion = typeof initResult.protocolVersion === "string" ? initResult.protocolVersion : null;
+    await httpRpc(url, INITIALIZED_NOTIFICATION, { sessionId, protocolVersion, timeoutMs: remaining() });
+    const tools = [];
+    let cursor, bytes = 0;
+    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      const { result } = await httpRpc(url, toolsListRequest(nextId++, cursor), {
+        sessionId, protocolVersion, timeoutMs: remaining()
       });
-    } catch {
-      /* best-effort */
+      bytes += Buffer.byteLength(JSON.stringify(result || {}));
+      if (bytes > MAX_OUTPUT_BYTES) throw rpcError("aggregate manifest exceeded output cap", "transport");
+      if (result && Array.isArray(result.tools)) tools.push(...result.tools);
+      if (tools.length > 10000) throw rpcError("manifest tool count exceeded limit", "transport");
+      cursor = typeof result?.nextCursor === "string" && result.nextCursor ? result.nextCursor : null;
+      if (!cursor) break;
+      if (page === MAX_LIST_PAGES - 1) throw rpcError("manifest pagination limit exceeded", "transport");
+    }
+    return normalizeManifest({ transport: "http", target: url, initializeResult: initResult, tools,
+      diagnostics: { warnings: [] } });
+  } finally {
+    // Same origin/address policy as POST, within the same total deadline.
+    if (sessionId && Date.now() < deadline) {
+      try {
+        await httpPostChecked(url, { "mcp-session-id": sessionId,
+          ...(protocolVersion ? { "mcp-protocol-version": protocolVersion } : {}) },
+          undefined, Math.min(2000, remaining()), "DELETE");
+      } catch { /* best-effort cleanup cannot authorize any additional action */ }
     }
   }
-
-  return normalizeManifest({
-    transport: "http",
-    target: url,
-    initializeResult: initResult,
-    tools,
-    diagnostics: { warnings }
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -834,6 +722,7 @@ module.exports = {
   parseSseMessages,
   resolveCommand,
   scrubbedEnv,
+  isAllowedEnvOverride,
   // Exported for the SSRF-guard regression tests.
   isBlockedIp,
   MINIMAL_PATH,

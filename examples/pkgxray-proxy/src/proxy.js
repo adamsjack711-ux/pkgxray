@@ -1,13 +1,15 @@
 // The scanning pull-through proxy HTTP server.
 //
 // Metadata requests pass through to upstream untouched. Tarball requests go
-// through the gate: allowlist/denylist -> verdict cache -> pkgxray scan ->
-// policy. Allow streams the real tarball; block returns 403 + findings;
-// review and scan-error follow configured policy.
+// through artifact acquisition, digest/context cache validation and receipt
+// verification. Only the approved snapshot is served; scan errors fail closed.
 
 import http from 'node:http';
 import https from 'node:https';
 import crypto from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import { acquireArtifact, gateArtifact } from './artifact-gate.js';
 
 import { parsePath, canonicalTarballPath } from './path-parser.js';
 import { runGuard as defaultRunGuard, ScanError } from './pkgxray-runner.js';
@@ -58,7 +60,8 @@ const HEADER_VERDICT = 'x-pkgxray-verdict';
 const HEADER_SOURCE = 'x-pkgxray-source'; // allowlist | denylist | cache | scan
 
 /**
- * Decide what to do with a tarball request. Pure-ish: all side effects are the
+ * Legacy name/version diagnostic planner; NOT used to authorize HTTP delivery.
+ * Use gateArtifact with a held snapshot for enforcement. Pure-ish: all side effects are the
  * verdict store and the injected runner. Returns a plan the server executes.
  *
  * @returns {Promise<{serve:boolean, status:number, decision:string,
@@ -474,42 +477,46 @@ export function createServer(config, store, deps = {}) {
       });
     }
 
-    const decision = await gate({ config, store, name, version, runGuard, log, sharedPolicy });
+    if (!['GET', 'HEAD'].includes(req.method)) return sendJson(res, 405, { error: 'method_not_allowed' });
+    if (listMatches(config.denylist, name, version)) return sendJson(res, 403, { error: 'blocked_by_pkgxray', decision: 'block', source: 'denylist' });
+    let snapshot;
+    try { snapshot = await acquireArtifact(upstreamRequest, canonicalTarballPath(name, version), req.headers); }
+    catch (error) { return sendJson(res, 502, { error: 'artifact_download_failed', message: error.message }); }
+    try {
+      const currentPolicy = deps.sharedPolicy !== undefined ? sharedPolicy : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
+      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy: currentPolicy });
 
-    log({
-      event: 'decision',
-      name, version,
-      decision: decision.decision,
-      source: decision.source,
-      cached: decision.cached,
-      serve: decision.serve,
-      ...(decision.note ? { note: decision.note } : {}),
-      // Never let a config-driven change (allowlisted/muted) go unlogged.
-      ...(decision.configEffects ? { configEffects: decision.configEffects } : {}),
-    });
-
-    if (!decision.serve) {
-      res.setHeader(HEADER_VERDICT, decision.decision);
-      res.setHeader(HEADER_SOURCE, decision.source);
-      return sendJson(res, decision.status, {
-        error: 'blocked_by_pkgxray',
-        package: `${name}@${version}`,
+      log({
+        event: 'decision',
+        name, version,
         decision: decision.decision,
         source: decision.source,
-        findings: decision.findings,
+        cached: decision.cached,
+        serve: decision.serve,
         ...(decision.note ? { note: decision.note } : {}),
+        // Never let a config-driven change (allowlisted/muted) go unlogged.
         ...(decision.configEffects ? { configEffects: decision.configEffects } : {}),
       });
-    }
 
-    // Serve: stream the real tarball from upstream, annotate the verdict. Fetch
-    // the CANONICAL path derived from the scanned identity — not the client's raw
-    // URL — so the served bytes correspond to exactly what pkgxray vetted, and no
-    // basename/version/query smuggled in the request reaches upstream.
-    return passthrough(req, res, {
-      [HEADER_VERDICT]: decision.decision,
-      [HEADER_SOURCE]: decision.source,
-    }, canonicalTarballPath(name, version));
+      if (!decision.serve) {
+        res.setHeader(HEADER_VERDICT, decision.decision);
+        res.setHeader(HEADER_SOURCE, decision.source);
+        return sendJson(res, decision.status, {
+          error: 'blocked_by_pkgxray',
+          package: `${name}@${version}`,
+          decision: decision.decision,
+          source: decision.source,
+          findings: decision.findings,
+          ...(decision.note ? { note: decision.note } : {}),
+          ...(decision.configEffects ? { configEffects: decision.configEffects } : {}),
+        });
+      }
+
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': snapshot.size,
+        [HEADER_VERDICT]: decision.decision, [HEADER_SOURCE]: decision.source, 'x-pkgxray-sha256': snapshot.sha256 });
+      if (req.method === 'HEAD') res.end();
+      else await pipeline(createReadStream(snapshot.file), res);
+    } finally { await snapshot.cleanup(); }
   }
 
   /** Transparent reverse-proxy to upstream, streaming the response. */

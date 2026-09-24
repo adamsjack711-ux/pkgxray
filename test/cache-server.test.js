@@ -92,6 +92,7 @@ async function makeTempDir(label) {
 test("healthz returns 200 with version", async (t) => {
   const cacheDir = await makeTempDir("health");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -126,6 +127,7 @@ test("repo route: MISS on first hit, HIT on second, single upstream call", async
   });
   const cacheDir = await makeTempDir("repo");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -158,7 +160,7 @@ test("repo route: MISS on first hit, HIT on second, single upstream call", async
   assert.ok(second.elapsedMs <= first.elapsedMs + 50, `HIT (${second.elapsedMs}ms) should not be > MISS (${first.elapsedMs}ms) + 50ms`);
 
   // Cache file should exist on disk in the documented layout.
-  const cacheFile = path.join(cacheDir, "github", "repos", "example", "example.json");
+  const cacheFile = path.join(cacheDir, "github", "public-repos-v2", "example", "example.json");
   const cached = JSON.parse(await fsp.readFile(cacheFile, "utf8"));
   assert.equal(cached.full_name, "example/example");
 });
@@ -180,6 +182,7 @@ test("tarball route: streams bytes, HIT on second call, dedups concurrent reques
   });
   const cacheDir = await makeTempDir("tarball");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -219,6 +222,7 @@ test("tarball route: streams bytes, HIT on second call, dedups concurrent reques
 test("rejects path-traversal in owner/repo segments", async (t) => {
   const cacheDir = await makeTempDir("safety");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -244,12 +248,9 @@ test("rejects path-traversal in owner/repo segments", async (t) => {
   assert.equal(traversed.statusCode, 404);
 });
 
-test("strips Authorization header on cross-host upstream redirects", async (t) => {
-  // Start two fake upstreams. The "primary" upstream 302s any request to the
-  // "exfil" upstream. If we forwarded the Authorization header across hosts,
-  // the exfil upstream would receive the bearer token — a HIGH severity
-  // GITHUB_TOKEN leak. The test asserts the cross-host hop arrives with no
-  // Authorization header.
+test("rejects cross-origin redirects before contacting their destination", async (t) => {
+  // A configured upstream redirects to another local service. Even an
+  // explicit private-upstream opt-in must not authorize that second origin.
   let exfilSeenAuth = null;
   let exfilHits = 0;
   const exfil = await new Promise((resolve) => {
@@ -279,6 +280,7 @@ test("strips Authorization header on cross-host upstream redirects", async (t) =
 
   const cacheDir = await makeTempDir("auth-leak");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -294,8 +296,8 @@ test("strips Authorization header on cross-host upstream redirects", async (t) =
 
   const url = `http://127.0.0.1:${address.port}/github/repos/example/example`;
   const result = await getJson(url, { "x-pkgxray-github-token": "ghp_secret_token_xyz" });
-  assert.equal(result.statusCode, 200);
-  assert.equal(exfilHits, 1, "exfil host should have received the redirected request");
+  assert.equal(result.statusCode, 502);
+  assert.equal(exfilHits, 0, "redirect destination must never receive a request");
   assert.equal(
     exfilSeenAuth,
     null,
@@ -322,6 +324,7 @@ test("server does NOT use its own token for a client with no token (confused-dep
   process.env.PKGXRAY_CACHE_GITHUB_TOKEN = "server_secret_token";
   process.env.GITHUB_TOKEN = "server_github_token";
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -359,6 +362,7 @@ test("client-supplied token IS forwarded upstream (finding 3a, positive path)", 
   });
   const cacheDir = await makeTempDir("fwd");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0, host: "127.0.0.1", cacheDir,
     upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url
   });
@@ -387,6 +391,7 @@ test("uncapped upstream JSON body is refused with a size ceiling (finding 3b)", 
   });
   const cacheDir = await makeTempDir("bigjson");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0, host: "127.0.0.1", cacheDir,
     upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url
   });
@@ -399,7 +404,7 @@ test("uncapped upstream JSON body is refused with a size ceiling (finding 3b)", 
   assert.equal(result.statusCode, 502, `expected 502 for oversized body, got ${result.statusCode}`);
   assert.match(result.body, /exceeded/i);
   // Nothing should have been persisted.
-  const cacheFile = path.join(cacheDir, "github", "repos", "big", "body.json");
+  const cacheFile = path.join(cacheDir, "github", "public-repos-v2", "big", "body.json");
   await assert.rejects(() => fsp.stat(cacheFile));
 });
 
@@ -415,6 +420,7 @@ test("disk cap: over-cap tarball is proxied live (BYPASS) and not persisted (fin
   // Seed the cache with a byte so its size is already at/over the 1-byte cap.
   await fsp.writeFile(path.join(cacheDir, "seed"), "x");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0, host: "127.0.0.1", cacheDir,
     upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url,
     maxCacheBytes: 1 // cache already at/over cap → new tarballs bypass disk
@@ -472,6 +478,7 @@ test("upstream 404 is propagated to client and not cached", async (t) => {
   });
   const cacheDir = await makeTempDir("notfound");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -487,7 +494,7 @@ test("upstream 404 is propagated to client and not cached", async (t) => {
   const result = await getJson(`http://127.0.0.1:${address.port}/github/repos/nope/nope`);
   assert.equal(result.statusCode, 404);
   // 404 responses are not persisted; the cache file should not exist.
-  const cacheFile = path.join(cacheDir, "github", "repos", "nope", "nope.json");
+  const cacheFile = path.join(cacheDir, "github", "public-repos-v2", "nope", "nope.json");
   await assert.rejects(() => fsp.stat(cacheFile));
 });
 
@@ -526,6 +533,7 @@ test("cache-client + github.js end-to-end via cache server", async (t) => {
   });
   const cacheDir = await makeTempDir("e2e");
   const { server, address } = await start({
+    allowPrivateUpstream: true,
     port: 0,
     host: "127.0.0.1",
     cacheDir,
@@ -555,4 +563,84 @@ test("cache-client + github.js end-to-end via cache server", async (t) => {
   assert.equal(meta.stars, 50000);
   assert.equal(meta.owner_type, "Organization");
   assert.equal(upstream.counts.get("/repos/lodash/lodash"), 1);
+});
+
+for (const bypass of [false, true]) {
+  test(`tarball redirects cannot escape the upstream origin (${bypass ? 'live bypass' : 'disk cache'})`, async (t) => {
+    const destination = await startFakeUpstream({ __default: (_req, res) => res.end('private response') });
+    const upstream = await startFakeUpstream({ __default: (_req, res) => {
+      res.writeHead(302, { location: destination.url + '/private' }); res.end();
+    } });
+    const cacheDir = await makeTempDir('redirect-ssrf');
+    if (bypass) await fsp.writeFile(path.join(cacheDir, 'seed'), 'x');
+    const { server, address } = await start({
+      allowPrivateUpstream: true, port: 0, host: '127.0.0.1', cacheDir,
+      upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url,
+      maxCacheBytes: bypass ? 1 : 0
+    });
+    t.after(async () => {
+      await new Promise(r => server.close(r));
+      await upstream.close(); await destination.close();
+      await fsp.rm(cacheDir, { recursive: true, force: true });
+    });
+    const result = await getBuffer(`http://127.0.0.1:${address.port}/github/tarball/owner/repo/main`);
+    assert.equal(result.statusCode, 502);
+    assert.equal(destination.counts.size, 0);
+    await assert.rejects(fsp.stat(path.join(cacheDir, 'github/tarballs/owner/repo/main.tgz')));
+  });
+}
+
+test('same-origin relative redirects work; malformed redirects fail without crashing the cache', async (t) => {
+  let malformed = false;
+  const upstream = await startFakeUpstream({
+    '/repos/owner/repo': (_req, res) => { res.writeHead(302, { location: malformed ? 'http://[' : '/final' }); res.end(); },
+    '/final': (_req, res) => res.end('{"ok":true}')
+  });
+  const cacheDir = await makeTempDir('redirect-valid');
+  const { server, address } = await start({ allowPrivateUpstream: true,
+    port: 0, host: '127.0.0.1', cacheDir, upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url });
+  t.after(async () => {
+    await new Promise(r => server.close(r)); await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+  const url = `http://127.0.0.1:${address.port}/github/repos/owner/repo`;
+  assert.equal((await getJson(url)).statusCode, 200);
+  malformed = true;
+  // Requests carrying credentials deliberately bypass the public metadata cache.
+  assert.equal((await getJson(url, { 'x-pkgxray-github-token': 'synthetic' })).statusCode, 502);
+  assert.equal((await getJson(`http://127.0.0.1:${address.port}/healthz`)).statusCode, 200);
+});
+
+test('authenticated metadata is isolated from concurrent clients, anonymous reads and legacy cache entries', async (t) => {
+  const upstream = await startFakeUpstream({ '/repos/team/repo': (req, res) => {
+    const body = JSON.stringify({ access: req.headers.authorization || 'anonymous' });
+    setTimeout(() => res.end(body), 15);
+  } });
+  const cacheDir = await makeTempDir('credential-isolation');
+  const legacyDir = path.join(cacheDir, 'github', 'repos', 'team');
+  await fsp.mkdir(legacyDir, { recursive: true });
+  await fsp.writeFile(path.join(legacyDir, 'repo.json'), '{"access":"legacy-private"}');
+  const { server, address } = await start({ allowPrivateUpstream: true,
+    port: 0, host: '127.0.0.1', cacheDir, upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url });
+  t.after(async () => {
+    await new Promise(r => server.close(r)); await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+  const url = `http://127.0.0.1:${address.port}/github/repos/team/repo`;
+  const [alice, bob, anon] = await Promise.all([
+    getJson(url, { 'x-pkgxray-github-token': 'alice-test' }),
+    getJson(url, { 'x-pkgxray-github-token': 'bob-test' }), getJson(url)
+  ]);
+  assert.equal(JSON.parse(alice.body).access, 'Bearer alice-test');
+  assert.equal(JSON.parse(bob.body).access, 'Bearer bob-test');
+  assert.equal(JSON.parse(anon.body).access, 'anonymous');
+  for (const result of [alice, bob]) {
+    assert.equal(result.headers['cache-control'], 'private, no-store');
+    assert.equal(result.headers['x-pkgxray-cache'], 'BYPASS');
+  }
+  assert.equal(JSON.parse((await getJson(url)).body).access, 'anonymous');
+  assert.equal(JSON.parse((await getJson(url, { 'x-pkgxray-github-token': 'alice-test' })).body).access, 'Bearer alice-test');
+  assert.equal(upstream.counts.get('/repos/team/repo'), 4);
+  const persisted = await fsp.readFile(path.join(cacheDir, 'github/public-repos-v2/team/repo.json'), 'utf8');
+  assert.equal(JSON.parse(persisted).access, 'anonymous');
 });

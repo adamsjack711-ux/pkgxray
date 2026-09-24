@@ -13,12 +13,25 @@ const test = require("node:test");
 
 const {
   enumerateMcpServer,
+  normalizeTool,
   parseSseMessages,
   resolveCommand,
   scrubbedEnv,
   isBlockedIp,
   MINIMAL_PATH
 } = require("../src/mcp-client");
+
+test("tool normalization retains every model-visible security field", () => {
+  const raw = {
+    name: "demo", description: "Demo", inputSchema: {type:"object"},
+    outputSchema: {type:"object"}, annotations: {readOnlyHint:true},
+    icons: [{src:"https://example.invalid/icon.png"}], _meta: {vendor:"test"}
+  };
+  const normalized = normalizeTool(raw);
+  for (const key of ["inputSchema","outputSchema","annotations","icons","_meta"]) {
+    assert.deepEqual(normalized[key],raw[key]);
+  }
+});
 
 const FIXTURE = path.join(__dirname, "fixtures", "mcp-stdio-server.js");
 

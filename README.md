@@ -6,8 +6,8 @@
 
 Inspect an npm package or MCP server **before** you install it or connect to it.
 You get a `SAFE`, `REVIEW`, or `BLOCK` verdict, decided by fixed rules and backed
-by cited evidence. The analysis is static, runs on your machine, and has no
-dependencies. Normal scans never execute package code.
+by cited evidence. The analysis is static and runs on your machine without
+installing npm dependencies. A pinned MIT-licensed Acorn parser is bundled. Normal scans never execute package code.
 
 [![npm version](https://img.shields.io/npm/v/pkgxray)](https://www.npmjs.com/package/pkgxray)
 [![npm downloads](https://img.shields.io/npm/dm/pkgxray)](https://www.npmjs.com/package/pkgxray)
@@ -25,11 +25,13 @@ dependencies. Normal scans never execute package code.
 
 ## Highlights
 
-- **No runtime dependencies** — pure Node, and it all runs on your machine (~25 ms static pass).
+- **No npm dependency installation** — local Node analysis with a bundled, pinned JavaScript parser.
+- **Install approved bytes** — [`pkgxray install`](docs/enforced-install.md) scans the npm lockfile, installs held archives offline with scripts disabled, and verifies the resulting files.
 - **Normal scans never execute package code** — the tarball is read as bytes in quarantine.
 - **Cited verdicts from fixed rules** — every finding names the file and the evidence. No model decides the verdict, so text planted in a package cannot steer it.
 - **Built for the agent era** — check MCP servers before you connect, gate the installs an agent runs, and re-audit live MCP traffic.
-- **Calibrated, with a CI gate against regressions** — zero heuristic false blocks on the top-1000 most-downloaded packages.
+- **Adversarial gaps tracked openly** — [200 additional synthetic cases](benchmark/adversarial/README.md) track detected attacks and benign contrasts; this is internal testing, not an independent audit.
+- **Regression gates** — calibration and adversarial corpora run in CI; historical top-1000 results remain available for comparison.
 
 > **[1. Quick start](#quick-start)** · [2. What it scans & detects](#what-it-scans--detects) · [3. Verdicts](#verdicts) · [4. Usage](#usage) · [5. Integrations](#integrations) · [6. How it compares](#how-it-compares) · [7. Documentation](#documentation)
 
@@ -126,7 +128,7 @@ side-by-side comparison table is on the [website](https://pkgxray.ca/#catches).
 
 | Verdict | You should |
 |---|---|
-| `SAFE` | Install. Only `safe` promotes out of quarantine by default. |
+| `SAFE` | No blocking findings within the reported checks. Review coverage before installing. |
 | `REVIEW` | Inspect the quarantined copy before promoting. |
 | `BLOCK` | Do not install. Every finding names the file and evidence. |
 
@@ -139,12 +141,26 @@ Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 pkgxray guard npm:some-package@1.2.3 [--format json]   # vet a package before install
 pkgxray guard pypi:some-package@1.2.3                  # same, for a PyPI package (sdist staged + scanned)
 pkgxray mcp --package npm:some-mcp-server@1.4.2 npx some-mcp-server   # vet an MCP server; --recheck catches the rug-pull
-pkgxray audit package-lock.json [--deep]               # also: yarn.lock, pnpm-lock.yaml, package.json
+pkgxray audit package-lock.json [--deep-all]               # also: yarn.lock, pnpm-lock.yaml, package.json
 pkgxray audit requirements.txt [--deep]                # PyPI: also poetry.lock, Pipfile.lock, pyproject.toml
 pkgxray recheck package-lock.json                      # scheduled: non-zero only on a regression
 ```
 
-One optional `.pkgxray.json` tunes policy, and every surface reads it. No config
+`audit` checks resolved dependencies against OSV. `--deep` adds source scans for
+blocked dependencies; `--deep-all` requests source scans for all resolved dependencies.
+Failed deep scans and incomplete source collection return REVIEW unless already BLOCK.
+`guard --deps` includes direct-dependency findings in its decision; only exact pins
+are checked, with ranges and other unresolved sources left at REVIEW. Guard output
+lists completed, partial, disabled and failed checks so a passing verdict does not
+imply checks that never ran.
+PyPI scans cover source-distribution manifests, vulnerability metadata, and text-level
+injection checks; they do not provide full Python module behavioral analysis or wheel inspection.
+Python source adds an `unsupported-behavior` REVIEW finding. Behavioral coverage gaps
+cannot be muted or promoted with `allow-review`; a pinned artifact approval remains
+an explicit operator override. Archives containing links or special files are rejected.
+
+One optional `.pkgxray.json` tunes policy on the Node-based surfaces. The browser
+extension scans supplied evidence using engine defaults and cannot read project configuration. No config
 means the strictest settings. Config can never allow a CVE away, every loosening
 is printed, and a scan that errors fails closed to `review`. Schema and rules:
 [configuration.md](docs/configuration.md) · [`.pkgxray.example.json`](.pkgxray.example.json).
@@ -174,11 +190,12 @@ code does. The full capability comparison is in
 
 ## Evidence
 
-pkgxray records **zero heuristic false blocks on the top-1000 most-downloaded
-packages**, and CI gates against a regression ([scope and
-methodology](docs/benchmark.md)). The published runs live at
-[pkgxray.ca/stats](https://pkgxray.ca/stats). The claim covers the most-installed
-set only. It is not a claim of zero false blocks on every package.
+Historical top-1000 runs and their [scope and methodology](docs/benchmark.md)
+remain available at [pkgxray.ca/stats](https://pkgxray.ca/stats). Those results
+predate the parser-based flow engine and have not been rerun for this change.
+The current engine passes all 270 internal synthetic calibration/challenge
+fixtures without a malicious SAFE or benign BLOCK; many malicious cases produce
+REVIEW. This is regression evidence, not a real-world detection-rate estimate.
 
 ## Documentation
 

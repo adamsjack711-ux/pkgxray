@@ -7,7 +7,7 @@ the package version.
 
 ## Versioning
 
-- Every payload carries **`schemaVersion` (currently `1`)**.
+- Top-level payloads carry **`schemaVersion` (currently `1`)**. Nested artifact approval receipts use version `2`.
 - Within a `schemaVersion`, fields are **added, never removed or repurposed** — a
   consumer that reads today's fields keeps working. A removal or a semantic
   change to an existing field bumps `schemaVersion`.
@@ -204,3 +204,38 @@ A **diff** against the stored `.pkgxray.lock` baseline, not a full report.
 > **Experimental:** `pkgxray canary` emits `{ "static": <audit report>,
 > "behavioral": <…> }`. It is an [Experimental surface](compatibility.md#-experimental--may-change-or-be-removed-without-a-major-bump)
 > and its `behavioral` shape is not yet frozen.
+
+### Source collection coverage
+
+Guard results include `sourceCoverage`: `complete`, `scannedFiles`, `skippedFiles`,
+`truncatedFiles`, `reasons`, and `behavioralScope` (`npm-static-heuristics` or
+`python-manifests-and-text`). `complete` concerns supported source-file collection,
+not proof that all behavior is understood. Incomplete collection adds an
+`incomplete-source-scan` finding and normally prevents promotion.
+
+Lockfile results include `coverage.sourceScan` (`none`, `blocked-only`, or
+`all-resolved`), `coverage.vulnerabilityCheck`, and `coverage.deepFailures`.
+A requested deep scan that errors is REVIEW unless already BLOCK.
+
+### Guard assessment record
+
+`assessment.engine` identifies the engine name/version. `assessment.artifact`
+contains the resolved name, version, origin and tarball SHA-256 when available;
+a null digest (for example a local directory) does not claim content binding.
+`effectivePolicy` and `policySha256` describe the effective guard policy.
+`rawVerdict` precedes policy overrides; `decision` is the final promotion decision.
+
+`assessment.checks` reports source, vulnerability and direct-dependency checks
+as `completed`, `partial`, `failed`, `disabled`, `skipped`, or `not-requested`, as
+applicable. A version and policy fingerprint are audit metadata, not a signed
+attestation or a guarantee that later-installed bytes are identical.
+
+`sourceCoverage.runtimeFiles` and `installTimeFiles` record known literal
+reachability. `inventoryFiles` counts inventoried regular files. Coverage is
+limited to supported static resolution; it does not prove all possible execution
+paths are understood.
+
+
+Archive-backed guard results also include `approval`: a version-2 local record of `artifactSha256`, manifest `name`/`version`, `scannerBuildId`, `policySha256`, `checks`, `sourceComplete`, `authorization`, `decision` and `issuedAt`. `authorization` contains `mandatoryHoldReasons`, `behavioralCoverage` (`completed` or `partial`) and `explicitOverride` (a hash-pinned operator allow). The same authorization appears in `assessment`. This record may describe BLOCK or incomplete scans; its presence alone is not permission to install. Consumers reject version-1 receipts and verify identity, digest, build, policy, decision and completed source/vulnerability checks. Mandatory holds cannot become ordinary allow-review approvals. Local-directory scans have no compressed-artifact digest and do not mint this record. Receipts are local trust records, not cryptographic signatures.
+
+`assessment.engine.buildId` deterministically hashes package metadata and every regular file under `src/` and `bin/`, including the vendored parser and data. `assessment.artifact.resolved` and `.integrity` record acquisition identity where available. Npm lockfile results retain `artifacts` (unique URL/SRI pairs); deep results expose `artifactVerified` and `approval`, or an error when exact identity cannot be established. Lockfile `coverage.vulnerabilities` distinguishes enabled/completed checks and their evidence origin (`OSV`, `caller-supplied`, or `none`); internal supplied-result hooks are not exposed over MCP.

@@ -275,3 +275,17 @@ test("disabling mcp.packageScanFirst is a loud warning", () => {
   validateConfig({ mcp: { packageScanFirst: false } }, warnings);
   assert.ok(warnings.some((w) => /without a static package scan/.test(w)));
 });
+
+test("parent artifact approval cannot clear an incomplete dependency check", () => {
+  const digest = "a".repeat(64);
+  const config = validateConfig({
+    allow: [{ pkg: "demo@1.0.0", sha256: digest, reason: "parent reviewed" }],
+    mute: [{ check: "incomplete-dependency-scan", scope: "*" }] }, []);
+  const adjusted = applyConfig(report([{ category: "incomplete-dependency-scan", severity: "medium", file: "package.json" }]), {
+    config, packageName: "demo", version: "1.0.0", sha256: digest
+  });
+  assert.equal(adjusted.verdict, "review");
+  assert.equal(adjusted.configEffects.mutedCount, 0);
+  assert.equal(adjusted.configEffects.allowlisted, null);
+  assert.equal(adjusted.configEffects.ignoredAllow.reason, "incomplete-dependency-scan");
+});

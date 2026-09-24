@@ -33,8 +33,8 @@ const HASH_SKIP_PATTERNS = [
   /\.snap$/i
 ];
 
-function shouldSkipHash(rel) {
-  return HASH_SKIP_PATTERNS.some((re) => re.test(rel));
+function shouldSkipHash(rel, runtimePaths = new Set()) {
+  return !runtimePaths.has(rel) && HASH_SKIP_PATTERNS.some((re) => re.test(rel));
 }
 
 // File patterns that are expected to differ — never used to drive findings.
@@ -113,6 +113,7 @@ async function hashTree(root, subdir, limits, options = {}) {
   // diff fast on huge repos like TypeScript where the github source tree
   // has 10x more files than the npm tarball.
   const onlyHashPaths = options.onlyHashPaths || null;
+  const runtimePaths = options.runtimePaths || new Set();
 
   // Fast path: caller supplied both the exact paths to hash AND the directory
   // set is supplied separately (via `prepopulatedGhDirs` downstream). In that
@@ -124,7 +125,7 @@ async function hashTree(root, subdir, limits, options = {}) {
     let totalFiles = 0;
     for (const childRel of onlyHashPaths) {
       if (totalFiles >= maxFiles || totalBytes >= maxBytes) break;
-      if (shouldSkipHash(childRel)) continue;
+      if (shouldSkipHash(childRel, runtimePaths)) continue;
       const childFull = path.join(baseDir, childRel);
       let stat;
       try {
@@ -177,7 +178,7 @@ async function hashTree(root, subdir, limits, options = {}) {
         continue;
       }
       if (!entry.isFile()) continue;
-      if (shouldSkipHash(childRel)) continue;
+      if (shouldSkipHash(childRel, runtimePaths)) continue;
       // Skip files we'll never use a hash for. Saves the stat + sha256.
       if (onlyHashPaths && !onlyHashPaths.has(childRel)) continue;
       const childFull = path.join(baseDir, childRel);
@@ -221,7 +222,7 @@ function hashFile(filePath) {
 // walk and only sha256 files in the paired set — unpaired files only need
 // size (the diff loop's "extra in npm" branch never reads sha256). Saves a
 // large fraction of file reads when overlap is small (lodash: 8 of ~1000).
-async function buildNpmTreeFromList(root, fileList, pairedPaths, limits) {
+async function buildNpmTreeFromList(root, fileList, pairedPaths, limits, runtimePaths) {
   try {
     await fsp.access(root);
   } catch {
@@ -237,7 +238,7 @@ async function buildNpmTreeFromList(root, fileList, pairedPaths, limits) {
 
   for (const childRel of fileList) {
     if (totalFiles >= maxFiles || totalBytes >= maxBytes) break;
-    if (shouldSkipHash(childRel)) continue;
+    if (shouldSkipHash(childRel, runtimePaths)) continue;
     const childFull = path.join(root, childRel);
     let stat;
     try {
@@ -294,9 +295,14 @@ async function diffNpmVsGithub({
   hasBuildScript,
   prepopulatedGhDirs,
   npmPairedPaths,
-  npmFileList
+  npmFileList,
+  runtimeFiles = [],
+  executionFiles = []
 }) {
   const limits = { maxFiles: 5000, maxBytes: 50 * 1024 * 1024 };
+  const runtimePaths = new Set(runtimeFiles);
+  const executionPaths = new Set(executionFiles);
+  for (const file of executionPaths) runtimePaths.add(file);
   // Walk npm first to learn which paths matter; then walk github only
   // hashing files at those exact paths. For typescript this drops the
   // github tree walk from 10k+ files to ~30.
@@ -310,8 +316,8 @@ async function diffNpmVsGithub({
   // sha256 is unused. For lodash this drops the npm hash work from ~1000
   // files to ~8.
   const npmTree = npmFileList && npmPairedPaths
-    ? await buildNpmTreeFromList(npmStagedPath, npmFileList, npmPairedPaths, limits)
-    : await hashTree(npmStagedPath, "", limits);
+    ? await buildNpmTreeFromList(npmStagedPath, npmFileList, npmPairedPaths, limits, runtimePaths)
+    : await hashTree(npmStagedPath, "", limits, { runtimePaths });
   const onlyHashPaths = npmTree ? new Set(npmTree.keys()) : null;
   // When the caller did a selective extract, the github tree on disk only
   // contains the npm-paired files anyway AND we already have the full dir
@@ -320,7 +326,7 @@ async function diffNpmVsGithub({
   const skipDirWalk = Boolean(prepopulatedGhDirs && prepopulatedGhDirs.size > 0);
   const ghTree = await hashTree(githubStagedPath, subdir || "", limits, {
     onlyHashPaths,
-    skipDirWalk
+    skipDirWalk, runtimePaths
   });
   if (!npmTree || !ghTree) {
     return {
@@ -356,7 +362,7 @@ async function diffNpmVsGithub({
       // more likely build output the repo never committed.
       const inLikelySourceDir = /^(?:src|tests?|scripts|spec)\//.test(rel);
       let category;
-      if (parentExistsInGh && isSourceFile(rel)) {
+      if (executionPaths.has(rel) || (parentExistsInGh && isSourceFile(rel))) {
         category = "extra-source";
       } else if (isBuildOutput(rel)) {
         category = hasBuildScript ? "expected-build-output" : "extra-build-output";
@@ -376,7 +382,7 @@ async function diffNpmVsGithub({
         continue;
       }
       const inLikelySourceDir = /^(?:src|tests?|scripts|spec)\//.test(rel);
-      const category = isBuildOutput(rel)
+      const category = executionPaths.has(rel) ? 'content-mismatch-source' : isBuildOutput(rel)
         ? hasBuildScript ? "expected-build-output" : "content-mismatch-build"
         : isSourceFile(rel)
           ? hasBuildScript && !inLikelySourceDir
@@ -392,6 +398,10 @@ async function diffNpmVsGithub({
   const extraSource = extraInNpm.filter((f) => f.category === "extra-source");
   const extraBuild = extraInNpm.filter((f) => f.category === "extra-build-output");
   const mismatchedSource = mismatched.filter((f) => f.category === "content-mismatch-source");
+  // Preserve specific concealed-execution divergences even when unrelated
+  // generated files make the whole-tree comparison noisy. Divergence alone
+  // remains REVIEW; the auditor requires behavioral evidence to escalate it.
+  const executionDivergence = [...extraSource, ...mismatchedSource].some(f => executionPaths.has(f.path));
 
   // Tree-overlap sanity check. Many real packages don't publish a 1:1 mirror
   // of their repo (lodash publishes flat per-function modules, react bundles
@@ -403,7 +413,7 @@ async function diffNpmVsGithub({
   const overlapRatio = consideredFiles > 0 ? (matched.length + mismatched.length) / consideredFiles : 0;
   const MIN_OVERLAP_RATIO = 0.3;
 
-  if (overlapRatio < MIN_OVERLAP_RATIO && extraSource.length > 20) {
+  if (!executionDivergence && overlapRatio < MIN_OVERLAP_RATIO && extraSource.length > 20) {
     return {
       compared: false,
       reason: "tree-layout-differs",
@@ -427,7 +437,7 @@ async function diffNpmVsGithub({
   // source (typical of `prepublish` / `release-please` / `changesets` build
   // flows that minify or transform entry files). Diff is unreliable here.
   const overlapCount = matched.length + mismatched.length;
-  if (overlapCount >= 5 && mismatched.length > matched.length * 2) {
+  if (!executionDivergence && overlapCount >= 5 && mismatched.length > matched.length * 2) {
     return {
       compared: false,
       reason: "tree-mostly-generated",
@@ -457,6 +467,7 @@ async function diffNpmVsGithub({
   // the repo). The static auditor still scans every shipped file regardless, so
   // skipping only drops the unreliable tampering signal, not code inspection.
   if (
+    !executionDivergence &&
     matched.length <= 1 &&
     extraBuild.length >= 1 &&
     extraBuild.length >= extraSource.length &&

@@ -312,3 +312,8 @@ package code safe to execute.
   complete sandbox.
 - `pkgxray guard` reaches the network (registry/OSV/GitHub). Budget ~1s/package;
   tune with `PKGXRAY_GUARD_ARGS` (e.g. `--no-github-diff --no-github`).
+
+
+### Exact-artifact installation
+
+This hook is a preflight assessment and does not rewrite or confine npm's acquisition. For supported npm lockfiles, use [`pkgxray install`](../../docs/enforced-install.md) as the actual installation command. It installs approved local archives offline with lifecycle scripts disabled and verifies the resulting files. The hook itself does not prevent an agent from bypassing that command; enforcing it against adversarial shell access requires runner/network restrictions.

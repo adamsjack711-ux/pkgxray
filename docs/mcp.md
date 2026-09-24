@@ -65,6 +65,21 @@ a working directory that points at the whole home directory. Set the variable to
 an empty string to turn off every caller-selected path. Registry package scans
 still use pkgxray's own OS quarantine.
 
+The server rejects unknown tool arguments at runtime. Internal test/provider
+options are not part of the MCP API. Guard staging is removed after each call;
+returned staging paths are null, and an authorized promotion occurs before
+cleanup. The server caps frames at 4 MiB and bounds queued/running requests to
+32 tasks, 8 MiB retained input and four concurrent operations.
+
+Live proxy pin checks retain initialized capabilities and instructions. A change
+to either holds all tool calls under strict/balanced policy until reapproval.
+Unreadable/corrupt pins, an unavailable explicitly selected pin, or a lost
+previously established baseline also hold calls. An intentionally unpinned
+default session remains distinct from a failed pin check. Proxy queues, held
+calls, outstanding requests, pagination, aggregate manifests and timing samples
+are bounded; overflow closes or denies the affected session instead of granting
+partial approval.
+
 The agent controls tool arguments and supplied evidence. The operator controls
 the process environment, working directory, `.pkgxray.json`, and executable
 version. Do not allow untrusted prompts to edit those controls.
@@ -125,18 +140,72 @@ its child, relaying every JSON-RPC frame through the gate.
 }
 ```
 
+The child receives a minimal environment by default. Pass each required
+credential explicitly: `pkgxray mcp-proxy --env GITHUB_TOKEN --env API_KEY -- node server.js`.
+Values come from the proxy's environment, so secrets do not appear in the command
+line. Missing names and runtime injection overrides such as `NODE_OPTIONS`,
+`LD_PRELOAD`, and `PATH` are rejected. Bare commands use the same controlled
+resolution as the connect-time client; use an absolute launcher path when needed.
+This changes the previous full-environment inheritance behavior.
+
+To require OS confinement, use a dedicated project directory and launch an
+installed server directly:
+
+```sh
+pkgxray mcp-proxy --sandbox -- /absolute/path/to/node ./server.js
+pkgxray mcp-proxy --sandbox --sandbox-read /path/to/input --sandbox-write /path/to/output -- /absolute/path/to/node ./server.js
+```
+
+`--sandbox` is optional and fails closed if the backend cannot start. It denies
+network access, makes the working directory read-only, and replaces HOME/TMPDIR
+with a private temporary directory. Required additional paths must already exist
+and are granted explicitly; root and whole-HOME grants are refused. macOS uses
+`sandbox-exec` and permits execution within the same inherited restrictions.
+Linux uses `/usr/bin/bwrap` with private namespaces and an isolated filesystem;
+subprocesses stay inside that namespace. Windows currently refuses this option.
+Use a direct installed launcher: `npx` installation and servers needing network
+access will fail under this restricted mode.
+
+The macOS backend has passed real filesystem, symlink and network-denial tests.
+Linux startup remained blocked by nested namespace restrictions on the local
+Docker host; a mandatory native Linux CI job is included but has not yet run.
+There is no automatic downgrade when sandbox startup fails. OS sandbox APIs and
+runtime layouts vary, so validate confinement on each deployment platform.
+
+Without `--sandbox`, the child retains the user's filesystem/network access.
+Even with it, explicitly readable directories may contain credentials and
+explicitly passed secrets remain available to the server. System/runtime read
+roots and granted paths are trusted capabilities, not a guarantee against kernel
+exploits, CPU exhaustion, or malicious content returned through MCP stdout.
+
 | Moment | Check | Cost |
 |---|---|---|
 | first `tools/list` | full static manifest audit; denied tools are **stripped from the listing** | ~1 ms per 30 tools |
 | every `tools/call` | in-memory verdict lookup; unknown / blocked tools denied | **~0.05 µs** |
 | `tools/list_changed` | immediate re-list + re-audit; mid-verification calls **held**, then decided against the fresh manifest | one manifest audit |
-| every `tools/call` result | doc-typed injection scan of the result text, capped at 512 KiB | ~0.06 ms for 2 KB |
+| every response to a client request | doc-typed injection scan of model-visible text, capped at 512 KiB | ~0.06 ms for 2 KB |
 | after `--pin` | fresh manifest diffed against pinned fingerprints; **drifted tools denied** until re-approved | one lock-file read |
 
 Policies mirror the hookshot gate: `block` denies everywhere; `review` denies
 under `--policy strict`, passes with a warning under `balanced` (default) and
 `permissive`. A denied call never reaches the server — the agent gets an
 `isError` result naming the reason.
+
+Result screening includes resource-link descriptions, media annotations,
+embedded-resource metadata, structured content, errors, initialization
+instructions and responses to resource, prompt and completion requests. Textual
+resource blobs and SVG images are base64-decoded before inspection. It shares a
+512 KiB text budget and 10,000-node traversal budget across each response. Opaque
+image, audio and binary bodies are not interpreted.
+Strict policy withholds REVIEW results too; balanced withholds BLOCK results;
+permissive only logs findings. `--no-scan-results` explicitly disables screening.
+
+Manifest pinning verifies descriptions and schemas, not executable behavior.
+Changes without a notification are not automatically re-enumerated, and identical
+manifests can conceal changed behavior even with repeated enumeration. Use a
+reviewed, hash-pinned installed artifact and `--sandbox` to constrain execution.
+Calls are authorized by tool name; arguments, cross-call dataflow, server
+notifications and opaque media still require controls in the consuming host.
 
 > **HTTP servers aren't wrapped** — the proxy launches stdio children only.
 > Vet HTTP servers with connect-time `pkgxray mcp <url>` plus

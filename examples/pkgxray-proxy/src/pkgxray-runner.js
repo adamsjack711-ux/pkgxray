@@ -36,6 +36,7 @@ const EXIT_DECISION = { 0: 'allow', 2: 'block', 3: 'review' };
 export function runGuard(bin, ref, opts = {}) {
   const { timeoutMs = 20000, cacheUrl, env = process.env, spawnFn = spawn } = opts;
   const args = ['guard', `npm:${ref}`, '--format', 'json'];
+  if (opts.artifact) args.push('--archive', opts.artifact.archivePath, '--integrity', opts.artifact.integrity, '--receipt-only');
 
   return new Promise((resolve, reject) => {
     const childEnv = { ...env };
@@ -43,7 +44,7 @@ export function runGuard(bin, ref, opts = {}) {
 
     let child;
     try {
-      child = spawnFn(bin, args, { env: childEnv });
+      child = spawnFn(bin, args, { env: childEnv, ...(opts.cwd ? { cwd: opts.cwd } : {}) });
     } catch (err) {
       reject(new ScanError(`Failed to spawn pkgxray: ${err.message}`, { cause: err, ref }));
       return;
@@ -71,8 +72,14 @@ export function runGuard(bin, ref, opts = {}) {
       fn(arg);
     };
 
-    if (child.stdout) child.stdout.on('data', (d) => { stdout += d; });
-    if (child.stderr) child.stderr.on('data', (d) => { stderr += d; });
+    if (child.stdout) child.stdout.on('data', (d) => {
+      if (settled) return;
+      stdout += d;
+      if (Buffer.byteLength(stdout) > 16 * 1024 * 1024) {
+        child.kill('SIGKILL'); finish(reject, new ScanError('Scanner output exceeded 16 MiB limit'));
+      }
+    });
+    if (child.stderr) child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-8192); });
 
     child.on('error', (err) => {
       finish(reject, new ScanError(`pkgxray process error: ${err.message}`, { cause: err, ref }));
@@ -103,7 +110,7 @@ function interpret(stdout, code, ref, stderr) {
   if (parsed) {
     const decision = normalizeDecision(parsed.decision ?? parsed.verdict ?? parsed.result);
     if (decision) {
-      return { decision, findings: extractFindings(parsed), sha256: extractSha256(parsed), raw: parsed };
+      return { decision, findings: extractFindings(parsed), sha256: extractSha256(parsed), approval: parsed.approval, raw: parsed };
     }
   }
 
@@ -151,6 +158,7 @@ function normalizeDecision(value) {
 // apply when we can prove the bytes — no digest here means the allow is skipped.
 function extractSha256(parsed) {
   const raw =
+    (parsed.resolved && parsed.resolved.sha256) ||
     (parsed.report && (parsed.report.sha256 || parsed.report.digest)) ||
     parsed.sha256 ||
     parsed.digest ||

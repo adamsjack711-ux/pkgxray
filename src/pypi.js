@@ -30,16 +30,8 @@ const REGISTRY_AGENT = new https.Agent({ keepAlive: true, maxSockets: 8 });
 // Raw GET returning { statusCode, body } without throwing on non-2xx, so
 // existence checks can branch on 404 rather than catch an error.
 function httpGet(url, headers) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, { headers: { "user-agent": "pkgxray", accept: "application/json", ...headers }, agent: REGISTRY_AGENT }, (res) => {
-        const statusCode = res.statusCode;
-        let body = "";
-        res.setEncoding("utf8");
-        res.on("data", (c) => (body += c));
-        res.on("end", () => resolve({ statusCode, body }));
-      })
-      .on("error", reject);
+  return require("./http-client").requestText(url, {
+    headers: { "user-agent": "pkgxray", accept: "application/json", ...headers }, agent: REGISTRY_AGENT
   });
 }
 

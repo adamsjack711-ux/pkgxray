@@ -1,0 +1,2465 @@
+{
+  "schemaVersion": 1,
+  "corpusSha256": "f44d594baf6514d7c2f3f2c74cb97fc236c6ba646981f887c297bf239c86a0c6",
+  "cases": 180,
+  "families": 30,
+  "note": "Paired synthetic cases; filename variants are correlated, not independent observations. REVIEW is not BLOCK.",
+  "summary": {
+    "MISS": 0,
+    "FALSE_BLOCK": 0,
+    "REVIEW": 61,
+    "BLOCK": 33,
+    "CLEAR": 86
+  },
+  "byVariant": {
+    "entry": {
+      "MISS": 0,
+      "FALSE_BLOCK": 0,
+      "REVIEW": 21,
+      "BLOCK": 11,
+      "CLEAR": 28
+    },
+    "test-named-entry": {
+      "MISS": 0,
+      "FALSE_BLOCK": 0,
+      "REVIEW": 21,
+      "BLOCK": 11,
+      "CLEAR": 28
+    },
+    "custom-extension-entry": {
+      "MISS": 0,
+      "FALSE_BLOCK": 0,
+      "REVIEW": 19,
+      "BLOCK": 11,
+      "CLEAR": 30
+    }
+  },
+  "results": [
+    {
+      "id": "single-secret/malicious/entry",
+      "family": "single-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "single-secret/malicious/test-named-entry",
+      "family": "single-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "single-secret/malicious/custom-extension-entry",
+      "family": "single-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "single-secret/benign/entry",
+      "family": "single-secret",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "single-secret/benign/test-named-entry",
+      "family": "single-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "single-secret/benign/custom-extension-entry",
+      "family": "single-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-env/malicious/entry",
+      "family": "computed-env",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-env/malicious/test-named-entry",
+      "family": "computed-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-env/malicious/custom-extension-entry",
+      "family": "computed-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-env/benign/entry",
+      "family": "computed-env",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-env/benign/test-named-entry",
+      "family": "computed-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-env/benign/custom-extension-entry",
+      "family": "computed-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aliased-env/malicious/entry",
+      "family": "aliased-env",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aliased-env/malicious/test-named-entry",
+      "family": "aliased-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aliased-env/malicious/custom-extension-entry",
+      "family": "aliased-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aliased-env/benign/entry",
+      "family": "aliased-env",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aliased-env/benign/test-named-entry",
+      "family": "aliased-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aliased-env/benign/custom-extension-entry",
+      "family": "aliased-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-secret/malicious/entry",
+      "family": "destructured-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-secret/malicious/test-named-entry",
+      "family": "destructured-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-secret/malicious/custom-extension-entry",
+      "family": "destructured-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-secret/benign/entry",
+      "family": "destructured-secret",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-secret/benign/test-named-entry",
+      "family": "destructured-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-secret/benign/custom-extension-entry",
+      "family": "destructured-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "spread-env/malicious/entry",
+      "family": "spread-env",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "spread-env/malicious/test-named-entry",
+      "family": "spread-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "spread-env/malicious/custom-extension-entry",
+      "family": "spread-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "spread-env/benign/entry",
+      "family": "spread-env",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "spread-env/benign/test-named-entry",
+      "family": "spread-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "spread-env/benign/custom-extension-entry",
+      "family": "spread-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "assign-env/malicious/entry",
+      "family": "assign-env",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "assign-env/malicious/test-named-entry",
+      "family": "assign-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "assign-env/malicious/custom-extension-entry",
+      "family": "assign-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "assign-env/benign/entry",
+      "family": "assign-env",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "assign-env/benign/test-named-entry",
+      "family": "assign-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "assign-env/benign/custom-extension-entry",
+      "family": "assign-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "entries-env/malicious/entry",
+      "family": "entries-env",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "entries-env/malicious/test-named-entry",
+      "family": "entries-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "entries-env/malicious/custom-extension-entry",
+      "family": "entries-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-export",
+        "environment-access",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "entries-env/benign/entry",
+      "family": "entries-env",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "entries-env/benign/test-named-entry",
+      "family": "entries-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "entries-env/benign/custom-extension-entry",
+      "family": "entries-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-env/malicious/entry",
+      "family": "reflect-env",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-env/malicious/test-named-entry",
+      "family": "reflect-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-env/malicious/custom-extension-entry",
+      "family": "reflect-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-env/benign/entry",
+      "family": "reflect-env",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-env/benign/test-named-entry",
+      "family": "reflect-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-env/benign/custom-extension-entry",
+      "family": "reflect-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-query/malicious/entry",
+      "family": "secret-query",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-query/malicious/test-named-entry",
+      "family": "secret-query",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-query/malicious/custom-extension-entry",
+      "family": "secret-query",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-query/benign/entry",
+      "family": "secret-query",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-query/benign/test-named-entry",
+      "family": "secret-query",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-query/benign/custom-extension-entry",
+      "family": "secret-query",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-urlparams/malicious/entry",
+      "family": "secret-urlparams",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-urlparams/malicious/test-named-entry",
+      "family": "secret-urlparams",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-urlparams/malicious/custom-extension-entry",
+      "family": "secret-urlparams",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-urlparams/benign/entry",
+      "family": "secret-urlparams",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-urlparams/benign/test-named-entry",
+      "family": "secret-urlparams",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "secret-urlparams/benign/custom-extension-entry",
+      "family": "secret-urlparams",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "https-end/malicious/entry",
+      "family": "https-end",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "https-end/malicious/test-named-entry",
+      "family": "https-end",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "https-end/malicious/custom-extension-entry",
+      "family": "https-end",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "https-end/benign/entry",
+      "family": "https-end",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "https-end/benign/test-named-entry",
+      "family": "https-end",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "https-end/benign/custom-extension-entry",
+      "family": "https-end",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "dns-secret/malicious/entry",
+      "family": "dns-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "dns-secret/malicious/test-named-entry",
+      "family": "dns-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "dns-secret/malicious/custom-extension-entry",
+      "family": "dns-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "dns-secret/benign/entry",
+      "family": "dns-secret",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "dns-secret/benign/test-named-entry",
+      "family": "dns-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "dns-secret/benign/custom-extension-entry",
+      "family": "dns-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "websocket-secret/malicious/entry",
+      "family": "websocket-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "websocket-secret/malicious/test-named-entry",
+      "family": "websocket-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "websocket-secret/malicious/custom-extension-entry",
+      "family": "websocket-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "websocket-secret/benign/entry",
+      "family": "websocket-secret",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "websocket-secret/benign/test-named-entry",
+      "family": "websocket-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "websocket-secret/benign/custom-extension-entry",
+      "family": "websocket-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "beacon-secret/malicious/entry",
+      "family": "beacon-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "beacon-secret/malicious/test-named-entry",
+      "family": "beacon-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "beacon-secret/malicious/custom-extension-entry",
+      "family": "beacon-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "beacon-secret/benign/entry",
+      "family": "beacon-secret",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "beacon-secret/benign/test-named-entry",
+      "family": "beacon-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "beacon-secret/benign/custom-extension-entry",
+      "family": "beacon-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-literal/malicious/entry",
+      "family": "ssh-literal",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-literal/malicious/test-named-entry",
+      "family": "ssh-literal",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-literal/malicious/custom-extension-entry",
+      "family": "ssh-literal",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-literal/benign/entry",
+      "family": "ssh-literal",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-literal/benign/test-named-entry",
+      "family": "ssh-literal",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-literal/benign/custom-extension-entry",
+      "family": "ssh-literal",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-split/malicious/entry",
+      "family": "ssh-split",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-split/malicious/test-named-entry",
+      "family": "ssh-split",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-split/malicious/custom-extension-entry",
+      "family": "ssh-split",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-split/benign/entry",
+      "family": "ssh-split",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-split/benign/test-named-entry",
+      "family": "ssh-split",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-split/benign/custom-extension-entry",
+      "family": "ssh-split",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-join/malicious/entry",
+      "family": "ssh-join",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-join/malicious/test-named-entry",
+      "family": "ssh-join",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-join/malicious/custom-extension-entry",
+      "family": "ssh-join",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-join/benign/entry",
+      "family": "ssh-join",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-join/benign/test-named-entry",
+      "family": "ssh-join",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-join/benign/custom-extension-entry",
+      "family": "ssh-join",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-hex/malicious/entry",
+      "family": "ssh-hex",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-hex/malicious/test-named-entry",
+      "family": "ssh-hex",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-hex/malicious/custom-extension-entry",
+      "family": "ssh-hex",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-hex/benign/entry",
+      "family": "ssh-hex",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-hex/benign/test-named-entry",
+      "family": "ssh-hex",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-hex/benign/custom-extension-entry",
+      "family": "ssh-hex",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-base64/malicious/entry",
+      "family": "ssh-base64",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-base64/malicious/test-named-entry",
+      "family": "ssh-base64",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-base64/malicious/custom-extension-entry",
+      "family": "ssh-base64",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-base64/benign/entry",
+      "family": "ssh-base64",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-base64/benign/test-named-entry",
+      "family": "ssh-base64",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "ssh-base64/benign/custom-extension-entry",
+      "family": "ssh-base64",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "npmrc-upload/malicious/entry",
+      "family": "npmrc-upload",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "npmrc-upload/malicious/test-named-entry",
+      "family": "npmrc-upload",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "npmrc-upload/malicious/custom-extension-entry",
+      "family": "npmrc-upload",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "npmrc-upload/benign/entry",
+      "family": "npmrc-upload",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "npmrc-upload/benign/test-named-entry",
+      "family": "npmrc-upload",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "npmrc-upload/benign/custom-extension-entry",
+      "family": "npmrc-upload",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aws-upload/malicious/entry",
+      "family": "aws-upload",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aws-upload/malicious/test-named-entry",
+      "family": "aws-upload",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aws-upload/malicious/custom-extension-entry",
+      "family": "aws-upload",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aws-upload/benign/entry",
+      "family": "aws-upload",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aws-upload/benign/test-named-entry",
+      "family": "aws-upload",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "aws-upload/benign/custom-extension-entry",
+      "family": "aws-upload",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "eval-fetch/malicious/entry",
+      "family": "eval-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "eval-fetch/malicious/test-named-entry",
+      "family": "eval-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "eval-fetch/malicious/custom-extension-entry",
+      "family": "eval-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "eval-fetch/benign/entry",
+      "family": "eval-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "eval-fetch/benign/test-named-entry",
+      "family": "eval-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "eval-fetch/benign/custom-extension-entry",
+      "family": "eval-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "function-fetch/malicious/entry",
+      "family": "function-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "function-fetch/malicious/test-named-entry",
+      "family": "function-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "function-fetch/malicious/custom-extension-entry",
+      "family": "function-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "function-fetch/benign/entry",
+      "family": "function-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "function-fetch/benign/test-named-entry",
+      "family": "function-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "function-fetch/benign/custom-extension-entry",
+      "family": "function-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "vm-fetch/malicious/entry",
+      "family": "vm-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "remote-vm-code",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "vm-fetch/malicious/test-named-entry",
+      "family": "vm-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "remote-vm-code",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "vm-fetch/malicious/custom-extension-entry",
+      "family": "vm-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "remote-vm-code",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "vm-fetch/benign/entry",
+      "family": "vm-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "vm-fetch/benign/test-named-entry",
+      "family": "vm-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "vm-fetch/benign/custom-extension-entry",
+      "family": "vm-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "import-fetch/malicious/entry",
+      "family": "import-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "remote-code-import",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "import-fetch/malicious/test-named-entry",
+      "family": "import-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "remote-code-import",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "import-fetch/malicious/custom-extension-entry",
+      "family": "import-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "remote-code-import",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "import-fetch/benign/entry",
+      "family": "import-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "import-fetch/benign/test-named-entry",
+      "family": "import-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "import-fetch/benign/custom-extension-entry",
+      "family": "import-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "exec-secret/malicious/entry",
+      "family": "exec-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "exec-secret/malicious/test-named-entry",
+      "family": "exec-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "exec-secret/malicious/custom-extension-entry",
+      "family": "exec-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "code-execution",
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "exec-secret/benign/entry",
+      "family": "exec-secret",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "exec-secret/benign/test-named-entry",
+      "family": "exec-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "exec-secret/benign/custom-extension-entry",
+      "family": "exec-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "code-execution",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "python-env/malicious/entry",
+      "family": "python-env",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "environment-access",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-env/malicious/test-named-entry",
+      "family": "python-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "environment-access",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-env/malicious/custom-extension-entry",
+      "family": "python-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "environment-access",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "python-env/benign/entry",
+      "family": "python-env",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-env/benign/test-named-entry",
+      "family": "python-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-env/benign/custom-extension-entry",
+      "family": "python-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "python-key/malicious/entry",
+      "family": "python-key",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-key/malicious/test-named-entry",
+      "family": "python-key",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-key/malicious/custom-extension-entry",
+      "family": "python-key",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "python-key/benign/entry",
+      "family": "python-key",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-key/benign/test-named-entry",
+      "family": "python-key",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal",
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "id": "python-key/benign/custom-extension-entry",
+      "family": "python-key",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "shell-key/malicious/entry",
+      "family": "shell-key",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-file-upload",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "shell-key/malicious/test-named-entry",
+      "family": "shell-key",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-file-upload",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "shell-key/malicious/custom-extension-entry",
+      "family": "shell-key",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-file-upload",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "shell-key/benign/entry",
+      "family": "shell-key",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "shell-key/benign/test-named-entry",
+      "family": "shell-key",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "shell-key/benign/custom-extension-entry",
+      "family": "shell-key",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "powershell-key/malicious/entry",
+      "family": "powershell-key",
+      "label": "malicious",
+      "variant": "entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "powershell-key/malicious/test-named-entry",
+      "family": "powershell-key",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "powershell-key/malicious/custom-extension-entry",
+      "family": "powershell-key",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "verdict": "block",
+      "outcome": "BLOCK",
+      "categories": [
+        "credential-access",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "powershell-key/benign/entry",
+      "family": "powershell-key",
+      "label": "benign",
+      "variant": "entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "powershell-key/benign/test-named-entry",
+      "family": "powershell-key",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "powershell-key/benign/custom-extension-entry",
+      "family": "powershell-key",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    }
+  ]
+}

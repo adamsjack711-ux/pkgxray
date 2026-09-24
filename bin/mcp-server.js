@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const { auditEvidence, renderMarkdown } = require("../src/auditor");
-const { guardExtension, decisionForReport } = require("../src/quarantine");
+const { guardExtension, parseReference } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
 const { triageLockfile } = require("../src/triage");
 const cfg = require("../src/config");
@@ -91,6 +91,9 @@ function loadAllowedRoots() {
 const MCP_ALLOWED_ROOTS = loadAllowedRoots();
 
 function send(message) {
+  if (process.stdout.writableLength > 8 * 1024 * 1024) {
+    process.stdin.destroy(); process.exitCode = 1; return;
+  }
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
@@ -318,6 +321,11 @@ function lockfileTriageToolDefinition() {
           description:
             "If true, every dep (including OSV-safe ones) enters the worklist. Default false — only block/review deps are decided."
         },
+        vulnerabilityCheck: {
+          type: "boolean",
+          default: true,
+          description: "Set false for offline triage; vulnerability coverage is explicitly reported as disabled."
+        },
         outputFormat: {
           type: "string",
           enum: ["markdown", "json"],
@@ -348,28 +356,15 @@ const TOOL_NAMES = new Set([
   LOCKFILE_TRIAGE_TOOL_NAME
 ]);
 
-// SECURITY: a reference is "local" when it lets the resolver walk the
-// filesystem instead of fetching from a registry. Mirrors parseReference
-// in src/quarantine.js. Blocked by default over MCP because an LLM-driven
-// host could otherwise use guard as a remote-file-read primitive.
-function isLocalReference(reference) {
-  if (typeof reference !== "string") return false;
-  if (reference.startsWith("file:")) return true;
-  if (reference.startsWith("./") || reference.startsWith("../") || reference === "." || reference === "..") return true;
-  if (reference.startsWith("/")) return true;
-  if (reference.startsWith("~/") || reference === "~") return true;
-  return false;
-}
+// Acquisition's parser is the authority for classification AND path semantics.
+// In particular, do not separately decode URLs or maintain a prefix allowlist.
+const TOOL_SCHEMAS = new Map([
+  auditToolDefinition(), guardToolDefinition(), lockfileAuditToolDefinition(), lockfileTriageToolDefinition()
+].map(tool => [tool.name, tool.inputSchema]));
 
-function localReferencePath(reference) {
-  let value = reference.startsWith("file:") ? reference.slice(5) : reference;
-  if (value === "~") value = HOME_DIR;
-  else if (value.startsWith("~/")) value = path.join(HOME_DIR, value.slice(2));
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+function toolOptions(toolName, args) {
+  return Object.fromEntries(Object.keys(TOOL_SCHEMAS.get(toolName).properties)
+    .filter(key => Object.hasOwn(args, key)).map(key => [key, args[key]]));
 }
 
 function isWithinAllowedRoot(candidate) {
@@ -443,7 +438,23 @@ function validateToolCall(toolName, args) {
   if (args === null || typeof args !== "object" || Array.isArray(args)) {
     return "arguments must be an object";
   }
+  const schema = TOOL_SCHEMAS.get(toolName);
+  if (!schema) return "unknown tool";
+  // Preserve the helpful diagnostics for formerly accepted authority knobs.
+  if (args.artifact !== undefined) return "artifact is reserved for trusted acquisition callers";
+  if (args.allowLocalReferences !== undefined) return "allowLocalReferences is not supported; only the server operator can grant filesystem roots";
+  for (const key of Object.keys(args)) {
+    if (!Object.hasOwn(schema.properties, key)) return `unknown argument: ${key}`;
+    const spec = schema.properties[key], value = args[key];
+    if (value === undefined) continue;
+    if (spec.type && (spec.type === "array" ? !Array.isArray(value) :
+      spec.type === "object" ? !value || typeof value !== "object" || Array.isArray(value) : typeof value !== spec.type)) {
+      return `${key} must be ${spec.type === "object" || spec.type === "array" ? "an" : "a"} ${spec.type}`;
+    }
+    if (spec.enum && !spec.enum.includes(value)) return `${key} must be ${spec.enum.map(v => `'${v}'`).join(" or ")}`;
+  }
   if (toolName === GUARD_TOOL_NAME) {
+    if (args.artifact !== undefined) return "artifact is reserved for trusted acquisition callers";
     if (typeof args.reference !== "string" || args.reference.length === 0) {
       return "reference must be a non-empty string";
     }
@@ -453,12 +464,15 @@ function validateToolCall(toolName, args) {
     if (args.allowLocalReferences !== undefined) {
       return "allowLocalReferences is not supported; only the server operator can grant filesystem roots";
     }
-    if (isLocalReference(args.reference)) {
-      const resolved = resolveOperatorPath(localReferencePath(args.reference));
+    let parsed;
+    try { parsed = parseReference(args.reference); }
+    catch { return "invalid package reference"; }
+    if (parsed.type === "local") {
+      const resolved = resolveOperatorPath(parsed.path);
       if (!resolved) {
         return "local reference is unreadable or outside the operator-approved filesystem roots";
       }
-      args.reference = resolved;
+      args.reference = `file:${resolved}`;
     }
     for (const k of ["quarantineRoot", "promoteTo"]) {
       if (args[k] !== undefined && (typeof args[k] !== "string" || args[k].includes("\0"))) {
@@ -588,7 +602,7 @@ function handleRequest(request) {
       // Stricter MCP defaults: when the caller doesn't pin a policy, fall back
       // to the (stricter) MCP-view policy rather than guard's own safe-only
       // default, so the agent surface can be tightened centrally in config.
-      const guardOpts = { ...args, keepStaging: true };
+      const guardOpts = { ...toolOptions(name, args), config: CONFIG, keepStaging: false };
       if (guardOpts.policy === undefined) guardOpts.policy = MCP_CONFIG.policy;
       // The opt-in typosquat heuristic is a config knob, not a tool argument —
       // .pkgxray.json is the single switch for the agent surface.
@@ -603,14 +617,13 @@ function handleRequest(request) {
       // explicitly disables it (and the caller didn't ask for a scan) do we let
       // guard stage without collecting source.
       if (guardOpts.sourceScan === undefined) guardOpts.sourceScan = MCP_CONFIG.packageScanFirst !== false;
-      // Keep the staging tree so the returned Quarantine path stays valid for
-      // inspection / promotion; non-interactive callers reap it by default.
+      // MCP staging is ephemeral; requested promotion occurs before cleanup.
       return guardExtension(args.reference, guardOpts).then((guardResult) => {
         // Apply shared config to the resolved artifact: mutes, and — since guard
         // resolved a real sha256 — a pinned allowlist that can force `safe`.
         // applyConfig never changes a verdict silently; renderConfigEffects
         // surfaces every suppression in the response text below.
-        const adjusted = applyConfigToGuardResult(guardResult, guardOpts.policy);
+        const adjusted = guardResult;
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(adjusted, null, 2)
@@ -636,7 +649,7 @@ function handleRequest(request) {
       if (fileError) return invalidParams(id, fileError);
       // Thread the config's typosquat setting into the deep-scan path (the
       // shallow pass is OSV-only; typosquat applies wherever auditEvidence runs).
-      return auditLockfile(args.lockfilePath, { ...args, typosquat: CONFIG.typosquat }).then((result) => {
+      return auditLockfile(args.lockfilePath, { ...toolOptions(name, args), typosquat: CONFIG.typosquat }).then((result) => {
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(result, null, 2)
@@ -671,7 +684,7 @@ function handleRequest(request) {
         write() { return true; }
       };
       return triageLockfile(args.lockfilePath, {
-        ...args,
+        ...toolOptions(name, args),
         // Honor the config typosquat setting through triage's deep scan
         // (triageLockfile spreads options into auditLockfile → runDeep).
         typosquat: CONFIG.typosquat,
@@ -803,15 +816,9 @@ function applyConfigToGuardResult(result, policy) {
   // Re-apply the scan-gap floor afterwards — this re-derivation would otherwise
   // drop the floor guardExtension set (e.g. OSV unreachable). An explicit
   // pinned allowlist entry still wins; that's a human decision on record.
-  const rederived = decisionForReport(adjustedReport, policy || "safe-only");
-  const decision =
-    adjustedReport.configEffects && adjustedReport.configEffects.allowlisted
-      ? rederived
-      : cfg.floorVerdictForScanGap(
-          rederived,
-          Boolean(result.vulnerabilityPrecheck && result.vulnerabilityPrecheck.error),
-          CONFIG
-        );
+  const decision = cfg.guardDecision(adjustedReport, { policy: policy || "safe-only", config: CONFIG,
+    vulnerabilityScanError: result.vulnerabilityPrecheck && result.vulnerabilityPrecheck.error,
+    sourceCoverage: result.sourceCoverage, dependencyAudit: result.dependencyAudit });
   return { ...result, decision, report: adjustedReport, configEffects: adjustedReport.configEffects };
 }
 
@@ -833,6 +840,18 @@ function renderGuardMarkdown(result) {
     `Quarantine: \`${sanitizeForTerminal(result.quarantinePath)}\``,
     ""
   ];
+
+  if (result.assessment) {
+    const checks = result.assessment.checks;
+    lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,
+      "A passing verdict means no blocking findings within these checks; it is not proof of harmlessness.", "");
+  }
+
+  if (result.sourceCoverage) {
+    const c = result.sourceCoverage;
+    lines.push(`Source coverage: ${c.complete ? "complete" : "incomplete"}; ${c.scannedFiles} files read, ${c.skippedFiles} skipped, ${c.truncatedFiles} truncated.`,
+      `Behavioral scope: ${sanitizeForTerminal(c.behavioralScope || "unspecified")}.`, "");
+  }
 
   if (result.promotedPath) {
     lines.push(`Promoted to: \`${sanitizeForTerminal(result.promotedPath)}\``, "");
@@ -873,7 +892,7 @@ function requestId(request) {
   return null;
 }
 
-function processLine(line) {
+async function processLine(line) {
   if (!line.trim()) {
     return;
   }
@@ -902,17 +921,7 @@ function processLine(line) {
   }
 
   try {
-    const response = handleRequest(request);
-    if (response && typeof response.then === "function") {
-      response.then(send).catch((error) => {
-        send({
-          jsonrpc: "2.0",
-          id: requestId(request),
-          error: { code: -32603, message: sanitizeErrorMessage(error.message) }
-        });
-      });
-      return;
-    }
+    const response = await handleRequest(request);
     if (response) {
       send(response);
     }
@@ -930,51 +939,37 @@ function processLine(line) {
 // to exercise the pure config-folding helpers without the server attaching a
 // stdin listener and hanging.
 function attachStdin() {
+  const { BoundedQueue } = require("../src/bounded-queue");
+  const queue = new BoundedQueue({ concurrency: 4, maxTasks: 32, maxBytes: 8 * 1024 * 1024 });
+  const submit = line => {
+    if (!line.trim()) return;
+    if (!queue.enqueue(() => processLine(line), Buffer.byteLength(line))) {
+      send({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "MCP request capacity exceeded; session closed" } });
+      queue.close(); process.stdin.destroy(); process.exitCode = 1;
+    }
+  };
   process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (chunk) => {
-    // SECURITY: drop bytes once the buffer is past the cap, but keep reading
-    // so the stream drains normally. Emit ONE parse-error reply per overflow
-    // event and then reset on the next newline.
-    if (bufferOverflowed) {
-      const nl = chunk.indexOf("\n");
-      if (nl === -1) return;
-      buffer = "";
-      bufferOverflowed = false;
-      const tail = chunk.slice(nl + 1);
-      if (tail.length === 0) return;
-      chunk = tail;
-    }
-    buffer += chunk;
-    if (buffer.length > MAX_BUFFER_BYTES) {
-      bufferOverflowed = true;
-      buffer = "";
-      send({
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: -32700,
-          message: `Parse error: JSON-RPC frame exceeded ${MAX_BUFFER_BYTES} bytes without a newline`
+  process.stdin.on("data", chunk => {
+    let start = 0;
+    while (start < chunk.length && !queue.closed) {
+      const newline = chunk.indexOf("\n", start);
+      const part = chunk.slice(start, newline < 0 ? undefined : newline);
+      if (!bufferOverflowed) {
+        buffer += part;
+        if (Buffer.byteLength(buffer) > MAX_BUFFER_BYTES) {
+          bufferOverflowed = true; buffer = "";
+          send({ jsonrpc: "2.0", id: null, error: { code: -32700,
+            message: `Parse error: JSON-RPC frame exceeded ${MAX_BUFFER_BYTES} bytes without a newline` } });
         }
-      });
-      return;
-    }
-    let newlineIndex = buffer.indexOf("\n");
-    while (newlineIndex !== -1) {
-      const line = buffer.slice(0, newlineIndex);
-      buffer = buffer.slice(newlineIndex + 1);
-      processLine(line);
-      newlineIndex = buffer.indexOf("\n");
+      }
+      if (newline < 0) break;
+      if (!bufferOverflowed) submit(buffer);
+      buffer = ""; bufferOverflowed = false; start = newline + 1;
     }
   });
-
   process.stdin.on("end", () => {
-    if (bufferOverflowed) {
-      buffer = "";
-      return;
-    }
-    if (buffer.trim()) {
-      processLine(buffer);
-    }
+    if (!bufferOverflowed) submit(buffer);
+    buffer = "";
   });
 }
 
@@ -995,6 +990,7 @@ module.exports = {
   startStdioServer: attachStdin,
   attachStdin,
   resolveOperatorPath,
+  validateToolCall,
   // Exported for direct unit testing. The end-to-end leak test can only
   // exercise whichever path shape the host platform produces, so a Windows
   // path leak was invisible to a Linux-only suite; testing the pure function

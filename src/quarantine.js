@@ -18,6 +18,7 @@ const {
 const { diffNpmVsGithub } = require("./diff");
 const { fetchProvenanceAttestation } = require("./attestation");
 const cfg = require("./config");
+const artifact = require("./artifact");
 
 // Identifies pkgxray to the registries/APIs it queries. Derived from
 // package.json so it tracks releases instead of drifting.
@@ -40,8 +41,6 @@ const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 // or bottom-of-file appended blobs) so both extremities are scanned while total
 // memory stays bounded. SCAN_SLICE_BYTES is the hard per-file read ceiling.
 const SCAN_SLICE_BYTES = 5 * 1024 * 1024;
-// Half the slice is read from the head, half from the tail of a very large file.
-const SCAN_SLICE_HALF_BYTES = SCAN_SLICE_BYTES / 2;
 // Whole-package read budget so a package of many multi-MB files can't OOM us
 // even within maxFiles. Once exceeded, remaining files are recorded as skipped
 // rather than read (fail-visible, not silently dropped).
@@ -193,9 +192,15 @@ async function guardExtension(reference, options = {}) {
   }
 
   let sourceFiles = {};
+  let sourceCoverage = {
+    complete: false, scannedFiles: 0, skippedFiles: 0, truncatedFiles: 0,
+    reasons: [resolved.noSourceReason || "source scan not performed"]
+  };
   if (vulnerabilities.length === 0 && !resolved.skipSourceScan && options.sourceScan !== false) {
     const scanStart = now();
-    sourceFiles = await collectSourceFiles(stagedPath, options);
+    const collected = await collectSourceEvidence(stagedPath, options);
+    sourceFiles = collected.sourceFiles;
+    sourceCoverage = collected.coverage;
     timings.sourceCollectionMs = elapsed(scanStart);
   } else {
     timings.sourceCollectionMs = 0;
@@ -229,7 +234,7 @@ async function guardExtension(reference, options = {}) {
         resolved,
         npmStagedPath: stagedPath,
         githubMetadata,
-        workspace
+        workspace, sourceFiles, sourceCoverage
       });
     } catch (error) {
       npmVsGithubDiff = { compared: false, reason: "diff-error", message: error.message };
@@ -237,6 +242,19 @@ async function guardExtension(reference, options = {}) {
     timings.diffMs = elapsed(diffStart);
   } else {
     timings.diffMs = 0;
+  }
+
+  sourceCoverage.behavioralScope = resolved.ecosystem === "PyPI"
+    ? "python-manifests-and-text" : "npm-static-heuristics";
+
+  // Finish every requested check before analysis, policy or promotion.
+  let dependencyAudit = null;
+  if (options.scanDependencies && vulnerabilities.length === 0) {
+    const depStart = now();
+    dependencyAudit = await scanDirectDependencies(stagedPath).catch(error => ({
+      scanned: 0, flagged: [], complete: false, error: error.message
+    }));
+    timings.dependencyScanMs = elapsed(depStart);
   }
 
   const evidence = {
@@ -250,6 +268,8 @@ async function guardExtension(reference, options = {}) {
     // rather than implying the CVE feed came back clean.
     vulnerabilityScanError,
     sourceFiles,
+    sourceCoverage,
+    dependencyAudit,
     npmVsGithubDiff,
     provenanceAttestation,
     // Registry of origin — lets the auditor scope the JS-primitive behavioral
@@ -261,15 +281,23 @@ async function guardExtension(reference, options = {}) {
   const auditStart = now();
   // typosquat is scan CONFIG, not evidence: `true` from the CLI flag, or the
   // validated tuning object from .pkgxray.json — passed through unchanged.
-  const report = auditEvidence(evidence, { typosquat: options.typosquat });
+  const rawReport = auditEvidence(evidence, { typosquat: options.typosquat });
+  const config = options.config || {
+    ...cfg.DEFAULTS,
+    policy: options.policy || cfg.DEFAULTS.policy,
+    scanErrorPolicy: options.scanErrorPolicy || cfg.DEFAULTS.scanErrorPolicy
+  };
+  const report = cfg.applyConfig(rawReport, {
+    config, packageName: resolved.packageName, version: resolved.version,
+    sha256: resolved.sha256, evidence: { sourceFiles: Object.keys(sourceFiles) }
+  });
   timings.auditMs = elapsed(auditStart);
   // A missing CVE check can't clear a package, but it must not un-block one
   // either — static evidence stands on its own. See floorVerdictForScanGap.
-  const decision = cfg.floorVerdictForScanGap(
-    decisionForReport(report, options.policy || "safe-only"),
-    Boolean(vulnerabilityScanError),
-    options
-  );
+  const decision = cfg.guardDecision(report, {
+    policy: options.policy || config.policy, config,
+    vulnerabilityScanError, sourceCoverage, dependencyAudit
+  });
 
   const result = {
     schemaVersion: 1,
@@ -277,6 +305,23 @@ async function guardExtension(reference, options = {}) {
     reference,
     resolved,
     sourceFiles,
+    sourceCoverage,
+    assessment: {
+      engine: { name: "pkgxray", version: require("../package.json").version, buildId: artifact.BUILD_ID },
+      artifact: { name: resolved.packageName || null, version: resolved.version || null,
+        origin: resolved.type, resolved: resolved.tarballUrl || null, integrity: resolved.integrity || null, sha256: resolved.sha256 || null },
+      effectivePolicy: options.policy || config.policy,
+      policySha256: artifact.fingerprint({ ...config, policy: options.policy || config.policy }),
+      checks: {
+        source: options.sourceScan === false ? "disabled" : vulnerabilities.length ? "skipped" : sourceCoverage.complete ? "completed" : "partial",
+        vulnerabilities: options.vulnerabilityCheck === false ? "disabled" : vulnerabilityScanError ? "failed" : "completed",
+        directDependencies: !options.scanDependencies ? "not-requested" : !dependencyAudit ? "skipped" : dependencyAudit.error ? "failed" : dependencyAudit.complete ? "completed" : "partial"
+      },
+      rawVerdict: rawReport.verdict,
+      authorization: require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit }),
+      decision
+    },
+    configEffects: report.configEffects,
     githubMetadata,
     npmVsGithubDiff,
     provenanceAttestation,
@@ -286,7 +331,7 @@ async function guardExtension(reference, options = {}) {
       // `completed: false` distinguishes "OSV said this version is clean" from
       // "OSV never answered". A JSON consumer that only reads vulnerabilityCount
       // would otherwise read an outage as a clean bill of health.
-      completed: vulnerabilityScanError === null,
+      completed: options.vulnerabilityCheck !== false && vulnerabilityScanError === null,
       error: vulnerabilityScanError,
       vulnerabilityCount: vulnerabilities.length,
       vulnerabilities
@@ -298,21 +343,16 @@ async function guardExtension(reference, options = {}) {
     report
   };
 
-  // Dependency-tree scan (#7). A single-package guard only inspects the named
-  // package; almost every real supply-chain compromise arrives TRANSITIVELY,
-  // through a dependency you never named. `--deps` OSV-scans the package's
-  // DIRECT dependencies (best-effort, ranges stripped — not a full resolver).
-  // The complete transitive path is `pkgxray audit <lockfile>`, which resolves
-  // and scans the whole tree; we say so in the result so the user isn't lulled.
-  if (options.scanDependencies && vulnerabilities.length === 0) {
-    const depStart = now();
-    result.dependencyAudit = await scanDirectDependencies(stagedPath).catch((error) => ({
-      scanned: 0,
-      flagged: [],
-      error: error.message
-    }));
-    timings.dependencyScanMs = elapsed(depStart);
+  if (resolved.sha256) {
+    result.approval = { schemaVersion: 2, artifactSha256: resolved.sha256,
+      name: resolved.packageName, version: resolved.version,
+      scannerBuildId: artifact.BUILD_ID, policySha256: result.assessment.policySha256,
+      checks: result.assessment.checks, sourceComplete: sourceCoverage.complete,
+      authorization: result.assessment.authorization,
+      decision, issuedAt: new Date().toISOString() };
   }
+
+  if (dependencyAudit) result.dependencyAudit = dependencyAudit;
 
   if (options.promoteTo && shouldPromote(decision)) {
     result.promotedPath = await promoteStagedPackage(stagedPath, options.promoteTo, options);
@@ -333,7 +373,7 @@ async function guardExtension(reference, options = {}) {
   }
 }
 
-async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, workspace }) {
+async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, workspace, sourceFiles = {}, sourceCoverage = {} }) {
   const version = resolved.version;
   const tarball = await fetchRepoTarballForVersion(
     githubMetadata.owner,
@@ -379,11 +419,15 @@ async function runNpmVsGithubDiff({ resolved, npmStagedPath, githubMetadata, wor
     await extractTarballGh(tarball.archivePath, ghStagePath);
   }
 
+  const executionGraph = require('./execution-graph').createExecutionGraph(
+    Object.entries(sourceFiles).map(([path, content]) => ({path, content})), new Set(sourceCoverage.runtimeFiles || []));
+  const executionFiles = new Set(executionGraph.edges.filter(e => e.hidden && e.resolved).flatMap(e => [e.file, e.target]));
   const diff = await diffNpmVsGithub({
     npmStagedPath,
     githubStagedPath: ghStagePath,
     subdir,
     hasBuildScript,
+    runtimeFiles: [...executionGraph.runtime], executionFiles: [...executionFiles],
     prepopulatedGhDirs: selectiveExtract && !selectiveExtract.reason ? selectiveExtract.dirsRelativeToSubdir : null,
     // Caller has already computed the npm-vs-github path intersection during
     // selective extract; reuse it so the npm-side hashTree only sha256s the
@@ -572,7 +616,26 @@ async function stageReference(reference, stagedPath, options) {
   }
 
   if (parsed.type === "npm") {
-    return resolveNpmPackage(parsed.specifier, options);
+    if (options.artifact && options.artifact.archivePath) {
+      const identity = parseNpmSpecifier(parsed.specifier);
+      if (!identity.version || !/^\d+\.\d+\.\d+(?:[-+][\w.+-]+)?$/.test(identity.version)) throw new Error("An archive scan requires an exact npm version");
+      artifact.integrityEntries(options.artifact.integrity);
+      return { type: "npm", packageName: identity.name, version: identity.version,
+        needsDownload: true, archiveSource: options.artifact.archivePath,
+        tarballUrl: options.artifact.resolved || null, integrity: options.artifact.integrity };
+    }
+    const resolved = await resolveNpmPackage(parsed.specifier, options);
+    if (options.artifact) {
+      artifact.integrityEntries(options.artifact.integrity);
+      if (!options.artifact.resolved) throw new Error("Locked artifact URL is required");
+      assertDownloadHostAllowed(new URL(options.artifact.resolved), {
+        allowedHosts: resolved.allowedHosts, strictHosts: true, originalUrl: options.artifact.resolved
+      });
+      resolved.tarballUrl = options.artifact.resolved;
+      resolved.integrity = options.artifact.integrity;
+      resolved.shasum = null;
+    }
+    return resolved;
   }
 
   if (parsed.type === "pypi") {
@@ -864,6 +927,18 @@ async function downloadResolvedPackage(resolved, stagedPath) {
   const archivePath = `${stagedPath}.tgz`;
   await fsp.mkdir(path.dirname(stagedPath), { recursive: true, mode: 0o700 });
 
+  if (resolved.archiveSource) {
+    const stat = await fsp.lstat(resolved.archiveSource);
+    if (!stat.isFile() || stat.size > DEFAULT_DOWNLOAD_MAX_BYTES) throw new Error("Archive must be a bounded regular file");
+    await fsp.copyFile(resolved.archiveSource, archivePath);
+    const verified = await artifact.verifyFile(archivePath, resolved.integrity);
+    resolved.sha256 = verified.sha256;
+    await fsp.mkdir(stagedPath, { recursive: true, mode: 0o700 });
+    await extractTarball(archivePath, stagedPath);
+    await verifyStagedIdentity(resolved, stagedPath);
+    return;
+  }
+
   // Try the content-addressed cache first. If we have a fresh-enough copy,
   // hard-link or copy it into the staging area; integrity is still verified
   // below. Cache misses fall through to a fresh download.
@@ -936,39 +1011,26 @@ async function downloadResolvedPackage(resolved, stagedPath) {
 
   await fsp.mkdir(stagedPath, { recursive: true, mode: 0o700 });
   await extractTarball(archivePath, stagedPath);
+  await verifyStagedIdentity(resolved, stagedPath);
+}
+
+async function verifyStagedIdentity(resolved, stagedPath) {
+  if (resolved.type !== "npm") return;
+  const identity = await readPackageIdentity(stagedPath);
+  if (!identity || identity.name !== resolved.packageName || identity.version !== resolved.version) throw new Error("Artifact manifest identity does not match requested name/version");
 }
 
 function pickIntegrityAlgo(resolved) {
-  if (resolved.integrity) {
-    const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
-    const dashIndex = firstEntry.indexOf("-");
-    if (dashIndex > 0) return firstEntry.slice(0, dashIndex);
-  }
+  if (resolved.integrity) return artifact.integrityEntries(resolved.integrity)[0].algorithm;
   if (resolved.shasum) return "sha1";
   return null;
 }
 
 function verifyNpmTarballIntegrity(resolved, digests) {
   if (resolved.integrity) {
-    const firstEntry = String(resolved.integrity).trim().split(/\s+/)[0];
-    const dashIndex = firstEntry.indexOf("-");
-    if (dashIndex <= 0) {
-      throw new Error(`npm tarball integrity field is malformed: ${resolved.integrity}`);
-    }
-    const algo = firstEntry.slice(0, dashIndex);
-    const expectedBase64 = firstEntry.slice(dashIndex + 1);
-    const buffer = digests[algo];
-    if (!buffer) {
-      // Shouldn't happen — pickIntegrityAlgo would have included it. Fall back
-      // to recomputing rather than failing the audit.
-      throw new Error(`internal: missing digest for algorithm ${algo}`);
-    }
-    const actualBase64 = buffer.toString("base64");
-    if (actualBase64 !== expectedBase64) {
-      throw new Error(
-        `npm tarball integrity mismatch: expected ${firstEntry} got ${algo}-${actualBase64}`
-      );
-    }
+    const entries = artifact.integrityEntries(resolved.integrity);
+    const actual = digests[entries[0].algorithm];
+    if (!actual || !entries.some(e => crypto.timingSafeEqual(e.digest, actual))) throw new Error("npm tarball integrity mismatch");
     return;
   }
   if (resolved.shasum) {
@@ -1065,31 +1127,7 @@ function parseNpmSpecifier(specifier) {
 }
 
 function fetchJson(url) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, { headers: { "user-agent": USER_AGENT }, agent: HTTPS_AGENT }, (response) => {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          const error = new Error(`HTTP ${response.statusCode} from ${url}`);
-          error.statusCode = response.statusCode;
-          reject(error);
-          response.resume();
-          return;
-        }
-        let body = "";
-        response.setEncoding("utf8");
-        response.on("data", (chunk) => {
-          body += chunk;
-        });
-        response.on("end", () => {
-          try {
-            resolve(JSON.parse(body));
-          } catch (error) {
-            reject(error);
-          }
-        });
-      })
-      .on("error", reject);
-  });
+  return require("./http-client").requestJson(url, { headers: { "user-agent": USER_AGENT }, agent: HTTPS_AGENT });
 }
 
 async function precheckVulnerabilities(resolved, stagedPath) {
@@ -1113,55 +1151,40 @@ async function precheckVulnerabilities(resolved, stagedPath) {
   return queryOsvPackage(identity.name, identity.version, "npm");
 }
 
-// Best-effort OSV scan of a package's DIRECT dependencies (#7). Reads the
-// staged package.json, strips version ranges (like the lockfile package-json
-// parser does), and runs one batched OSV query. This is deliberately shallow —
-// direct deps only, ranges not resolved to concrete versions — and is honest
-// about it: the note steers the user to `pkgxray audit <lockfile>` for the full
-// resolved transitive tree. Reuses the lockfile module's batch OSV client, so
-// large dependency sets still cost a single fan-out.
+// Direct-dependency checking intentionally requires exact pins. A range is
+// not an installed version; resolving the complete tree belongs to a lockfile.
 async function scanDirectDependencies(stagedPath) {
   let pkg;
-  try {
-    pkg = JSON.parse(await safeReadFile(path.join(stagedPath, "package.json")));
-  } catch {
-    return { scanned: 0, flagged: [], note: "no readable package.json in the staged package" };
-  }
+  try { pkg = JSON.parse(await safeReadFile(path.join(stagedPath, "package.json"))); }
+  catch { return { scanned: 0, flagged: [], complete: false, error: "no readable package.json in the staged package", note: "no readable package.json in the staged package" }; }
   const deps = new Map();
+  const unresolved = [];
+  const exact = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
   for (const section of ["dependencies", "optionalDependencies"]) {
-    const entries = pkg[section] || {};
-    for (const [name, rawRange] of Object.entries(entries)) {
-      const range = String(rawRange);
-      // Skip non-registry specifiers OSV can't resolve (file:/git+/workspace:).
-      if (/^(?:file:|link:|git\+|github:|workspace:|npm:@?[^@]+@)/.test(range)) continue;
-      const version = range.replace(/^[~^>=<\s]+/, "").trim();
-      if (!version) continue;
-      deps.set(`${name}@${version}`, { name, version, range, paths: [name] });
+    for (const [declaredName, value] of Object.entries(pkg[section] || {})) {
+      let name = declaredName;
+      const range = String(value).trim();
+      let version = range;
+      if (range.startsWith("npm:")) {
+        const target = range.slice(4), at = target.lastIndexOf("@");
+        if (at > 0) { name = target.slice(0, at); version = target.slice(at + 1); }
+      }
+      if (!exact.test(version)) { unresolved.push({ name: declaredName, spec: range, section }); continue; }
+      deps.set(`${name}@${version}`, { name, version, range, paths: [declaredName] });
     }
   }
-  if (deps.size === 0) return { scanned: 0, flagged: [] };
-
   const { batchOsvQuery } = require("./lockfile");
-  const osv = await batchOsvQuery(deps);
-  const values = Array.from(deps.values());
-  const flagged = [];
-  for (let i = 0; i < values.length; i += 1) {
-    const vulns = osv[i] && Array.isArray(osv[i].vulns) ? osv[i].vulns : [];
-    if (vulns.length > 0) {
-      flagged.push({
-        name: values[i].name,
-        range: values[i].range,
-        version: values[i].version,
-        vulnerabilities: vulns.map((v) => ({ id: v.id, aliases: v.aliases || [] }))
-      });
-    }
+  const values = [...deps.values()];
+  const osv = values.length ? await batchOsvQuery(deps) : [];
+  if (osv.length !== values.length || osv.some(r => !r || typeof r !== "object" || Array.isArray(r) || (r.vulns !== undefined && !Array.isArray(r.vulns)))) {
+    throw new Error("OSV returned incomplete direct-dependency results");
   }
-  return {
-    scanned: deps.size,
-    flagged,
-    note:
-      "Direct dependencies only, version ranges stripped (not fully resolved). For the complete transitive tree run `pkgxray audit <package-lock.json | yarn.lock | pnpm-lock.yaml>`."
-  };
+  const flagged = values.flatMap((dep, i) => (osv[i].vulns || []).length ? [{
+    name: dep.name, range: dep.range, version: dep.version,
+    vulnerabilities: osv[i].vulns.map(v => ({ id: v.id, aliases: v.aliases || [] }))
+  }] : []);
+  return { scanned: values.length, flagged, unresolved, complete: unresolved.length === 0,
+    note: "Direct dependencies only; exact pins checked. Ranges and non-registry sources remain unvetted. Audit a resolved lockfile for the transitive tree." };
 }
 
 async function readPackageIdentity(stagedPath) {
@@ -1187,47 +1210,17 @@ async function queryOsvPackage(name, version, ecosystem) {
     version
   };
   const response = await postJson("https://api.osv.dev/v1/query", payload);
-  return Array.isArray(response.vulns) ? response.vulns : [];
+  if (!response || typeof response !== "object" || Array.isArray(response) ||
+      (response.vulns !== undefined && !Array.isArray(response.vulns))) {
+    throw new Error("OSV returned an invalid vulnerability response");
+  }
+  return response.vulns || [];
 }
 
 function postJson(url, payload) {
   const body = JSON.stringify(payload);
-  return new Promise((resolve, reject) => {
-    const request = https.request(
-      url,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "content-length": Buffer.byteLength(body),
-          "user-agent": "supply-chain-auditor/0.1.0"
-        },
-        agent: HTTPS_AGENT
-      },
-      (response) => {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`HTTP ${response.statusCode} from ${url}`));
-          response.resume();
-          return;
-        }
-        let responseBody = "";
-        response.setEncoding("utf8");
-        response.on("data", (chunk) => {
-          responseBody += chunk;
-        });
-        response.on("end", () => {
-          try {
-            resolve(JSON.parse(responseBody || "{}"));
-          } catch (error) {
-            reject(error);
-          }
-        });
-      }
-    );
-    request.on("error", reject);
-    request.write(body);
-    request.end();
-  });
+  return require("./http-client").requestJson(url, { body, agent: HTTPS_AGENT,
+    headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "user-agent": USER_AGENT } });
 }
 
 // --- SSRF guard for tarball downloads -------------------------------------
@@ -1241,48 +1234,7 @@ function postJson(url, payload) {
 // Node's WHATWG URL parser normalizes hex/octal/decimal IPv4 to dotted-quad, so
 // the numeric-host evasions (`http://0x08080808/`) are caught by these checks.
 
-function ipv4IsPrivate(host) {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (!m) return false;
-  const o = m.slice(1).map(Number);
-  if (o.some((n) => n > 255)) return false;
-  const [a, b, c] = o;
-  if (a === 0 || a === 10 || a === 127) return true;          // this-host / private / loopback
-  if (a === 169 && b === 254) return true;                    // link-local + cloud metadata
-  if (a === 172 && b >= 16 && b <= 31) return true;           // 172.16/12
-  if (a === 192 && b === 168) return true;                    // 192.168/16
-  if (a === 100 && b >= 64 && b <= 127) return true;          // CGNAT 100.64/10
-  if (a === 192 && b === 0 && c === 0) return true;           // 192.0.0/24
-  if (a === 198 && (b === 18 || b === 19)) return true;       // benchmarking 198.18/15
-  if (a >= 224) return true;                                  // multicast / reserved
-  return false;
-}
-
-function isPrivateOrLocalHost(hostname) {
-  const host = String(hostname || "").toLowerCase();
-  if (!host) return true;
-  if (host === "localhost" || host.endsWith(".localhost")) return true;
-  if (host.startsWith("[") && host.endsWith("]")) {
-    const v6 = host.slice(1, -1);
-    if (v6 === "::1" || v6 === "::") return true;
-    const mapped = /^::ffff:(.+)$/.exec(v6);
-    if (mapped) {
-      if (mapped[1].includes(".")) return ipv4IsPrivate(mapped[1]);
-      const hx = mapped[1].split(":");
-      if (hx.length === 2) {
-        const hi = parseInt(hx[0], 16);
-        const lo = parseInt(hx[1], 16);
-        if (Number.isFinite(hi) && Number.isFinite(lo)) {
-          return ipv4IsPrivate(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
-        }
-      }
-    }
-    if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true;   // fc00::/7 unique-local
-    if (/^fe[89ab][0-9a-f]:/.test(v6)) return true;   // fe80::/10 link-local
-    return false;
-  }
-  return ipv4IsPrivate(host);
-}
+const { isPrivateOrLocalHost, createUpstreamPolicy } = require("./cache-upstream-policy");
 
 // Build the allowlist of hosts a tarball may be served from. `PKGXRAY_TARBALL_HOSTS`
 // (comma-separated) extends it for registries that serve tarballs off-origin.
@@ -1340,84 +1292,25 @@ function assertDownloadHostAllowed(parsed, { allowedHosts, strictHosts, original
 }
 
 function downloadFile(url, destination, options = {}) {
-  const maxBytes = options.maxBytes || DEFAULT_DOWNLOAD_MAX_BYTES;
-  const maxRedirects = options.maxRedirects || DEFAULT_DOWNLOAD_MAX_REDIRECTS;
   const allowedHosts = options.allowedHosts || null;
   const strictHosts = Boolean(options.strictHosts);
-  const originalUrl = url;
-  const http = require("node:http");
-
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(destination, { mode: 0o600 });
-    let written = 0;
-    let settled = false;
-    const fail = (err) => {
-      if (settled) return;
-      settled = true;
-      file.destroy();
-      fs.unlink(destination, () => reject(err));
-    };
-    // Attach the error handler at creation, not inside the response callback: an
-    // open-time error (EACCES/ENOSPC) or a write-after-destroy race would
-    // otherwise be an unhandled 'error' event that crashes the process.
-    file.on("error", fail);
-    const succeed = () => {
-      if (settled) return;
-      settled = true;
-      file.close(() => resolve());
-    };
-
-    const get = (currentUrl, hops) => {
-      if (hops > maxRedirects) {
-        return fail(new Error(`Too many redirects from ${originalUrl}`));
-      }
-      let parsed;
-      try {
-        parsed = new URL(currentUrl);
-        assertDownloadHostAllowed(parsed, { allowedHosts, strictHosts, originalUrl });
-      } catch (err) {
-        return fail(err);
-      }
-      const client = parsed.protocol === "http:" ? http : https;
-      const request = client.get(
-        {
-          hostname: parsed.hostname,
-          port: parsed.port || (parsed.protocol === "http:" ? 80 : 443),
-          path: parsed.pathname + parsed.search,
-          headers: { "user-agent": USER_AGENT },
-          // Re-use the shared agent when downloading from https hosts so the
-          // npm metadata fetch and the tarball download share a TCP+TLS
-          // session. Plain http stays on the default agent.
-          agent: parsed.protocol === "https:" ? HTTPS_AGENT : undefined
-        },
-        (response) => {
-          if (
-            [301, 302, 303, 307, 308].includes(response.statusCode) &&
-            response.headers.location
-          ) {
-            response.resume();
-            return get(new URL(response.headers.location, currentUrl).toString(), hops + 1);
-          }
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            response.resume();
-            return fail(new Error(`HTTP ${response.statusCode} from ${currentUrl}`));
-          }
-          response.on("data", (chunk) => {
-            written += chunk.length;
-            if (written > maxBytes) {
-              response.destroy();
-              return fail(
-                new Error(`Download exceeded max size of ${maxBytes} bytes from ${originalUrl}`)
-              );
-            }
-          });
-          response.pipe(file);
-          file.on("finish", succeed);
-        }
-      );
-      request.on("error", fail);
-    };
-    get(url, 0);
+  // Registry/CDN names shipped by pkgxray are public-only. Other explicitly
+  // operator-approved registry hosts retain the existing private-registry opt-in.
+  const publicHosts = new Set(["registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
+    "codeload.github.com", "github.com", "objects.githubusercontent.com"]);
+  return require("./http-client").downloadFile(url, destination, {
+    headers: { "user-agent": USER_AGENT },
+    maxBytes: options.maxBytes || DEFAULT_DOWNLOAD_MAX_BYTES,
+    maxRedirects: options.maxRedirects ?? DEFAULT_DOWNLOAD_MAX_REDIRECTS,
+    timeoutMs: options.timeoutMs || 30000,
+    validate(value) {
+      const parsed = new URL(value);
+      assertDownloadHostAllowed(parsed, { allowedHosts, strictHosts, originalUrl: url });
+      const explicitlyPrivate = Boolean(allowedHosts &&
+        (allowedHosts.has(parsed.host.toLowerCase()) || allowedHosts.has(parsed.hostname.toLowerCase())) &&
+        !publicHosts.has(parsed.hostname.toLowerCase()));
+      return createUpstreamPolicy(parsed.origin, { allowPrivateUpstream: explicitlyPrivate })(parsed);
+    }
   });
 }
 
@@ -1425,7 +1318,7 @@ async function extractTarball(archivePath, destination, options = {}) {
   const maxBytes = options.maxTarballBytes || DEFAULT_TARBALL_MAX_BYTES;
   const maxEntries = options.maxTarballEntries || DEFAULT_TARBALL_MAX_ENTRIES;
 
-  const listing = await runCapture("tar", ["-tvzf", archivePath]);
+  const listing = await runCapture("tar", ["-tvzf", archivePath], { maxLines: maxEntries });
   const lines = listing.split("\n").filter((line) => line.trim().length > 0);
 
   validateTarListing(lines, maxBytes, maxEntries);
@@ -1437,6 +1330,26 @@ async function extractTarball(archivePath, destination, options = {}) {
     "--no-same-owner", "--no-same-permissions"
   ]);
   await normalizeTreePermissions(destination);
+  await validateExtractedTree(destination);
+}
+
+// Do not trust an archive listing as the final filesystem inventory. Never
+// follow links while checking what the extractor actually materialized.
+async function validateExtractedTree(root) {
+  const pending = [root];
+  let entries = 0;
+  for (let cursor = 0; cursor < pending.length; cursor++) {
+    for (const entry of await fsp.readdir(pending[cursor], { withFileTypes: true })) {
+      if (++entries > DEFAULT_TARBALL_MAX_ENTRIES) throw new Error("Tarball rejected: extracted entry limit exceeded");
+      assertNoControlChars(entry.name, "extracted entry name");
+      const full = path.join(pending[cursor], entry.name);
+      const stat = await fsp.lstat(full);
+      if (stat.isDirectory()) pending.push(full);
+      else if (!stat.isFile() || stat.nlink !== 1) {
+        throw new Error("Tarball rejected: extracted links and special files are unsupported");
+      }
+    }
+  }
 }
 
 // Normalize owner perms across an extracted tree so the scanner can always read
@@ -1474,20 +1387,10 @@ function validateTarListing(lines, maxBytes, maxEntries) {
     // a hidden entry we never validated. Reject fail-closed.
     assertNoControlChars(entry.path, "entry name");
     assertSafeTarPath(entry.path);
-    // Link entries: symlink (l) and hardlink (h). bsdtar prints a hardlink as
-    // "path link to <target>" (no " -> "), so relying on the arrow alone let
-    // hardlinks slip past target validation entirely. Any entry the parser
-    // flagged as a link MUST carry a target and be range-checked; a link entry
-    // with no parseable target is rejected rather than trusted.
-    if (entry.typeChar === "l" || entry.typeChar === "h") {
-      if (entry.linkTarget === null) {
-        throw new Error(`Tarball rejected: link entry with no parseable target: ${entry.path}`);
-      }
-      assertNoControlChars(entry.linkTarget, "link target");
-      assertSafeSymlinkTarget(entry.path, entry.linkTarget);
-    } else if (entry.linkTarget !== null) {
-      assertNoControlChars(entry.linkTarget, "link target");
-      assertSafeSymlinkTarget(entry.path, entry.linkTarget);
+    // Link semantics depend on stripping, archive order, and the extractor.
+    // Only regular files and directories enter quarantine on every platform.
+    if (!["-", "d"].includes(entry.typeChar) || entry.linkTarget !== null) {
+      throw new Error("Tarball rejected: links and special files are unsupported");
     }
     totalBytes += entry.size;
     if (totalBytes > maxBytes) {
@@ -1538,8 +1441,8 @@ function parseTarListingLine(line) {
   // Symlinks print as "path -> target"; bsdtar hardlinks print as
   // "path link to target" (no arrow). Parse BOTH so a hardlink carries a target
   // through to validation instead of being dropped/aborting on a bare `l`/`h`.
-  const arrowIdx = remainder.indexOf(" -> ");
-  const linkToIdx = remainder.indexOf(" link to ");
+  const arrowIdx = typeChar === "l" ? remainder.indexOf(" -> ") : -1;
+  const linkToIdx = typeChar === "h" ? remainder.indexOf(" link to ") : -1;
   if (arrowIdx !== -1) {
     entryPath = remainder.slice(0, arrowIdx);
     linkTarget = remainder.slice(arrowIdx + 4);
@@ -1588,6 +1491,8 @@ function assertSafeSymlinkTarget(entryPath, linkTarget) {
   if (/^[A-Za-z]:[\\/]/.test(linkTarget)) {
     throw new Error(`Tarball rejected: drive-letter link target: ${entryPath} -> ${linkTarget}`);
   }
+  // Accepts a destination-relative path, after prefix stripping. Archive
+  // extraction rejects all links before this helper is needed.
   const normalizedPath = entryPath.replace(/\\/g, "/");
   const normalizedTarget = linkTarget.replace(/\\/g, "/");
   const linkDir = path.posix.dirname(normalizedPath);
@@ -1598,39 +1503,12 @@ function assertSafeSymlinkTarget(entryPath, linkTarget) {
   }
 }
 
-function runCapture(command, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
-    });
-  });
+function runCapture(command, args, options) {
+  return require("./bounded-process").runCapture(command, args, options);
 }
 
 function run(command, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stderr = "";
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`${command} exited with ${code}: ${stderr.trim()}`));
-      }
-    });
-  });
+  return runCapture(command, args);
 }
 
 // Read up to `limit` bytes of a file for scanning. If the file is larger than
@@ -1659,93 +1537,86 @@ async function readBoundedForScan(fullPath, size, limit) {
 }
 
 async function collectSourceFiles(root, options = {}) {
+  return (await collectSourceEvidence(root, options)).sourceFiles;
+}
+
+async function collectSourceEvidence(root, options = {}) {
   const maxFiles = options.maxFiles || DEFAULT_MAX_FILES;
-  // Per-file read ceiling. maxFileBytes is honoured as a FLOOR on how much we
-  // read (never scan less than the caller's threshold), but oversized files are
-  // no longer dropped — we read up to SCAN_SLICE_BYTES (head+tail) of them.
-  const perFileScanBytes = Math.max(
-    options.maxFileBytes || DEFAULT_MAX_FILE_BYTES,
-    SCAN_SLICE_BYTES
-  );
+  const perFileScanBytes = Math.max(options.maxFileBytes || DEFAULT_MAX_FILE_BYTES, SCAN_SLICE_BYTES);
   const maxTotalScanBytes = options.maxTotalScanBytes || DEFAULT_MAX_TOTAL_SCAN_BYTES;
-  let totalScanBytes = 0;
-  const sourceFiles = {};
-  // Index cursor + manual counter so we don't pay O(n) per iteration on
-  // both queue.shift() and Object.keys(sourceFiles).length.
-  const queue = [root];
-  let cursor = 0;
-  let fileCount = 0;
-
-  while (cursor < queue.length && fileCount < maxFiles) {
-    const current = queue[cursor++];
-    const entries = await fsp.readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      const relativePath = path.relative(root, fullPath);
-
-      // SECURITY: explicitly reject symlinks and other non-regular entries.
-      // Even though copyLocalPath now filters them at staging time, this
-      // defends against a malicious tar that managed to slip a symlink past
-      // the tarball listing parser, and keeps the invariant local to the
-      // reader. `fsp.readFile` would follow a symlink and exfiltrate the
-      // target into the JSON report otherwise.
-      if (entry.isSymbolicLink()) {
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) {
-          queue.push(fullPath);
-        }
-        continue;
-      }
-
-      if (!entry.isFile()) {
-        continue;
-      }
-      let collectThisFile = looksTextLike(relativePath);
-      if (!collectThisFile && !entry.name.includes(".")) {
-        // Extensionless regular file (e.g. bare `install` / `preinstall` /
-        // `configure`): collect it only if it's a shebang script. These carry
-        // no text extension so looksTextLike skips them, yet a lifecycle hook
-        // can run them at install time. The peek is a bounded 2-byte read and
-        // only happens for the handful of extensionless files in a package.
-        collectThisFile = await startsWithShebang(fullPath);
-      }
-      if (!collectThisFile) {
-        continue;
-      }
-
-      // Use lstat (not stat) so a sneakily-replaced symlink between readdir
-      // and the read is still recognised — the stat would otherwise follow.
-      const stat = await fsp.lstat(fullPath);
-      if (!stat.isFile()) continue;
-
-      // Total-bytes budget: once the whole-package read budget is exhausted,
-      // record remaining files as skipped (fail-VISIBLE, so a reviewer knows
-      // coverage was capped) rather than silently dropping them.
-      if (totalScanBytes >= maxTotalScanBytes) {
-        sourceFiles[relativePath] = `[skipped: total scan budget of ${maxTotalScanBytes} bytes reached]`;
-        fileCount += 1;
-        if (fileCount >= maxFiles) break;
-        continue;
-      }
-
-      // Oversized files are NOT dropped: read a bounded head+tail slice so a
-      // payload padded past the per-file threshold still reaches the auditor.
-      const budgetRemaining = maxTotalScanBytes - totalScanBytes;
-      const readLimit = Math.min(perFileScanBytes, budgetRemaining);
-      const content = await readBoundedForScan(fullPath, stat.size, readLimit);
-      sourceFiles[relativePath] = content;
-      totalScanBytes += Buffer.byteLength(content, "utf8");
-      fileCount += 1;
-      if (fileCount >= maxFiles) {
+  const coverage = { complete: true, scannedFiles: 0, skippedFiles: 0, truncatedFiles: 0,
+    inventoryFiles: 0, runtimeFiles: [], reasons: [] };
+  const gaps = new Set();
+  const inventory = new Map();
+  const directories = [root];
+  let entriesSeen = 0;
+  for (let cursor = 0; cursor < directories.length; cursor += 1) {
+    for (const entry of await fsp.readdir(directories[cursor], { withFileTypes: true })) {
+      if (++entriesSeen > DEFAULT_TARBALL_MAX_ENTRIES) {
+        gaps.add("source inventory entry limit reached");
         break;
       }
+      const full = path.join(directories[cursor], entry.name);
+      if (entry.isDirectory() && !SKIP_DIRS.has(entry.name)) directories.push(full);
+      if (entry.isFile()) inventory.set(path.relative(root, full).replace(/\\/g, "/"), full);
+    }
+    if (entriesSeen > DEFAULT_TARBALL_MAX_ENTRIES) break;
+  }
+  coverage.inventoryFiles = inventory.size;
+  const plan = require("./source-plan").createSourcePlan(inventory);
+  const sourceFiles = Object.create(null);
+  const visited = new Set();
+  const pending = [...inventory.keys()].sort();
+  if (inventory.has("package.json")) pending.unshift("package.json");
+  let bytes = 0;
+  let cursor = 0;
+  const expanded = new Map();
+  // Required paths discovered while reading are handled before optional source.
+  while (true) {
+    for (const file of plan.required) {
+      const install = plan.installTime.has(file);
+      if (Object.hasOwn(sourceFiles, file) && expanded.get(file) !== install) {
+        expanded.set(file, install);
+        plan.imports(file, sourceFiles[file]);
+      }
+    }
+    if (cursor >= pending.length && ![...plan.required].some(p => !visited.has(p))) break;
+    const runtime = [...plan.required].find(p => !visited.has(p));
+    const relative = runtime || pending[cursor++];
+    if (!relative || visited.has(relative)) continue;
+    const full = inventory.get(relative);
+    const eligible = Boolean(runtime) || looksTextLike(relative) ||
+      (!path.basename(relative).includes(".") && await startsWithShebang(full));
+    // Optional non-source files remain available if a later import requires them.
+    if (!eligible) continue;
+    visited.add(relative);
+    const stat = await fsp.lstat(full);
+    if (!stat.isFile()) { gaps.add(`source changed during collection: ${relative}`); continue; }
+    if (coverage.scannedFiles >= maxFiles || bytes >= maxTotalScanBytes) {
+      coverage.skippedFiles += 1;
+      gaps.add(coverage.scannedFiles >= maxFiles ? `file limit (${maxFiles}) reached` : `scan byte limit (${maxTotalScanBytes}) reached`);
+      continue;
+    }
+    const limit = Math.min(perFileScanBytes, maxTotalScanBytes - bytes);
+    if (stat.size > limit) { coverage.truncatedFiles += 1; gaps.add("file content was truncated"); }
+    const content = await readBoundedForScan(full, stat.size, limit);
+    sourceFiles[relative] = content;
+    bytes += Buffer.byteLength(content);
+    coverage.scannedFiles += 1;
+    if (relative === "package.json") {
+      try { plan.manifest(JSON.parse(content)); }
+      catch { gaps.add("package manifest could not be resolved"); }
     }
   }
-
-  return sourceFiles;
+  for (const file of plan.required) {
+    if (!Object.hasOwn(sourceFiles, file)) gaps.add(`runtime file was not inspected: ${file}`);
+    else if (/\.(?:node|wasm)$/i.test(file) || sourceFiles[file].includes("\0")) gaps.add(`unsupported binary runtime file: ${file}`);
+  }
+  coverage.runtimeFiles = [...plan.required];
+  coverage.installTimeFiles = [...plan.installTime];
+  coverage.reasons = [...new Set([...gaps, ...plan.gaps])];
+  coverage.complete = coverage.reasons.length === 0;
+  return { sourceFiles, coverage };
 }
 
 function looksTextLike(filePath) {
@@ -1821,6 +1692,7 @@ module.exports = {
   parseReference,
   parseNpmSpecifier,
   collectSourceFiles,
+  collectSourceEvidence,
   scanDirectDependencies,
   queryOsvPackage,
   decisionForReport,
@@ -1830,6 +1702,7 @@ module.exports = {
   tarballHostAllowlist,
   // exported for tests: tarball listing validator + local extractor
   extractTarball,
+  validateExtractedTree,
   normalizeTreePermissions,
   parseTarListingLine,
   assertNoControlChars,

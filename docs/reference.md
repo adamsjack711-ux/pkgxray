@@ -158,7 +158,8 @@ any command with `--format json`. Top-level fields:
 ## Browser extension
 
 `browser-extension/` is a Chrome-compatible Manifest V3 unpacked extension that
-runs entirely locally and requests no browser permissions. Load it via
+runs entirely locally and requests no browser permissions. It scans pasted evidence
+with engine defaults; it cannot read `.pkgxray.json` or fetch and quarantine packages. Load it via
 `chrome://extensions` → Developer Mode → **Load unpacked** → select the folder.
 
 ---
@@ -184,3 +185,14 @@ interface with `--host 0.0.0.0` (or `PKGXRAY_CACHE_HOST`) as shown above.
 > **Trust model:** the cache is a transparent proxy, **not** an auth boundary —
 > no login or rate limit. Run it on a private network or behind a reverse proxy
 > that enforces your own auth. Never put it on a public network.
+
+
+### Exact npm archive scans
+
+`pkgxray guard npm:demo@1.0.0 --archive ./demo.tgz --integrity 'sha512-…' --format json --receipt-only` verifies the supplied compressed archive before extraction, checks the manifest name/version, and scans those bytes without resolving a replacement tarball from the registry. `--receipt-only` omits source contents from JSON; it does not skip analysis. Vulnerability checks still require OSV unless explicitly disabled, and the receipt records disabled checks.
+
+The `approval` record includes `artifactSha256`, `name`, `version`, `scannerBuildId`, `policySha256`, `checks`, `sourceComplete`, `decision` and `issuedAt`. Consumers must validate all required fields and completion states, not merely the presence of a receipt. Receipts are unsigned local records, not remote attestations.
+
+Npm package-lock/shrinkwrap deep scans retain and verify the locked URL and SRI digest. Missing or conflicting identities remain REVIEW. Other npm manifest/lock formats currently lack this binding and therefore cannot receive a successful deep artifact approval; their version-based vulnerability audit still works. PyPI deep scans do not yet bind to lockfile artifact hashes.
+
+The example proxy scans and serves the same held archive and requires completed source/vulnerability checks. Use [`pkgxray install`](enforced-install.md) to install a supported npm lockfile from approved local archives. The install hook remains a preflight assessment: it does not force npm to consume an approved snapshot, prevent direct-registry bypasses, or cover install-time downloads. See `examples/pkgxray-proxy/README.md` for enforcement boundaries.

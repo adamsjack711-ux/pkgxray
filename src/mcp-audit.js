@@ -52,13 +52,41 @@ function safeToolSlug(name, taken) {
   return slug;
 }
 
+function structuredTextValues(value) {
+  const values = [];
+  const pending = [value];
+  let visited = 0;
+  while (pending.length && visited++ < 10000) {
+    const current = pending.pop();
+    if (typeof current === "string") values.push(current);
+    else if (current && typeof current === "object") {
+      if (!Array.isArray(current)) values.push(...Object.keys(current));
+      pending.push(...Object.values(current));
+    }
+  }
+  return values;
+}
+
+function appendStructuredField(lines, title, value) {
+  if (!value) return;
+  // JSON quotes are structural here, but the generic documentation scanner
+  // treats quoted injection phrases as examples. Put model-visible string
+  // values in bare text first so schema/annotation instructions keep their
+  // real severity, then retain the JSON for human evidence.
+  const text = structuredTextValues(value);
+  if (text.length) lines.push(`## ${title} text`, "", ...text, "");
+  lines.push(`## ${title}`, "", JSON.stringify(value, null, 2), "");
+}
+
 function toolDocument(tool) {
   const lines = [`# Tool: ${tool.name}`, ""];
   if (tool.title) lines.push(tool.title, "");
   lines.push("## Description", "", tool.description || "(none)", "");
-  if (tool.inputSchema) {
-    lines.push("## Input schema", "", JSON.stringify(tool.inputSchema, null, 2), "");
-  }
+  appendStructuredField(lines, "Input schema", tool.inputSchema);
+  appendStructuredField(lines, "Output schema", tool.outputSchema);
+  appendStructuredField(lines, "Annotations", tool.annotations);
+  appendStructuredField(lines, "Icons", tool.icons);
+  appendStructuredField(lines, "Metadata", tool._meta);
   return lines.join("\n");
 }
 

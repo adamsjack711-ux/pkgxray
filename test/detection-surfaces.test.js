@@ -431,14 +431,15 @@ test("F1 split .ssh path in a >100KB file still blocks (windowed normalization)"
   assert.equal(findingFor(report, "credential-access").severity, "high");
 });
 
-test("F1 huge minified bundle of concats does not hang and stays safe", () => {
+test("F1 huge minified bundle of concats does not hang and reports its analysis limit", () => {
   const chunk = 'var a="x"+"y"+"z";'.repeat(200000); // ~3.6MB
   const started = Date.now();
   const report = auditEvidence({
     sourceFiles: { "package.json": cleanPkg({ main: "index.js" }), "bundle.js": chunk }
   });
   assert.ok(Date.now() - started < 5000, "windowed normalization must not hang");
-  assert.equal(report.verdict, "safe");
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some(f => f.category === "flow-analysis-gap"));
 });
 
 // --- #F2 base64-decoded credential path folded ------------------------------

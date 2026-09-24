@@ -13,9 +13,9 @@ name: release
 # test characters live in the detector definitions), so a static source scan of
 # the scanner necessarily flags itself. That layer is instead exercised, against
 # controlled inputs, by `node --test` and `node benchmark/run.js` above. The
-# self-guard here proves the part that actually matters for a release: no known
-# vulnerability (OSV), and — post-publish — valid provenance and npm↔GitHub
-# source parity.
+# self-guard requires a completed clean OSV check. Post-publish verification
+# also binds the published archive to the exact validated digest. This does
+# not cryptographically verify npm provenance or prove source parity.
 
 on:
   release:
@@ -29,64 +29,86 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for npm provenance (OIDC)
 
 jobs:
-  release:
+  validate:
     runs-on: ubuntu-latest
+    outputs:
+      archive-sha256: ${{ steps.digest.outputs.sha256 }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-
-      # 1. Correctness gate — zero runtime deps, nothing to install.
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
       - name: Tests
-        run: node --test
-
-      # 2. Calibration gate — false-block / missed-detection invariants.
-      - name: Calibration benchmark
-        run: node ./benchmark/run.js
-
-      # 3. Pre-publish self-guard — build exactly what ships and run the
-      #    supply-chain layer over it. Fails the release only on a BLOCK
-      #    (exit 2, e.g. a known vulnerability); a REVIEW (exit 3, e.g. a
-      #    transient OSV error, or no provenance yet on the local tree) is
-      #    logged but tolerated.
-      - name: Pack the publishable artifact
+        run: npm test
+      - name: Calibration and adversarial regression gates
         run: |
-          mkdir -p ./.pack
-          npm pack --pack-destination ./.pack
-
+          node benchmark/run.js
+          node benchmark/adversarial/run.js --check-baseline
+          node benchmark/adversarial/run.js --holdout --check-baseline
+      - name: Pack without lifecycle scripts
+        run: |
+          mkdir -p .pack
+          npm pack --ignore-scripts --pack-destination .pack
+          mv .pack/pkgxray-*.tgz .pack/package.tgz
       - name: Self-guard (supply-chain layer)
+        run: node scripts/verify-release.js archive .pack/package.tgz
+      - name: Record checked archive digest
+        id: digest
         run: |
-          set -o pipefail
-          tar xzf ./.pack/*.tgz -C ./.pack
-          node bin/audit.js guard ./.pack/package --no-source-scan || rc=$?
-          rc=${rc:-0}
-          echo "self-guard exit code: $rc"
-          if [ "$rc" = "2" ]; then
-            echo "::error::pkgxray self-guard BLOCKED the release artifact"
-            exit 1
-          fi
-          echo "self-guard passed (block-gate clear)"
+          digest="$(sha256sum .pack/package.tgz | cut -d ' ' -f 1)"
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-release
+          path: .pack/package.tgz
+          if-no-files-found: error
+          retention-days: 7
 
-      # 4. Publish with provenance (the SLSA/npm attestation — the core proof).
-      - name: Publish to npm with provenance
-        if: github.event_name == 'release' || inputs.dry_run == false
-        run: npm publish --provenance --access public
+  publish:
+    needs: validate
+    if: github.event_name == 'release' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # No checkout or repository code executes in the credentialed job.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-release
+          path: release
+      - name: Verify and publish the checked archive
         env:
+          EXPECTED_SHA256: ${{ needs.validate.outputs.archive-sha256 }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # 5. Post-publish smoke test — the published artifact must vet clean on the
-      #    supply-chain layer (valid provenance now exists, source parity with the
-      #    tagged commit). Informational: never blocks a release that already shipped.
-      - name: Verify published artifact
-        if: github.event_name == 'release' || inputs.dry_run == false
-        continue-on-error: true
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          echo "verifying npm:pkgxray@${VERSION}"
-          node bin/audit.js guard "npm:pkgxray@${VERSION}" --no-source-scan
+          set -euo pipefail
+          [[ "$EXPECTED_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s  release/package.tgz\n' "$EXPECTED_SHA256" | sha256sum --check --strict
+          npm publish ./release/package.tgz --ignore-scripts --provenance --access public --registry=https://registry.npmjs.org
+
+  verify:
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+      - name: Verify published artifact
+        env:
+          EXPECTED_SHA256: ${{ needs.validate.outputs.archive-sha256 }}
+        run: |
+          node scripts/verify-release.js published "$EXPECTED_SHA256"

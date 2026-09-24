@@ -22,27 +22,8 @@ function packumentUrl(name, registry) {
 }
 
 function fetchJson(url) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, { headers: { "user-agent": "pkgxray", accept: "application/json" }, agent: REGISTRY_AGENT }, (res) => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          res.resume();
-          const err = new Error(`HTTP ${res.statusCode} from ${url}`);
-          err.statusCode = res.statusCode;
-          return reject(err);
-        }
-        let buf = "";
-        res.setEncoding("utf8");
-        res.on("data", (c) => (buf += c));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(buf));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      })
-      .on("error", reject);
+  return require("./http-client").requestJson(url, {
+    headers: { "user-agent": "pkgxray", accept: "application/json" }, agent: REGISTRY_AGENT
   });
 }
 

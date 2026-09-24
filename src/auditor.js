@@ -1,5 +1,8 @@
 "use strict";
 
+const { sensitiveFlowHints } = require("./sensitive-flows");
+const { createFlowAnalysis } = require("./flow-analysis");
+const { createExecutionGraph } = require("./execution-graph");
 const { compareProvenanceToRepository } = require("./attestation");
 
 const VERDICT_ORDER = {
@@ -640,6 +643,8 @@ function normalizeEvidence(input) {
     sourceFiles: normalizeSourceFiles(
       evidence.sourceFiles || evidence.SOURCE_FILES || evidence.files || {}
     ),
+    sourceCoverage: evidence.sourceCoverage || null,
+    dependencyAudit: evidence.dependencyAudit || null,
     npmVsGithubDiff: evidence.npmVsGithubDiff || null,
     provenanceAttestation: evidence.provenanceAttestation || null,
     // Per-input opt-in for the typosquat heuristic (raw-evidence callers); the
@@ -793,6 +798,26 @@ function auditEvidence(input, options = {}) {
     });
   }
 
+  if (evidence.sourceCoverage && evidence.sourceCoverage.complete === false) {
+    findings.push({ severity: "medium", category: "incomplete-source-scan", file: "SOURCE_FILES",
+      snippet: (evidence.sourceCoverage.reasons || []).join("; "),
+      rationale: "Source inspection did not cover all requested code; unread bytes cannot be cleared." });
+  }
+  if (evidence.dependencyAudit) {
+    const deps = evidence.dependencyAudit;
+    for (const dep of deps.flagged || []) {
+      for (const vulnerability of dep.vulnerabilities || []) {
+        findings.push({ severity: "high", category: "known-vulnerability", file: "package.json",
+          snippet: clip(`${dep.name}@${dep.version}: ${vulnerability.id}`),
+          rationale: "A requested direct-dependency check found a published vulnerability." });
+      }
+    }
+    if (deps.complete === false || deps.error) {
+      findings.push({ severity: "medium", category: "incomplete-dependency-scan", file: "package.json",
+        snippet: clip(deps.error || "Some direct dependencies could not be resolved to exact registry versions."),
+        rationale: "The requested dependency check did not cover every declared direct dependency." });
+    }
+  }
   const verdict = decideVerdict(findings, evidence);
   const grading = gradeEvidence(findings, evidence);
   const riskBands = computeRiskBands(findings);
@@ -814,6 +839,8 @@ function auditEvidence(input, options = {}) {
 // "review because: lifecycle-script + dynamic-eval" instead of dumping the
 // raw category list.
 const BAND_DEFINITIONS = [
+  { band: 'hidden-local-loader', label: 'hidden-local-loader', categories: ['hidden-local-loader'], rationale: 'A concealed local Node subprocess reaches a specific file with corroborating loader or sensitive-behavior evidence.' },
+  { band: 'structural-obfuscation', label: 'structural-obfuscation', categories: ['structural-obfuscation'], rationale: 'A runtime string-table loader conceals computed module loads through rotation or flattened control flow.' },
   { band: "prompt-injection", label: "prompt-injection", categories: ["injection-attempt"], rationale: "README/docs contain text aimed at instructing an LLM auditor." },
   { band: "credential-access", label: "credential-access", categories: ["credential-access"], rationale: "Reads a path to a credential / wallet / key store near a filesystem read." },
   { band: "persistence", label: "persistence", categories: ["persistence"], rationale: "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run key." },
@@ -839,7 +866,8 @@ const BAND_DEFINITIONS = [
   { band: "dynamic-require", label: "dynamic-require", categories: ["dynamic-require"], rationale: "Loads a module by a computed (non-literal) name — can hide a network / exec sink from static analysis." },
   { band: "bulk-env", label: "bulk-env-access", categories: ["environment-access"], rationale: "Reads the entire process environment in bulk; risky paired with network." },
   { band: "clipboard", label: "clipboard-access", categories: ["data-access"], rationale: "Reads or writes the system clipboard — can expose copied secrets." },
-  { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
+  { band: "behavioral-coverage", label: "behavioral-coverage", categories: ["unsupported-behavior", "flow-analysis-gap", "unresolved-runtime-execution"], rationale: "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage." },
+  { band: "incomplete-evidence", label: "incomplete-evidence", categories: ["missing-evidence", "missing-package-json", "package-metadata", "incomplete-source-scan", "incomplete-dependency-scan"], rationale: "Source or package.json was missing or unparseable — cannot rule the package safe." },
   { band: "vulnerability-data-unavailable", label: "vulnerability-data-unavailable", categories: ["vulnerability-data-unavailable"], rationale: "The OSV vulnerability database could not be reached, so published CVEs were not checked. Static analysis still ran — only this dimension is missing." },
   { band: "missing-metadata", label: "missing-metadata", categories: ["missing-metadata", "supply-chain-signal", "github-fetch"], rationale: "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped." },
   { band: "metadata-mimicry", label: "metadata-mimicry", categories: ["metadata-mimicry"], rationale: "Publishes under a name that disagrees with its declared repository while running a consumer install hook. Ordinary for monorepos and multi-artifact repos; also how a typosquat borrows a trusted project's identity. Evidence only — it never changes a verdict." },
@@ -1557,11 +1585,33 @@ function auditFiles(files, findings, evidence) {
   // even if it sits under test/ or examples/. An attacker could hide a payload
   // in `examples/x.js` and wire `postinstall: node examples/x.js`; that file
   // must never get the test-file downgrade or the doc skip below.
-  const {
+  let {
     all: runtimePaths,
     lifecycle: lifecyclePaths,
     installTime: installTimePaths
   } = collectLifecycleReferencedPaths(files);
+
+  for (const file of (evidence.sourceCoverage && evidence.sourceCoverage.runtimeFiles) || []) runtimePaths.add(normalizeRelPath(file));
+  for (const file of (evidence.sourceCoverage && evidence.sourceCoverage.installTimeFiles) || []) {
+    lifecyclePaths.add(normalizeRelPath(file));
+    installTimePaths.add(normalizeRelPath(file));
+  }
+
+  const executionGraph = createExecutionGraph(files, runtimePaths, installTimePaths, lifecyclePaths);
+  runtimePaths = executionGraph.runtime;
+  lifecyclePaths = executionGraph.lifecycle;
+  installTimePaths = executionGraph.installTime;
+  for (const gap of executionGraph.gaps) {
+    findings.push({ severity: 'medium', category: 'unresolved-runtime-execution', file: gap.file,
+      snippet: clipAround(files.find(f => f.path === gap.file)?.content || '', gap.index),
+      rationale: `Runtime execution coverage is incomplete: ${gap.reason}.` });
+  }
+  for (const [file, facts] of executionGraph.facts) {
+    if (!facts.structure) continue;
+    findings.push({ severity: 'medium', category: 'structural-obfuscation', file,
+      snippet: clip(`${file}: rotated/flattened string table with ${facts.structure.dynamicLoads} computed module load(s)`),
+      rationale: 'Runtime code combines a string table, rotation or flattened control flow, and computed module loading. This conceals capabilities; minification alone does not trigger this finding.' });
+  }
 
   // Install-time / auto-execution SURFACES (native build manifests, agent
   // hooks, IDE folderOpen tasks). These are config/build files, scanned once
@@ -1583,8 +1633,15 @@ function auditFiles(files, findings, evidence) {
   // Package-level signals for cross-file correlation (gap: a payload split so
   // env-harvest lives in one file and the exfil destination in another, dodging
   // the same-file co-location checks).
+  const flowAnalysis = createFlowAnalysis(files);
   const envHarvestFiles = [];
   const exfilDomainFiles = [];
+  const pythonModules = files.filter(file => /\.(?:py|pyx|pxi)$/i.test(file.path));
+  if (pythonModules.length) {
+    findings.push({ severity: "medium", category: "unsupported-behavior", file: pythonModules[0].path,
+      snippet: `${pythonModules.length} Python source file(s) require behavioral review`,
+      rationale: "Python module behavior is not modeled. Manifest, vulnerability and text checks cannot establish behavioral safety, including import-time execution." });
+  }
 
   for (const file of files) {
     const isRuntimeReferenced = runtimePaths.has(normalizeRelPath(file.path));
@@ -1681,6 +1738,19 @@ function auditFiles(files, findings, evidence) {
     inspectHiddenNodeExec(file, content, findings, normalized, normChanged);
     inspectOnChainLoader(file, content, findings, normalized, normChanged);
     inspectCapabilities(file, content, findings);
+    for (const hint of sensitiveFlowHints(content, { analysis: flowAnalysis.analyze(file.path), filePath: file.path, runtimeReferenced: isRuntimeReferenced })) {
+      findings.push({ severity: "medium", category: hint.kind, file: file.path,
+        snippet: clipAround(content, hint.index),
+        rationale: hint.kind === "credential-export"
+          ? "A modeled outbound call contains a credential environment value or an environment alias. Review the destination and purpose; legitimate authentication can have this shape."
+          : hint.kind === "flow-analysis-gap"
+          ? `Sensitive-flow analysis is incomplete: ${hint.reason}${hint.nodeType ? ` (${hint.nodeType})` : ''}. The cited location requires review.`
+          : hint.kind === "credential-file-upload"
+          ? "A curl file-upload argument names a credential file. Review the destination and purpose."
+          : hint.kind === "remote-code-import"
+          ? "A dynamic import receives a value derived from a remote fetch. Review whether downloaded source is executed."
+          : "A VM execution call contains a remote fetch. Review whether fetched text is executed as code." });
+    }
   }
 
   inspectCrossFileExfil(envHarvestFiles, exfilDomainFiles, findings);
@@ -1737,6 +1807,24 @@ function auditFiles(files, findings, evidence) {
 
   // keepHighInTests is an internal routing flag — don't leak it into the report.
   for (const finding of findings) delete finding.keepHighInTests;
+
+  // This correlation is based on an actual resolved execution edge, not on
+  // same-file proximity. Consequently the dist/test co-location downgrades do
+  // not weaken it. A normal detached worker without target evidence stays clear.
+  const targetSignals = new Set(['structural-obfuscation', 'obfuscation', 'network-exfil-or-loader',
+    'onchain-c2-loader', 'credential-access', 'agent-config-access', 'remote-code-load',
+    'self-deleting-dropper', 'persistence']);
+  for (const edge of executionGraph.edges) {
+    if (!edge.hidden || !edge.resolved) continue;
+    const signals = [...new Set(findings.filter(f => f.file === edge.target &&
+      ['medium', 'high'].includes(f.severity) && targetSignals.has(f.category)).map(f => f.category))];
+    if (!signals.length) continue;
+    findings.push({ severity: 'high', category: 'hidden-local-loader', file: edge.file,
+      relatedFiles: [edge.target],
+      snippet: clip(`${edge.file} -> ${edge.target} (${edge.flags.join(', ')})`),
+      rationale: `Runtime code starts a concealed local Node process (${edge.flags.join(', ')}). Its resolved target ${edge.target} carries ${signals.join(', ')} evidence.`,
+      execution: { target: edge.target, method: edge.method, index: edge.index, flags: edge.flags, signals } });
+  }
 }
 
 // Cross-file split-exfil: bulk environment harvest in one file plus a known
@@ -1861,8 +1949,10 @@ function collectLifecycleReferencedPaths(files) {
     }
     const entryStrings = [];
     collectEntryStrings(pkg.json.main, entryStrings);
+    collectEntryStrings(pkg.json.module, entryStrings);
     collectEntryStrings(pkg.json.bin, entryStrings);
     collectEntryStrings(pkg.json.exports, entryStrings);
+    if (!pkg.json.main && !pkg.json.exports && fileIndex.has('index.js')) entrySeeds.push('index.js');
     for (const raw of entryStrings) {
       const resolved = resolveRelativeSpec("./", raw.replace(/^\.?\//, "./"), fileIndex);
       if (resolved) entrySeeds.push(resolved);
@@ -2765,6 +2855,16 @@ const BUFFER_FROM_BASE64_RE =
 const ATOB_RE = /\batob\s*\(\s*(['"])((?:\\.|(?!\1)[^\\\r\n])*)\1\s*\)/g;
 const BASE64_LITERAL_RE = /^[A-Za-z0-9+/\s]*={0,2}$/;
 
+// Decode UTF-8 identically in Node and the permission-free browser bundle.
+function base64Utf8(value) {
+  if (typeof Buffer !== "undefined") return Buffer.from(value, "base64").toString("utf8");
+  let compact = value.replace(/\s+/g, "").replace(/=+$/, "");
+  // Buffer ignores a trailing partial sextet; match that behavior in atob.
+  if (compact.length % 4 === 1) compact = compact.slice(0, -1);
+  const bytes = Uint8Array.from(atob(compact), c => c.charCodeAt(0));
+  return new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+}
+
 function decodeBase64Literal(body) {
   // Only decode things that look like base64; strip incidental whitespace/
   // newlines a wrapped literal might carry. Reject non-text output (binary
@@ -2774,7 +2874,7 @@ function decodeBase64Literal(body) {
   if (cleaned.length < 4) return null;
   let decoded;
   try {
-    decoded = Buffer.from(cleaned, "base64").toString("utf8");
+    decoded = base64Utf8(cleaned);
   } catch {
     return null;
   }
@@ -3468,7 +3568,7 @@ function decodeBase64Texts(text) {
     n++;
     let decoded;
     try {
-      decoded = Buffer.from(compact, "base64").toString("utf8");
+      decoded = base64Utf8(compact);
     } catch {
       continue;
     }
@@ -4187,7 +4287,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, ["install-hook", "native-build", "agent-hook"], 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader", "self-deleting-dropper"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader", "self-deleting-dropper", "hidden-local-loader"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "agent-config-access", "environment-access", "data-access", "cloud-metadata-access"],
@@ -4199,7 +4299,7 @@ function gradeEvidence(findings, evidence) {
       0.15
     ),
     persistence: scoreParameter(findings, ["persistence", "ci-workflow-injection", "registry-self-publish"], 0.1),
-    obfuscation: scoreParameter(findings, ["obfuscation", "obfuscated-token", "hidden-unicode"], 0.1),
+    obfuscation: scoreParameter(findings, ["obfuscation", "obfuscated-token", "hidden-unicode", "structural-obfuscation"], 0.1),
     knownVulnerabilities: scoreParameter(findings, "known-vulnerability", 0.15),
     provenance: scoreParameter(
       findings,

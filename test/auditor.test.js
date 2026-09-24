@@ -734,7 +734,8 @@ test("F2: static literal require/import does not trip dynamic-require", () => {
         name: "static-requires",
         repository: "https://github.com/example/x"
       }),
-      "index.js": "const fs = require('fs');\nconst local = require('./local');\nmodule.exports = local;"
+      "index.js": "const fs = require('fs');\nconst local = require('./local');\nmodule.exports = local;",
+      "local.js": "module.exports = 42;"
     }
   });
   assert.equal(report.verdict, "safe");
