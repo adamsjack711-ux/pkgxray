@@ -18,6 +18,12 @@ name: release
 # not cryptographically verify npm provenance or prove source parity.
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "scripts/verify-release.js"
+      - "package.json"
+      - "server.json"
   release:
     types: [published]
   workflow_dispatch:
@@ -44,6 +50,10 @@ jobs:
           node-version: "22"
       - name: Tests
         run: npm test
+      - name: Documentation and website checks
+        run: |
+          npm run test:docs
+          npm run validate:website
       - name: Calibration and adversarial regression gates
         run: |
           node benchmark/run.js
@@ -68,9 +78,25 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
+  verify-transfer:
     needs: validate
-    if: github.event_name == 'release' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-release
+          path: release
+      - name: Verify artifact transfer (including dry runs)
+        env:
+          EXPECTED_SHA256: ${{ needs.validate.outputs.archive-sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s  release/package.tgz\n' "$EXPECTED_SHA256" | sha256sum --check --strict
+
+  publish:
+    needs: [validate, verify-transfer]
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
     runs-on: ubuntu-latest
     permissions:
       contents: read

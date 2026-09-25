@@ -56,7 +56,11 @@ test('real OS sandbox blocks private files, symlink escapes, writes and network 
     req.on('error',()=>{result.network=false;console.log(JSON.stringify(result))});
     req.setTimeout(1000,()=>req.destroy());
   `);
-  const launch = prepareMcpSandbox(process.execPath, [script], scrubbedEnv(), { sandbox: true, cwd: project, sandboxWrite: [grant] });
+  const launch = prepareMcpSandbox(process.execPath, [script], scrubbedEnv(), {
+    sandbox: true, cwd: project, sandboxWrite: [grant],
+    // setup-node installs outside the ambient OS roots on hosted runners.
+    sandboxRead: [fs.realpathSync(process.execPath)]
+  });
   t.after(launch.cleanup);
   const result = await run(launch);
   assert.equal(result.code, 0, result.stderr);

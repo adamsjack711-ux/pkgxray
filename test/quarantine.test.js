@@ -288,6 +288,16 @@ test("collects an extensionless shebang script (bare install hook) but not a pla
 const { assertNoControlChars, assertSafeSymlinkTarget, validateTarListing } = require("../src/quarantine");
 const BIG = 256 * 1024 * 1024;
 
+test("tar listing accepts Windows line endings without trimming filename bytes", () => {
+  const { splitTarListing } = require("../src/quarantine");
+  const line = "-rw-r--r--  0 user group   12 Jan  1  2020 package/index.js ";
+  assert.deepEqual(splitTarListing(line + "\r\n", "win32"), [line]);
+  assert.deepEqual(splitTarListing(line + "\n", "win32"), [line]);
+  assert.doesNotThrow(() => validateTarListing(splitTarListing(line + "\r\n", "win32"), BIG, 20000));
+  assert.throws(() => validateTarListing(splitTarListing(line + "\r\n", "linux"), BIG, 20000), /control character/);
+  assert.throws(() => validateTarListing(splitTarListing(line + "\r\r\n", "win32"), BIG, 20000), /control character/);
+});
+
 test("parseTarListingLine parses a bsdtar hardlink 'link to' target with type char h", () => {
   // bsdtar prints hardlinks as "path link to <target>" (NO " -> " arrow) with
   // type char 'h'. Relying on the arrow alone let hardlinks skip target
