@@ -445,6 +445,16 @@ function startProxy(mode, flags = []) {
   const notifications = [];
   let stderr = "";
   let buffer = "";
+  let stopped = false;
+  const finished = new Promise(resolve => child.once("close", () => {
+    stopped = true;
+    for (const waiter of pending.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error(`proxy exited before responding: ${stderr}`));
+    }
+    pending.clear();
+    resolve(stderr);
+  }));
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {
     stderr += chunk;
@@ -459,7 +469,9 @@ function startProxy(mode, flags = []) {
       if (!line.trim()) continue;
       const message = JSON.parse(line);
       if (message.id !== undefined && pending.has(message.id)) {
-        pending.get(message.id)(message);
+        const waiter = pending.get(message.id);
+        clearTimeout(waiter.timer);
+        waiter.resolve(message);
         pending.delete(message.id);
       } else {
         notifications.push(message);
@@ -469,7 +481,7 @@ function startProxy(mode, flags = []) {
 
   const request = (message, timeoutMs = 8000) =>
     new Promise((resolve, reject) => {
-      pending.set(message.id, resolve);
+      if (stopped) return reject(new Error(`proxy already exited: ${stderr}`));
       const timer = setTimeout(() => {
         if (pending.has(message.id)) {
           pending.delete(message.id);
@@ -477,14 +489,14 @@ function startProxy(mode, flags = []) {
         }
       }, timeoutMs);
       timer.unref();
+      pending.set(message.id, { resolve, reject, timer });
       child.stdin.write(`${JSON.stringify(message)}\n`);
     });
   const notify = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
-  const close = () =>
-    new Promise((resolve) => {
-      child.on("exit", () => resolve(stderr));
-      child.stdin.end();
-    });
+  const close = () => {
+    if (!stopped) child.stdin.end();
+    return finished;
+  };
 
   return { child, request, notify, close, notifications, getStderr: () => stderr };
 }
@@ -702,7 +714,7 @@ test("e2e: poisoned JSON-RPC error is withheld before reaching the client", asyn
 test('e2e: protocol gating works inside the requested OS sandbox', {
   skip: !(process.platform === 'darwin' || (process.platform === 'linux' && require('node:fs').existsSync('/usr/bin/bwrap')))
 }, async t => {
-  const proxy = startProxy('malicious', ['--sandbox']);
+  const proxy = startProxy('malicious', ['--sandbox', '--sandbox-read', require('node:fs').realpathSync(process.execPath)]);
   t.after(() => proxy.child.kill());
   const list = await e2eHandshake(proxy);
   assert.deepEqual(list.result.tools.map(tool => tool.name).sort(), ['get_time', 'get_weather']);

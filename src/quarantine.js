@@ -1319,7 +1319,7 @@ async function extractTarball(archivePath, destination, options = {}) {
   const maxEntries = options.maxTarballEntries || DEFAULT_TARBALL_MAX_ENTRIES;
 
   const listing = await runCapture("tar", ["-tvzf", archivePath], { maxLines: maxEntries });
-  const lines = listing.split("\n").filter((line) => line.trim().length > 0);
+  const lines = splitTarListing(listing);
 
   validateTarListing(lines, maxBytes, maxEntries);
 
@@ -1331,6 +1331,13 @@ async function extractTarball(archivePath, destination, options = {}) {
   ]);
   await normalizeTreePermissions(destination);
   await validateExtractedTree(destination);
+}
+
+function splitTarListing(listing, platform = process.platform) {
+  // Native Windows tar emits CRLF. Remove only its line terminator; retain
+  // embedded controls and all POSIX filename bytes for validation below.
+  return listing.split(platform === "win32" ? /\r?\n/ : "\n")
+    .filter(line => line.trim().length > 0);
 }
 
 // Do not trust an archive listing as the final filesystem inventory. Never
@@ -1702,6 +1709,7 @@ module.exports = {
   tarballHostAllowlist,
   // exported for tests: tarball listing validator + local extractor
   extractTarball,
+  splitTarListing,
   validateExtractedTree,
   normalizeTreePermissions,
   parseTarListingLine,

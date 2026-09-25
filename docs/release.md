@@ -56,7 +56,9 @@ OIDC permission. It runs tests and both adversarial baseline gates, packs with
 `publish` job has no checkout and executes no package scripts. It downloads the
 archive from the same workflow run, verifies that digest, and publishes that
 exact tarball with `--ignore-scripts --provenance`. Post-publish artifact checks
-run in a third job without publishing credentials.
+run in a separate job without publishing credentials. Release-related PRs and
+dry runs also download the uploaded archive in `verify-transfer` and compare
+its SHA-256 before the publish job can run.
 
 GitHub actions are pinned to commit IDs. Artifact transfer uses the immutable
 [GitHub artifact mechanism](https://github.com/actions/upload-artifact), and
@@ -70,7 +72,8 @@ scanner itself. An advisory outage or any other medium/high review finding
 fails validation. The post-publish check is mandatory and compares downloaded
 archive bytes with the validated SHA-256. Neither check cryptographically
 verifies provenance or establishes npm/GitHub source parity; those remain
-separate maintainer checks. Dry-run mode validates and uploads without publishing.
+separate maintainer checks. Dry-run mode validates, uploads and verifies artifact
+transfer without publishing. Pull-request events cannot enter the publish job.
 
 ## Supported releases
 
