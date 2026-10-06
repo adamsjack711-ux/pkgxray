@@ -39,8 +39,8 @@ test('numeric CLI options reject zero, fractions, NaN, and infinity', () => {
 });
 
 test('default inputs match the pinned npm calibration and separate PyPI outputs', () => {
-  assert.match(options().list, /calibration-2026-07-19\/top1000-targets\.txt$/);
-  assert.match(parseArgs(argv('--ecosystem', 'pypi')).outDir, /results\/pypi$/);
+  assert.equal(options().list, path.resolve(__dirname, '../validation/calibration-2026-07-19/top1000-targets.txt'));
+  assert.equal(parseArgs(argv('--ecosystem', 'pypi')).outDir, path.resolve(__dirname, '../validation/results/pypi'));
 });
 
 test('completion gate rejects empty, all-error, partial, and over-10% error runs', () => {
