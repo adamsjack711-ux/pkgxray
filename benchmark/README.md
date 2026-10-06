@@ -1,12 +1,13 @@
 # pkgxray calibration benchmark
 
-For the broader challenge and its **unresolved misses and false reviews**, see [adversarial results](adversarial/README.md). Calibration performance below describes these 70 fixtures, not real-world detection accuracy.
+For the broader challenge, retained historical misses, and current review burden,
+see [adversarial results](adversarial/README.md). Calibration performance describes
+the committed corpus (72 fixtures as of October 5), not real-world detection accuracy.
 
 A committed corpus of **labelled fixtures** run through the real static engine
 (`auditEvidence` — no network, no execution) to make pkgxray's calibration
-claims reproducible and regression-gated. This is what turns "validated with 0
-false blocks" from a sentence in the README into a check that fails CI the day
-it stops being true.
+fixture results reproducible and regression-gated. It does not rerun the
+historical top-1000 registry validation or establish registry-wide accuracy.
 
 ```bash
 npm run benchmark            # human report; exit 1 on a hard failure
@@ -26,7 +27,9 @@ the outcome:
 | `FALSE_BLOCK` | benign (`safe`/`review`) fixture came back `block` | **hard fail** |
 | `MISS` | malicious (`block`) fixture came back `safe` | **hard fail** |
 | `OVER_FLAG` | `safe` fixture came back `review` (stricter than needed) | warn |
-| `UNDER_FLAG` | caught but under-classified (e.g. `block` → `review`) | warn |
+| `UNDER_FLAG` | expected `review` becomes `safe`, or a documented `knownUnderflag` becomes `review` instead of `block` | warn |
+| `RECALL_DROP` | another expected `block` case reaches `review` | **hard fail** |
+| `COVERAGE_DROP` | a cohort loses previously retained malicious, benign, or blocking evidence | **hard fail** |
 | `XFAIL` | a `knownFalsePositive` fixture that still mis-verdicts (documented misfire, not yet retuned) | tracked, **non-gating** |
 | `XPASS` | a `knownFalsePositive` fixture that now behaves correctly → drop the marker | reported |
 
@@ -39,13 +42,15 @@ hard gate enforces the case like any other benign fixture. That keeps known
 false-positive debt visible instead of breaking the gate or quietly relabelling
 the sample as `safe`.
 
-The gate fails on only the two outcomes that carry real cost: a false block,
-which is the reputational risk pkgxray is built to avoid, and a full miss, which
-is malware that passed. It tolerates benign calibration drift, because the
-detection engine is *expected* to get stricter over time. It also reports block
-**precision**, meaning how much of everything blocked is truly malicious, and
-**recall**, meaning how many malicious fixtures got blocked. That way a change
-that trades one for the other is visible.
+The gate rejects false blocks and full misses, subject to the explicit
+known-false-positive exemptions above, and enforces a full-corpus block recall
+floor; new block-to-review regressions also fail. Exemptions affect the gate,
+**not the metrics**: block **precision** is
+malicious blocked / all blocked, including known false positives; **recall** is
+malicious blocked / all malicious. A zero denominator is `null` in JSON and
+`N/A` in human output. REVIEW counts and rates expose the workload that a
+false-block metric alone misses. These rates describe the labelled fixture
+corpus, not the prevalence or accuracy of detection across a registry.
 
 Under-flags are surfaced, not hidden. A bare `curl | sh` to an unknown host is
 malicious by ground truth, but policy routes it to `review` rather than `block`.
@@ -66,7 +71,6 @@ Each file is one case:
   "name": "env-exfil-to-webhook",
   "expect": "block",                       // security-correct verdict for this input
   "expectFinding": "network-exfil-or-loader", // optional: a finding category that must be present
-  "knownFalsePositive": true,                 // optional: documented misfire → XFAIL, non-gating (benign only)
   "cohort": "pypi",                           // optional: ecosystem tag (default "npm"); enables --cohort pypi
   "note": "process.env POSTed to a hardcoded webhook",
   "evidence": {                            // passed verbatim to auditEvidence()
@@ -102,21 +106,45 @@ the logic-bomb detector caught file *deletion* but not the in-place *overwrite*
 corruption that node-ipc actually used, so the sample passed with zero
 behavioral findings. That gap is now closed. See `inspectLogicBomb`.
 
-Two samples are **under-flags** on purpose, and the benchmark documents them
-rather than hiding them. A bare `curl | sh` to an unknown host and the `node-ipc`
-geo-bomb both reach `review` rather than `block`, because policy routes
-download-then-execute and destructive operations gated on region or locale to a
-person. See the
+A fixture marked `knownUnderflag` documents a policy decision to send a known
+malicious shape to human review rather than block. These cases remain visible
+as `UNDER_FLAG` warnings. New block-to-review regressions fail the gate, and
+the full corpus must still meet its committed block-recall floor. See the
 [severity policy](../docs/reference.md#severity-policy-what-lands-in-block--review--info).
 
-### Cohorts (npm vs PyPI)
+### Cohorts (npm, PyPI, and MCP)
 
 Every fixture belongs to a **cohort**, meaning its ecosystem, set by an optional
 `"cohort"` field that defaults to `"npm"`. Running `npm run benchmark` with no
 flags is what CI gates on, and it includes **all** cohorts, so the floor and
-false-block gates cover npm and PyPI together. `--cohort pypi` runs only the PyPI
+false-block gates cover all cohorts together. The report also breaks out each
+cohort with its own denominators. `--cohort pypi` runs only the PyPI
 fixtures for a focused read. A cohort filter skips the recall floor, because the
-committed floor is defined over the full corpus.
+committed floor is defined over the full corpus. The
+[2026-10-04 fixture baseline](baselines/2026-10-04.json) records the combined
+and per-cohort metrics with engine/corpus hashes. It is an offline fixture
+baseline, not a fresh live-registry validation.
+
+The runner also enforces **retention minimums per cohort**, including when a
+cohort is filtered. The default run checks every retained cohort even if all its
+files disappear. These counts preserve the evidence present in the recorded
+baseline; they are **not sufficient-coverage targets or accuracy guarantees**:
+
+| Cohort | Malicious fixtures retained | Benign fixtures retained | Malicious BLOCK results retained |
+|---|---:|---:|---:|
+| npm | 25 | 32 | 24 |
+| PyPI | 5 | 7 | 5 |
+| MCP | 0 | 1 | 0 |
+
+Definitions live in `COHORT_MINIMUMS` in [`run.js`](run.js). Raise them
+deliberately as independently reviewed evidence is added. Do not lower a floor
+or remove a fixture to make CI pass. Additional fixtures are allowed. A filtered
+run checks only its selected cohort; a missing or unknown cohort argument fails.
+The MCP zero explicitly preserves an unresolved gap, not a successful recall
+measurement. Existing JSON schema version 2 now includes `coverage.cohorts`,
+`coverage.warnings`, and `coverage.retentionGatePassed`; retention failures also
+appear in `hardFailures`. Human reports print coverage limits even when the gate
+passes.
 
 PyPI fixtures author the `evidence` bundle the same way, with two differences:
 
@@ -131,11 +159,13 @@ PyPI fixtures author the `evidence` bundle the same way, with two differences:
   `deprecated` from `yanked`. Give a benign fixture a repository and at least 2
   maintainers, so no governance signal fires.
 
-Do **not** add a malicious PyPI fixture that hides its payload in a plain `.py`
-module. The shared behavioral engine's obfuscation and exec-network detectors are
-still shaped around JS primitives, so `exec(marshal.loads(...))` outside
-`setup.py` is a documented v1 blind spot. Such a fixture would be a MISS, which
-hard-fails. That parity work is tracked for a later release.
+PyPI coverage is limited to install manifests, vulnerability checks, metadata,
+and shared text checks. The JavaScript behavioral suite is skipped on ordinary
+PyPI source files; general Python behavioral parity remains unimplemented.
+Current PyPI fixtures therefore do not measure general Python malware detection.
+Keep this coverage gap explicit instead of treating a passing cohort as parity
+with npm. Likewise, a cohort without malicious fixtures has unmeasured recall;
+one benign MCP fixture cannot establish MCP detection accuracy.
 
 ## Adding a case
 
@@ -143,8 +173,9 @@ hard-fails. That parity work is tracked for a later release.
 2. Set `expect` to the verdict a reviewer would assign the *sample* (not
    necessarily what the engine does today — an honest label lets an under-flag
    show up as a warning).
-3. Run `npm run benchmark`. A new benign case must never hard-fail; a new
-   malicious case that only reaches `review` is a warning worth a `note`.
+3. Run `npm run benchmark`. A false block, full miss, or undocumented
+   block-to-review regression fails. Document a deliberate review policy with
+   `knownUnderflag` and a rationale; do not relabel a malicious sample benign.
 
 Real-world tarballs are the best source of new fixtures — reduce a known-malicious
 package to the smallest source that still trips the finding, and add a benign

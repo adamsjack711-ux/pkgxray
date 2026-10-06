@@ -1,0 +1,1998 @@
+{
+  "recordedOn": "2026-10-05",
+  "recordedTimezone": "America/Vancouver",
+  "kind": "live-validation-aggregate",
+  "scope": "The pinned July 19 npm calibration targets rescanned on October 5 local time (October 6 UTC). This is not an updated popularity ranking, malicious-package recall evaluation, or adjudicated accuracy claim.",
+  "provenance": {
+    "packageVersion": "1.1.0",
+    "sourceRevision": "3007a72d5ebd4d7957d38d5c429a7dd71fe85e09",
+    "sourceTreeDirty": false,
+    "engineBuildId": "ed2bd7e8dfb109ed9627fa71204f21cfd3397758b5d57a6b28afc26d52ded91c",
+    "node": "v26.8.2",
+    "startedAt": "2026-10-06T04:54:08.486Z",
+    "collectedOnUtc": "2026-10-06",
+    "validationRunnerSha256": "4323f9808e60330368daf42fe4e52cf72c69e7f2a804125c5cd8e87d416e9883",
+    "rawResultsSha256": "ff35cd14f9e9d7147e9ff630a523da5ddf353137b23ee2fab5acf0aed4b79472",
+    "summarySha256": "e936563ecceebf46ec7194d72f8cb8f98c85e85b9a288eae4ba3a39947216620",
+    "targetList": "validation/calibration-2026-07-19/top1000-targets.txt",
+    "targetListSha256": "d5bda641c86db048c7c1605b839f08076c27c328eb460122bf7ffc666c32909a",
+    "command": "node scripts/validate-at-scale.js --ecosystem npm --cohort npm --list validation/calibration-2026-07-19/top1000-targets.txt --concurrency 4 --timeout-ms 40000 --out-dir <private-output-directory>",
+    "wallSeconds": 625
+  },
+  "notes": [
+    "All 1000 requested attempts were recorded; 989 produced verdicts and 11 timed out. Error cases are excluded from successful-scan rates.",
+    "A successful scan here means a guard report was returned, not that all source or behavior was analyzed. Coverage gaps remain REVIEW findings.",
+    "All 35 blocks carry known-vulnerability findings; these are not malware labels. Zero heuristic block candidates is not an adjudicated false-positive rate.",
+    "Review categories overlap. Each package appears in exactly one of the 70 category-combination groups.",
+    "Citation availability measures retained file and snippet fields, not analysis completeness. Human review time and time saved were not measured.",
+    "The October 4 baseline used an earlier engine. Differences also include time-dependent registry metadata and vulnerabilities; they do not establish a causal accuracy improvement.",
+    "The revision, runner hash, and supplied engine build ID identify the scan as executed, before subsequent code changes.",
+    "Per-package names, verdicts, and source citations are excluded. The local review queue was verified against all raw records and retained with mode 0600."
+  ],
+  "errorBreakdown": [
+    {
+      "kind": "timeout",
+      "count": 11,
+      "timeoutMs": 40000
+    }
+  ],
+  "schemaVersion": 1,
+  "ecosystem": "npm",
+  "cohort": "npm",
+  "completion": {
+    "expected": 1000,
+    "attempted": 1000,
+    "succeeded": 989,
+    "errors": 11,
+    "completionRate": 1,
+    "errorRate": 0.011,
+    "minimumSuccessfulScans": 1,
+    "maximumErrorRate": 0.1
+  },
+  "decisions": {
+    "safe": 174,
+    "review": 780,
+    "block": 35
+  },
+  "blockBreakdown": {
+    "knownVulnerability": 35,
+    "defensible": 0,
+    "heuristicCandidates": 0
+  },
+  "heuristicBlockCandidates": {
+    "count": 0,
+    "of": 989,
+    "rate": 0,
+    "classification": "unadjudicated-heuristic-block-candidates"
+  },
+  "adjudicatedFalsePositives": null,
+  "reviewWorkflow": {
+    "collection": {
+      "collectedOn": "2026-10-06",
+      "startedAt": "2026-10-06T04:54:08.486Z",
+      "sourceRevision": "3007a72d5ebd4d7957d38d5c429a7dd71fe85e09",
+      "sourceTreeDirty": false,
+      "resultsSha256": "ff35cd14f9e9d7147e9ff630a523da5ddf353137b23ee2fab5acf0aed4b79472",
+      "runnerSha256": "4323f9808e60330368daf42fe4e52cf72c69e7f2a804125c5cd8e87d416e9883"
+    },
+    "grouping": "exact-non-info-category-set",
+    "groupsCount": 70,
+    "packages": 780,
+    "evidenceCoverage": {
+      "complete": 437,
+      "partial": 326,
+      "unavailable": 17
+    },
+    "groups": [
+      {
+        "categories": [
+          "flow-analysis-gap"
+        ],
+        "packages": 210,
+        "of": 780,
+        "rate": 0.2692,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 118,
+        "of": 780,
+        "rate": 0.1513,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan"
+        ],
+        "packages": 60,
+        "of": 780,
+        "rate": 0.0769,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 49,
+        "of": 780,
+        "rate": 0.0628,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "install-hook"
+        ],
+        "packages": 47,
+        "of": 780,
+        "rate": 0.0603,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "incomplete-source-scan",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 33,
+        "of": 780,
+        "rate": 0.0423,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "incomplete-source-scan"
+        ],
+        "packages": 33,
+        "of": 780,
+        "rate": 0.0423,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "lonely-maintainer"
+        ],
+        "packages": 27,
+        "of": 780,
+        "rate": 0.0346,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 20,
+        "of": 780,
+        "rate": 0.0256,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "unresolved-runtime-execution"
+        ],
+        "packages": 17,
+        "of": 780,
+        "rate": 0.0218,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "lonely-maintainer",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 13,
+        "of": 780,
+        "rate": 0.0167,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "lonely-maintainer"
+        ],
+        "packages": 11,
+        "of": 780,
+        "rate": 0.0141,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 10,
+        "of": 780,
+        "rate": 0.0128,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "npm-vs-github-divergence"
+        ],
+        "packages": 10,
+        "of": 780,
+        "rate": 0.0128,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "npm-vs-github-divergence",
+            "action": "Compare cited published files with the matching source release and documented build outputs; explain each difference."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "npm-vs-github-divergence"
+        ],
+        "packages": 10,
+        "of": 780,
+        "rate": 0.0128,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "npm-vs-github-divergence",
+            "action": "Compare cited published files with the matching source release and documented build outputs; explain each difference."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook"
+        ],
+        "packages": 9,
+        "of": 780,
+        "rate": 0.0115,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "install-hook",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 9,
+        "of": 780,
+        "rate": 0.0115,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "supply-chain-signal"
+        ],
+        "packages": 9,
+        "of": 780,
+        "rate": 0.0115,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "supply-chain-signal",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "lonely-maintainer",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 5,
+        "of": 780,
+        "rate": 0.0064,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "install-hook"
+        ],
+        "packages": 5,
+        "of": 780,
+        "rate": 0.0064,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 4,
+        "of": 780,
+        "rate": 0.0051,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "lonely-maintainer"
+        ],
+        "packages": 4,
+        "of": 780,
+        "rate": 0.0051,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "incomplete-source-scan",
+          "install-hook",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 4,
+        "of": 780,
+        "rate": 0.0051,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "lonely-maintainer"
+        ],
+        "packages": 3,
+        "of": 780,
+        "rate": 0.0038,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "supply-chain-signal",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 3,
+        "of": 780,
+        "rate": 0.0038,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "supply-chain-signal",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "lonely-maintainer",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 3,
+        "of": 780,
+        "rate": 0.0038,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "incomplete-source-scan",
+          "lonely-maintainer",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 3,
+        "of": 780,
+        "rate": 0.0038,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "environment-access",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "environment-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "github-archived"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "github-archived",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "npm-vs-github-divergence",
+          "supply-chain-signal"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "npm-vs-github-divergence",
+            "action": "Compare cited published files with the matching source release and documented build outputs; explain each difference."
+          },
+          {
+            "category": "supply-chain-signal",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "incomplete-source-scan",
+          "lonely-maintainer"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "incomplete-source-scan",
+          "supply-chain-signal",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "supply-chain-signal",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "install-hook",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "supply-chain-signal",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 2,
+        "of": 780,
+        "rate": 0.0026,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "supply-chain-signal",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "cloud-metadata-access",
+          "credential-export",
+          "environment-access",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "cloud-metadata-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "credential-export",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "environment-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "environment-access",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "environment-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "environment-access",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "environment-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "lonely-maintainer",
+          "network-exfil-or-loader",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "network-exfil-or-loader",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "lonely-maintainer",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "incomplete-source-scan"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "install-hook"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "lonely-maintainer",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "structural-obfuscation"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "structural-obfuscation",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "code-execution",
+          "flow-analysis-gap",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "code-execution",
+            "action": "Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "credential-export",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "unresolved-runtime-execution",
+          "unsupported-behavior"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "credential-export",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unsupported-behavior",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "data-access",
+          "flow-analysis-gap",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "data-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "environment-access",
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "persistence",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "environment-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "persistence",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "environment-access",
+          "flow-analysis-gap",
+          "incomplete-source-scan"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "environment-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "environment-access",
+          "flow-analysis-gap"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "environment-access",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "github-archived",
+          "lonely-maintainer"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "github-archived",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "hidden-unicode",
+          "incomplete-source-scan",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "hidden-unicode",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "hidden-unicode",
+          "install-hook"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "hidden-unicode",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "network-exfil-or-loader",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "network-exfil-or-loader",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "install-hook",
+          "persistence",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "persistence",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "lonely-maintainer",
+          "npm-vs-github-divergence",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "npm-vs-github-divergence",
+            "action": "Compare cited published files with the matching source release and documented build outputs; explain each difference."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "network-exfil-or-loader",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "network-exfil-or-loader",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "structural-obfuscation",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "structural-obfuscation",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "supply-chain-signal",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "supply-chain-signal",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "incomplete-source-scan",
+          "unresolved-runtime-execution",
+          "unsupported-behavior"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "unsupported-behavior",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "install-hook",
+          "lonely-maintainer",
+          "npm-vs-github-divergence"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "npm-vs-github-divergence",
+            "action": "Compare cited published files with the matching source release and documented build outputs; explain each difference."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "install-hook",
+          "lonely-maintainer"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "lonely-maintainer",
+          "npm-vs-github-divergence",
+          "supply-chain-signal"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "npm-vs-github-divergence",
+            "action": "Compare cited published files with the matching source release and documented build outputs; explain each difference."
+          },
+          {
+            "category": "supply-chain-signal",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "flow-analysis-gap",
+          "network-exfil-or-loader"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "flow-analysis-gap",
+            "action": "Identify the unsupported or incomplete analysis in the cited report; obtain supported static coverage or complete a manual source review before resolving it."
+          },
+          {
+            "category": "network-exfil-or-loader",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "incomplete-source-scan",
+          "install-hook",
+          "lonely-maintainer"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "incomplete-source-scan",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          },
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "install-hook",
+          "lonely-maintainer",
+          "npm-vs-github-divergence"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "install-hook",
+            "action": "Inspect each lifecycle script and referenced source; confirm its purpose and required file, process, and network access for this package version."
+          },
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "npm-vs-github-divergence",
+            "action": "Compare cited published files with the matching source release and documented build outputs; explain each difference."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "lonely-maintainer",
+          "unresolved-runtime-execution"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "lonely-maintainer",
+            "action": "Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency."
+          },
+          {
+            "category": "unresolved-runtime-execution",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "network-exfil-or-loader"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "network-exfil-or-loader",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      },
+      {
+        "categories": [
+          "remote-code-load"
+        ],
+        "packages": 1,
+        "of": 780,
+        "rate": 0.0013,
+        "highestSeverity": "medium",
+        "nextSteps": [
+          {
+            "category": "remote-code-load",
+            "action": "Inspect each cited finding and confirm the behavior is necessary and expected for this package version."
+          }
+        ]
+      }
+    ],
+    "resolutionTimeMinutes": null
+  },
+  "reviewBurden": {
+    "count": 780,
+    "of": 989,
+    "rate": 0.7887,
+    "reasons": [
+      {
+        "category": "flow-analysis-gap",
+        "packages": 651
+      },
+      {
+        "category": "incomplete-source-scan",
+        "packages": 376
+      },
+      {
+        "category": "unresolved-runtime-execution",
+        "packages": 318
+      },
+      {
+        "category": "install-hook",
+        "packages": 152
+      },
+      {
+        "category": "lonely-maintainer",
+        "packages": 82
+      },
+      {
+        "category": "code-execution",
+        "packages": 26
+      },
+      {
+        "category": "npm-vs-github-divergence",
+        "packages": 26
+      },
+      {
+        "category": "supply-chain-signal",
+        "packages": 20
+      },
+      {
+        "category": "environment-access",
+        "packages": 8
+      },
+      {
+        "category": "network-exfil-or-loader",
+        "packages": 5
+      },
+      {
+        "category": "github-archived",
+        "packages": 3
+      },
+      {
+        "category": "credential-export",
+        "packages": 2
+      },
+      {
+        "category": "hidden-unicode",
+        "packages": 2
+      },
+      {
+        "category": "persistence",
+        "packages": 2
+      },
+      {
+        "category": "structural-obfuscation",
+        "packages": 2
+      },
+      {
+        "category": "unsupported-behavior",
+        "packages": 2
+      },
+      {
+        "category": "cloud-metadata-access",
+        "packages": 1
+      },
+      {
+        "category": "data-access",
+        "packages": 1
+      },
+      {
+        "category": "remote-code-load",
+        "packages": 1
+      }
+    ],
+    "resolutionTimeMinutes": null
+  },
+  "gate": {
+    "passed": true,
+    "failures": []
+  }
+}

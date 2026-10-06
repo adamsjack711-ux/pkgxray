@@ -9,6 +9,8 @@ graphify-out/
 
 # transient at-scale validation log
 validation/run.log
+# Per-package source citations are local review material, not public summaries.
+review-queue.json
 docs/demo/still-scratch.txt
 
 # BEGIN swamp managed section - DO NOT EDIT

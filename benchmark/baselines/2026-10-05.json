@@ -1,0 +1,288 @@
+{
+  "recordedOn": "2026-10-05",
+  "kind": "static-fixture-baseline",
+  "provenance": {
+    "packageVersion": "1.1.0",
+    "baseCommit": "3007a72d5ebd4d7957d38d5c429a7dd71fe85e09",
+    "workingTreeUpdate": true,
+    "node": "v26.8.2",
+    "scannerBuildId": "47149e508573c16a67571facf36c27fa53ad3e33e516b56287e3274ac7ea886b",
+    "auditorSha256": "9d6f0af7932d12ce470f89eeaf9b5e915ab11b785610b0519c2a9daefc2d463c",
+    "benchmarkRunnerSha256": "01f73def43dc7844af4bff966b4aaaf0ede956609dbb03684b6585743aff698c",
+    "corpusSha256": "5f81bb789df3f89fdc9766d6e4126541baacedba460a86adb34ee0a1820440a4",
+    "corpusHashFormat": "benign then malicious; sorted JSON filenames; each relative path + NUL + exact file bytes + NUL",
+    "notes": [
+      "After integrating the parser-based engine and the Windows archive-listing compatibility repair. No detector changes in this evaluation work."
+    ]
+  },
+  "schemaVersion": 2,
+  "metadata": {
+    "scope": "committed-static-fixtures",
+    "engine": "auditEvidence",
+    "networkAccess": false,
+    "packageExecution": false,
+    "livePackagesScanned": 0,
+    "representsPopulationAccuracy": false,
+    "blockPositiveLabel": "expect:block",
+    "reviewRateDenominator": "all evaluated fixtures in the reported scope"
+  },
+  "summary": {
+    "cohort": "all",
+    "total": 72,
+    "malicious": 31,
+    "benign": 41,
+    "correct": 61,
+    "falseBlocks": 0,
+    "gatingFalseBlocks": 0,
+    "exemptedFalseBlocks": 0,
+    "knownFalsePositives": 0,
+    "xpasses": 0,
+    "misses": 0,
+    "recallDrops": 0,
+    "maliciousBlocking": 30,
+    "blockMetricCounts": {
+      "truePositives": 30,
+      "falsePositives": 0,
+      "falseNegatives": 1,
+      "precisionDenominator": 30,
+      "recallDenominator": 31
+    },
+    "blockPrecision": 1,
+    "blockRecall": 0.968,
+    "blockF1": 0.984,
+    "reviewCount": 23,
+    "reviewRateDenominator": 72,
+    "reviewRate": 0.319,
+    "benignReviewCount": 22,
+    "benignReviewRateDenominator": 41,
+    "benignReviewRate": 0.537,
+    "matrix": {
+      "safe": {
+        "safe": 18,
+        "review": 9,
+        "block": 0
+      },
+      "review": {
+        "safe": 1,
+        "review": 13,
+        "block": 0
+      },
+      "block": {
+        "safe": 0,
+        "review": 1,
+        "block": 30
+      }
+    },
+    "blockRecallFloor": 23,
+    "recallFloorMet": true
+  },
+  "cohorts": {
+    "mcp": {
+      "total": 1,
+      "malicious": 0,
+      "benign": 1,
+      "correct": 1,
+      "falseBlocks": 0,
+      "gatingFalseBlocks": 0,
+      "exemptedFalseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 0,
+      "blockMetricCounts": {
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precisionDenominator": 0,
+        "recallDenominator": 0
+      },
+      "blockPrecision": null,
+      "blockRecall": null,
+      "blockF1": null,
+      "reviewCount": 1,
+      "reviewRateDenominator": 1,
+      "reviewRate": 1,
+      "benignReviewCount": 1,
+      "benignReviewRateDenominator": 1,
+      "benignReviewRate": 1,
+      "matrix": {
+        "safe": {
+          "safe": 0,
+          "review": 0,
+          "block": 0
+        },
+        "review": {
+          "safe": 0,
+          "review": 1,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 0,
+          "block": 0
+        }
+      }
+    },
+    "npm": {
+      "total": 59,
+      "malicious": 26,
+      "benign": 33,
+      "correct": 55,
+      "falseBlocks": 0,
+      "gatingFalseBlocks": 0,
+      "exemptedFalseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 25,
+      "blockMetricCounts": {
+        "truePositives": 25,
+        "falsePositives": 0,
+        "falseNegatives": 1,
+        "precisionDenominator": 25,
+        "recallDenominator": 26
+      },
+      "blockPrecision": 1,
+      "blockRecall": 0.962,
+      "blockF1": 0.98,
+      "reviewCount": 15,
+      "reviewRateDenominator": 59,
+      "reviewRate": 0.254,
+      "benignReviewCount": 14,
+      "benignReviewRateDenominator": 33,
+      "benignReviewRate": 0.424,
+      "matrix": {
+        "safe": {
+          "safe": 18,
+          "review": 2,
+          "block": 0
+        },
+        "review": {
+          "safe": 1,
+          "review": 12,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 1,
+          "block": 25
+        }
+      }
+    },
+    "pypi": {
+      "total": 12,
+      "malicious": 5,
+      "benign": 7,
+      "correct": 5,
+      "falseBlocks": 0,
+      "gatingFalseBlocks": 0,
+      "exemptedFalseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 5,
+      "blockMetricCounts": {
+        "truePositives": 5,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precisionDenominator": 5,
+        "recallDenominator": 5
+      },
+      "blockPrecision": 1,
+      "blockRecall": 1,
+      "blockF1": 1,
+      "reviewCount": 7,
+      "reviewRateDenominator": 12,
+      "reviewRate": 0.583,
+      "benignReviewCount": 7,
+      "benignReviewRateDenominator": 7,
+      "benignReviewRate": 1,
+      "matrix": {
+        "safe": {
+          "safe": 0,
+          "review": 7,
+          "block": 0
+        },
+        "review": {
+          "safe": 0,
+          "review": 0,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 0,
+          "block": 5
+        }
+      }
+    }
+  },
+  "coverage": {
+    "cohorts": {
+      "mcp": {
+        "counts": {
+          "malicious": 0,
+          "benign": 1,
+          "blocking": 0
+        },
+        "retentionMinimums": {
+          "malicious": 0,
+          "benign": 1,
+          "blocking": 0
+        },
+        "retentionMet": true,
+        "missingClasses": [
+          "malicious"
+        ],
+        "scope": "committed-static-fixtures",
+        "representsPopulationAccuracy": false,
+        "limitation": "The MCP corpus does not measure live protocol sessions or runtime tool behavior."
+      },
+      "npm": {
+        "counts": {
+          "malicious": 26,
+          "benign": 33,
+          "blocking": 25
+        },
+        "retentionMinimums": {
+          "malicious": 25,
+          "benign": 32,
+          "blocking": 24
+        },
+        "retentionMet": true,
+        "missingClasses": [],
+        "scope": "committed-static-fixtures",
+        "representsPopulationAccuracy": false,
+        "limitation": "Hand-selected static fixtures do not establish accuracy across the npm registry."
+      },
+      "pypi": {
+        "counts": {
+          "malicious": 5,
+          "benign": 7,
+          "blocking": 5
+        },
+        "retentionMinimums": {
+          "malicious": 5,
+          "benign": 7,
+          "blocking": 5
+        },
+        "retentionMet": true,
+        "missingClasses": [],
+        "scope": "committed-static-fixtures",
+        "representsPopulationAccuracy": false,
+        "limitation": "PyPI fixtures cover installation-manifest behavior, not general Python behavioral detection."
+      }
+    },
+    "warnings": [
+      "mcp: no malicious fixtures; detection recall is not measured.",
+      "mcp: 0 malicious and 1 benign fixtures. The MCP corpus does not measure live protocol sessions or runtime tool behavior.",
+      "npm: 26 malicious and 33 benign fixtures. Hand-selected static fixtures do not establish accuracy across the npm registry.",
+      "pypi: 5 malicious and 7 benign fixtures. PyPI fixtures cover installation-manifest behavior, not general Python behavioral detection."
+    ],
+    "retentionGatePassed": true
+  },
+  "hardFailures": [],
+  "findingMismatches": []
+}

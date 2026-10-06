@@ -50,7 +50,7 @@ code does, before anything installs.
 **1. Scan a known-benign package** (no install of pkgxray needed):
 
 ```bash
-npx --yes pkgxray@1.0.5 guard npm:express@4.21.0
+npx --yes pkgxray@1.1.0 guard npm:express@4.21.0
 ```
 
 It stages the tarball in quarantine and runs the static and supply-chain checks.
@@ -81,14 +81,16 @@ Notes:
 `SAFE` is not a proof that a package is harmless; static analysis cannot see a
 payload downloaded only at runtime. See the [threat model](docs/threat-model.md).
 
-**3. See a BLOCK on the supplied inert fixture:**
+**3. Download and scan an inert fixture** (works from any directory; no repository checkout needed):
 
 ```bash
-npx --yes pkgxray@1.0.5 --file examples/onboarding-malicious.json --format markdown
+curl --fail --location --output pkgxray-onboarding.json \
+  https://raw.githubusercontent.com/adamsjack711-ux/pkgxray/751ff97332650f983fdc39a013dfcec855a8b4de/examples/onboarding-malicious.json
+npx --yes pkgxray@1.1.0 --file ./pkgxray-onboarding.json --format markdown
 ```
 
-The fixture is inert source text that models a split-string SSH-key read and
-exfiltration. **It is never executed.** It returns `BLOCK` (exit `2`) with the
+The download is pinned to a reviewed commit. The fixture is inert source text
+that models a split-string SSH-key read and exfiltration. **It is never executed.** It returns `BLOCK` (exit `2`) with the
 cited file and evidence.
 
 **4. Add it to your workflow** — [rechecks & CI](docs/reference.md#monitoring-pkgxray-recheck),
@@ -120,8 +122,14 @@ published), known CVEs (via OSV, before download), npm↔GitHub artifact
 divergence, trojaned updates (`recheck`), and MCP
 capability-surface abuse.
 
-The full coverage matrix is in the [threat model](docs/threat-model.md), along
-with the known blind spot: a package that downloads its payload later. A
+**PyPI coverage is narrower than npm coverage:** it checks install manifests
+(`setup.py` / `pyproject.toml`), known vulnerabilities, metadata, and shared
+text checks such as prompt injection and hidden Unicode. General Python
+behavioral analysis is not implemented; the JavaScript behavioral suite is
+skipped for ordinary PyPI source files.
+
+Coverage boundaries are in the [threat model](docs/threat-model.md), including
+the blind spot of a package that downloads its payload later. A
 side-by-side comparison table is on the [website](https://pkgxray.ca/#catches).
 
 ## Verdicts
@@ -190,12 +198,19 @@ code does. The full capability comparison is in
 
 ## Evidence
 
-Historical top-1000 runs and their [scope and methodology](docs/benchmark.md)
-remain available at [pkgxray.ca/stats](https://pkgxray.ca/stats). Those results
-predate the parser-based flow engine and have not been rerun for this change.
-The current engine passes all 270 internal synthetic calibration/challenge
-fixtures without a malicious SAFE or benign BLOCK; many malicious cases produce
-REVIEW. This is regression evidence, not a real-world detection-rate estimate.
+The **2026-07-19 top-1000 npm validation** recorded **zero heuristic false
+blocks after retuning**, with **661 REVIEW verdicts**. This is a historical
+measurement, not a result for every subsequent engine version. Routine CI
+checks the committed fixture corpus; a separate manual validation workflow
+can rescan the npm, PyPI, and MCP cohorts. See the [scope and
+methodology](docs/benchmark.md) and [published runs](https://pkgxray.ca/stats).
+Review rate and reasons matter alongside false blocks because each REVIEW
+requires a decision. The July run did not measure review resolution time.
+
+The parser-based flow engine arrived after those registry measurements.
+The calibration and internal challenge fixtures provide regression evidence,
+not a real-world detection-rate estimate. Per-cohort retention gates preserve
+existing evidence while explicitly reporting missing coverage.
 
 ## Documentation
 

@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Evaluation and onboarding
+
+- Preserve each ecosystem's existing fixture coverage with per-cohort retention
+  gates. Reports explicitly identify unmeasured MCP recall and the limited scope
+  of PyPI fixtures; a passing gate is not an accuracy or coverage certification.
+- Group validation REVIEW results by their exact finding categories and retain
+  source citations in a private review queue. Aggregate reports distinguish
+  review counts from measured review effort; verdicts are unchanged.
+- At-scale validation now fails incomplete runs, runs with no successful scans,
+  and runs with more than 10% scan errors. Successful scans form the metric
+  denominators; aggregate results include review burden and separate block types.
+- Benchmark JSON is now schema version 2. Undefined precision, recall, and F1
+  are `null` (`N/A` in text); precision includes documented false positives.
+  Regression exemptions are reported separately from measured accuracy.
+- Added separate npm, PyPI, and MCP fixture baselines and a manually invoked
+  real-package validation workflow. Historical top-1000 results remain dated
+  observations. MCP recall remains unmeasured because its calibration cohort
+  has no malicious fixtures.
+- Quick start pins the published 1.1.0 release and downloads its inert demo
+  evidence explicitly, so it works outside a repository checkout. Documented
+  the narrower PyPI behavioral coverage.
+- Recorded a separate baseline after integrating the newer engine: 780 REVIEW
+  verdicts among 989 completed reports, with 11 timeouts. Source and flow coverage
+  gaps dominate; the historical baseline is preserved rather than overwritten.
+- Reused the cross-platform CI repairs from PR #102 and made local installation
+  test archives independent of macOS extended metadata. Windows tar line-ending
+  normalization preserves rejection of embedded filename controls.
+
+### Security hardening
+
 - Remediate the September 23 audit: unify MCP path authorization and runtime option allowlists; remove temporary MCP staging after scans.
 - Preserve abstract aliases and branch/try/closure effects with bounded graph snapshots and joins. Unsupported runtime syntax now reports lexical-only coverage; eight additional benign challenge cases intentionally require review (historical baseline retained).
 - Add version-2 approval authorization with mandatory coverage holds, enforced by the registry proxy and installer; include all nested runtime/parser files in build identity. Legacy approvals must be rescanned.
@@ -66,6 +96,8 @@
 - Separate release validation, publishing and verification jobs; disable lifecycle scripts and publish the exact checked archive after SHA-256 verification.
 - Recognize flat credential destructuring and literal environment reflection. Challenge SAFE misses fall from 12 to 6; the former holdout retains 4 misses and benign reviews fall from 3 to 2. These are synthetic corpus results, not real-world accuracy estimates.
 - Replace a literal NUL in the MCP pin validator with its equivalent escape, allowing source inventory to inspect that module as text.
+
+### Vulnerability-service resilience
 
 **In plain terms:** an OSV outage used to switch pkgxray off. If the
 vulnerability database was unreachable — a real outage, a rate limit, a

@@ -26,6 +26,19 @@ has its own [canary threat model](canary-threat-model.md).
 - AI prompt injection in package docs, code comments, and metadata
 - Malicious or drifting MCP servers (see [mcp.md](mcp.md))
 
+## Ecosystem coverage
+
+The broad behavioral detectors are calibrated for npm JavaScript. PyPI scans
+cover install manifests (`setup.py` and `pyproject.toml`), known vulnerabilities,
+metadata, and language-neutral text checks such as prompt injection and hidden
+Unicode. They do **not** provide general Python behavioral analysis. For PyPI,
+the JavaScript behavioral suite is skipped on ordinary source files; a clean
+result on those checks cannot rule out malicious behavior in a Python module.
+
+Report npm, PyPI, and MCP calibration separately. A cohort with no malicious
+fixtures has no measured recall, and benign-package validation measures false
+blocks and review burden rather than malicious detection coverage.
+
 ## Known blind spot
 
 pkgxray reasons about the bytes in the tarball. A package that downloads and runs
@@ -82,8 +95,11 @@ there:
 - Minification is **not** obfuscation. Only `eval` on a *computed* argument
   gates, which keeps heavily-bundled frontend packages out of the review pile.
 
-CI gates these claims against regressions: the [calibration
-benchmark](benchmark.md) fails on any false block or missed detection.
+Routine CI runs the committed [calibration benchmark](benchmark.md), with
+explicitly tracked known-false-positive exemptions and a full-corpus recall
+floor. It does not rerun the historical top-1000 registry validation on each
+change. The July run also sent 661 of 1,000 targets to REVIEW; manual review
+burden is a separate concern from false blocks.
 
 ## On prompt injection
 

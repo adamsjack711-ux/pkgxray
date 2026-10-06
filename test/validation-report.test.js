@@ -11,9 +11,9 @@ test('validation summary counts both guard allow and audit safe without claiming
   const records = [record('allow'), record('safe'), record('review'), record('error')];
   const report = buildReport(options, ['a', 'b', 'c', 'd'], records, 1000);
   assert.match(report, /4 selected npm packages/);
-  assert.match(report, /\| safe\/allow \| 2 \| 50\.0% \|/);
-  assert.match(report, /\| review \| 1 \| 25\.0% \|/);
-  assert.match(report, /\| error\/unresolved \| 1 \| 25\.0% \|/);
+  assert.match(report, /\| safe\/allow \| 2 \| 66\.7% \|/);
+  assert.match(report, /\| review \| 1 \| 33\.3% \|/);
+  assert.match(report, /\| error\/unresolved \| 1 \| excluded \|/);
 });
 
 test('validation review reasons count affected packages rather than per-file findings', () => {
