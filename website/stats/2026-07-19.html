@@ -3,19 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>pkgxray calibration: 2026-07-19</title>
+    <title>pkgxray calibration — 2026-07-19</title>
     <meta name="description" content="Aggregate calibration of pkgxray: 1,301 packages scanned, 0.1% false blocks on the top 1,000, 90.0% known-malware catch rate. Run 2026-07-19." />
-    <meta name="theme-color" content="#1c1510" />
+    <meta name="theme-color" content="#17120d" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://pkgxray.ca/stats/2026-07-19" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="pkgxray" />
-    <meta property="og:title" content="pkgxray calibration: 2026-07-19" />
+    <meta property="og:title" content="pkgxray calibration — 2026-07-19" />
     <meta property="og:description" content="Aggregate calibration of pkgxray: 1,301 packages scanned, 0.1% false blocks on the top 1,000, 90.0% known-malware catch rate. Run 2026-07-19." />
     <meta property="og:url" content="https://pkgxray.ca/stats/2026-07-19" />
     <meta property="og:image" content="https://pkgxray.ca/assets/og.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="pkgxray calibration: 2026-07-19" />
+    <meta name="twitter:title" content="pkgxray calibration — 2026-07-19" />
     <meta name="twitter:description" content="Aggregate calibration of pkgxray: 1,301 packages scanned, 0.1% false blocks on the top 1,000, 90.0% known-malware catch rate. Run 2026-07-19." />
     <meta name="twitter:image" content="https://pkgxray.ca/assets/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -24,8 +24,8 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../styles.css?v=scan8" />
-    <link rel="stylesheet" href="./stats.css?v=cal1" />
+    <link rel="stylesheet" href="../styles.css?v=20261004" />
+    <link rel="stylesheet" href="./stats.css?v=cal4" />
     <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
@@ -40,16 +40,17 @@
         <a href="./methodology.html">Methodology</a>
         <a class="nav-github" href="https://github.com/adamsjack711-ux/pkgxray" rel="noopener noreferrer">GitHub</a>
       </nav>
+      <span class="nav-progress" aria-hidden="true"></span>
     </header>
     <main id="top">
       <section class="section stats-hero">
         <div class="section-inner">
           <p class="section-eyebrow">Calibration · archived run</p>
-          <h1 class="stats-title">Calibration results</h1>
+          <h1 class="stats-title">How well does pkgxray call it?</h1>
           <p class="section-lead">
-            A static scan of published packages, code only, measured against a
-            committed known-malware corpus. Four numbers, each reproducible from
-            the inputs below.
+            An at-scale, code-only static scan of published packages, measured
+            against a committed known-malware corpus. Four numbers, adjudicated
+            by hand, reproducible from the inputs below.
           </p>
 
           <div class="stat-grid">
@@ -92,12 +93,12 @@
         <div class="section-inner">
           <h2>Corrections</h2>
           <p class="section-lead">
-            Published runs never change. If a number is wrong we publish a new
-            dated run and note it here. We do not edit a number in place.
+            Published runs are immutable. If a number is wrong we publish a new
+            dated run and note it here — we never silently edit a number in place.
             Contest a figure at
             <a href="https://github.com/adamsjack711-ux/pkgxray/issues?q=is%3Aissue%20label%3Acalibration" rel="noopener noreferrer">the tracker</a>.
           </p>
-          <ul class="corrections-log"><li><strong>2026-07-19</strong>: The full 1,000-package scan was re-run on the retuned engine. The single pre-retune heuristic false block now resolves to review, and no new false block appeared. (superseded by <a href="./2026-07-19-retuned.html">2026-07-19-retuned</a>)</li><li><strong>2026-08-11</strong>: Copy edit only. No measured number, input list, or source URL changed. Reworded the notes and the earlier entries on this page for plainer language and shorter sentences.</li></ul>
+          <ul class="corrections-log"><li><strong>2026-07-19</strong> — The full 1,000-package scan was re-run on the retuned engine. The single pre-retune heuristic false block now resolves to review, and no new false block appeared. (superseded by <a href="./2026-07-19-retuned.html">2026-07-19-retuned</a>)</li><li><strong>2026-08-11</strong> — Copy edit only. No measured number, input list, or source URL changed. Reworded the notes and the earlier entries on this page for plainer language and shorter sentences.</li></ul>
         </div>
       </section>
 
@@ -105,7 +106,7 @@
         <div class="section-inner">
           <h2>Run history</h2>
           <p class="section-lead">Every published run stays up at a stable URL.</p>
-          <ul class="run-history"><li><a href="./2026-07-21.html">2026-07-21</a></li><li><a href="./2026-07-19-retuned.html">2026-07-19-retuned</a></li></ul>
+          <ul class="run-history"><li><a href="./2026-08-04-pypi.html">2026-08-04-pypi</a></li><li><a href="./2026-07-21.html">2026-07-21</a></li><li><a href="./2026-07-19-retuned.html">2026-07-19-retuned</a></li></ul>
           <p class="fineprint">
             Pinned version: this page is the <code>2026-07-19</code> snapshot at
             <code>pkgxray 1.0.3 · 250a3b3</code>.
@@ -114,9 +115,20 @@
         </div>
       </section>
         </main>
-    <footer class="footer">
-      <span>pkg<span class="xray">xray</span></span>
-      <span class="footer-muted">Static analysis for npm and PyPI packages.</span>
+    <footer class="footer footer-simple">
+      <div>
+        <span class="footer-brand">pkg<span class="xray">xray</span></span>
+        <span class="footer-muted">Inspect what gets installed — not what executes.</span>
+      </div>
+      <div class="footer-col">
+        <h2>Elsewhere</h2>
+        <ul>
+          <li><a href="../">Home</a></li>
+          <li><a href="./">Latest calibration</a></li>
+          <li><a href="./methodology.html">Methodology</a></li>
+          <li><a href="https://github.com/adamsjack711-ux/pkgxray" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+      </div>
     </footer>
   </body>
 </html>

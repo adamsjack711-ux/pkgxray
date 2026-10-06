@@ -29,7 +29,7 @@ dependencies. Normal scans never execute package code.
 - **Normal scans never execute package code** — the tarball is read as bytes in quarantine.
 - **Cited verdicts from fixed rules** — every finding names the file and the evidence. No model decides the verdict, so text planted in a package cannot steer it.
 - **Built for the agent era** — check MCP servers before you connect, gate the installs an agent runs, and re-audit live MCP traffic.
-- **Calibrated, with a CI gate against regressions** — zero heuristic false blocks on the top-1000 most-downloaded packages.
+- **Measured calibration** — the July 2026 top-1000 npm run recorded zero heuristic false blocks after retuning; CI checks the committed regression fixtures.
 
 > **[1. Quick start](#quick-start)** · [2. What it scans & detects](#what-it-scans--detects) · [3. Verdicts](#verdicts) · [4. Usage](#usage) · [5. Integrations](#integrations) · [6. How it compares](#how-it-compares) · [7. Documentation](#documentation)
 
@@ -48,7 +48,7 @@ code does, before anything installs.
 **1. Scan a known-benign package** (no install of pkgxray needed):
 
 ```bash
-npx --yes pkgxray@1.0.5 guard npm:express@4.21.0
+npx --yes pkgxray@1.1.0 guard npm:express@4.21.0
 ```
 
 It stages the tarball in quarantine and runs the static and supply-chain checks.
@@ -79,14 +79,16 @@ Notes:
 `SAFE` is not a proof that a package is harmless; static analysis cannot see a
 payload downloaded only at runtime. See the [threat model](docs/threat-model.md).
 
-**3. See a BLOCK on the supplied inert fixture:**
+**3. Download and scan an inert fixture** (works from any directory; no repository checkout needed):
 
 ```bash
-npx --yes pkgxray@1.0.5 --file examples/onboarding-malicious.json --format markdown
+curl --fail --location --output pkgxray-onboarding.json \
+  https://raw.githubusercontent.com/adamsjack711-ux/pkgxray/751ff97332650f983fdc39a013dfcec855a8b4de/examples/onboarding-malicious.json
+npx --yes pkgxray@1.1.0 --file ./pkgxray-onboarding.json --format markdown
 ```
 
-The fixture is inert source text that models a split-string SSH-key read and
-exfiltration. **It is never executed.** It returns `BLOCK` (exit `2`) with the
+The download is pinned to a reviewed commit. The fixture is inert source text
+that models a split-string SSH-key read and exfiltration. **It is never executed.** It returns `BLOCK` (exit `2`) with the
 cited file and evidence.
 
 **4. Add it to your workflow** — [rechecks & CI](docs/reference.md#monitoring-pkgxray-recheck),
@@ -118,8 +120,14 @@ published), known CVEs (via OSV, before download), npm↔GitHub artifact
 divergence, trojaned updates (`recheck`), and MCP
 capability-surface abuse.
 
-The full coverage matrix is in the [threat model](docs/threat-model.md), along
-with the known blind spot: a package that downloads its payload later. A
+**PyPI coverage is narrower than npm coverage:** it checks install manifests
+(`setup.py` / `pyproject.toml`), known vulnerabilities, metadata, and shared
+text checks such as prompt injection and hidden Unicode. General Python
+behavioral analysis is not implemented; the JavaScript behavioral suite is
+skipped for ordinary PyPI source files.
+
+Coverage boundaries are in the [threat model](docs/threat-model.md), including
+the blind spot of a package that downloads its payload later. A
 side-by-side comparison table is on the [website](https://pkgxray.ca/#catches).
 
 ## Verdicts
@@ -174,11 +182,14 @@ code does. The full capability comparison is in
 
 ## Evidence
 
-pkgxray records **zero heuristic false blocks on the top-1000 most-downloaded
-packages**, and CI gates against a regression ([scope and
-methodology](docs/benchmark.md)). The published runs live at
-[pkgxray.ca/stats](https://pkgxray.ca/stats). The claim covers the most-installed
-set only. It is not a claim of zero false blocks on every package.
+The **2026-07-19 top-1000 npm validation** recorded **zero heuristic false
+blocks after retuning**, with **661 REVIEW verdicts**. This is a historical
+measurement, not a result for every subsequent engine version. Routine CI
+checks the committed fixture corpus; a separate manual validation workflow
+can rescan the npm, PyPI, and MCP cohorts. See the [scope and
+methodology](docs/benchmark.md) and [published runs](https://pkgxray.ca/stats).
+Review rate and reasons matter alongside false blocks because each REVIEW
+requires a decision. The July run did not measure review resolution time.
 
 ## Documentation
 

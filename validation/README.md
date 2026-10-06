@@ -1,11 +1,26 @@
 # At-scale validation — top-1000 npm packages
 
-The [calibration benchmark](../benchmark/) proves the detection engine on a
-curated corpus of labelled fixtures. This harness proves the **"0 heuristic
-false blocks on the top-1000 most-downloaded packages"** claim at scale, against
-real packages nobody wrote as a test. Scope of the claim: [docs/benchmark.md](../docs/benchmark.md#scope-of-the-claim-read-this-first).
+The [calibration benchmark](../benchmark/) measures a curated corpus of
+labelled fixtures. This harness scans registry packages to measure heuristic
+block candidates, scan completion, and manual review burden. The historical
+results below apply to their recorded engine, target list, and date; routine CI
+runs fixtures, not these registry scans. Scope: [docs/benchmark.md](../docs/benchmark.md#scope-of-the-claim-read-this-first).
 
-## 2026-07-19 revalidation (current)
+## 2026-10-04 revalidation of the pinned npm cohort
+
+The updated harness completed all 1,000 July-pinned targets in 143 seconds:
+732 SAFE, 239 REVIEW, and 29 known-vulnerability BLOCK verdicts, with zero scan
+errors and zero unexplained heuristic block candidates. Review burden was
+23.9% of successful scans; human resolution time was not measured.
+
+The [aggregate baseline](baselines/2026-10-04-npm.json) records the engine and
+input hashes, command, completion gate, and review reasons. These are the July
+targets rescanned in October, not an updated popularity ranking. Live
+vulnerability and repository metadata can change verdicts; this run did not
+retune any detector and does not establish a causal improvement over July.
+Historical website artifacts remain unchanged.
+
+## 2026-07-19 revalidation (historical)
 
 The earlier run below ranked by **depended-upon count** from a fixed
 [2019-ish gist](https://gist.github.com/anvaka/8e8fa57c7ee1350e3491). A fresh run
@@ -30,31 +45,75 @@ benign fixture (`benchmark/corpus/benign/npmrc-read-for-registry-url.json`) so
 the gate covers it. **Lesson: rank the validation list by the metric the claim
 is about (downloads), and refresh it — a stale list hides real false blocks.**
 
+**Review burden:** 661 of 1,000 targets received REVIEW. The run did not measure
+how long resolving these findings took, so zero heuristic false blocks must not
+be read as zero manual work. New reports use successful scans as the review-rate
+denominator and report failures separately.
+
 The full per-package results for this run live in the batch-scan workspace
 (`~/pkgxray-scan/results/top1000/`) with the calibration writeup at
 `~/pkgxray-scan/reports/calibration.md`.
 
 ## Earlier run (2026-07-11, depended-upon snapshot — history)
 
-The [calibration benchmark](../benchmark/) proves the detection engine on a
-curated corpus of labelled fixtures. This harness proves the false-block
-claim at scale, against real packages nobody wrote as a test: it runs
-`pkgxray guard` over the 1,000 most-depended-upon npm packages and reports how
-many get wrongly blocked.
+The earlier run used the most-depended-upon snapshot. It is retained as history
+and does not describe the current default target list.
 
 ## Run it
 
 ```bash
-node scripts/validate-at-scale.js                 # full top-1000 (~4-6 min)
+node scripts/validate-at-scale.js                 # pinned July 2026 npm top-1000
 node scripts/validate-at-scale.js --limit 100     # quick sample
 node scripts/validate-at-scale.js --concurrency 8 --timeout-ms 40000
 ```
 
 Outputs to `validation/results/`:
+
 - `report.md` — human-readable summary (the headline table + any false blocks)
 - `results.jsonl` — one JSON record per package (decision, grade, findings, timing)
+- `summary.json` — completion gate, separate successful/error counts, heuristic
+  block candidates, and review burden
+- `review-queue.json` — local per-package REVIEW findings, source citations,
+  pinned identities when available, and suggested review steps grouped by exact
+  category combinations. Keep this file private; CI uploads aggregates only.
 
-Exit code is `0` iff **heuristic false blocks == 0**, so CI can gate on it.
+Exit code is `0` only when every requested scan is recorded, at least one scan
+succeeds, at most 10% of attempted scans fail, and no unadjudicated heuristic
+block candidates remain. A timeout-only or empty run fails even if it reports
+zero blocks. Error thresholds apply whether or not `--emit-stats` is used.
+
+`reviewBurden` reports the REVIEW count, successful-scan denominator, rate, and
+finding categories counted once per reviewed package. Resolution time is `null`
+until measured with human reviewers. A rate without a denominator is unmeasured,
+not zero or 100%.
+
+`reviewWorkflow` groups each reviewed package once, even if it has many findings.
+It records how many packages have complete, partial, or unavailable citations.
+This describes the retained citations, not completeness of the scanner's
+behavioral analysis. Older saved results may contain categories without source
+citations; rescan the exact versions before deciding whether those findings are
+unnecessary. Grouping never approves a package or changes its verdict.
+
+### Review-burden work plan
+
+1. Revalidate the pinned cohort whenever the engine changes and record its build
+   identity. Keep earlier results rather than overwriting them.
+2. Start with the largest single-category groups, then inspect mixed-category
+   cases. Review each package version and the cited source separately; a common
+   install hook or a popular package is not sufficient evidence to clear it.
+3. Record each human disposition and elapsed review time. Compare verdicts and
+   review effort on the same inputs before calling a change an improvement.
+4. Capture confirmed benign misclassifications in inert regression evidence,
+   then make a narrow detector correction and rerun retained cohort gates.
+
+The October 4 baseline's 239 reviews are historical observations. The current
+work improves review organization and evidence retention; no reduction in the
+review rate or human resolution time has yet been demonstrated.
+
+The manual [registry validation workflow](../.github/workflows/pkgxray-validation.yml)
+accepts npm, PyPI, MCP, or all cohorts. Each cohort gets separate fixture and
+registry summaries using the committed target list. Aggregate artifacts are
+retained for review; the workflow does not publish them to the stats site.
 
 ## MCP cohort (separate figures, never merged)
 
@@ -85,17 +144,20 @@ node scripts/validate-at-scale.js \
 
 Results land in `validation/results/mcp/` (report + jsonl as above). The
 `--emit-stats` artifact has the exact shape of `website/stats/data/<runId>.json`:
-false-block figures from the scan, catch-rate figures from
+heuristic block candidate figures from the scan, catch-rate figures from
 `node benchmark/run.js --json --cohort mcp` (fixtures tagged `"cohort": "mcp"`
-in the committed corpus — today a small denominator, reported as-is). Nothing
-publishes automatically: review the artifact by hand, then copy it into
+in the committed corpus). A cohort with no malicious fixtures has unmeasured
+recall (`null` / `N/A`), not 100%; a small denominator is not evidence of broad
+coverage. Stats emission requires both a passing scan-completion gate and a
+successful benchmark. Nothing publishes automatically: review the artifact by hand, then copy it into
 `website/stats/data/` and rebuild the stats site.
 
 ## What counts as a false block
 
-The gate is deliberately precise. A `block` decision is only a **false block**
-when it is *heuristic-driven on a genuinely-benign package*. Three block classes
-are **not** false blocks and are reported separately:
+A `block` decision is a **false block** only when it is heuristic-driven on a
+genuinely benign package. Popularity alone is not a benign ground-truth label.
+The harness therefore reports unexplained heuristic blocks as **candidates**
+that fail the gate pending review. Three classes are reported separately:
 
 - **known-CVE blocks** — the package has a published OSV vulnerability. Blocking
   it is correct; pkgxray must never allow a published vuln away.
@@ -107,17 +169,21 @@ are **not** false blocks and are reported separately:
 - **errors** — the package no longer resolves (unpublished/renamed since the
   corpus snapshot). Recorded as `error`, never as a block.
 
-`review` is **not** a false positive either. It is the middle tier, and it exists
-for governance and provenance signals: a single maintainer, missing provenance, a
+`review` is **not a false block**. It can still be unnecessary work, so its
+count, rate, and reasons are reported separately. It is the middle tier for
+governance and provenance signals: a single maintainer, missing provenance, a
 build artifact that diverges from git, a dual-use URL shortener in an error link,
 and so on.
 
 ## The corpus
 
-[`top1000.txt`](../src/data/top1000.txt) is the canonical "most depended-upon" ranking
-([source](https://gist.github.com/anvaka/8e8fa57c7ee1350e3491)). It is a fixed,
-committed snapshot, so runs are reproducible. Some entries have been unpublished
-since, and they show up as `error`.
+The default npm target list is the committed
+[`2026-07-19 top-1000`](calibration-2026-07-19/top1000-targets.txt), with pinned
+package versions. The older [`most-depended-upon snapshot`](../src/data/top1000.txt)
+remains available with `--list` for historical comparisons. These lists do not
+automatically track today's popularity ranking. PyPI uses its separate
+[`target list`](top-pypi-1000.txt); MCP uses the registry list above.
+Unresolvable packages are recorded as errors, never as successful scans.
 
 ## Feeding results back into the engine
 

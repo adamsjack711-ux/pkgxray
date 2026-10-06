@@ -5,8 +5,8 @@
 // ------------------------------
 // Feeds a committed corpus of labelled fixtures through the REAL static engine
 // (auditEvidence — no network, no execution) and reports how the verdicts line
-// up with the labels. This turns the README's "validated with 0 false blocks"
-// claim into something reproducible and regression-gated.
+// up with the labels. This regression corpus does not revalidate historical
+// live-package scans or estimate accuracy across the package population.
 //
 //   node benchmark/run.js            # human report, exit 1 on a hard failure
 //   node benchmark/run.js --json     # machine-readable summary for CI
@@ -23,11 +23,12 @@
 //   FALSE_BLOCK  expect safe/review, got block  -> HARD FAIL (the FP the tool
 //                                                   stakes its reputation on)
 //   MISS         expect block,       got safe   -> HARD FAIL (malware passed)
+//   RECALL_DROP  expect block,       got review -> HARD FAIL unless knownUnderflag
 //   OVER_FLAG    expect safe,        got review -> warn (stricter than needed)
 //   UNDER_FLAG   caught but under-classified    -> warn (still surfaced)
 //   CORRECT      actual === expect
-// Exit is nonzero iff any HARD FAIL occurs, so CI fails on exactly the two
-// outcomes that matter and tolerates benign calibration drift.
+// Documented benign false positives are exempt from the gate, not the metrics.
+// The full-corpus run also enforces the committed malicious-block count floor.
 
 const fs = require("fs");
 const path = require("path");
@@ -35,6 +36,20 @@ const { auditEvidence } = require("../src/auditor");
 
 const VERDICTS = ["safe", "review", "block"];
 const RANK = { safe: 0, review: 1, block: 2 };
+
+// Retention minima from the 2026-10-04 fixture baseline. These prevent deleting
+// evidence to make a regression pass; they are NOT sufficient-coverage targets.
+// Raise deliberately as reviewed examples are added. MCP's zero records a gap.
+const COHORT_MINIMUMS = {
+  npm: { malicious: 25, benign: 32, blocking: 24 },
+  pypi: { malicious: 5, benign: 7, blocking: 5 },
+  mcp: { malicious: 0, benign: 1, blocking: 0 }
+};
+const COHORT_LIMITATIONS = {
+  npm: "Hand-selected static fixtures do not establish accuracy across the npm registry.",
+  pypi: "PyPI fixtures cover installation-manifest behavior, not general Python behavioral detection.",
+  mcp: "The MCP corpus does not measure live protocol sessions or runtime tool behavior."
+};
 
 function loadCorpus(dir, label) {
   const full = path.join(__dirname, "corpus", dir);
@@ -63,12 +78,120 @@ function classify(expect, actual) {
 //               regression), unless it is an audited knownUnderflag.
 const HARD_FAIL = new Set(["FALSE_BLOCK", "MISS", "RECALL_DROP"]);
 
+function evaluateCase(c, report) {
+  if (!VERDICTS.includes(c.expect)) {
+    throw new Error(`${c.fixture}: invalid "expect" (${c.expect})`);
+  }
+  if (!VERDICTS.includes(report.verdict)) {
+    throw new Error(`${c.fixture}: invalid actual verdict (${report.verdict})`);
+  }
+  // A benign false-positive exemption must never suppress a malicious miss or
+  // recall regression, even if the fixture has been incorrectly annotated.
+  if (c.knownFalsePositive && (c.corpus !== "benign" || c.expect === "block")) {
+    throw new Error(`${c.fixture}: knownFalsePositive is allowed only for benign safe/review fixtures`);
+  }
+  const actual = report.verdict;
+  const rawOutcome = classify(c.expect, actual);
+  let outcome = rawOutcome;
+  const xfail = Boolean(c.knownFalsePositive && outcome !== "CORRECT");
+  const xpass = Boolean(c.knownFalsePositive && outcome === "CORRECT");
+  if (xfail) outcome = "XFAIL";
+  const recallRegression = outcome === "UNDER_FLAG" && c.expect === "block" &&
+    actual === "review" && !c.knownUnderflag;
+  if (recallRegression) outcome = "RECALL_DROP";
+  const findingMatch = !c.expectFinding || report.findings.some((f) => f.category === c.expectFinding);
+  return { ...c, actual, rawOutcome, outcome, xfail, xpass, recallRegression, findingMatch, report };
+}
+
+function summarizeResults(results) {
+  const count = (predicate) => results.filter(predicate).length;
+  const matrix = Object.fromEntries(VERDICTS.map((v) => [v, { safe: 0, review: 0, block: 0 }]));
+  for (const r of results) matrix[r.expect][r.actual]++;
+
+  // Metrics include EVERY observation. An exemption changes the regression
+  // gate only; documenting a false block does not make it a true positive.
+  const tp = count((r) => r.expect === "block" && r.actual === "block");
+  const fp = count((r) => r.expect !== "block" && r.actual === "block");
+  const fn = count((r) => r.expect === "block" && r.actual !== "block");
+  const precision = tp + fp ? tp / (tp + fp) : null;
+  const recall = tp + fn ? tp / (tp + fn) : null;
+  const f1 = precision == null || recall == null ? null :
+    (precision + recall === 0 ? 0 : 2 * precision * recall / (precision + recall));
+  const benign = count((r) => r.corpus === "benign");
+  const reviewCount = count((r) => r.actual === "review");
+  const benignReviewCount = count((r) => r.corpus === "benign" && r.actual === "review");
+  return {
+    total: results.length,
+    malicious: count((r) => r.corpus === "malicious"),
+    benign,
+    correct: count((r) => r.outcome === "CORRECT"),
+    falseBlocks: fp,
+    gatingFalseBlocks: count((r) => r.outcome === "FALSE_BLOCK"),
+    exemptedFalseBlocks: count((r) => r.expect !== "block" && r.actual === "block" && r.xfail),
+    knownFalsePositives: count((r) => r.xfail),
+    xpasses: count((r) => r.xpass),
+    misses: count((r) => r.outcome === "MISS"),
+    recallDrops: count((r) => r.outcome === "RECALL_DROP"),
+    maliciousBlocking: tp,
+    blockMetricCounts: { truePositives: tp, falsePositives: fp, falseNegatives: fn,
+      precisionDenominator: tp + fp, recallDenominator: tp + fn },
+    blockPrecision: round(precision),
+    blockRecall: round(recall),
+    blockF1: round(f1),
+    reviewCount,
+    reviewRateDenominator: results.length,
+    reviewRate: results.length ? round(reviewCount / results.length) : null,
+    benignReviewCount,
+    benignReviewRateDenominator: benign,
+    benignReviewRate: benign ? round(benignReviewCount / benign) : null,
+    matrix
+  };
+}
+
+function assessCoverage(results, cohort = null) {
+  const names = cohort ? [cohort] : [...new Set([
+    ...Object.keys(COHORT_MINIMUMS), ...results.map((r) => r.cohort || "npm")
+  ])].sort();
+  const warnings = [];
+  const failures = [];
+  const cohorts = Object.fromEntries(names.map((name) => {
+    const rows = results.filter((r) => (r.cohort || "npm") === name);
+    const counts = {
+      malicious: rows.filter((r) => r.corpus === "malicious").length,
+      benign: rows.filter((r) => r.corpus === "benign").length,
+      blocking: rows.filter((r) => r.expect === "block" && r.actual === "block").length
+    };
+    const minimums = COHORT_MINIMUMS[name] || null;
+    const missingClasses = ["malicious", "benign"].filter((label) => counts[label] === 0);
+    for (const label of missingClasses) {
+      warnings.push(`${name}: no ${label} fixtures; ${label === "malicious" ? "detection recall" : "benign false-block behavior"} is not measured.`);
+    }
+    const limitation = COHORT_LIMITATIONS[name] || "Hand-selected static fixtures do not establish population accuracy.";
+    warnings.push(`${name}: ${counts.malicious} malicious and ${counts.benign} benign fixtures. ${limitation}`);
+    const deficient = minimums ? Object.keys(minimums).filter((key) => counts[key] < minimums[key]) : [];
+    for (const key of deficient) {
+      failures.push({
+        fixture: `(cohort ${name} ${key} retention)`, outcome: "COVERAGE_DROP",
+        expect: `>=${minimums[key]} ${key}`, actual: `${counts[key]} ${key}`,
+        note: "Existing fixture evidence fell below its committed cohort minimum; this gate does not certify coverage sufficiency."
+      });
+    }
+    return [name, { counts, retentionMinimums: minimums, retentionMet: deficient.length === 0,
+      missingClasses, scope: "committed-static-fixtures", representsPopulationAccuracy: false, limitation }];
+  }));
+  return { cohorts, warnings, failures };
+}
+
 function run() {
   const args = process.argv.slice(2);
   const asJson = args.includes("--json");
   const verbose = args.includes("--verbose");
   const cohortIx = args.indexOf("--cohort");
   const cohort = cohortIx !== -1 ? args[cohortIx + 1] : null;
+  if (cohortIx !== -1 && (!cohort || cohort.startsWith("--"))) {
+    process.stderr.write("--cohort requires a cohort name\n");
+    process.exit(2);
+  }
 
   let cases = [...loadCorpus("malicious", "malicious"), ...loadCorpus("benign", "benign")];
   if (cohort) cases = cases.filter((c) => (c.cohort || "npm") === cohort);
@@ -77,62 +200,12 @@ function run() {
     process.exit(1);
   }
 
-  const results = cases.map((c) => {
-    if (!VERDICTS.includes(c.expect)) {
-      throw new Error(`${c.fixture}: invalid "expect" (${c.expect})`);
-    }
-    const report = auditEvidence(c.evidence || {});
-    const actual = report.verdict;
-    let outcome = classify(c.expect, actual);
-    // knownFalsePositive: a documented heuristic misfire that the engine has NOT
-    // yet been retuned to fix. It is tracked but must not hard-gate unrelated CI.
-    // If it currently mis-verdicts -> XFAIL (expected failure). If it started
-    // passing, the heuristic was fixed -> XPASS (drop the marker).
-    let xfail = false, xpass = false;
-    if (c.knownFalsePositive) {
-      if (outcome === "CORRECT") { xpass = true; }
-      else { xfail = true; outcome = "XFAIL"; }
-    }
-    // RECALL gate: a malicious (expect:block) fixture that lands on `review` is
-    // an under-classification that lowers recall. It is a HARD FAIL — a change
-    // that quietly demotes a caught malware sample from block to review must not
-    // pass — UNLESS the fixture is an audited, documented policy under-flag
-    // (knownUnderflag: download-then-exec and geo/locale-gated destruction are
-    // routed to review by design; see the severity policy). Those stay a warning.
-    // (expect:block -> safe is already MISS, the other recall hard-fail.)
-    let recallRegression = false;
-    if (outcome === "UNDER_FLAG" && c.expect === "block" && actual === "review" && !c.knownUnderflag) {
-      recallRegression = true;
-      outcome = "RECALL_DROP";
-    }
-    const findingMatch =
-      !c.expectFinding || report.findings.some((f) => f.category === c.expectFinding);
-    return { ...c, actual, outcome, xfail, xpass, recallRegression, findingMatch, report };
-  });
-
-  // Confusion matrix expect x actual.
-  const matrix = {};
-  for (const e of VERDICTS) {
-    matrix[e] = { safe: 0, review: 0, block: 0 };
-  }
-  for (const r of results) matrix[r.expect][r.actual]++;
-
-  // "block" as the positive class, computed over the whole corpus. A documented
-  // knownFalsePositive (XFAIL) that blocks is an ACKNOWLEDGED misfire awaiting a
-  // retune — it is excluded from the precision denominator the same way a
-  // known-CVE block is excluded, so `precision` reflects UNDOCUMENTED false
-  // blocks, not ones already tracked. (Its XFAIL count is reported separately.)
-  const tp = results.filter((r) => r.expect === "block" && r.actual === "block").length;
-  const fp = results.filter((r) => r.expect !== "block" && r.actual === "block" && !r.xfail).length;
-  const fn = results.filter((r) => r.expect === "block" && r.actual !== "block").length;
-  const precision = tp + fp === 0 ? 1 : tp / (tp + fp);
-  const recall = tp + fn === 0 ? 1 : tp / (tp + fn);
-  const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
-
+  const results = cases.map((c) => evaluateCase(c, auditEvidence(c.evidence || {})));
+  const metrics = summarizeResults(results);
   const hardFails = results.filter((r) => HARD_FAIL.has(r.outcome));
+  const coverage = assessCoverage(results, cohort);
+  hardFails.push(...coverage.failures);
   const findingMisses = results.filter((r) => !r.findingMatch);
-  const falseBlocks = results.filter((r) => r.outcome === "FALSE_BLOCK");
-  const recallDrops = results.filter((r) => r.outcome === "RECALL_DROP");
   const xfails = results.filter((r) => r.xfail);
   const xpasses = results.filter((r) => r.xpass);
 
@@ -149,30 +222,35 @@ function run() {
 
   const summary = {
     cohort: cohort || "all",
-    total: results.length,
-    malicious: results.filter((r) => r.corpus === "malicious").length,
-    benign: results.filter((r) => r.corpus === "benign").length,
-    correct: results.filter((r) => r.outcome === "CORRECT").length,
-    falseBlocks: falseBlocks.length,
-    knownFalsePositives: xfails.length,
-    xpasses: xpasses.length,
-    misses: results.filter((r) => r.outcome === "MISS").length,
-    recallDrops: recallDrops.length,
-    maliciousBlocking,
+    ...metrics,
     blockRecallFloor: cohort ? null : BLOCK_RECALL_FLOOR,
-    recallFloorMet,
-    blockPrecision: round(precision),
-    blockRecall: round(recall),
-    blockF1: round(f1),
-    matrix
+    recallFloorMet
   };
+  const cohorts = Object.fromEntries(
+    [...new Set(results.map((r) => r.cohort || "npm"))].sort().map((name) => [
+      name, summarizeResults(results.filter((r) => (r.cohort || "npm") === name))
+    ])
+  );
 
   if (asJson) {
     process.stdout.write(
       JSON.stringify(
         {
-          schemaVersion: 1,
+          schemaVersion: 2,
+          metadata: {
+            scope: "committed-static-fixtures",
+            engine: "auditEvidence",
+            networkAccess: false,
+            packageExecution: false,
+            livePackagesScanned: 0,
+            representsPopulationAccuracy: false,
+            blockPositiveLabel: "expect:block",
+            reviewRateDenominator: "all evaluated fixtures in the reported scope"
+          },
           summary,
+          cohorts,
+          coverage: { cohorts: coverage.cohorts, warnings: coverage.warnings,
+            retentionGatePassed: coverage.failures.length === 0 },
           hardFailures: hardFails.map((r) => pick(r)),
           findingMismatches: findingMisses.map((r) => ({ ...pick(r), expectFinding: r.expectFinding }))
         },
@@ -181,18 +259,19 @@ function run() {
       ) + "\n"
     );
   } else {
-    printReport(results, summary, { verbose, hardFails, findingMisses, xfails, xpasses });
+    printReport(results, summary, { verbose, hardFails, findingMisses, xfails, xpasses, cohorts, coverage });
   }
 
   process.exit(hardFails.length > 0 ? 1 : 0);
 }
 
-function printReport(results, s, { verbose, hardFails, findingMisses, xfails = [], xpasses = [] }) {
+function printReport(results, s, { verbose, hardFails, findingMisses, xfails = [], xpasses = [], cohorts = {}, coverage }) {
   const p = (line = "") => process.stdout.write(line + "\n");
   p("pkgxray calibration benchmark");
   p("=============================");
   p(`corpus: ${s.total} cases (${s.malicious} malicious, ${s.benign} benign)${s.cohort !== "all" ? ` — cohort "${s.cohort}"` : ""}`);
   p("");
+  p("scope: committed static fixtures; no live packages scanned; not population accuracy");
   p("confusion matrix (rows = expected, cols = actual verdict):");
   p("            safe   review  block");
   for (const e of VERDICTS) {
@@ -200,10 +279,13 @@ function printReport(results, s, { verbose, hardFails, findingMisses, xfails = [
     p(`  ${e.padEnd(8)}  ${String(row.safe).padStart(4)}   ${String(row.review).padStart(5)}  ${String(row.block).padStart(5)}`);
   }
   p("");
-  p(`block precision : ${pct(s.blockPrecision)}   (of everything blocked, how much is truly malicious)`);
-  p(`block recall    : ${pct(s.blockRecall)}   (of malicious cases, how much got blocked)`);
+  p(`block precision : ${pct(s.blockPrecision)}   (${s.blockMetricCounts.truePositives}/${s.blockMetricCounts.precisionDenominator} blocked fixtures expected to block)`);
+  p(`block recall    : ${pct(s.blockRecall)}   (${s.blockMetricCounts.truePositives}/${s.blockMetricCounts.recallDenominator} expected-block fixtures actually blocked)`);
   p(`block F1        : ${pct(s.blockF1)}`);
-  p(`false blocks    : ${s.falseBlocks}   (benign cases wrongly blocked — must be 0)`);
+  p(`false blocks    : ${s.falseBlocks}   (raw total, including ${s.exemptedFalseBlocks} documented exemptions)`);
+  p(`gating FP blocks: ${s.gatingFalseBlocks}   (undocumented false blocks — must be 0)`);
+  p(`review rate     : ${pct(s.reviewRate)}   (${s.reviewCount}/${s.reviewRateDenominator} evaluated fixtures)`);
+  p(`benign reviews  : ${pct(s.benignReviewRate)}   (${s.benignReviewCount}/${s.benignReviewRateDenominator} benign fixtures)`);
   p(`full misses     : ${s.misses}   (malicious cases that passed as safe — must be 0)`);
   p(`recall drops    : ${s.recallDrops}   (malware demoted block->review, non-allowlisted — must be 0)`);
   if (s.blockRecallFloor == null) {
@@ -212,6 +294,15 @@ function printReport(results, s, { verbose, hardFails, findingMisses, xfails = [
     p(`recall floor    : ${s.maliciousBlocking}/${s.blockRecallFloor} malicious blocking ${s.recallFloorMet ? "✓" : "✗ BELOW FLOOR"}`);
   }
   p(`known FPs (xfail): ${s.knownFalsePositives}   (documented heuristic misfires, not yet retuned — tracked, non-gating)`);
+  p("");
+
+  for (const [name, metrics] of Object.entries(cohorts)) {
+    p(`cohort ${name}: ${metrics.total} fixtures (${metrics.malicious} malicious, ${metrics.benign} benign); block precision ${pct(metrics.blockPrecision)}, recall ${pct(metrics.blockRecall)}; review ${metrics.reviewCount}/${metrics.reviewRateDenominator} (${pct(metrics.reviewRate)})`);
+  }
+  p("");
+
+  p("Coverage limits (passing retention gates does not establish sufficient coverage):");
+  for (const warning of coverage.warnings) p(`  - ${warning}`);
   p("");
 
   if (xfails.length) {
@@ -273,11 +364,13 @@ function pick(r) {
 }
 
 function round(n) {
-  return Math.round(n * 1000) / 1000;
+  return n == null ? null : Math.round(n * 1000) / 1000;
 }
 
 function pct(n) {
-  return `${(n * 100).toFixed(1)}%`;
+  return n == null ? "N/A (not measured)" : `${(n * 100).toFixed(1)}%`;
 }
 
-run();
+if (require.main === module) run();
+
+module.exports = { evaluateCase, summarizeResults, assessCoverage };

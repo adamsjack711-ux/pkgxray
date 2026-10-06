@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Evaluation and onboarding
+
+- Preserve each ecosystem's existing fixture coverage with per-cohort retention
+  gates. Reports explicitly identify unmeasured MCP recall and the limited scope
+  of PyPI fixtures; a passing gate is not an accuracy or coverage certification.
+- Group validation REVIEW results by their exact finding categories and retain
+  source citations in a private review queue. Aggregate reports distinguish
+  review counts from measured review effort; verdicts are unchanged.
+- At-scale validation now fails incomplete runs, runs with no successful scans,
+  and runs with more than 10% scan errors. Successful scans form the metric
+  denominators; aggregate results include review burden and separate block types.
+- Benchmark JSON is now schema version 2. Undefined precision, recall, and F1
+  are `null` (`N/A` in text); precision includes documented false positives.
+  Regression exemptions are reported separately from measured accuracy.
+- Added separate npm, PyPI, and MCP fixture baselines and a manually invoked
+  real-package validation workflow. Historical top-1000 results remain dated
+  observations. MCP recall remains unmeasured because its calibration cohort
+  has no malicious fixtures.
+- Quick start pins the published 1.1.0 release and downloads its inert demo
+  evidence explicitly, so it works outside a repository checkout. Documented
+  the narrower PyPI behavioral coverage.
+
+### Vulnerability-service resilience
+
 **In plain terms:** an OSV outage used to switch pkgxray off. If the
 vulnerability database was unreachable — a real outage, a rate limit, a
 corporate proxy, an air-gapped box — the guard threw away the **entire** static

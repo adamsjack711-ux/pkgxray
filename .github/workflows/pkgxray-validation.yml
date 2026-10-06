@@ -1,0 +1,72 @@
+name: pkgxray real-package validation
+
+# Network-backed validation is explicitly invoked. It does not publish the
+# website or expose package verdicts. Inputs are the committed cohort lists;
+# rankings/versions reflect each list's capture date, not today's registry.
+on:
+  workflow_dispatch:
+    inputs:
+      cohort:
+        description: Committed cohort to validate
+        type: choice
+        options: [all, npm, pypi, mcp]
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        cohort: ${{ fromJSON(inputs.cohort == 'all' && '["npm","pypi","mcp"]' || format('["{0}"]', inputs.cohort)) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Run cohort validation
+        env:
+          COHORT: ${{ matrix.cohort }}
+        shell: bash
+        run: |
+          case "$COHORT" in
+            npm) ecosystem=npm; list=validation/calibration-2026-07-19/top1000-targets.txt ;;
+            pypi) ecosystem=pypi; list=validation/top-pypi-1000.txt ;;
+            mcp) ecosystem=npm; list=validation/mcp-registry-targets.txt ;;
+            *) exit 2 ;;
+          esac
+          output="$RUNNER_TEMP/pkgxray-validation/$COHORT"
+          mkdir -p "$output"
+          # Keep per-package findings out of public Actions logs and artifacts.
+          rc=0
+          node scripts/validate-at-scale.js --ecosystem "$ecosystem" --cohort "$COHORT" \
+            --list "$list" --out-dir "$output" --concurrency 4 --timeout-ms 40000 \
+            > "$output/private.log" 2>&1 || rc=$?
+          if [ -f "$output/summary.json" ]; then
+            cat "$output/summary.json"
+          else
+            echo "Validation did not produce an aggregate summary."
+          fi
+          exit "$rc"
+      - name: Record fixture coverage for this cohort
+        if: always()
+        env:
+          COHORT: ${{ matrix.cohort }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/pkgxray-validation/$COHORT"
+          node benchmark/run.js --cohort "$COHORT" --json > "$RUNNER_TEMP/pkgxray-validation/$COHORT/fixtures.json"
+      - name: Save aggregate evaluation results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: calibration-${{ matrix.cohort }}
+          path: |
+            ${{ runner.temp }}/pkgxray-validation/${{ matrix.cohort }}/summary.json
+            ${{ runner.temp }}/pkgxray-validation/${{ matrix.cohort }}/fixtures.json
+          retention-days: 14

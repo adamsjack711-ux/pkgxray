@@ -1,0 +1,119 @@
+{
+  "recordedOn": "2026-10-04",
+  "kind": "live-validation-aggregate",
+  "scope": "Pinned July 19 npm calibration targets rescanned on October 4; not an updated popularity ranking or a malicious-package recall evaluation.",
+  "provenance": {
+    "packageVersion": "1.1.0",
+    "baseCommit": "751ff97332650f983fdc39a013dfcec855a8b4de",
+    "workingTreeMetricsUpdate": true,
+    "node": "v26.8.2",
+    "auditorSha256": "edd93501af47280edd9aa67e1be35684bbe14e8e94dff9daa736272757091ad0",
+    "validationRunnerSha256": "41b8e45c85a9665fe3107865dc3709ee3a020b75bca2526455ea9084a3e96a9f",
+    "targetList": "validation/calibration-2026-07-19/top1000-targets.txt",
+    "targetListSha256": "d5bda641c86db048c7c1605b839f08076c27c328eb460122bf7ffc666c32909a",
+    "command": "node scripts/validate-at-scale.js --ecosystem npm --cohort npm --list validation/calibration-2026-07-19/top1000-targets.txt --concurrency 4 --timeout-ms 40000 --out-dir <private-output-directory>",
+    "wallSeconds": 143
+  },
+  "notes": [
+    "Vulnerability and repository metadata are time-dependent; reruns can differ.",
+    "Known-vulnerability blocks are vulnerability findings, not malware labels.",
+    "No detector tuning was performed for this run.",
+    "Per-package verdicts and raw source are excluded from this aggregate.",
+    "The recorded validationRunnerSha256 identifies the runner at scan time; postRunVerification records a later accounting-only correction."
+  ],
+  "schemaVersion": 1,
+  "ecosystem": "npm",
+  "cohort": "npm",
+  "completion": {
+    "expected": 1000,
+    "attempted": 1000,
+    "succeeded": 1000,
+    "errors": 0,
+    "completionRate": 1,
+    "errorRate": 0,
+    "minimumSuccessfulScans": 1,
+    "maximumErrorRate": 0.1
+  },
+  "decisions": {
+    "safe": 732,
+    "review": 239,
+    "block": 29
+  },
+  "blockBreakdown": {
+    "knownVulnerability": 29,
+    "defensible": 0,
+    "heuristicCandidates": 0
+  },
+  "heuristicBlockCandidates": {
+    "count": 0,
+    "of": 1000,
+    "rate": 0,
+    "classification": "unadjudicated-heuristic-block-candidates"
+  },
+  "adjudicatedFalsePositives": null,
+  "reviewBurden": {
+    "count": 239,
+    "of": 1000,
+    "rate": 0.239,
+    "reasons": [
+      {
+        "category": "install-hook",
+        "packages": 158
+      },
+      {
+        "category": "lonely-maintainer",
+        "packages": 39
+      },
+      {
+        "category": "code-execution",
+        "packages": 26
+      },
+      {
+        "category": "npm-vs-github-divergence",
+        "packages": 22
+      },
+      {
+        "category": "environment-access",
+        "packages": 8
+      },
+      {
+        "category": "supply-chain-signal",
+        "packages": 5
+      },
+      {
+        "category": "network-exfil-or-loader",
+        "packages": 4
+      },
+      {
+        "category": "cloud-metadata-access",
+        "packages": 2
+      },
+      {
+        "category": "data-access",
+        "packages": 2
+      },
+      {
+        "category": "persistence",
+        "packages": 2
+      },
+      {
+        "category": "hidden-unicode",
+        "packages": 1
+      },
+      {
+        "category": "remote-code-load",
+        "packages": 1
+      }
+    ],
+    "resolutionTimeMinutes": null
+  },
+  "gate": {
+    "passed": true,
+    "failures": []
+  },
+  "postRunVerification": {
+    "change": "Normalize pinned and scoped identities for documented defensible-block accounting.",
+    "runnerSha256": "314debad1199b4b764e981433a2f1714463dc61b671ce8018899b7c56532bc46",
+    "aggregateReplay": "All 1,000 saved results replayed with the revised accounting; aggregate summary unchanged."
+  }
+}

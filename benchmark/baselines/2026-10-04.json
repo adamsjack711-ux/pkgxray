@@ -1,0 +1,220 @@
+{
+  "recordedOn": "2026-10-04",
+  "kind": "static-fixture-baseline",
+  "provenance": {
+    "packageVersion": "1.1.0",
+    "baseCommit": "751ff97332650f983fdc39a013dfcec855a8b4de",
+    "workingTreeMetricsUpdate": true,
+    "node": "v26.8.2",
+    "auditorSha256": "edd93501af47280edd9aa67e1be35684bbe14e8e94dff9daa736272757091ad0",
+    "benchmarkRunnerSha256": "1d6637466bc97ac16f49c4017bbec53a608102a613743d21c9c9644a54a7d3c9",
+    "corpusSha256": "73d2fcd13fea6c8fca00fbdf72cd08b15630592f80592f57e3d71f8d6fd8c405",
+    "corpusHashFormat": "benign then malicious; sorted JSON filenames; each relative path + NUL + exact file bytes + NUL"
+  },
+  "schemaVersion": 2,
+  "metadata": {
+    "scope": "committed-static-fixtures",
+    "engine": "auditEvidence",
+    "networkAccess": false,
+    "packageExecution": false,
+    "livePackagesScanned": 0,
+    "representsPopulationAccuracy": false,
+    "blockPositiveLabel": "expect:block",
+    "reviewRateDenominator": "all evaluated fixtures in the reported scope"
+  },
+  "summary": {
+    "cohort": "all",
+    "total": 70,
+    "malicious": 30,
+    "benign": 40,
+    "correct": 67,
+    "falseBlocks": 0,
+    "gatingFalseBlocks": 0,
+    "exemptedFalseBlocks": 0,
+    "knownFalsePositives": 0,
+    "xpasses": 0,
+    "misses": 0,
+    "recallDrops": 0,
+    "maliciousBlocking": 29,
+    "blockMetricCounts": {
+      "truePositives": 29,
+      "falsePositives": 0,
+      "falseNegatives": 1,
+      "precisionDenominator": 29,
+      "recallDenominator": 30
+    },
+    "blockPrecision": 1,
+    "blockRecall": 0.967,
+    "blockF1": 0.983,
+    "reviewCount": 15,
+    "reviewRateDenominator": 70,
+    "reviewRate": 0.214,
+    "benignReviewCount": 14,
+    "benignReviewRateDenominator": 40,
+    "benignReviewRate": 0.35,
+    "matrix": {
+      "safe": {
+        "safe": 25,
+        "review": 1,
+        "block": 0
+      },
+      "review": {
+        "safe": 1,
+        "review": 13,
+        "block": 0
+      },
+      "block": {
+        "safe": 0,
+        "review": 1,
+        "block": 29
+      }
+    },
+    "blockRecallFloor": 23,
+    "recallFloorMet": true
+  },
+  "cohorts": {
+    "mcp": {
+      "total": 1,
+      "malicious": 0,
+      "benign": 1,
+      "correct": 1,
+      "falseBlocks": 0,
+      "gatingFalseBlocks": 0,
+      "exemptedFalseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 0,
+      "blockMetricCounts": {
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precisionDenominator": 0,
+        "recallDenominator": 0
+      },
+      "blockPrecision": null,
+      "blockRecall": null,
+      "blockF1": null,
+      "reviewCount": 1,
+      "reviewRateDenominator": 1,
+      "reviewRate": 1,
+      "benignReviewCount": 1,
+      "benignReviewRateDenominator": 1,
+      "benignReviewRate": 1,
+      "matrix": {
+        "safe": {
+          "safe": 0,
+          "review": 0,
+          "block": 0
+        },
+        "review": {
+          "safe": 0,
+          "review": 1,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 0,
+          "block": 0
+        }
+      }
+    },
+    "npm": {
+      "total": 57,
+      "malicious": 25,
+      "benign": 32,
+      "correct": 54,
+      "falseBlocks": 0,
+      "gatingFalseBlocks": 0,
+      "exemptedFalseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 24,
+      "blockMetricCounts": {
+        "truePositives": 24,
+        "falsePositives": 0,
+        "falseNegatives": 1,
+        "precisionDenominator": 24,
+        "recallDenominator": 25
+      },
+      "blockPrecision": 1,
+      "blockRecall": 0.96,
+      "blockF1": 0.98,
+      "reviewCount": 14,
+      "reviewRateDenominator": 57,
+      "reviewRate": 0.246,
+      "benignReviewCount": 13,
+      "benignReviewRateDenominator": 32,
+      "benignReviewRate": 0.406,
+      "matrix": {
+        "safe": {
+          "safe": 18,
+          "review": 1,
+          "block": 0
+        },
+        "review": {
+          "safe": 1,
+          "review": 12,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 1,
+          "block": 24
+        }
+      }
+    },
+    "pypi": {
+      "total": 12,
+      "malicious": 5,
+      "benign": 7,
+      "correct": 12,
+      "falseBlocks": 0,
+      "gatingFalseBlocks": 0,
+      "exemptedFalseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 5,
+      "blockMetricCounts": {
+        "truePositives": 5,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precisionDenominator": 5,
+        "recallDenominator": 5
+      },
+      "blockPrecision": 1,
+      "blockRecall": 1,
+      "blockF1": 1,
+      "reviewCount": 0,
+      "reviewRateDenominator": 12,
+      "reviewRate": 0,
+      "benignReviewCount": 0,
+      "benignReviewRateDenominator": 7,
+      "benignReviewRate": 0,
+      "matrix": {
+        "safe": {
+          "safe": 7,
+          "review": 0,
+          "block": 0
+        },
+        "review": {
+          "safe": 0,
+          "review": 0,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 0,
+          "block": 5
+        }
+      }
+    }
+  },
+  "hardFailures": [],
+  "findingMismatches": []
+}

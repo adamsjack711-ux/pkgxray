@@ -2,20 +2,22 @@ name: pkgxray calibration benchmark
 
 # Runs the labelled calibration corpus (benchmark/) through the real static
 # engine on every push / PR that touches detection code or the corpus. The gate
-# fails on exactly the two outcomes that matter: a benign fixture wrongly
-# blocked (the "0 false blocks" invariant) or a malicious fixture that passes as
-# safe. Benign calibration drift (safe -> review) is reported, not failed.
+# fails on unexpected false blocks, full misses, and unapproved recall drops.
+# This is a fixture regression gate. The manual pkgxray-validation workflow
+# separately measures the committed real-package cohorts.
 
 on:
   push:
     paths:
       - "src/**"
       - "benchmark/**"
+      - "test/benchmark-metrics.test.js"
       - ".github/workflows/pkgxray-benchmark.yml"
   pull_request:
     paths:
       - "src/**"
       - "benchmark/**"
+      - "test/benchmark-metrics.test.js"
       - ".github/workflows/pkgxray-benchmark.yml"
 
 permissions:
@@ -34,3 +36,17 @@ jobs:
       # Zero runtime dependencies — the benchmark drives src/auditor.js directly.
       - name: Run calibration benchmark
         run: node ./benchmark/run.js
+
+      - name: Record separate fixture baselines
+        run: |
+          mkdir -p "$RUNNER_TEMP/pkgxray-benchmark"
+          for cohort in npm pypi mcp; do
+            node benchmark/run.js --json --cohort "$cohort" > "$RUNNER_TEMP/pkgxray-benchmark/$cohort.json"
+          done
+
+      - name: Save aggregate fixture metrics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fixture-calibration
+          path: ${{ runner.temp }}/pkgxray-benchmark/*.json
+          retention-days: 14
