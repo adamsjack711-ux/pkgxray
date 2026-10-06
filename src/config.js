@@ -386,7 +386,7 @@ function applyConfig(report, context = {}) {
   const muted = [];
   const surviving = [];
   for (const finding of findings) {
-    if (IMMUTABLE_CATEGORIES.has(finding.category)) {
+    if (IMMUTABLE_CATEGORIES.has(finding.category) || ["incomplete-source-scan", "incomplete-dependency-scan", "unsupported-behavior", "flow-analysis-gap", "unresolved-runtime-execution"].includes(finding.category)) {
       surviving.push(finding);
       continue;
     }
@@ -428,6 +428,10 @@ function applyConfig(report, context = {}) {
       effects.notices.push(
         `allowlist entry ${allowHit.allow.pkg} NOT applied: the package has a published vulnerability, which cannot be allowed away.`
       );
+    } else if (surviving.some(f => f.category === "incomplete-dependency-scan")) {
+      verdict = "review";
+      effects.ignoredAllow = { pkg: allowHit.allow.pkg, reason: "incomplete-dependency-scan" };
+      effects.notices.push("A parent artifact approval cannot clear an incomplete dependency check.");
     } else {
       verdict = "safe";
       effects.allowlisted = {
@@ -486,6 +490,18 @@ function floorVerdictForScanGap(verdict, hasGap, config) {
   return verdictForScanError(config) === "safe" ? verdict : "review";
 }
 
+// Final guard decision shared by acquisition and transport adapters. Coverage
+// gaps cannot be muted or promoted by allow-review; a pinned artifact approval
+// remains an explicit operator override.
+function guardDecision(report, { policy = "safe-only", config = DEFAULTS, vulnerabilityScanError, sourceCoverage, dependencyAudit } = {}) {
+  let decision = report.verdict === "safe" ? "allow" : report.verdict;
+  if (decision === "review" && policy === "allow-review") decision = "allow";
+  const authorization = require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit });
+  if (authorization.explicitOverride) return decision;
+  if (authorization.mandatoryHoldReasons.length && decision !== "block") return "review";
+  return floorVerdictForScanGap(decision, Boolean(vulnerabilityScanError), config);
+}
+
 // --- rendering -------------------------------------------------------------
 
 // Lines describing what the config changed, to append to EVERY report so a
@@ -539,6 +555,7 @@ module.exports = {
   loadConfig,
   validateConfig,
   applyConfig,
+  guardDecision,
   exitCodeForVerdict,
   verdictForScanError,
   floorVerdictForScanGap,

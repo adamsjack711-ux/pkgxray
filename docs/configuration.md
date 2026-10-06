@@ -1,9 +1,25 @@
 # Configuration — `.pkgxray.json`
 
-One human-authored policy file, read by **every** pkgxray surface — the CLI
-(`guard` / `audit` / `recheck`), the MCP server, the proxy, and the install
-hook. Because every surface loads the *same* file through the *same* loader
-(`src/config.js`), your policy can never drift per-surface.
+The Node-based CLI, MCP server, proxy, and install-hook integrations use the
+shared `.pkgxray.json` loader for their supported policy settings. The browser
+extension uses engine defaults on supplied evidence and does not read this file.
+Different scan modes cover different evidence; a shared configuration file does
+not make a metadata-only scan equivalent to a full source scan.
+
+Guard applies policy before promotion. Incomplete source collection remains
+REVIEW even under `allow-review` or a muted coverage finding; a matching pinned
+artifact allowlist is an explicit override. Deep-scan failures remain REVIEW
+unless the dependency is already BLOCK. Direct-dependency vulnerabilities cannot
+be muted or allowed away. Unresolved direct dependencies and failed lookups remain
+REVIEW under `allow-review`; a parent artifact allowlist cannot clear that gap.
+`flow-analysis-gap` and `unsupported-behavior` also remain REVIEW under
+`allow-review`, in both guard and evidence CLI decisions. They cannot be muted;
+an explicit artifact allowlist can override them. Python modules receive
+`unsupported-behavior` until Python behavioral analysis is available.
+
+`allow-review` still permits ordinary reviewed findings, including findings
+downgraded in compiled output. Keep `safe-only`, `failOn: review` and
+`scanErrorPolicy: fail-closed` when reviews must stop installation.
 
 `.pkgxray.json` is distinct from `.pkgxray.lock`:
 
@@ -121,3 +137,25 @@ catch (err) { verdict = cfg.verdictForScanError(config); }
 ```
 
 See `.pkgxray.example.json` for a complete annotated example.
+
+## Cache upstream destinations
+
+The cache requires HTTPS and restricts every redirect to its configured upstream
+origin. The default codeload origin also permits GitHub's `github.com` and
+`objects.githubusercontent.com` HTTPS origins. IP literals and DNS answers must
+be public addresses; the checked DNS answers are used directly by the socket.
+Unexpected ports, URL credentials, scheme downgrades, and off-origin redirects
+are rejected before their destinations are contacted.
+
+For an explicitly trusted private mirror or local test server, supply
+`--allow-private-upstream` together with `--upstream-github-api URL` and/or
+`--upstream-codeload URL`. This permits private addresses and HTTP only at the
+configured origins, never arbitrary redirect destinations. HTTP exposes any
+client-supplied token on that connection, so use HTTPS for shared/private mirrors.
+
+Authenticated metadata requests bypass disk storage and shared in-flight requests;
+their responses use `Cache-Control: private, no-store`. Only anonymous metadata
+populates `github/public-repos-v2`. Older `github/repos` metadata is no longer
+read because it may contain responses fetched using another client's token.
+Existing files are left on disk; operators can remove that old metadata directory
+after upgrading. Tarball storage is unchanged.

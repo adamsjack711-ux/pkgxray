@@ -36,7 +36,8 @@ function evidenceWithInstallHook() {
         version: "1.0.0",
         repository: "https://github.com/example/demo-pkg",
         scripts: { postinstall: "node setup.js" }
-      })
+      }),
+      'setup.js': 'console.log("setup complete");'
     }
   };
 }

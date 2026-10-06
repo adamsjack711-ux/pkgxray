@@ -23,16 +23,16 @@ fixtures, a benchmark review, and release notes.
 3. Run:
 
    ```bash
-   node --test
+   npm test
    node ./benchmark/run.js
    npm run test:docs
    npm run validate:website
-   npm pack --dry-run
+   npm pack --dry-run --ignore-scripts
    ```
 
 4. Confirm the benchmark shows zero false blocks, zero full misses, and no drop
    in recall.
-5. Look through `npm pack --dry-run` for files you did not expect, secrets,
+5. Look through `npm pack --dry-run --ignore-scripts` for files you did not expect, secrets,
    fixtures, or missing docs.
 6. Run the release workflow in dry-run mode, and read the result of its
    self-guard on the packed artifact.
@@ -46,6 +46,31 @@ fixtures, a benchmark review, and release notes.
 
 Never ship a release by working around failing tests, benchmark gates,
 provenance, or review of a protected environment.
+
+
+## Release privilege and artifact boundaries
+
+The `validate` job has read-only repository access and no npm credentials or
+OIDC permission. It runs tests and both adversarial baseline gates, packs with
+`--ignore-scripts`, checks the archive, and records its SHA-256. The separate
+`publish` job has no checkout and executes no package scripts. It downloads the
+archive from the same workflow run, verifies that digest, and publishes that
+exact tarball with `--ignore-scripts --provenance`. Post-publish artifact checks
+run in a third job without publishing credentials.
+
+GitHub actions are pinned to commit IDs. Artifact transfer uses the immutable
+[GitHub artifact mechanism](https://github.com/actions/upload-artifact), and
+[npm accepts a tarball directly](https://docs.npmjs.com/cli/commands/npm-publish/).
+The existing `NPM_TOKEN` is retained only on the publish step; configuring npm
+trusted publishing and removing the stored token remains an account-level task.
+Protect release refs and workflow changes: job isolation cannot make a malicious
+maintainer-approved archive safe. `scripts/verify-release.js` requires a completed
+clean OSV check and permits only the deliberately disabled source scan of the
+scanner itself. An advisory outage or any other medium/high review finding
+fails validation. The post-publish check is mandatory and compares downloaded
+archive bytes with the validated SHA-256. Neither check cryptographically
+verifies provenance or establishes npm/GitHub source parity; those remain
+separate maintainer checks. Dry-run mode validates and uploads without publishing.
 
 ## Supported releases
 

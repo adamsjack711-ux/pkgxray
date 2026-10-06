@@ -114,3 +114,18 @@ test('forwards cacheUrl into child env', async () => {
   assert.equal(capturedEnv.PKGXRAY_CACHE_URL, 'http://cache.local:7000');
   assert.equal(capturedEnv.PATH, '/usr/bin');
 });
+
+test('archive runner forwards snapshot arguments and preserves the receipt', async () => {
+  const approval = { schemaVersion: 1, artifactSha256: 'abc' };
+  const spawn = fakeSpawn({ stdout: JSON.stringify({ decision: 'allow', resolved: { sha256: 'abc' }, approval }) });
+  const result = await runGuard('pkgxray', 'demo@1.0.0', {
+    artifact: { archivePath: '/private/snapshot.tgz', integrity: 'sha512-value' }, cwd: '/trusted/project',
+    spawnFn: (bin, args, opts) => {
+      assert.deepEqual(args, ['guard', 'npm:demo@1.0.0', '--format', 'json', '--archive', '/private/snapshot.tgz', '--integrity', 'sha512-value', '--receipt-only']);
+      assert.equal(opts.cwd, '/trusted/project');
+      return spawn();
+    }
+  });
+  assert.deepEqual(result.approval, approval);
+  assert.equal(result.sha256, 'abc');
+});

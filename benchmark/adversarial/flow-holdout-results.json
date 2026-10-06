@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "corpusSha256": "22b33c91334ddac2be7b5fe659d196b5ff64d877637d234a626833f20c5c61e4",
+  "cases": 20,
+  "families": 10,
+  "note": "Paired synthetic cases; filename variants are correlated, not independent observations. REVIEW is not BLOCK.",
+  "summary": {
+    "MISS": 0,
+    "FALSE_BLOCK": 0,
+    "REVIEW": 10,
+    "BLOCK": 0,
+    "CLEAR": 10
+  },
+  "byVariant": {
+    "holdout": {
+      "MISS": 0,
+      "FALSE_BLOCK": 0,
+      "REVIEW": 10,
+      "BLOCK": 0,
+      "CLEAR": 10
+    }
+  },
+  "results": [
+    {
+      "id": "template-interpolation/malicious",
+      "family": "template-interpolation",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "template-interpolation/benign",
+      "family": "template-interpolation",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "global-process/malicious",
+      "family": "global-process",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "global-process/benign",
+      "family": "global-process",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reassigned-alias/malicious",
+      "family": "reassigned-alias",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reassigned-alias/benign",
+      "family": "reassigned-alias",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-secret-name/malicious",
+      "family": "computed-secret-name",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "computed-secret-name/benign",
+      "family": "computed-secret-name",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "callback-shadow/malicious",
+      "family": "callback-shadow",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "callback-shadow/benign",
+      "family": "callback-shadow",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "base64-export/malicious",
+      "family": "base64-export",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "base64-export/benign",
+      "family": "base64-export",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "single-secret-quoted-example/malicious",
+      "family": "single-secret-quoted-example",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "single-secret-quoted-example/benign",
+      "family": "single-secret-quoted-example",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-request/malicious",
+      "family": "destructured-request",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "destructured-request/benign",
+      "family": "destructured-request",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "cross-file/malicious",
+      "family": "cross-file",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "cross-file/benign",
+      "family": "cross-file",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-property/malicious",
+      "family": "reflect-property",
+      "label": "malicious",
+      "variant": "holdout",
+      "verdict": "review",
+      "outcome": "REVIEW",
+      "categories": [
+        "credential-export",
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    },
+    {
+      "id": "reflect-property/benign",
+      "family": "reflect-property",
+      "label": "benign",
+      "variant": "holdout",
+      "verdict": "safe",
+      "outcome": "CLEAR",
+      "categories": [
+        "missing-metadata",
+        "network-access",
+        "supply-chain-signal"
+      ]
+    }
+  ]
+}

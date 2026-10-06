@@ -213,8 +213,8 @@ test("auditLockfile threads typosquat config into the deep scan", async () => {
   try {
     const { auditLockfile } = require("../src/lockfile");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pkgx-typo-lock-"));
-    const pkg = path.join(dir, "package.json");
-    fs.writeFileSync(pkg, JSON.stringify({ name: "demo", dependencies: { roolup: "1.0.0" } }));
+    const pkg = path.join(dir, "package-lock.json");
+    fs.writeFileSync(pkg, JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/roolup": { version: "1.0.0", resolved: "https://registry.npmjs.org/roolup/-/roolup-1.0.0.tgz", integrity: "sha256-" + Buffer.alloc(32).toString("base64") } } }));
     await auditLockfile(pkg, {
       osvResults: [{}],
       triageDecisions: false,

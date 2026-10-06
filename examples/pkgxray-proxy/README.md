@@ -12,7 +12,7 @@ machine.
 - **Zero runtime dependencies** — Node ≥18 built-ins only (`node:http`,
   `node:https`, `node:child_process`, `node:fs`).
 - **Process-isolated scanning** — shells out to the `pkgxray` CLI, so a hung or
-  crashed scan can't take down the proxy, and CLI upgrades don't break it.
+  crashed scan is rejected; the CLI must match the proxy's scanner build.
 - **Verdict caching** — the first requester of a package pays the scan cost;
   everyone else hits the cache. Verdicts persist across restarts.
 - **Policy is configuration** — fail-mode, review handling, and allow/denylists
@@ -30,21 +30,16 @@ For each request the proxy inspects the path:
 
 The gate, in order:
 
-1. **Denylist** match → `403` (never scanned, never cached).
-2. **Allowlist** match → stream the tarball (never scanned) — so a false
-   positive can't wedge a whole team's CI; pin the package and move on.
-3. **Verdict cache** hit for `name@version` → serve the cached decision.
-4. **Cache miss** → run `pkgxray guard npm:<name>@<version> --format json`:
-   - `safe`/`allow` → stream the real tarball, cache `allow`.
-   - `block` → `403` with a JSON body of findings, cache `block`.
-   - `review` → follow `reviewPolicy` (below), cache `review`.
-5. **Scan error / timeout** → follow `scanErrorPolicy`. The error is **never**
-   cached as a verdict.
+1. Denylisted packages return `403`.
+2. Download the canonical tarball into a private temporary file (64 MiB / 30 second limits), computing SHA-256. Client range and conditional headers are excluded; partial, redirected and encoded responses are rejected.
+3. Reuse a fresh verdict only if its artifact digest, scanner build and policy context match. Legacy name/version cache entries cannot authorize delivery.
+4. Otherwise run `pkgxray guard npm:<name>@<version> --archive <snapshot> --integrity <SRI> --receipt-only --format json`. The scanner verifies integrity and the archive's manifest identity before analysis.
+5. Require a matching receipt with completed source and vulnerability checks. A block, scan failure, missing receipt or incomplete scan returns `403`. A complete review follows `reviewPolicy`.
+6. Serve the held snapshot and remove it after the response. No second upstream fetch occurs after approval.
 
-Every served/blocked tarball response carries:
+Served responses carry `x-pkgxray-verdict`, `x-pkgxray-source` and `x-pkgxray-sha256`. Block responses include the reason. Name-only `allowlist` entries no longer bypass scanning; use the shared policy's digest-pinned exceptions when appropriate.
 
-- `x-pkgxray-verdict: allow | block | review | scan-error`
-- `x-pkgxray-source: allowlist | denylist | cache | scan`
+Receipts are local records from a trusted child process, not signed attestations. The proxy and configured CLI must use the same source build. Updating the CLI independently causes receipt rejection until both are updated. Source or vulnerability checks that are disabled, skipped or incomplete cannot authorize delivery. This receipt does not certify transitive dependencies or runtime behavior.
 
 ## Install & run
 
@@ -54,11 +49,13 @@ cd pkgxray-proxy
 node bin/proxy.js
 ```
 
-You'll need the `pkgxray` CLI on `PATH` (or set `pkgxrayBin`):
+Use the CLI from the same checkout as this proxy (or an identically built installation):
 
 ```bash
-npm i -g pkgxray
+PKGXRAY_BIN=../../bin/audit.js node bin/proxy.js
 ```
+
+Run this from `examples/pkgxray-proxy`; a separately installed release may have a different build fingerprint.
 
 The proxy prints the exact `.npmrc` line on startup.
 
@@ -92,9 +89,9 @@ Point `PKGXRAY_PROXY_CONFIG` at a JSON file for the file layer.
 | `pkgxrayBin` | `PKGXRAY_BIN` | `pkgxray` | Path/name of the CLI. |
 | `scanTimeoutMs` | `PKGXRAY_PROXY_SCAN_TIMEOUT_MS` | `20000` | The child is SIGKILL'd past this. |
 | `reviewPolicy` | `PKGXRAY_PROXY_REVIEW_POLICY` | `warn` | `block` \| `warn` \| `allow`. |
-| `scanErrorPolicy` | `PKGXRAY_PROXY_SCAN_ERROR_POLICY` | `fail-closed` | `fail-closed` (block) \| `fail-open` (serve). |
-| `allowlist` | `PKGXRAY_PROXY_ALLOWLIST` | `[]` | Comma-separated in env. `name` or `name@version`. |
-| `denylist` | `PKGXRAY_PROXY_DENYLIST` | `[]` | Comma-separated in env. `name` or `name@version`. |
+| `scanErrorPolicy` | `PKGXRAY_PROXY_SCAN_ERROR_POLICY` | `fail-closed` | Legacy diagnostic setting; artifact delivery always fails closed. |
+| `allowlist` | `PKGXRAY_PROXY_ALLOWLIST` | `[]` | Legacy diagnostic setting; cannot bypass artifact verification. |
+| `denylist` | `PKGXRAY_PROXY_DENYLIST` | `[]` | Legacy diagnostic setting; cannot bypass artifact verification. |
 | `verdictStorePath` | `PKGXRAY_PROXY_VERDICT_STORE` | `~/.pkgxray-proxy/verdicts.json` | File-backed cache. |
 | `verdictTtlMs` | `PKGXRAY_PROXY_VERDICT_TTL_MS` | `86400000` (24h) | A cached verdict older than this is re-scanned on the next request. `0` = always re-scan. |
 | `cacheUrl` | `PKGXRAY_CACHE_URL` | — | Forwarded to the CLI's env; a shared pkgxray cache server collapses repeated fetches. |
@@ -105,26 +102,15 @@ Point `PKGXRAY_PROXY_CONFIG` at a JSON file for the file layer.
 - `warn` — **serve** the tarball but annotate the response (default).
 - `allow` — serve silently.
 
-`scanErrorPolicy` — what to do when a scan errors or times out:
-- `fail-closed` — **block** (`403`). Safer default.
-- `fail-open` — serve with `x-pkgxray-verdict: scan-error`. Keeps CI moving at
-  the cost of an unscanned package.
+Artifact delivery always fails closed on errors, including failed refreshes. `scanErrorPolicy` remains available to legacy diagnostic helpers, but cannot authorize unverified bytes.
 
-`verdictTtlMs` — how long a cached verdict stays trusted before it's re-scanned.
-Without a TTL the proxy would serve a cached `allow` forever, even after new
-intelligence flags the package (a maintainer takeover of an already-cached
-version). On the next request for a stale entry the proxy re-scans (lazy
-refresh); if the verdict regressed (`allow → review/block`) the store is updated
-and the transition is logged (`{event:"verdict-transition", from, to, reason}`),
-so subsequent requests are gated correctly. A **failed** re-scan never overwrites
-a good stored verdict — the last good verdict is served (consistent with the
-store's "only cache allow/block/review" rule).
+`verdictTtlMs` limits approval age (24 hours by default; zero forces a scan on every request). Byte, policy and build changes invalidate approval immediately. Advisory changes become visible on refresh; there is no live revocation feed. An upstream download is required even on a verdict cache hit so changed bytes are detected.
 
 ### Force a refresh — `POST /-/pkgxray/recheck`
 
 After a big advisory drop you don't have to wait for the TTL. An admin `POST` to
 `/-/pkgxray/recheck` re-scans **every** cached `name@version` and updates the
-store in place, returning a JSON summary:
+store in place, returning a JSON summary. These name/version rechecks do not mint artifact approvals: a successful recheck invalidates the prior binding, so the next tarball request scans its snapshot again:
 
 ```bash
 curl -X POST http://127.0.0.1:4873/-/pkgxray/recheck
@@ -212,8 +198,7 @@ never hits the network or requires `pkgxray` to be installed.
 
 ## Scope
 
-**In scope:** gating tarballs, verdict caching, allow/denylists, review &
-fail-mode policy, transparent metadata passthrough.
+**In scope:** exact-byte gating on canonical tarball routes, context-bound verdict caching, denylisting, review policy and transparent metadata passthrough.
 
 **Out of scope (by design):**
 - Rewriting tarball URLs inside metadata responses (see the assumption above).

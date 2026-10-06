@@ -86,3 +86,27 @@ test("injected extra source file in a mirrored tree still flags divergence", asy
     "the injected source file must be reported as an extra-source divergence"
   );
 });
+
+test('runtime minified execution targets retain divergence despite a build script', async t => {
+  const shared = {'index.js':'module.exports=1;', 'lib/a.js':'module.exports=2;', 'lib/b.js':'module.exports=3;'};
+  const {root,npm,gh} = await stageDirs({...shared,'extended/worker.min.js':'module.exports=4;'},
+    {...shared,'extended/worker.min.js':'module.exports=5;'});
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  for (const fast of [false,true]) {
+    const files = Object.keys({...shared,'extended/worker.min.js':''});
+    const result = await diffNpmVsGithub({npmStagedPath:npm,githubStagedPath:gh,hasBuildScript:true,
+      runtimeFiles:['index.js','extended/worker.min.js'],executionFiles:['extended/worker.min.js'],
+      ...(fast ? {npmFileList:files,npmPairedPaths:new Set(files),prepopulatedGhDirs:new Set(['lib','extended'])} : {})});
+    assert.equal(result.compared,true);
+    assert.ok(result.suspiciousMismatches.some(f=>f.path==='extended/worker.min.js' && f.category==='content-mismatch-source'));
+  }
+});
+
+test('runtime minified hashing alone does not declare ordinary build output tampered', async t => {
+  const shared = {'index.js':'module.exports=1;','lib/a.js':'module.exports=2;'};
+  const {root,npm,gh} = await stageDirs({...shared,'dist/app.min.js':'module.exports=3;'}, {...shared,'dist/app.min.js':'module.exports=4;'});
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const result = await diffNpmVsGithub({npmStagedPath:npm,githubStagedPath:gh,hasBuildScript:true,runtimeFiles:['dist/app.min.js']});
+  assert.equal(result.counts.mismatched,1);
+  assert.equal(result.suspiciousMismatches.length,0);
+});

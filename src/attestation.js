@@ -89,54 +89,9 @@ async function writeCache(name, version, value) {
 }
 
 function fetchJson(url) {
-  return new Promise((resolve, reject) => {
-    const request = https.get(
-      url,
-      {
-        headers: {
-          "user-agent": USER_AGENT,
-          accept: "application/json"
-        },
-        timeout: FETCH_TIMEOUT_MS,
-        agent: HTTPS_AGENT
-      },
-      (response) => {
-        if (response.statusCode === 404) {
-          response.resume();
-          const error = new Error(`HTTP 404 from ${url}`);
-          error.statusCode = 404;
-          return reject(error);
-        }
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          response.resume();
-          const error = new Error(`HTTP ${response.statusCode} from ${url}`);
-          error.statusCode = response.statusCode;
-          return reject(error);
-        }
-        let body = "";
-        let size = 0;
-        response.setEncoding("utf8");
-        response.on("data", (chunk) => {
-          size += Buffer.byteLength(chunk);
-          if (size > MAX_RESPONSE_BYTES) {
-            response.destroy();
-            return reject(new Error(`Attestation response exceeded ${MAX_RESPONSE_BYTES} bytes`));
-          }
-          body += chunk;
-        });
-        response.on("end", () => {
-          try {
-            resolve(JSON.parse(body));
-          } catch (parseError) {
-            reject(parseError);
-          }
-        });
-      }
-    );
-    request.on("error", reject);
-    request.on("timeout", () => {
-      request.destroy(new Error("Attestation request timed out"));
-    });
+  return require("./http-client").requestJson(url, {
+    headers: { "user-agent": USER_AGENT, accept: "application/json" },
+    timeoutMs: FETCH_TIMEOUT_MS, maxBytes: MAX_RESPONSE_BYTES, agent: HTTPS_AGENT
   });
 }
 

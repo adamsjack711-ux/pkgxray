@@ -236,7 +236,7 @@ function isDefensibleBlock(r, defensible) {
   return defensible.has(name);
 }
 
-// guard's JSON decision vocabulary is safe|review|block; older docs say allow.
+// Guard decisions use allow; direct audit verdicts use safe. Accept both.
 function clearBucket(d) { return d === 'safe' || d === 'allow'; }
 
 // Retain the scanner's citations locally without copying arbitrary report fields

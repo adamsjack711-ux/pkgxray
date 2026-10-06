@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { withReceipt } from './receipt-helper.js';
 import { createServer } from '../src/proxy.js';
 import { loadConfig } from '../src/config.js';
 import { VerdictStore } from '../src/verdict-store.js';
@@ -23,7 +24,8 @@ test('proxies a real tarball from registry.npmjs.org', { skip: !enabled }, async
   const store = new VerdictStore(config.verdictStorePath);
   // Stub runner: treat everything as allow so we test the network path only.
   const server = createServer(config, store, {
-    runGuard: async () => ({ decision: 'allow', findings: [] }),
+    runGuard: withReceipt(async () => ({ decision: 'allow', findings: [] })),
+    sharedPolicy: null,
     log: () => {},
   });
 

@@ -307,9 +307,9 @@ test("validateTarListing REJECTS a hardlink whose target escapes the package", (
   assert.throws(() => validateTarListing([line], BIG, 20000), /Tarball rejected/);
 });
 
-test("validateTarListing ACCEPTS a benign intra-package hardlink", () => {
+test("validateTarListing rejects even intra-package hardlinks", () => {
   const line = "hrw-r--r--  0 user group   0 Jan  1  2020 package/a link to package/b";
-  assert.doesNotThrow(() => validateTarListing([line], BIG, 20000));
+  assert.throws(() => validateTarListing([line], BIG, 20000), /links and special files/);
 });
 
 test("validateTarListing REJECTS a symlink entry with a bare type char but no parseable target", () => {
@@ -335,6 +335,32 @@ test("validateTarListing REJECTS an entry whose name embeds a control character"
   assert.throws(() => validateTarListing([line], BIG, 20000), /Tarball rejected/);
 });
 
+test("link-shaped text in a regular filename is not parsed as a link", () => {
+  const line = "-rw-r--r--  0 user group   12 Jan  1  2020 package/x -> y.js";
+  const parsed = parseTarListingLine(line);
+  assert.equal(parsed.path, "package/x -> y.js");
+  assert.equal(parsed.linkTarget, null);
+  assert.doesNotThrow(() => validateTarListing([line], BIG, 20000));
+});
+
+test("real archives with control characters in filenames fail post-extraction validation", {
+  skip: process.platform === "win32"
+}, async t => {
+  for (const name of ["evil\nname.js", "evil\tname.js"]) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-control-name-"));
+    t.after(() => fs.rm(root, {recursive:true,force:true}));
+    const pkg = path.join(root,"package");
+    await fs.mkdir(pkg);
+    await fs.writeFile(path.join(pkg,name),"module.exports=1;");
+    const archive = path.join(root,"pkg.tgz");
+    const packed = spawnSync("tar",["-czf",archive,"-C",root,"package"],{encoding:"utf8"});
+    assert.equal(packed.status,0,packed.stderr);
+    const dest = path.join(root,"out");
+    await fs.mkdir(dest);
+    await assert.rejects(extractTarball(archive,dest),/control character/);
+  }
+});
+
 test("extractTarball fails CLOSED on a hostile listing (real archive path is a reject, not a safe skip)", {
   // This one builds its fixture by shelling out to POSIX `ln` and `tar`, and
   // both behave differently on win32 — the archive came back carrying an entry
@@ -342,35 +368,60 @@ test("extractTarball fails CLOSED on a hostile listing (real archive path is a r
   // control character, failing the test on its own setup rather than on the
   // behavior it targets. The security decisions this wraps are asserted
   // directly and platform-independently by the validateTarListing tests above
-  // (escaping hardlink rejected, benign hardlink accepted, embedded control
+  // (all hardlinks rejected, embedded control
   // character rejected), so nothing goes uncovered on Windows.
   skip: process.platform === "win32"
     ? "fixture depends on POSIX ln/tar semantics; validateTarListing covers the security contract directly"
     : false
-}, async () => {
-  // End-to-end: build a real archive, then swap in a validator-hostile listing
-  // by pointing extractTarball at an archive whose *content* is fine but whose
-  // membership we've established rejects. We can't force tar to emit an escaping
-  // hardlink, so we assert the propagation contract directly: a rejected
-  // listing throws out of extractTarball (→ stageReference → guardExtension →
-  // bin/audit.js main().catch → exit 1), so the tarball can never read as safe.
+}, async t => {
+  // A real archive containing an internal hardlink must fail before extraction.
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-failclosed-"));
+  t.after(() => fs.rm(root, {recursive:true,force:true}));
   const pkg = path.join(root, "package");
   await fs.mkdir(pkg);
   await fs.writeFile(path.join(pkg, "index.js"), "module.exports = 1;");
-  // A hardlink that IS creatable locally (benign target) — proves the 'h' path
-  // now flows through validation without aborting on benign input, i.e. the fix
-  // didn't turn every hardlink into a scan-kill switch.
+  // Even an internal link is outside the supported archive contract.
   const lnRes = spawnSync("ln", [path.join(pkg, "index.js"), path.join(pkg, "hard")], { encoding: "utf8" });
+  assert.equal(lnRes.status, 0, lnRes.stderr);
   const archive = path.join(root, "pkg.tgz");
   const packRes = spawnSync("tar", ["-czf", archive, "-C", root, "package"], { encoding: "utf8" });
   assert.equal(packRes.status, 0, packRes.stderr);
   const dest = path.join(root, "out");
   await fs.mkdir(dest);
-  if (lnRes.status === 0) {
-    // Benign hardlink → extraction must SUCCEED (no false scan-kill).
-    await extractTarball(archive, dest);
-    assert.ok((await fs.readdir(dest)).length > 0, "benign hardlink archive should extract");
+  await assert.rejects(extractTarball(archive, dest), /links and special files/);
+  assert.deepEqual(await fs.readdir(dest), [], "rejected archive must not extract");
+});
+
+test('archive entry types fail closed before extraction', () => {
+  for (const mode of ['lrwxr-xr-x', 'hrw-r--r--', 'prw-r--r--', 'brw-r--r--', 'crw-r--r--', 'srw-r--r--']) {
+    const suffix = mode[0] === 'l' ? ' -> index.js' : mode[0] === 'h' ? ' link to package/index.js' : '';
+    assert.throws(() => validateTarListing([`${mode} 0 user group 0 Jan 1 2020 package/item${suffix}`], BIG, 20000), /Tarball rejected/);
+  }
+});
+
+test('npm and GitHub extractors reject links and post-extraction validation refuses them', {
+  skip: process.platform === 'win32'
+}, async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-archive-policy-'));
+  t.after(() => fs.rm(root, {recursive:true,force:true}));
+  const pkg = path.join(root,'package');
+  await fs.mkdir(pkg);
+  await fs.writeFile(path.join(pkg,'index.js'),'module.exports = 1;');
+  await fs.symlink('index.js',path.join(pkg,'alias'));
+  const archive = path.join(root,'package.tgz');
+  const packed = spawnSync('tar',['-czf',archive,'-C',root,'package'],{encoding:'utf8'});
+  assert.equal(packed.status,0,packed.stderr);
+  const github = require('../src/github');
+  const quarantine = require('../src/quarantine');
+  await assert.rejects(quarantine.validateExtractedTree(pkg), /links and special files/);
+  for (const [name,extract] of [
+    ['npm',extractTarball], ['github',github.extractTarball],
+    ['subset',(archive,dest)=>github.extractTarballSubset(archive,dest,['package/index.js'])]
+  ]) {
+    const dest = path.join(root,name);
+    await fs.mkdir(dest);
+    await assert.rejects(extract(archive,dest), /links and special files/);
+    assert.deepEqual(await fs.readdir(dest),[]);
   }
 });
 

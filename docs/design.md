@@ -9,7 +9,9 @@ Traditional antivirus inspects what *executes*. pkgxray inspects what gets
 staged bytes, and promotes it only when policy allows. It never runs
 `npm install`, lifecycle scripts, build steps, or package code.
 
-There is one deliberate exception,
+`pkgxray install` additionally runs npm in offline mode with lifecycle scripts disabled and verifies installed files against approved archives; see [enforced install](enforced-install.md). It does not execute dependency scripts.
+
+The package-execution exception is
 [`pkgxray canary`](canary-threat-model.md). It is opt-in behind an explicit flag
 (`--yes-run-untrusted-code`) and sandboxed with bwrap or sandbox-exec, where
 `--require-sandbox` fails closed. One principle governs it, and the evidence it

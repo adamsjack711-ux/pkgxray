@@ -42,7 +42,7 @@ export class VerdictStore {
    * (force re-scan). ttlMs undefined/null => TTL disabled, never stale.
    */
   isStale(entry, ttlMs) {
-    if (!entry) return true;
+    if (!entry || ttlMs === 0) return true;
     if (ttlMs === undefined || ttlMs === null) return false;
     if (typeof entry.ts !== 'number' || entry.ts <= 0) return true;
     return this._now() - entry.ts > ttlMs;
@@ -80,6 +80,7 @@ export class VerdictStore {
           decision: v.decision,
           findings: Array.isArray(v.findings) ? v.findings : [],
           ts: typeof v.ts === 'number' ? v.ts : 0,
+          ...(v.binding ? { binding: v.binding } : {}),
         });
       }
     }
@@ -101,12 +102,13 @@ export class VerdictStore {
    * are silently ignored so they never persist.
    * @returns {boolean} whether the verdict was stored
    */
-  set(name, version, decision, findings = []) {
+  set(name, version, decision, findings = [], binding) {
     if (!CACHEABLE.has(decision)) return false;
     const entry = {
       decision,
       findings: Array.isArray(findings) ? findings : [],
       ts: this._now(),
+      ...(binding ? { binding } : {}),
     };
     this._map.set(VerdictStore.key(name, version), entry);
     this._persist();

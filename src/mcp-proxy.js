@@ -24,10 +24,8 @@
 // channel) is a bounded doc-typed text scan per call — milliseconds, and can
 // be switched off with --no-scan-results.
 //
-// Unlike src/mcp-client.js (enumerate-only, scrubbed env), this proxy IS the
-// production conduit: the host configured the server's environment for the
-// proxy process, so the child inherits it in full. The trust decisions here
-// are about frames, not about the child's environment.
+// Child environments use the connect-time allowlist. Required credentials must
+// be explicitly selected with --env NAME; the proxy is not an OS sandbox.
 //
 // Fail-closed rules, mirroring the hookshot gate's policy table:
 //   - a call to a tool that is not in the verified manifest is denied;
@@ -39,9 +37,10 @@
 //     defeat the pin) — re-approve with `pkgxray mcp <target> --pin`.
 
 const { spawn } = require("node:child_process");
+const { prepareMcpSandbox } = require("./mcp-sandbox");
 
 const { auditManifest, manifestEntries, scanResultText } = require("./mcp-audit");
-const { normalizeTool } = require("./mcp-client");
+const { normalizeTool, scrubbedEnv, resolveCommand, isAllowedEnvOverride } = require("./mcp-client");
 const { pinMcpManifest, recheckMcpManifest } = require("./mcp-pin");
 
 const VERDICT_RANK = { safe: 0, review: 1, block: 2 };
@@ -49,8 +48,7 @@ const worstOf = (a, b) => (VERDICT_RANK[a] >= VERDICT_RANK[b] ? a : b);
 const severityVerdict = (severity) =>
   severity === "high" ? "block" : severity === "medium" ? "review" : "safe";
 
-// A single line larger than this can no longer be framed safely; it is piped
-// through raw (transparent, but unscanned — loudly logged). Tool results are
+// A single line larger than this closes the session without forwarding it. Tool results are
 // the only frames that legitimately get big, hence a cap well above
 // mcp-client's 4 MiB enumeration cap.
 const MAX_LINE_BYTES = 32 * 1024 * 1024;
@@ -61,6 +59,24 @@ const RESULT_SCAN_CAP = 512 * 1024;
 // are denied rather than left hanging (fail closed).
 const REVALIDATE_TIMEOUT_MS = 10_000;
 const MAX_LIST_PAGES = 50;
+const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
+const MAX_IN_FLIGHT = 1024;
+const MAX_HELD_BYTES = 8 * 1024 * 1024;
+const TIMING_SAMPLES = 512;
+
+function timingSample(samples, value) {
+  if (samples.length >= TIMING_SAMPLES) samples.shift();
+  samples.push(value);
+}
+
+function isTextualMimeType(value) {
+  const mime = String(value || "").split(";", 1)[0].trim().toLowerCase();
+  return mime.startsWith("text/") || [
+    "application/json", "application/ld+json", "application/xml",
+    "application/javascript", "application/x-javascript",
+    "application/xhtml+xml", "image/svg+xml"
+  ].includes(mime) || mime.endsWith("+json") || mime.endsWith("+xml");
+}
 
 function quantile(sorted, q) {
   if (sorted.length === 0) return 0;
@@ -95,6 +111,9 @@ class McpGate {
 
     this.serverInfo = { name: "", version: "", title: null };
     this.instructions = null;
+    this.capabilities = {};
+    this.pinHold = null;
+    this.baselineExpected = Boolean(options.requireBaseline || (!this.pin && options.lockPath));
     this.protocolVersion = null;
     this.clientInitId = undefined;
 
@@ -107,7 +126,12 @@ class McpGate {
     this.clientListIds = new Set();
     this.clientListAccum = [];
     this.callsInFlight = new Map(); // id -> { name }
+    this.responsesInFlight = new Map(); // id -> method for non-tool responses
     this.heldCalls = [];
+    this.heldBytes = 0;
+    this.clientListPages = 0;
+    this.clientListBytes = 0;
+    this.proxyListBytes = 0;
     this.reviewWarned = new Set();
 
     this.revalidating = false;
@@ -136,6 +160,12 @@ class McpGate {
   }
 
   async onClientMessage(message) {
+    const requests = (Array.isArray(message) ? message : [message]).filter(m => m && typeof m.method === "string");
+    if (requests.some(m => m.method.length > 256 || (typeof m.params?.name === "string" && m.params.name.length > 256) || (m.id !== undefined &&
+        !(typeof m.id === "number" && Number.isFinite(m.id)) && !(typeof m.id === "string" && m.id.length <= 128))) ||
+        requests.length + this.callsInFlight.size + this.responsesInFlight.size + this.clientListIds.size + this.heldCalls.length > MAX_IN_FLIGHT) {
+      throw new Error("MCP request/in-flight capacity exceeded");
+    }
     // JSON-RPC batches were removed in protocol 2025-06-18 and no real host
     // sends them — but a batch would let a tools/call ride past the per-call
     // gate, so any batch touching tools/* is refused rather than unpacked.
@@ -144,6 +174,9 @@ class McpGate {
         (entry) => entry && typeof entry.method === "string" && entry.method.startsWith("tools/")
       );
       if (!touchesTools) {
+        for (const entry of message) {
+          if (entry && entry.id !== undefined && typeof entry.method === "string") this.responsesInFlight.set(entry.id, entry.method);
+        }
         this.send("server", message);
         return;
       }
@@ -163,13 +196,18 @@ class McpGate {
     }
 
     if (message.method === "initialize") {
+      this.verified = false;
+      this.stale = true;
       this.clientInitId = message.id;
       this.send("server", message);
       return;
     }
 
     if (message.method === "tools/list") {
-      if (!(message.params && message.params.cursor)) this.clientListAccum = [];
+      if (this.clientListIds.size) throw new Error("Concurrent tools/list pagination is not supported");
+      if (!(message.params && message.params.cursor)) {
+        this.clientListAccum = []; this.clientListPages = 0; this.clientListBytes = 0;
+      }
       this.clientListIds.add(message.id);
       this.send("server", message);
       return;
@@ -182,6 +220,9 @@ class McpGate {
         // manifest. Hold it, re-enumerate through the SAME session, decide
         // once the fresh manifest has been audited.
         this.stats.held += 1;
+        const bytes = Buffer.byteLength(JSON.stringify(message));
+        if (this.heldCalls.length >= 128 || this.heldBytes + bytes > MAX_HELD_BYTES) throw new Error("MCP held-call capacity exceeded");
+        this.heldBytes += bytes;
         this.heldCalls.push(message);
         this._startRevalidation();
         return;
@@ -190,6 +231,7 @@ class McpGate {
       return;
     }
 
+    if (message.id !== undefined && typeof message.method === "string") this.responsesInFlight.set(message.id, message.method);
     this.send("server", message);
   }
 
@@ -234,9 +276,10 @@ class McpGate {
         title: typeof serverInfo.title === "string" ? serverInfo.title : null
       };
       this.instructions = typeof result.instructions === "string" ? result.instructions : null;
+      this.capabilities = result.capabilities && typeof result.capabilities === "object" && !Array.isArray(result.capabilities) ? result.capabilities : {};
       this.protocolVersion =
         typeof result.protocolVersion === "string" ? result.protocolVersion : null;
-      return message;
+      return this._screenCallResult("initialize", message, "rpc");
     }
 
     if (message.id !== undefined && this.clientListIds.has(message.id)) {
@@ -248,6 +291,12 @@ class McpGate {
       const { name } = this.callsInFlight.get(message.id);
       this.callsInFlight.delete(message.id);
       return this._screenCallResult(name, message);
+    }
+
+    if (message.id !== undefined && this.responsesInFlight.has(message.id)) {
+      const method = this.responsesInFlight.get(message.id);
+      this.responsesInFlight.delete(message.id);
+      return this._screenCallResult(method, message, "rpc");
     }
 
     if (message.method === "notifications/tools/list_changed") {
@@ -271,7 +320,7 @@ class McpGate {
       target: this.targetLabel,
       protocolVersion: this.protocolVersion,
       server: this.serverInfo,
-      capabilities: {},
+      capabilities: this.capabilities,
       instructions: this.instructions,
       tools: tools.map(normalizeTool).filter(Boolean),
       enumeratedAt: new Date().toISOString(),
@@ -310,7 +359,7 @@ class McpGate {
     }
 
     this.stats.audits += 1;
-    this.stats.auditNs.push(Number(process.hrtime.bigint() - started));
+    timingSample(this.stats.auditNs, Number(process.hrtime.bigint() - started));
     return { manifest, audit, status, serverVerdict, serverReasons };
   }
 
@@ -319,10 +368,12 @@ class McpGate {
   async _finishVerify(tools) {
     const { manifest, audit, status, serverVerdict, serverReasons } = this._auditTools(tools);
     this.toolStatus = status;
+    this.reviewWarned.clear();
     this.serverVerdict = serverVerdict;
     this.serverReasons = serverReasons;
     this.verified = true;
     this.stale = false;
+    this.pinHold = null;
 
     if (serverVerdict !== "safe") {
       this.log(
@@ -334,15 +385,19 @@ class McpGate {
       if (this.pin && !this.pinned) {
         await pinMcpManifest({ manifest, verdict: audit.verdict, lockPath: this.lockPath });
         this.pinned = true;
+        this.baselineExpected = true;
         this.log(`pinned manifest for "${manifest.server.name || this.targetLabel}" (--pin)`);
       } else if (this.recheck) {
         const rc = await recheckMcpManifest({
           manifest,
           verdict: audit.verdict,
           lockPath: this.lockPath,
-          write: true
+          write: true,
+          requireBaseline: this.baselineExpected
         });
+        if (rc.status === "ok") this.baselineExpected = true;
         if (rc.status === "ok" && rc.manifestDrift && rc.manifestDrift.drifted) {
+          if (rc.manifestDrift.metaChanged) this.pinHold = "server metadata changed since the pinned approval; explicit reapproval required";
           const driftedNames = [...rc.manifestDrift.added, ...rc.manifestDrift.changed];
           for (const name of driftedNames) {
             const entry = this.toolStatus.get(name);
@@ -358,9 +413,8 @@ class McpGate {
         }
       }
     } catch (error) {
-      // A broken lock store must not break the session; the audit verdicts
-      // above still gate every call.
-      this.log(`pin/recheck skipped: ${error.message}`);
+      this.pinHold = "manifest pin could not be verified; restore the pin store or explicitly reapprove";
+      this.log(`pin/recheck held: ${error.message}`);
     }
   }
 
@@ -372,6 +426,10 @@ class McpGate {
       message.result && Array.isArray(message.result.tools) ? message.result.tools : null;
     if (!tools) return message;
 
+    this.clientListBytes += Buffer.byteLength(JSON.stringify(tools));
+    this.clientListPages++;
+    if (this.clientListBytes > MAX_MANIFEST_BYTES || this.clientListPages > MAX_LIST_PAGES ||
+        this.clientListAccum.length + tools.length > 10000) throw new Error("MCP manifest capacity exceeded");
     this.clientListAccum.push(...tools);
     const lastPage = !(
       message.result &&
@@ -405,6 +463,7 @@ class McpGate {
 
   // The hot path: pure in-memory verdict fold. No IO of any kind.
   _decision(entry) {
+    if (this.pinHold && this.policy !== "permissive") return { allow: false, reason: this.pinHold };
     const toolVerdict = entry ? entry.verdict : "block";
     const effective = worstOf(toolVerdict, this.serverVerdict);
     if (!entry) {
@@ -434,7 +493,7 @@ class McpGate {
     const name =
       message.params && typeof message.params.name === "string" ? message.params.name : "";
     const decision = this._decision(this.toolStatus.get(name));
-    this.stats.gateNs.push(Number(process.hrtime.bigint() - started));
+    timingSample(this.stats.gateNs, Number(process.hrtime.bigint() - started));
 
     if (!decision.allow) {
       this.stats.denied += 1;
@@ -470,26 +529,63 @@ class McpGate {
 
   // Poisoned-output channel: a clean-manifest server can still steer the
   // model through injection-shaped text in a tool RESULT. Same doc-typed scan
-  // as the manifest audit, bounded input, high finding blocks the result.
-  _screenCallResult(name, message) {
-    if (!this.scanResults || message.error || !message.result) return message;
+  // as the manifest audit, bounded input; strict also withholds review results.
+  _screenCallResult(name, message, responseKind = "tool") {
+    if (!this.scanResults || (!message.error && !message.result)) return message;
 
     const parts = [];
-    let budget = RESULT_SCAN_CAP;
-    const content = Array.isArray(message.result.content) ? message.result.content : [];
+    let bytes = 0;
+    let visited = 0;
+    const add = (text) => {
+      bytes += Buffer.byteLength(text, "utf8");
+      if (bytes <= RESULT_SCAN_CAP) parts.push(text);
+    };
+    const addStructured = (value) => {
+      const pending = [value];
+      while (pending.length && bytes <= RESULT_SCAN_CAP) {
+        if (++visited > 10000) { bytes = RESULT_SCAN_CAP + 1; break; }
+        const item = pending.pop();
+        if (typeof item === "string") add(item);
+        else if (item && typeof item === "object") {
+          for (const [key, child] of Object.entries(item)) { add(key); pending.push(child); }
+        }
+      }
+    };
+    const addEncodedText = (encoded, mimeType) => {
+      if (typeof encoded !== "string" || !isTextualMimeType(mimeType)) return;
+      const compact = encoded.replace(/\s+/g, "");
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 === 1) return;
+      const estimated = Math.floor(compact.length * 3 / 4);
+      if (bytes + estimated > RESULT_SCAN_CAP) { bytes = RESULT_SCAN_CAP + 1; return; }
+      add(Buffer.from(compact, "base64").toString("utf8"));
+    };
+    if (message.error) addStructured(message.error);
+    const result = message.result || {};
+    const content = Array.isArray(result.content) ? result.content : [];
     for (const item of content) {
-      if (budget <= 0) break;
-      if (item && item.type === "text" && typeof item.text === "string") {
-        parts.push(item.text.slice(0, budget));
-        budget -= item.text.length;
+      if (!item || typeof item !== "object") { addStructured(item); continue; }
+      // All textual metadata is model-visible, including resource links,
+      // annotations and future content types. Decode bodies whose MIME type
+      // declares text, including SVG images and textual resource blobs.
+      const metadata = { ...item };
+      if (item.type === "image" || item.type === "audio") {
+        addEncodedText(item.data, item.mimeType);
+        delete metadata.data;
       }
+      if (item.type === "resource" && item.resource && typeof item.resource === "object") {
+        metadata.resource = { ...item.resource };
+        addEncodedText(item.resource.blob, item.resource.mimeType || item.mimeType);
+        delete metadata.resource.blob;
+      }
+      addStructured(metadata);
     }
-    if (message.result.structuredContent !== undefined && budget > 0) {
-      try {
-        parts.push(JSON.stringify(message.result.structuredContent).slice(0, budget));
-      } catch {
-        /* circular structures cannot occur in parsed JSON */
-      }
+    for (const [key, value] of Object.entries(result)) {
+      if (key !== "content") { add(key); addStructured(value); }
+    }
+    if (bytes > RESULT_SCAN_CAP) {
+      this.stats.resultsBlocked += 1;
+      this.log(`withheld oversized result of "${name}" (${bytes} bytes)`);
+      return this._withheldResult(message, `pkgxray withheld this result: text exceeds the ${RESULT_SCAN_CAP}-byte inspection limit. Request a smaller result.`, responseKind);
     }
     if (parts.length === 0) return message;
 
@@ -500,25 +596,12 @@ class McpGate {
     if (this.timing) this.log(`result scan "${name}" in ${(scanNs / 1e6).toFixed(1)}ms`);
 
     const worst = findings.reduce((acc, f) => worstOf(acc, severityVerdict(f.severity)), "safe");
-    if (worst === "block" && this.policy !== "permissive") {
+    if ((worst === "block" && this.policy !== "permissive") || (worst === "review" && this.policy === "strict")) {
       this.stats.resultsBlocked += 1;
-      const first = findings.find((f) => f.severity === "high");
+      const first = findings.find((f) => severityVerdict(f.severity) === worst);
       this.log(`BLOCKED result of "${name}" — ${first.category}: ${first.rationale}`);
-      return {
-        jsonrpc: "2.0",
-        id: message.id,
-        result: {
-          content: [
-            {
-              type: "text",
-              text:
-                `pkgxray mcp-proxy blocked the result of "${name}": ` +
-                `${first.category} — ${first.rationale}`
-            }
-          ],
-          isError: true
-        }
-      };
+      return this._withheldResult(message,
+        `pkgxray mcp-proxy blocked the result of "${name}": ${first.category} — ${first.rationale}`, responseKind);
     }
     if (worst !== "safe") {
       const first = findings[0];
@@ -527,12 +610,18 @@ class McpGate {
     return message;
   }
 
+  _withheldResult(message, text, responseKind = "tool") {
+    if (message.error || responseKind === "rpc") return { jsonrpc: "2.0", id: message.id, error: { code: -32603, message: text } };
+    return { jsonrpc: "2.0", id: message.id, result: { isError: true, content: [{ type: "text", text }] } };
+  }
+
   // ---- re-verification --------------------------------------------------------
 
   _startRevalidation() {
     if (this.revalidating) return;
     this.revalidating = true;
     this.proxyListAccum = [];
+    this.proxyListBytes = 0;
     this.proxyPageCount = 0;
     this._sendProxyList();
     this.revalidateTimer = setTimeout(() => this._failRevalidation("timed out"), REVALIDATE_TIMEOUT_MS);
@@ -559,6 +648,10 @@ class McpGate {
       return;
     }
     const result = message.result || {};
+    this.proxyListBytes += Buffer.byteLength(JSON.stringify(result));
+    if (this.proxyListBytes > MAX_MANIFEST_BYTES || this.proxyListAccum.length + (result.tools?.length || 0) > 10000) {
+      this._failRevalidation("manifest capacity exceeded"); return;
+    }
     if (Array.isArray(result.tools)) this.proxyListAccum.push(...result.tools);
     const cursor =
       typeof result.nextCursor === "string" && result.nextCursor.length > 0
@@ -568,6 +661,7 @@ class McpGate {
       this._sendProxyList(cursor);
       return;
     }
+    if (cursor) { this._failRevalidation("pagination limit exceeded"); return; }
     clearTimeout(this.revalidateTimer);
     await this._finishVerify(this.proxyListAccum);
     this.revalidating = false;
@@ -582,6 +676,8 @@ class McpGate {
     if (!this.revalidating) return;
     this.revalidating = false;
     this.proxyListIds.clear();
+    this.proxyListAccum = [];
+    this.heldBytes = 0;
     const held = this.heldCalls.splice(0);
     this.log(`re-verification failed (${why}) — denying ${held.length} held call(s), failing closed`);
     for (const call of held) {
@@ -604,6 +700,7 @@ class McpGate {
 
   _flushHeldCalls() {
     const held = this.heldCalls.splice(0);
+    this.heldBytes = 0;
     for (const call of held) this._decideAndRoute(call);
   }
 
@@ -646,35 +743,32 @@ class McpGate {
 // stdio transport
 // ---------------------------------------------------------------------------
 
-// Newline framing with a raw-passthrough escape hatch: a line past the cap is
-// streamed through unparsed (and therefore ungated) rather than buffered —
-// transparency over memory, and the bypass is logged.
+// Bounded newline framing: a line past the cap is
+// rejected without forwarding any part of the frame. The transport closes the session.
 function makeLineFeeder({ cap, onLine, onOversize, warn }) {
   let buffer = "";
-  let passthrough = false;
+  let bytes = 0;
+  let failed = false;
   return (chunk) => {
-    if (passthrough) {
-      const newline = chunk.indexOf("\n");
-      if (newline === -1) {
-        onOversize(chunk);
+    if (failed) return;
+    let start = 0;
+    while (start < chunk.length) {
+      const newline = chunk.indexOf("\n", start);
+      const part = chunk.slice(start, newline === -1 ? chunk.length : newline);
+      bytes += Buffer.byteLength(part, "utf8");
+      if (bytes > cap) {
+        failed = true;
+        buffer = "";
+        warn(`frame exceeds ${cap} bytes — closing session`);
+        onOversize();
         return;
       }
-      onOversize(chunk.slice(0, newline + 1));
-      passthrough = false;
-      chunk = chunk.slice(newline + 1);
-    }
-    buffer += chunk;
-    let newline;
-    while ((newline = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      if (line.trim()) onLine(line);
-    }
-    if (buffer.length > cap) {
-      warn(`frame exceeds ${cap} bytes — piping it through unscanned`);
-      onOversize(buffer);
+      buffer += part;
+      if (newline === -1) return;
+      if (buffer.trim()) onLine(buffer);
       buffer = "";
-      passthrough = true;
+      bytes = 0;
+      start = newline + 1;
     }
   };
 }
@@ -684,12 +778,25 @@ function makeLineFeeder({ cap, onLine, onOversize, warn }) {
 function runMcpProxy(target, options = {}) {
   return new Promise((resolve) => {
     const logStream = options.logStream || process.stderr;
-    const log = (line) => logStream.write(`pkgxray-proxy: ${line}\n`);
+    const log = (line) => {
+      if (logStream.writableLength <= 1024 * 1024 || logStream.writableLength === undefined) logStream.write(`pkgxray-proxy: ${line}\n`);
+    };
 
-    const child = spawn(target.command, target.args || [], {
-      cwd: options.cwd || process.cwd(),
-      // Full env passthrough on purpose — see the module comment.
-      env: process.env,
+    const warnings = [];
+    const command = resolveCommand(target.command, warnings);
+    const env = scrubbedEnv(options.extraEnv);
+    for (const name of options.envNames || []) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error("Invalid environment variable name");
+      if (!isAllowedEnvOverride(name)) throw new Error(`Environment override forbidden: ${name}`);
+      if (process.env[name] === undefined) throw new Error(`Environment variable is not set: ${name}`);
+      env[name] = process.env[name];
+    }
+    warnings.forEach(log);
+    const launch = prepareMcpSandbox(command, target.args || [], env, options);
+    if (launch.level) log(`OS sandbox: ${launch.level}; network denied; project read-only; private temporary HOME`);
+    const child = spawn(launch.command, launch.args, {
+      cwd: launch.cwd,
+      env: launch.env,
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
       windowsHide: true
@@ -697,6 +804,21 @@ function runMcpProxy(target, options = {}) {
 
     const stdin = options.stdin || process.stdin;
     const stdout = options.stdout || process.stdout;
+    const blockedOutputs = new Map();
+    function writeFrame(destination, frame) {
+      if (!destination.writable || destination.writableLength + Buffer.byteLength(frame) > 64 * 1024 * 1024) {
+        settle(1); return;
+      }
+      if (!destination.write(frame) && !blockedOutputs.has(destination)) {
+        stdin.pause(); child.stdout.pause();
+        const timer = setTimeout(() => settle(1), REVALIDATE_TIMEOUT_MS);
+        blockedOutputs.set(destination, timer);
+        destination.once("drain", () => {
+          clearTimeout(timer); blockedOutputs.delete(destination);
+          if (!settled && !blockedOutputs.size) { stdin.resume(); child.stdout.resume(); }
+        });
+      }
+    }
 
     const gate = new McpGate({
       policy: options.policy,
@@ -709,51 +831,48 @@ function runMcpProxy(target, options = {}) {
       log,
       send: (to, payload) => {
         const raw = typeof payload === "string" ? payload : JSON.stringify(payload);
-        if (to === "server") {
-          if (child.stdin.writable) child.stdin.write(`${raw}\n`);
-        } else {
-          stdout.write(`${raw}\n`);
-        }
+        writeFrame(to === "server" ? child.stdin : stdout, `${raw}\n`);
       }
     });
 
     // One queue for BOTH directions: frame order is part of the protocol, and
     // gate handlers (audit, pin IO) are async.
-    let chain = Promise.resolve();
-    const enqueue = (fn) => {
-      chain = chain.then(fn).catch((error) => log(`internal error: ${error.message}`));
+    const queue = new (require("./bounded-queue").BoundedQueue)({ maxTasks: 128, maxBytes: 64 * 1024 * 1024,
+      onError: error => { log(`session held: ${error.message}`); settle(1); } });
+    const enqueue = (fn, bytes = 0) => {
+      if (!settled && !queue.enqueue(() => { if (!settled) return fn(); }, bytes)) {
+        log("frame queue capacity exceeded"); settle(1);
+      }
     };
 
-    const feedFrom = (source, onMessage, onRaw, oversizeTo) =>
+    const feedFrom = (source, onMessage, onRaw) =>
       makeLineFeeder({
         cap: MAX_LINE_BYTES,
         onLine: (line) => {
-          let message;
-          try {
-            message = JSON.parse(line);
-          } catch {
-            // Banners / log lines on stdout: forward verbatim, exactly as the
-            // host would have received them without us.
-            enqueue(() => onRaw(line));
-            return;
-          }
-          enqueue(() => onMessage(message));
+          enqueue(() => {
+            let message;
+            try { message = JSON.parse(line); }
+            catch { return onRaw(line); }
+            return onMessage(message);
+          }, Buffer.byteLength(line));
         },
-        onOversize: (raw) => enqueue(() => oversizeTo.write(raw)),
+        onOversize: () => {
+          stdin.pause();
+          child.stdout.pause();
+          settle(1);
+        },
         warn: (msg) => log(`${source}: ${msg}`)
       });
 
     const clientFeed = feedFrom(
       "client",
       (m) => gate.onClientMessage(m),
-      (l) => gate.onClientRaw(l),
-      child.stdin
+      (l) => gate.onClientRaw(l)
     );
     const serverFeed = feedFrom(
       "server",
       (m) => gate.onServerMessage(m),
-      (l) => gate.onServerRaw(l),
-      stdout
+      (l) => gate.onServerRaw(l)
     );
 
     stdin.setEncoding("utf8");
@@ -786,6 +905,11 @@ function runMcpProxy(target, options = {}) {
     const settle = (code) => {
       if (settled) return;
       settled = true;
+      queue.close();
+      for (const timer of blockedOutputs.values()) clearTimeout(timer);
+      clearTimeout(gate.revalidateTimer);
+      stdin.removeListener("data", clientFeed);
+      stdin.pause();
       log(`session closed — ${gate.summaryLine()}`);
       killChild();
       resolve({ code, gate });
@@ -801,6 +925,9 @@ function runMcpProxy(target, options = {}) {
       killChild();
     });
     child.on("exit", (code) => enqueue(() => settle(code === null ? 1 : code)));
+    child.on("close", () => {
+      try { launch.cleanup(); } catch (error) { log(`sandbox cleanup failed: ${error.message}`); }
+    });
     child.on("error", (error) => {
       log(`failed to spawn server: ${error.message}`);
       settle(1);
