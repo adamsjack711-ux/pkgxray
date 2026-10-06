@@ -257,6 +257,10 @@ const REVIEW_STEPS = {
   'lonely-maintainer': 'Check publisher identity, release history, and available provenance; record whether the maintainer concentration is acceptable for this dependency.',
   'npm-vs-github-divergence': 'Compare cited published files with the matching source release and documented build outputs; explain each difference.',
   'code-execution': 'Trace cited process or dynamic-code calls and their inputs; confirm the commands and when they can run are expected.',
+  'flow-analysis-gap': 'Inspect the reported unsupported construct or analysis budget limit. Review the affected source and preserve the coverage hold until that behavior has been assessed.',
+  'incomplete-source-scan': 'Inspect missing, skipped, or truncated source and declared runtime targets. Establish whether each target ships in the exact archive and which entrypoint requires it before rescanning.',
+  'unresolved-runtime-execution': 'Trace the cited runtime launch to its actual target and inputs. A missing target or unresolved execution path remains a coverage gap until reviewed.',
+  'unsupported-behavior': 'Use an appropriate language-specific review for the unmodeled behavior; available text and manifest checks do not establish full behavioral coverage.',
 };
 const SEVERITY_RANK = { unknown: 0, info: 1, low: 2, medium: 3, high: 4, critical: 5 };
 function highestSeverity(findings) {

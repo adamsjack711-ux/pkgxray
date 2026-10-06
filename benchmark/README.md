@@ -1,6 +1,8 @@
 # pkgxray calibration benchmark
 
-For the broader challenge and its **unresolved misses and false reviews**, see [adversarial results](adversarial/README.md). Calibration performance below describes these 70 fixtures, not real-world detection accuracy.
+For the broader challenge, retained historical misses, and current review burden,
+see [adversarial results](adversarial/README.md). Calibration performance describes
+the committed corpus (72 fixtures as of October 5), not real-world detection accuracy.
 
 A committed corpus of **labelled fixtures** run through the real static engine
 (`auditEvidence` — no network, no execution) to make pkgxray's calibration

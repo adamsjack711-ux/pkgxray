@@ -76,6 +76,22 @@ under-flags, see [`benchmark/README.md`](../benchmark/README.md).
 
 ## Evaluation gaps and next work
 
+The [post-integration fixture baseline](../benchmark/baselines/2026-10-05.json)
+contains 72 cases: 31 malicious-labelled and 41 benign. Thirty malicious cases
+BLOCK and one requires REVIEW; none are SAFE, and no benign case BLOCKs.
+However, 22 of 41 benign cases require REVIEW, including all seven PyPI benign
+fixtures. These are corpus results, not registry-wide accuracy measurements.
+
+The [new engine's pinned npm run](../validation/baselines/2026-10-05-npm.json)
+returned 780 REVIEW verdicts among 989 completed reports, with 11 timeouts.
+Flow-analysis gaps (651 packages), source-collection gaps (376), and unresolved
+runtime execution (318) overlap and dominate the workload. Prioritize tracing
+missing runtime targets and flow-budget exhaustion, including whether references
+to unpublished development scripts are being treated as installed runtime roots.
+Keep actual runtime/lifecycle uncertainty visible while investigating. The
+private review queue supplies per-package citations; the aggregate does not
+establish that these reviews are unnecessary.
+
 The recorded October 4 calibration contains 25 malicious and 32 benign npm
 fixtures, 5 malicious and 7 benign PyPI fixtures, and one benign MCP fixture.
 These counts describe that recorded checkout, not a later engine or upstream

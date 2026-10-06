@@ -11,6 +11,7 @@ on:
       - "src/**"
       - "bin/**"
       - "test/**"
+      - ".gitattributes"
       - "scripts/**"
       - "benchmark/**"
       - "website/stats/build.mjs"
@@ -24,6 +25,7 @@ on:
       - "src/**"
       - "bin/**"
       - "test/**"
+      - ".gitattributes"
       - "scripts/**"
       - "benchmark/**"
       - "website/stats/build.mjs"
@@ -122,7 +124,8 @@ jobs:
         run: node ./benchmark/run.js
 
   sandbox-linux:
-    runs-on: ubuntu-latest
+    # Use the same user-namespace-capable runner as the CI repair in PR #102.
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

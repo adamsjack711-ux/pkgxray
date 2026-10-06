@@ -74,14 +74,21 @@ The foreign-language challenge snippets probe textual heuristics through npm-dec
 
 ```bash
 npm run benchmark                    # original calibration gate
-npm run benchmark:adversarial        # exits 1: 12 known SAFE misses
-npm run benchmark:holdout            # exits 1: 4 known SAFE misses
+npm run benchmark:adversarial        # fails on any current SAFE miss or false BLOCK
+npm run benchmark:holdout            # same gate on the frozen internal holdout
 node benchmark/adversarial/run.js --json
 node benchmark/adversarial/run.js --check-baseline
 node benchmark/adversarial/run.js --holdout --check-baseline
 ```
 
-The default diagnostics intentionally fail while SAFE misses or false BLOCKs remain. `--check-baseline` is a different contract: per-case malicious detection cannot weaken, benign severity cannot increase, and the corpus digest must match. CI uses that explicit ratchet and prints the known miss count. A passing ratchet is **not** a clean detection result. `before.json`, `after.json` and `holdout-results.json` retain every verdict and finding category; corpus hashes make accidental relabeling or fixture replacement visible.
+The default diagnostics fail while SAFE misses or false BLOCKs remain. The
+original runs had 12 and 4 SAFE misses respectively; these are historical counts,
+not the current command results. `--check-baseline` is a different contract:
+per-case malicious detection cannot weaken, benign severity cannot increase,
+and the corpus digest must match. CI runs both the ratchet and current diagnostic
+gates. A passing ratchet alone is **not** a clean detection result. `before.json`,
+`after.json` and `holdout-results.json` retain historical verdicts and finding
+categories; corpus hashes make accidental relabeling or fixture replacement visible.
 
 ## External review handoff
 

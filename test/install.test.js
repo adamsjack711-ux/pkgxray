@@ -29,7 +29,12 @@ async function fixture(t, { scripts = false, bins = false } = {}) {
     await fs.writeFile(path.join(dir, "index.js"), "module.exports = 42;\n");
     if (scripts) await fs.writeFile(path.join(dir, "install.js"), "require('fs').writeFileSync('SCRIPT-RAN', 'bad');\n");
     const archive = path.join(root, `${name}.tgz`);
-    execFileSync("tar", ["-czf", archive, "-C", root, name]);
+    // macOS tar otherwise adds AppleDouble metadata files which npm extracts
+    // as extra package bytes. Keep this inert fixture identical across hosts;
+    // the installer must continue rejecting any unapproved installed file.
+    execFileSync("tar", ["-czf", archive, "-C", root, name], {
+      env: { ...process.env, COPYFILE_DISABLE: "1" }
+    });
     const bytes = await fs.readFile(archive);
     const integrity = `sha512-${crypto.createHash("sha512").update(bytes).digest("base64")}`;
     archives.set(name, archive);

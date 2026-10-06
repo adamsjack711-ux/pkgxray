@@ -1,0 +1,2 @@
+# Preserve exact bytes for the frozen corpus and vendored parser on Windows.
+* text=auto eol=lf

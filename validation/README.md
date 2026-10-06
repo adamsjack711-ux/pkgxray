@@ -6,6 +6,33 @@ block candidates, scan completion, and manual review burden. The historical
 results below apply to their recorded engine, target list, and date; routine CI
 runs fixtures, not these registry scans. Scope: [docs/benchmark.md](../docs/benchmark.md#scope-of-the-claim-read-this-first).
 
+## 2026-10-05 revalidation after engine hardening
+
+The same 1,000 July-pinned npm targets were rescanned using revision
+`3007a72d5ebd4d7957d38d5c429a7dd71fe85e09`. In 625 seconds, 989 attempts returned
+verdicts: **174 ALLOW, 780 REVIEW, and 35 BLOCK**. The remaining **11 attempts
+timed out** at 40 seconds. All 35 blocks carried known-vulnerability findings;
+there were zero unadjudicated heuristic block candidates. The completion and
+candidate gates passed, which is not an accuracy or completeness claim.
+
+Review burden was **780/989 (78.87%)** of scans returning verdicts. The dominant
+review categories were flow-analysis gaps (651 packages), incomplete source
+scans (376), and unresolved runtime execution (318). Categories overlap. These
+findings expose unresolved analysis work; they must not be removed merely to
+lower the review rate. A returned report can still contain incomplete analysis.
+
+The [aggregate baseline](baselines/2026-10-05-npm.json) records the scan's engine
+build, revision, runner and input hashes, UTC start time, error breakdown, and
+70 review groups. Retained citations were complete for 437 reviewed packages,
+partial for 326, and unavailable for 17; this measures citation availability,
+not scanner coverage. Human review time remains unmeasured. Raw package records
+and source citations remain local.
+
+This run occurred on October 5 in `America/Vancouver` and October 6 in UTC; both
+are recorded. The October 4 result below used an earlier engine and remains a
+separate historical baseline. These figures do not establish a causal accuracy
+improvement or describe a refreshed popularity ranking.
+
 ## 2026-10-04 revalidation of the pinned npm cohort
 
 The updated harness completed all 1,000 July-pinned targets in 143 seconds:

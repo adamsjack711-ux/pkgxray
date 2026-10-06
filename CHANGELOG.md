@@ -23,6 +23,12 @@
 - Quick start pins the published 1.1.0 release and downloads its inert demo
   evidence explicitly, so it works outside a repository checkout. Documented
   the narrower PyPI behavioral coverage.
+- Recorded a separate baseline after integrating the newer engine: 780 REVIEW
+  verdicts among 989 completed reports, with 11 timeouts. Source and flow coverage
+  gaps dominate; the historical baseline is preserved rather than overwritten.
+- Reused the cross-platform CI repairs from PR #102 and made local installation
+  test archives independent of macOS extended metadata. Windows tar line-ending
+  normalization preserves rejection of embedded filename controls.
 
 ### Security hardening
 
