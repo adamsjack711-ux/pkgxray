@@ -25,9 +25,10 @@ test("README uses the canonical project description and zero-install command", (
     "pkgxray — pre-install security for npm packages, MCP servers, and AI agents";
   assert.match(README, new RegExp(canonical));
   assert.ok(PACKAGE.description.startsWith(canonical));
-  assert.match(
-    README,
-    /npx --yes pkgxray@1\.0\.5 guard npm:express@4\.21\.0/
+  assert.ok(
+    README.includes(
+      `npx --yes pkgxray@${PACKAGE.version} guard npm:express@4.21.0`
+    )
   );
 });
 

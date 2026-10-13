@@ -7,7 +7,9 @@
 Inspect an npm package or MCP server **before** you install it or connect to it.
 You get a `SAFE`, `REVIEW`, or `BLOCK` verdict, decided by fixed rules and backed
 by cited evidence. The analysis is static and runs on your machine without
-installing npm dependencies. A pinned MIT-licensed Acorn parser is bundled. Normal scans never execute package code.
+installing npm dependencies. A pinned MIT-licensed Acorn parser is bundled.
+Normal scans never execute package code; the opt-in canary is a separate,
+fail-closed execution surface with mandatory OS confinement.
 
 [![npm version](https://img.shields.io/npm/v/pkgxray)](https://www.npmjs.com/package/pkgxray)
 [![npm downloads](https://img.shields.io/npm/dm/pkgxray)](https://www.npmjs.com/package/pkgxray)
@@ -29,8 +31,12 @@ installing npm dependencies. A pinned MIT-licensed Acorn parser is bundled. Norm
 - **Install approved bytes** — [`pkgxray install`](docs/enforced-install.md) scans the npm lockfile, installs held archives offline with scripts disabled, and verifies the resulting files.
 - **Normal scans never execute package code** — the tarball is read as bytes in quarantine.
 - **Cited verdicts from fixed rules** — every finding names the file and the evidence. No model decides the verdict, so text planted in a package cannot steer it.
+- **Artifact-bound enforcement** — approvals bind archive SHA-256, package identity, scanner build, policy and completed checks. Legacy or incomplete receipts cannot release bytes.
+- **Cryptographic npm provenance** — when the trusted Node/npm runtime supplies Sigstore, pkgxray verifies the signature, transparency material, workflow identity and artifact subject. Set `PKGXRAY_REQUIRE_PROVENANCE=1` to make that mandatory.
+- **Fail-closed execution boundaries** — canary and sandboxed MCP launches refuse to run when their requested OS confinement is unavailable.
+- **Bounded services** — downloads, redirects, queues, subprocesses, frames, output and retained state have explicit limits; overload denies work rather than authorizing it.
 - **Built for the agent era** — check MCP servers before you connect, gate the installs an agent runs, and re-audit live MCP traffic.
-- **Adversarial gaps tracked openly** — [200 additional synthetic cases](benchmark/adversarial/README.md) track detected attacks and benign contrasts; this is internal testing, not an independent audit.
+- **Adversarial gaps tracked openly** — [200 additional synthetic cases](benchmark/adversarial/README.md) and a [bounded third-party corpus](benchmark/external-results.json) track detections, holds and benign review burden without presenting internal tests as independent accuracy evidence.
 - **Regression gates** — calibration and adversarial corpora run in CI; historical top-1000 results remain available for comparison.
 
 > **[1. Quick start](#quick-start)** · [2. What it scans & detects](#what-it-scans--detects) · [3. Verdicts](#verdicts) · [4. Usage](#usage) · [5. Integrations](#integrations) · [6. How it compares](#how-it-compares) · [7. Documentation](#documentation)
@@ -50,7 +56,7 @@ code does, before anything installs.
 **1. Scan a known-benign package** (no install of pkgxray needed):
 
 ```bash
-npx --yes pkgxray@1.0.5 guard npm:express@4.21.0
+npx --yes pkgxray@1.2.0 guard npm:express@4.21.0
 ```
 
 It stages the tarball in quarantine and runs the static and supply-chain checks.
@@ -84,7 +90,7 @@ payload downloaded only at runtime. See the [threat model](docs/threat-model.md)
 **3. See a BLOCK on the supplied inert fixture:**
 
 ```bash
-npx --yes pkgxray@1.0.5 --file examples/onboarding-malicious.json --format markdown
+npx --yes pkgxray@1.2.0 --file examples/onboarding-malicious.json --format markdown
 ```
 
 The fixture is inert source text that models a split-string SSH-key read and
@@ -124,6 +130,21 @@ The full coverage matrix is in the [threat model](docs/threat-model.md), along
 with the known blind spot: a package that downloads its payload later. A
 side-by-side comparison table is on the [website](https://pkgxray.ca/#catches).
 
+### Security pipeline
+
+The layers are complementary. A positive trust signal never cancels suspicious
+behavior found in the shipped bytes.
+
+| Layer | What is enforced | Boundary |
+|---|---|---|
+| Acquisition | HTTPS/origin and connection-address policy, redirect checks, byte/time limits, archive identity and safe extraction | A registry or repository lookup can fail; fail-closed policy keeps the result at REVIEW/BLOCK. |
+| Static analysis | Bounded parser, flow and lexical checks over inventoried runtime/source files | Dynamic resolution, native binaries and later runtime downloads are not exhaustively modeled. |
+| Provenance | SLSA subject name/version/digests bound to the held archive; optional Sigstore certificate, CT, Rekor and workflow verification | Authenticated origin is not proof that the resulting code is harmless. |
+| Approval | Version-2 receipts bind exact bytes, identity, scanner build, policy, coverage and completed checks | A receipt is a local trusted-process record, not a portable signature. |
+| Installation/proxy | Offline script-disabled lockfile installation, installed-file verification, or pull-through release of the exact approved snapshot | Direct registries, existing caches and other package managers require separate routing controls. |
+| MCP | Package-scan-first connect checks, manifest pins, bounded state, per-call verdicts, relist holds and model-visible result screening | Cross-call dataflow, unchanged-manifest implementation changes and opaque binary content remain outside complete coverage. |
+| Canary | Install and first-import behavior under mandatory filesystem/network confinement, decoys, egress capture and resource limits | Positive evidence can confirm malice; a quiet run can never clear a package. |
+
 ## Verdicts
 
 | Verdict | You should |
@@ -140,10 +161,14 @@ Exit codes are stable and CI-friendly: **`0`** safe/allow · **`2`** block ·
 ```bash
 pkgxray guard npm:some-package@1.2.3 [--format json]   # vet a package before install
 pkgxray guard pypi:some-package@1.2.3                  # same, for a PyPI package (sdist staged + scanned)
+pkgxray guard npm:some-package@1.2.3 --archive ./package.tgz --integrity 'sha512-…' # scan exact held bytes
+PKGXRAY_REQUIRE_PROVENANCE=1 pkgxray guard npm:some-package@1.2.3 # require verified npm provenance
+pkgxray install package-lock.json                      # offline, scripts disabled, installed bytes verified
 pkgxray mcp --package npm:some-mcp-server@1.4.2 npx some-mcp-server   # vet an MCP server; --recheck catches the rug-pull
 pkgxray audit package-lock.json [--deep-all]               # also: yarn.lock, pnpm-lock.yaml, package.json
 pkgxray audit requirements.txt [--deep]                # PyPI: also poetry.lock, Pipfile.lock, pyproject.toml
 pkgxray recheck package-lock.json                      # scheduled: non-zero only on a regression
+pkgxray canary npm:some-package@1.2.3 --yes-run-untrusted-code # disposable host only
 ```
 
 `audit` checks resolved dependencies against OSV. `--deep` adds source scans for
@@ -165,6 +190,13 @@ means the strictest settings. Config can never allow a CVE away, every loosening
 is printed, and a scan that errors fails closed to `review`. Schema and rules:
 [configuration.md](docs/configuration.md) · [`.pkgxray.example.json`](.pkgxray.example.json).
 
+For npm provenance, pkgxray uses the maintained Sigstore SDK shipped beside the
+trusted Node/npm runtime, never a dependency from the package being audited.
+`PKGXRAY_REQUIRE_PROVENANCE=1` makes authenticated, artifact-bound provenance a
+mandatory hold: missing/unavailable verification is REVIEW and invalid
+provenance is BLOCK. A separately maintained absolute verifier path can be set
+with `PKGXRAY_SIGSTORE_MODULE`; that path is trusted executable code.
+
 ## Integrations
 
 One engine behind every entry point. "Works with" means a documented setup
@@ -176,8 +208,29 @@ guide, not a vendor-endorsed integration.
 | MCP clients | Vet a server before connect; run pkgxray itself as an MCP server | [mcp.md](docs/mcp.md) |
 | GitHub Actions / CI | Fail a build when a dependency crosses policy | [github-actions.md](docs/integrations/github-actions.md) |
 | Install gate — Hookshot | Run `guard` on every package an agent tries to install | [examples/hookshot/](examples/hookshot/) |
+| Shared npm registry gate | Hold tarballs, share bounded scans, persist exact-byte approvals and denial-only holds | [pkgxray-proxy](examples/pkgxray-proxy/) |
 | Runtime MCP gate | Proxy a live MCP server and gate every tool call | [`mcp-proxy`](docs/mcp.md#per-call-runtime-gate-pkgxray-mcp-proxy) |
 | Dependency monitoring | Re-vet installed deps and pre-vet upgrades on a schedule | [`recheck`](docs/reference.md#monitoring-pkgxray-recheck) |
+
+## Boundaries that still matter
+
+- A clean tarball can fetch or activate its real payload later. Static analysis
+  can flag the capability, but cannot observe every future behavior.
+- Canary runs only lifecycle hooks and first import without installing package
+  dependencies. Dormant, sandbox-aware, delayed and interaction-gated payloads
+  may remain quiet; run it only on disposable infrastructure.
+- MCP result screening is bounded and does not track information flow across
+  multiple allowed calls. `mcp-proxy` wraps stdio children, not remote HTTP MCP
+  servers, and does not interpret opaque binary media.
+- Python receives manifest, install-hook, vulnerability and neutral text checks,
+  but not complete module behavior analysis or wheel inspection.
+- The third-party corpus is small and selection-biased. REVIEW means a strict
+  deployment would hold the package; it is not the same as a confirmed BLOCK or
+  a measured malware-detection rate.
+
+See [threat-model.md](docs/threat-model.md),
+[canary-threat-model.md](docs/canary-threat-model.md) and
+[mcp.md](docs/mcp.md) for the complete boundaries.
 
 ## How it compares
 
@@ -193,9 +246,18 @@ code does. The full capability comparison is in
 Historical top-1000 runs and their [scope and methodology](docs/benchmark.md)
 remain available at [pkgxray.ca/stats](https://pkgxray.ca/stats). Those results
 predate the parser-based flow engine and have not been rerun for this change.
-The current engine passes all 270 internal synthetic calibration/challenge
-fixtures without a malicious SAFE or benign BLOCK; many malicious cases produce
-REVIEW. This is regression evidence, not a real-world detection-rate estimate.
+The current engine passes all 272 internal frozen fixtures without a malicious
+SAFE or benign BLOCK; many malicious cases produce REVIEW. The sets comprise 72
+calibration cases, 180 adversarial challenge variants and 20 former-holdout
+variants. This is regression evidence, not a real-world detection-rate estimate.
+
+The pinned third-party static run adds eight labeled malicious archives and four
+project-selected benign controls. Seven malicious samples were held at REVIEW,
+one exceeded the fixed extraction bound, three benign controls were SAFE and one
+was REVIEW; none were BLOCK. Those results demonstrate strict-policy holds and a
+25% benign review rate in this tiny convenience sample—not population precision,
+recall or independent certification. The hashes, selection rule and full result
+are recorded in [benchmark/external-results.json](benchmark/external-results.json).
 
 ## Documentation
 
@@ -216,8 +278,15 @@ Start at the [documentation index](docs/README.md).
 ```bash
 npm test                 # zero-dep node --test suite
 npm run benchmark        # calibration corpus: precision/recall + 0-false-block gate
+npm run benchmark:adversarial # frozen internal challenge diagnostics
+npm run benchmark:holdout     # frozen former-holdout diagnostics
+npm run validate:external     # bounded static third-party run; no package execution
 npm run validate:website # regenerate + validate the calibration pages
 ```
+
+`validate:external` deliberately exits non-zero while a selected archive cannot
+be scanned within the fixed extraction bound. It never installs, imports or
+submits corpus packages to canary, and removes private temporary payloads.
 
 Pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [Code of Conduct](CODE_OF_CONDUCT.md) first. Report vulnerabilities privately,
