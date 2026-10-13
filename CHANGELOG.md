@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-09-25 — Enforced installs and security hardening
+
+This release adds artifact-bound npm installs, broader static analysis and
+optional MCP process confinement. Cached version-1 approvals must be rescanned.
+Incomplete behavioral coverage now requires review; a SAFE verdict is not a
+guarantee of harmlessness.
+
+- Fix Windows tar listing line endings and preserve corpus/parser bytes across checkouts.
+- Exercise hosted Node installations with explicit sandbox read grants in CI.
+- Validate release artifact upload/download and its digest on release PRs and dry runs.
 
 - Remediate the September 23 audit: unify MCP path authorization and runtime option allowlists; remove temporary MCP staging after scans.
 - Preserve abstract aliases and branch/try/closure effects with bounded graph snapshots and joins. Unsupported runtime syntax now reports lexical-only coverage; eight additional benign challenge cases intentionally require review (historical baseline retained).
@@ -52,20 +61,6 @@
 - Clarify browser policy limitations, PyPI coverage, and deep-scan modes.
 - Refresh the browser engine and fix base64 decoding without Node globals; check browser/Node verdict and finding parity across the calibration corpus.
 
-
-## Unreleased
-
-- Add pinned, MIT-licensed Acorn parsing and bounded scope/assignment/local-module flow analysis. Catch the remaining frozen template, reassignment, request-alias, remote-import and cross-file cases; tokenize shell credential uploads. Emit REVIEW on flow budgets, cycles and missing local modules.
-- Add opt-in `mcp-proxy --sandbox`, read/write path grants, isolated temporary HOME and denied networking. macOS confinement is tested; Linux bubblewrap setup fails closed and has a new mandatory native CI check pending execution.
-- Preserve all corpus labels and historical results. Current challenge/former-holdout diagnostics have zero SAFE misses or benign false blocks; the ten newly caught cases are REVIEW. Add third-party parser provenance and browser license attribution.
-
-- Isolate authenticated cache metadata from anonymous and other authenticated clients; bypass shared storage/deduplication and retire the old mixed-trust metadata directory.
-
-- Scrub MCP proxy child environments by default; add repeatable `--env NAME` opt-ins and controlled launcher resolution. Pause host input when the child exits.
-- Pin cache upstream origins and validate actual DNS answers on every connection; reject unsafe redirects in metadata, cached tarballs and live streams. Private/HTTP upstreams require `--allow-private-upstream`.
-- Separate release validation, publishing and verification jobs; disable lifecycle scripts and publish the exact checked archive after SHA-256 verification.
-- Recognize flat credential destructuring and literal environment reflection. Challenge SAFE misses fall from 12 to 6; the former holdout retains 4 misses and benign reviews fall from 3 to 2. These are synthetic corpus results, not real-world accuracy estimates.
-- Replace a literal NUL in the MCP pin validator with its equivalent escape, allowing source inventory to inspect that module as text.
 
 **In plain terms:** an OSV outage used to switch pkgxray off. If the
 vulnerability database was unreachable — a real outage, a rate limit, a

@@ -12,6 +12,7 @@ on:
       - "bin/**"
       - "test/**"
       - "scripts/run-tests.js"
+      - ".gitattributes"
       - "examples/pkgxray-proxy/**"
       - "package.json"
       - "package-lock.json"
@@ -22,6 +23,7 @@ on:
       - "bin/**"
       - "test/**"
       - "scripts/run-tests.js"
+      - ".gitattributes"
       - "examples/pkgxray-proxy/**"
       - "package.json"
       - "package-lock.json"
@@ -116,7 +118,10 @@ jobs:
         run: node ./benchmark/run.js
 
   sandbox-linux:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04's hosted AppArmor policy blocks bubblewrap's network
+    # namespace setup. Exercise actual confinement on a supported runner
+    # with user namespaces available, without disabling host protections.
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
