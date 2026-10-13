@@ -1,9 +1,11 @@
 # MCP Registry
 
 Status: pkgxray's MCP metadata and runtime entry point ship in the released
-`pkgxray@1.0.5` (`mcpName` marker + the `mcp-server` launcher). The entry
-`io.github.adamsjack711-ux/pkgxray` is **currently listed** (v1.0.5,
-re-published 2026-07-29). The Registry is still in
+`pkgxray@1.2.1` (`mcpName` marker + the `mcp-server` launcher). The entry
+`io.github.adamsjack711-ux/pkgxray` is **currently listed at v1.0.5** (verified
+through the official read API on 2026-10-13), while the reviewed descriptor in
+this repository targets v1.2.1. Publishing the prepared descriptor remains a
+maintainer-authenticated release step. The Registry is still in
 **preview, and it resets its data from time to time**. A live lookup can come
 back empty, and then you have to **submit the entry again** with
 `mcp-publisher publish`. See "Manual Registry publication" below. Setup that is
@@ -19,7 +21,7 @@ local or uses `npx` does not depend on the Registry at all.
 - npm ownership marker: `package.json#mcpName`
 
 `server.json`, `package.json`, and the npm artifact must all use the same exact
-release version. Published `pkgxray@1.0.5` already carries `mcpName` and the
+release version. Published `pkgxray@1.2.1` already carries `mcpName` and the
 `mcp-server` launcher, so the registry entry can be submitted from that release;
 keep the three versions in lockstep on every future bump.
 

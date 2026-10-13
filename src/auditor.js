@@ -4,6 +4,8 @@ const { sensitiveFlowHints } = require("./sensitive-flows");
 const { createFlowAnalysis } = require("./flow-analysis");
 const { createExecutionGraph } = require("./execution-graph");
 const { compareProvenanceToRepository } = require("./attestation");
+const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = require("./credential-targets");
+const { inspectRuntimeLoaders } = require("./runtime-loaders");
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -17,44 +19,6 @@ const SEVERITY_ORDER = {
   medium: 2,
   high: 3
 };
-
-// Suspicious credential / wallet read targets. Each entry is a regex that
-// requires a path or quote boundary so we don't match identifiers like
-// `process.env` or `someObj.ledger`.
-const SUSPICIOUS_READ_TARGETS = [
-  { re: /['"`\/\\]\.?ssh\/(?:id_(?:rsa|dsa|ecdsa|ed25519)|authorized_keys)/i, label: "ssh-private-key" },
-  { re: /['"`\/\\]id_(?:rsa|dsa|ecdsa|ed25519)\b/i, label: "ssh-key-file" },
-  { re: /['"`\/\\]\.ssh(?:\/|['"`])/, label: ".ssh-dir" },
-  { re: /['"`\/\\]\.aws\/credentials\b/, label: ".aws/credentials" },
-  { re: /['"`\/\\]\.aws\/(?:config|credentials)\b/, label: ".aws-files" },
-  { re: /['"`\/\\]\.npmrc(?:['"`]|\s|$)/, label: ".npmrc" },
-  { re: /['"`\/\\]\.env(?:\.[a-z]+)?(?:['"`]|\s|$)/i, label: ".env-file" },
-  { re: /['"`]login\.keychain(?:-db)?['"`]/i, label: "macOS keychain" },
-  { re: /\bsecurity\s+find-(?:generic|internet)-password\b/, label: "macOS security CLI" },
-  { re: /['"`]\/?(?:Cookies|Login Data|Web Data|cookies\.sqlite)['"`]/i, label: "browser-creds" },
-  { re: /['"`]Local State['"`]/, label: "browser local-state" },
-  { re: /\bkeytar\.[a-z]+Password\(/i, label: "keytar API" },
-  { re: /\bmetamask['"`\s\/]/i, label: "metamask wallet" },
-  { re: /\b(?:electrum|exodus|ledger live|atomic wallet)\b/i, label: "crypto wallet" }
-];
-
-// AI-coding-agent / MCP config files. Reading ANOTHER agent's configuration is
-// its own indicator class (category "agent-config-access"), kept distinct from
-// generic credential-access: these files hold API keys, MCP server definitions,
-// project trust settings, and tool allowlists, and code that reaches into a
-// SIBLING agent's config is doing something no ordinary dependency needs to. As
-// with the credential targets, each pattern requires a path/quote boundary so
-// we don't match an identifier like `obj.cursor` or a CSS `.continue` class.
-const AGENT_CONFIG_READ_TARGETS = [
-  { re: /['"`\/\\]\.claude\.json(?:['"`]|\s|$)/i, label: "Claude Code config (.claude.json)" },
-  { re: /['"`\/\\]\.claude\/(?:settings(?:\.local)?|mcp)\.json/i, label: "Claude Code settings/MCP config" },
-  { re: /['"`\/\\]\.kiro\/settings\/mcp\.json/i, label: "Kiro MCP config" },
-  { re: /['"`\/\\]\.cursor\/(?:mcp|environment)\.json/i, label: "Cursor MCP/environment config" },
-  { re: /['"`\/\\]\.codeium(?:\/|['"`])/i, label: "Codeium/Windsurf config" },
-  { re: /['"`\/\\]\.continue\/config\.(?:json|ya?ml)/i, label: "Continue config" },
-  { re: /['"`\/\\]\.aider(?:\.conf)?\.ya?ml/i, label: "Aider config" },
-  { re: /['"`\/\\]\.config\/github-copilot(?:\/|['"`])/i, label: "GitHub Copilot config" }
-];
 
 // Persistence destinations. Each pattern requires a quote/slash boundary
 // before the dotfile name so we match `path.join(home, '.bashrc')` and
@@ -282,7 +246,7 @@ const REGISTRY_PUBLISH_REGEX =
 // A release tool publishes one package it already knows about; a worm has to
 // enumerate, because it does not know whose account it landed in.
 const REGISTRY_ENUMERATE_REGEX =
-  /\bnpm\s+access\s+(?:list\s+packages|ls-packages)\b|\bnpm\s+owner\s+(?:ls|list)\b|\/-\/user\/[^"'`\s]*\/package\b|\bnpm\s+whoami\b/i;
+  /\bnpm\s+access\s+(?:list\s+packages|ls-packages)\b|\/-\/user\/[^"'`\s]*\/package\b/i;
 
 // --- Self-deleting dropper (anti-forensics) --------------------------------
 // A stage-1 that removes its own file after running leaves the installed tree
@@ -846,6 +810,7 @@ const BAND_DEFINITIONS = [
   { band: "persistence", label: "persistence", categories: ["persistence"], rationale: "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run key." },
   { band: "exfiltration", label: "network-exfiltration", categories: ["network-exfil-or-loader"], rationale: "Code reaches a hardcoded public IP / shortener / webhook from a file that also has exec or net capability." },
   { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
+  { band: "concealed-runtime-execution", label: "concealed-runtime-execution", categories: ["concealed-runtime-execution"], rationale: "Static decoding reveals a hidden global eval or encoded child_process launcher immediately used for execution." },
   { band: "obfuscated-token", label: "obfuscated-token", categories: ["obfuscated-token"], rationale: "A sensitive path/domain is assembled from split string fragments and only appears after de-obfuscation — an evasion shape." },
   { band: "hidden-unicode", label: "hidden-unicode", categories: ["hidden-unicode"], rationale: "Bidi-override / zero-width Unicode in source — code can read differently than it executes (Trojan Source)." },
   { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
@@ -1554,6 +1519,7 @@ const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
   "self-deleting-dropper",
   "registry-self-publish",
   "persistence",
+  "concealed-runtime-execution",
   // A staged-dropper (decode->write->run) HIGH in a package's OWN test/fixture
   // file — not on its runtime path — is more likely a loader test than an
   // install-time threat, so review it rather than auto-blocking (mirrors the
@@ -1738,7 +1704,13 @@ function auditFiles(files, findings, evidence) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
     }
     inspectLogicBomb(file, content, findings);
-    inspectRemoteCodeLoad(file, content, findings);
+    findings.push(...inspectRuntimeLoaders({
+      file,
+      code: stripComments(content, file.path),
+      normalized: stripComments(normalized, file.path),
+      normChanged: normChanged && !suppressObfuscationHeuristics,
+      isInstallTime: isInstallTimeReferenced
+    }));
     inspectStagedDropper(file, content, findings, normalized, normChanged);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
     inspectCloudMetadataAccess(
@@ -3742,48 +3714,6 @@ function inspectLogicBomb(file, content, findings) {
   }
 }
 
-// --- Runtime-fetched payloads (#5) -----------------------------------------
-// A clean tarball that downloads and runs code after install is the inherent
-// blind spot of any static scanner — you can't see what isn't shipped. What we
-// CAN flag is the capability when its shape is unambiguous: a network read fed
-// straight into an interpreter. These shapes are essentially never benign, so
-// they're a review signal. (Post-install network execution generally is out of
-// scope for static analysis — see README.)
-const REMOTE_CODE_LOAD_REGEXES = [
-  // curl/wget piped into a shell or interpreter
-  /(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[a-z]*sh|node|python[0-9.]*|ruby|perl)\b/i,
-  // eval / new Function / vm over a freshly fetched body
-  /(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(\s*(?:await\s+)?(?:fetch|got|axios|node-fetch|https?\.get)\b/i,
-  // promise chain handing the response straight to eval
-  /\.then\s*\(\s*eval\s*\)/,
-  /\.then\s*\(\s*\w+\s*=>\s*eval\s*\(/,
-  // Callback-style accumulate-then-execute: the classic `https.get(url, res =>
-  // { let d=""; res.on("data", …); res.on("end", () => new Function(d)()) })`.
-  // Same download-then-execute conduct as the promise forms above, but written
-  // in the older Node idiom, which none of the patterns above matched — the
-  // unobfuscated variant of the Mastra dropper sat at review because of it.
-  // Anchored on an "end"/"close" stream handler so an ordinary response
-  // accumulator that merely parses JSON does not qualify.
-  /\.on\s*\(\s*['"`](?:end|close)['"`][\s\S]{0,120}?(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(/i
-];
-
-function inspectRemoteCodeLoad(file, content, findings) {
-  for (const re of REMOTE_CODE_LOAD_REGEXES) {
-    const match = re.exec(content);
-    if (match) {
-      findings.push({
-        severity: "medium",
-        category: "remote-code-load",
-        file: file.path,
-        snippet: clipAround(content, match.index),
-        rationale:
-          "Downloads content from the network and feeds it straight to an interpreter (curl | sh, eval/Function/vm over a fetched body). Download-then-execute fetches the real payload at runtime, where a static scan can't see it — flagged for review."
-      });
-      return;
-    }
-  }
-}
-
 // --- Staged-payload dropper: decode/unpack -> write to disk -> run the file --
 // The keyv "Mini Shai-Hulud" setup.mjs stage-1 (2026-08) and the generic
 // "drop-then-require" shape never call eval/Function/vm, so the obfuscation and
@@ -4150,11 +4080,10 @@ function inspectHiddenNodeExec(file, content, findings, normalized, normChanged)
 // decodes it, and executes it. The chain is the command channel, so there is no
 // server to seize and the loader never changes. An on-chain READ primitive alone
 // overlaps with legitimate web3 libraries, so it is not flagged by itself; the
-// tell is a chain-read co-located with a code EXECUTOR (dynamic eval / new
-// Function / vm, or child_process) — a wallet or explorer reads chain state, it
-// does not feed it to an interpreter. That co-location blocks; a chain-read plus
-// a raw calldata-extraction step (payload bytes pulled from a tx) without a
-// visible executor is the loader shape minus the sink, flagged for review.
+// tell is a chain-read plus raw calldata extraction co-located with a code
+// EXECUTOR (dynamic eval / new Function / vm, or child_process). Mere file-level
+// co-location is too broad for bundled web3 libraries, which legitimately ship
+// transaction readers and unrelated code-generation helpers together.
 function inspectOnChainLoader(file, content, findings, normalized, normChanged) {
   const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
   if (!testBoth(ONCHAIN_C2_READ_REGEX)) return;
@@ -4164,7 +4093,7 @@ function inspectOnChainLoader(file, content, findings, normalized, normChanged) 
     testBoth(EXEC_REGEX);
   const extractsCalldata = testBoth(ONCHAIN_CALLDATA_EXTRACT_REGEX);
   const idx = (ONCHAIN_C2_READ_REGEX.exec(content) || { index: 0 }).index;
-  if (hasExecutor) {
+  if (hasExecutor && extractsCalldata) {
     findings.push({
       severity: "high",
       category: "onchain-c2-loader",
@@ -4172,7 +4101,7 @@ function inspectOnChainLoader(file, content, findings, normalized, normChanged) 
       keepHighInTests: true,
       snippet: clipAround(content, idx),
       rationale:
-        "Reads a payload out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos node) AND has a co-located code executor (eval / new Function / vm / child_process) — the EtherHiding shape: the on-chain transaction is the command channel and the committed loader fetches+runs whatever the attacker last broadcast. There is no domain to seize and the payload is invisible to a static scan of the repo. Blocks."
+        "Reads raw calldata out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos node) AND has a co-located code executor (eval / new Function / vm / child_process) — the EtherHiding shape: the on-chain transaction is the command channel and the committed loader fetches+runs whatever the attacker last broadcast. There is no domain to seize and the payload is invisible to a static scan of the repo. Blocks."
     });
     return;
   }
@@ -4300,7 +4229,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, ["install-hook", "native-build", "agent-hook"], 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader", "self-deleting-dropper", "hidden-local-loader"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "concealed-runtime-execution", "alternate-runtime-exec", "onchain-c2-loader", "self-deleting-dropper", "hidden-local-loader"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "agent-config-access", "environment-access", "data-access", "cloud-metadata-access"],

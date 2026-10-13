@@ -1,0 +1,13 @@
+{
+  "name": "charcode-child-process",
+  "expect": "block",
+  "expectFinding": "concealed-runtime-execution",
+  "note": "a numeric character sequence conceals child_process immediately before command execution",
+  "evidence": {
+    "packageName": "charcode-child-process",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"charcode-child-process\",\"version\":\"1.0.0\",\"main\":\"index.js\"}",
+      "index.js": "const cp=require(String.fromCharCode(99,104,105,108,100,95,112,114,111,99,101,115,115));cp.exec(process.argv[2])"
+    }
+  }
+}

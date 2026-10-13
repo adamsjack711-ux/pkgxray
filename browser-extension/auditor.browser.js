@@ -6467,7 +6467,7 @@ function joinValues(values, context, depth = 0) {
   // join produced malformed functions and TypeErrors on ordinary TS helpers.
   else if (present.some(v => v.node || v.target || v.kind === 'alternatives')) {
     const alternatives = [...new Set(present.flatMap(v => v.alternatives || [v]))];
-    Object.assign(out, { kind: 'alternatives', alternatives: alternatives.slice(0, 8), overflow: alternatives.length > 8 || present.some(v => v.overflow) });
+    Object.assign(out, { kind: 'alternatives', alternatives: alternatives.slice(0, 16), overflow: alternatives.length > 16 || present.some(v => v.overflow) });
     return out;
   }
   if (present.length && present.every(v => v.kind === present[0].kind)) out.kind = present[0].kind;
@@ -6634,21 +6634,26 @@ function createFlowAnalysis(files) {
     }
     function callValue(node, callee, args) {
       tick();
-      const value = merge(...args);
+      // Calls generally need the union of taint bits, not a structural join of
+      // every argument object. Keeping this shallow prevents framework APIs
+      // such as setPrototypeOf(req, app.request) from recursively copying an
+      // application-sized graph before we even classify the callee.
+      const value = { bits: args.reduce((bits, arg) => bits | (arg?.bits || 0), 0) };
       if (callee.kind === 'alternatives') {
-        if (callee.overflow) gap('callable alternatives limit', node);
+        if (callee.overflow) gap('callable alternatives limit', node,
+          Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
         return merge(...callee.alternatives.map(fn => callValue(node, fn, args)));
       }
       if (callee.kind === 'require') return load(args[0]?.value);
       if (callee.kind === 'reflect-get') return property(args[0] || clean(), args[1]?.value);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
         const list = args[callee.kind === 'reflect-apply' ? 2 : 1];
-        if (!list?.elements) { gap(); return value; }
+        if (!list?.elements) { gap('unresolved reflected argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
         return callValue(node, args[0] || clean(), list.elements);
       }
       if (callee.kind === 'invoke-call') return callValue(node, callee.target, args.slice(1));
       if (callee.kind === 'invoke-apply') {
-        if (!args[1]?.elements) { gap(); return value; }
+        if (!args[1]?.elements) { gap('unresolved apply argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
         return callValue(node, callee.target, args[1].elements);
       }
       if (callee.kind === 'invoke-bind') return { bits: 0, kind: 'bound', target: callee.target, args: args.slice(1) };
@@ -6676,6 +6681,7 @@ function createFlowAnalysis(files) {
         return { ...merge(args[0] || clean(), ...elements), elements };
       }
       if (callee.kind === 'array-of') return { ...merge(...args), elements: args };
+      if (callee.kind === 'Array') return { bits: value.bits, elements: [] };
       if (callee.kind === 'array-from') {
         if (!args[0]?.elements) { gap(); return value; }
         return { ...args[0], elements: [...args[0].elements] };
@@ -6727,8 +6733,11 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'compiled-function') return clean();
       if (callee.kind === 'global-factory') return tagged('global');
       if (['setTimeout', 'setInterval'].includes(callee.kind) && typeof args[0]?.value === 'string') gap();
-      // Preserve fetched text through .text(), encoders and JSON.stringify.
-      return merge(value, { bits: callee.bits });
+      // Preserve taint through unknown calls without recursively joining their
+      // full object graphs. Nested properties already contribute to `bits` at
+      // construction time; copying them here caused benign callback/object
+      // frameworks to exhaust the state budget without adding flow evidence.
+      return { bits: value.bits | callee.bits };
     }
     function classValue(node, scope) {
       expr(node.superClass, scope);
@@ -6960,13 +6969,27 @@ function createFlowAnalysis(files) {
             if (node.declaration) stmt(node.declaration, scope);
             const value = node.source ? load(node.source.value) : null;
             const props = result.exports.props || new Map();
-            for (const s of node.specifiers) props.set(s.exported.name ?? s.exported.value,
-              value ? property(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean());
-            if (node.declaration?.type === 'VariableDeclaration') for (const d of node.declaration.declarations) if (d.id.name) props.set(d.id.name, scope.get(d.id.name));
-            if (['FunctionDeclaration', 'ClassDeclaration'].includes(node.declaration?.type)) {
-              props.set(node.declaration.id.name, scope.get(node.declaration.id.name));
+            let bits = result.exports.bits || 0;
+            for (const s of node.specifiers) {
+              const exported = value ? property(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean();
+              props.set(s.exported.name ?? s.exported.value, exported);
+              bits |= exported.bits || 0;
             }
-            result.exports = { bits: merge(...props.values()).bits, kind: 'module-namespace', props };
+            if (node.declaration?.type === 'VariableDeclaration') for (const d of node.declaration.declarations) if (d.id.name) {
+              const exported = scope.get(d.id.name) || clean();
+              props.set(d.id.name, exported);
+              bits |= exported.bits || 0;
+            }
+            if (['FunctionDeclaration', 'ClassDeclaration'].includes(node.declaration?.type)) {
+              const exported = scope.get(node.declaration.id.name) || clean();
+              props.set(node.declaration.id.name, exported);
+              bits |= exported.bits || 0;
+            }
+            // Do not structurally re-merge the complete namespace after every
+            // declaration. Generated barrels can contain thousands of exports;
+            // repeated whole-map joins are quadratic and previously exhausted a
+            // multi-gigabyte heap on Font Awesome's icon package.
+            result.exports = { bits, kind: 'module-namespace', props };
             break;
           }
           default: gap(); break;
@@ -7465,6 +7488,115 @@ function createExecutionGraph(files, seeds, installSeeds = new Set(), lifecycleS
 module.exports = { analyzeExecutionFile, createExecutionGraph };
 
 return module.exports; })();
+pure["./credential-targets"] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];
+"use strict";
+
+// Centralized high-confidence local secret paths. Keeping the catalog separate
+// from verdict policy makes additions reviewable and lets every runtime surface
+// consume the same boundary-aware expressions.
+const SUSPICIOUS_READ_TARGETS = [
+  { re: /['"`\/\\]\.?ssh\/(?:id_(?:rsa|dsa|ecdsa|ed25519)|authorized_keys)/i, label: "ssh-private-key" },
+  { re: /['"`\/\\]id_(?:rsa|dsa|ecdsa|ed25519)\b/i, label: "ssh-key-file" },
+  { re: /['"`\/\\]\.ssh(?:\/|['"`])/, label: ".ssh-dir" },
+  { re: /['"`\/\\]\.aws\/credentials\b/, label: ".aws/credentials" },
+  { re: /['"`\/\\]\.aws\/(?:config|credentials)\b/, label: ".aws-files" },
+  { re: /['"`\/\\]\.npmrc(?:['"`]|\s|$)/, label: ".npmrc" },
+  { re: /['"`\/\\]\.env(?:\.[a-z]+)?(?:['"`]|\s|$)/i, label: ".env-file" },
+  { re: /['"`]login\.keychain(?:-db)?['"`]/i, label: "macOS keychain" },
+  { re: /\bsecurity\s+find-(?:generic|internet)-password\b/, label: "macOS security CLI" },
+  { re: /['"`]\/?(?:Cookies|Login Data|Web Data|cookies\.sqlite)['"`]/i, label: "browser-creds" },
+  { re: /['"`]Local State['"`]/, label: "browser local-state" },
+  { re: /\bkeytar\.[a-z]+Password\(/i, label: "keytar API" },
+  { re: /\bmetamask['"`\s\/]/i, label: "metamask wallet" },
+  { re: /\b(?:electrum|exodus|ledger live|atomic wallet)\b/i, label: "crypto wallet" },
+  { re: /['"`\/\\]\.ethereum[\/\\]keystore(?:[\/\\]|['"`]|\s|$)/i, label: "Ethereum keystore" },
+  { re: /['"`\/\\]\.bitcoin[\/\\](?:wallets?|bitcoin\.conf)(?:[\/\\]|['"`]|\s|$)/i, label: "Bitcoin wallet/config" },
+  { re: /['"`\/\\]\.config[\/\\]solana[\/\\](?:id\.json|cli[\/\\]config\.yml)(?:['"`]|\s|$)/i, label: "Solana keypair/config" },
+  { re: /['"`\/\\]\.config[\/\\]gcloud[\/\\](?:credentials\.db|application_default_credentials\.json)(?:['"`]|\s|$)/i, label: "Google Cloud credentials" },
+  { re: /['"`\/\\]\.azure[\/\\](?:accessTokens\.json|azureProfile\.json|msal_token_cache\.json)(?:['"`]|\s|$)/i, label: "Azure credentials" },
+  { re: /['"`\/\\]\.gnupg(?:[\/\\]|['"`])/i, label: "GnuPG keyring" }
+];
+
+const AGENT_CONFIG_READ_TARGETS = [
+  { re: /['"`\/\\]\.claude\.json(?:['"`]|\s|$)/i, label: "Claude Code config (.claude.json)" },
+  { re: /['"`\/\\]\.claude\/(?:settings(?:\.local)?|mcp)\.json/i, label: "Claude Code settings/MCP config" },
+  { re: /['"`\/\\]\.kiro\/settings\/mcp\.json/i, label: "Kiro MCP config" },
+  { re: /['"`\/\\]\.cursor\/(?:mcp|environment)\.json/i, label: "Cursor MCP/environment config" },
+  { re: /['"`\/\\]\.codeium(?:\/|['"`])/i, label: "Codeium/Windsurf config" },
+  { re: /['"`\/\\]\.continue\/config\.(?:json|ya?ml)/i, label: "Continue config" },
+  { re: /['"`\/\\]\.aider(?:\.conf)?\.ya?ml/i, label: "Aider config" },
+  { re: /['"`\/\\]\.config\/github-copilot(?:\/|['"`])/i, label: "GitHub Copilot config" },
+  { re: /['"`\/\\]\.codex\/config\.toml/i, label: "Codex config" },
+  { re: /['"`\/\\]\.gemini\/(?:settings|mcp)\.json/i, label: "Gemini CLI settings/MCP config" }
+];
+
+module.exports = { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS };
+
+return module.exports; })();
+pure["./runtime-loaders"] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];
+"use strict";
+
+const GLOBAL_EVAL_CALL_RE = /\b(?:globalThis|global|window|self)\s*\[\s*['"]eval['"]\s*\]\s*\(/i;
+const CONCEALED_CHILD_PROCESS_RE =
+  /\brequire\s*\(\s*['"](?:node:)?child_process['"]\s*\)[\s\S]{0,600}?\.(?:exec|execSync|execFile|execFileSync|spawn|spawnSync|fork)\s*\(/i;
+const REMOTE_IMPORT_RE = /\bimport\s*\(\s*['"`]https?:\/\//i;
+const REMOTE_CODE_LOAD_REGEXES = [
+  /(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[a-z]*sh|node|python[0-9.]*|ruby|perl)\b/i,
+  /(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(\s*(?:await\s+)?(?:fetch|got|axios|node-fetch|https?\.get)\b/i,
+  /\.then\s*\(\s*eval\s*\)/,
+  /\.then\s*\(\s*\w+\s*=>\s*eval\s*\(/,
+  /\.on\s*\(\s*['"`](?:end|close)['"`][\s\S]{0,120}?(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(/i
+];
+
+function clipAround(value, index, radius = 90) {
+  return String(value).slice(Math.max(0, index - radius), index + radius)
+    .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "�")
+    .replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function inspectRuntimeLoaders({ file, code, normalized, normChanged, isInstallTime }) {
+  const findings = [];
+  if (normChanged) {
+    let match = !GLOBAL_EVAL_CALL_RE.test(code) && GLOBAL_EVAL_CALL_RE.exec(normalized);
+    let shape = "a computed global eval call";
+    if (!match) {
+      match = !CONCEALED_CHILD_PROCESS_RE.test(code) && CONCEALED_CHILD_PROCESS_RE.exec(normalized);
+      shape = "an encoded child_process loader followed by process execution";
+    }
+    if (match) findings.push({
+      severity: "high", category: "concealed-runtime-execution", file: file.path,
+      snippet: clipAround(normalized, match.index),
+      rationale: `Static de-obfuscation revealed ${shape}. Concealing the executor or privileged module name while immediately invoking it is a high-confidence loader shape.`
+    });
+  }
+
+  const remoteImport = REMOTE_IMPORT_RE.exec(code);
+  if (remoteImport) {
+    findings.push({
+      severity: "high", category: "remote-code-load", file: file.path,
+      snippet: clipAround(file.content, remoteImport.index),
+      rationale: "Dynamically imports executable code directly from a remote URL. The shipped artifact does not contain the code that will execute, so the install is blocked."
+    });
+    return findings;
+  }
+  for (const re of REMOTE_CODE_LOAD_REGEXES) {
+    const match = re.exec(code);
+    if (!match) continue;
+    findings.push({
+      severity: isInstallTime ? "high" : "medium", category: "remote-code-load", file: file.path,
+      snippet: clipAround(file.content, match.index),
+      rationale: isInstallTime
+        ? "Install-time code downloads content and feeds it directly to an interpreter. Installing the package would execute bytes absent from the reviewed artifact, so the install is blocked."
+        : "Downloads content from the network and feeds it straight to an interpreter (curl | sh, eval/Function/vm over a fetched body). Download-then-execute fetches the real payload at runtime, where a static scan can't see it — flagged for review."
+    });
+    break;
+  }
+  return findings;
+}
+
+module.exports = { inspectRuntimeLoaders };
+
+return module.exports; })();
 const { sensitiveFlowHints } = pure['./sensitive-flows'];
 const { createFlowAnalysis } = pure['./flow-analysis'];
 const { createExecutionGraph } = pure['./execution-graph'];
@@ -7491,6 +7623,8 @@ function compareProvenanceToRepository(primary, declaredRepository) {
   if (!provenanceKey || !declaredKey) return "unknown";
   return provenanceKey === declaredKey ? "match" : "mismatch";
 }
+const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = pure['./credential-targets'];
+const { inspectRuntimeLoaders } = pure['./runtime-loaders'];
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -7504,44 +7638,6 @@ const SEVERITY_ORDER = {
   medium: 2,
   high: 3
 };
-
-// Suspicious credential / wallet read targets. Each entry is a regex that
-// requires a path or quote boundary so we don't match identifiers like
-// `process.env` or `someObj.ledger`.
-const SUSPICIOUS_READ_TARGETS = [
-  { re: /['"`\/\\]\.?ssh\/(?:id_(?:rsa|dsa|ecdsa|ed25519)|authorized_keys)/i, label: "ssh-private-key" },
-  { re: /['"`\/\\]id_(?:rsa|dsa|ecdsa|ed25519)\b/i, label: "ssh-key-file" },
-  { re: /['"`\/\\]\.ssh(?:\/|['"`])/, label: ".ssh-dir" },
-  { re: /['"`\/\\]\.aws\/credentials\b/, label: ".aws/credentials" },
-  { re: /['"`\/\\]\.aws\/(?:config|credentials)\b/, label: ".aws-files" },
-  { re: /['"`\/\\]\.npmrc(?:['"`]|\s|$)/, label: ".npmrc" },
-  { re: /['"`\/\\]\.env(?:\.[a-z]+)?(?:['"`]|\s|$)/i, label: ".env-file" },
-  { re: /['"`]login\.keychain(?:-db)?['"`]/i, label: "macOS keychain" },
-  { re: /\bsecurity\s+find-(?:generic|internet)-password\b/, label: "macOS security CLI" },
-  { re: /['"`]\/?(?:Cookies|Login Data|Web Data|cookies\.sqlite)['"`]/i, label: "browser-creds" },
-  { re: /['"`]Local State['"`]/, label: "browser local-state" },
-  { re: /\bkeytar\.[a-z]+Password\(/i, label: "keytar API" },
-  { re: /\bmetamask['"`\s\/]/i, label: "metamask wallet" },
-  { re: /\b(?:electrum|exodus|ledger live|atomic wallet)\b/i, label: "crypto wallet" }
-];
-
-// AI-coding-agent / MCP config files. Reading ANOTHER agent's configuration is
-// its own indicator class (category "agent-config-access"), kept distinct from
-// generic credential-access: these files hold API keys, MCP server definitions,
-// project trust settings, and tool allowlists, and code that reaches into a
-// SIBLING agent's config is doing something no ordinary dependency needs to. As
-// with the credential targets, each pattern requires a path/quote boundary so
-// we don't match an identifier like `obj.cursor` or a CSS `.continue` class.
-const AGENT_CONFIG_READ_TARGETS = [
-  { re: /['"`\/\\]\.claude\.json(?:['"`]|\s|$)/i, label: "Claude Code config (.claude.json)" },
-  { re: /['"`\/\\]\.claude\/(?:settings(?:\.local)?|mcp)\.json/i, label: "Claude Code settings/MCP config" },
-  { re: /['"`\/\\]\.kiro\/settings\/mcp\.json/i, label: "Kiro MCP config" },
-  { re: /['"`\/\\]\.cursor\/(?:mcp|environment)\.json/i, label: "Cursor MCP/environment config" },
-  { re: /['"`\/\\]\.codeium(?:\/|['"`])/i, label: "Codeium/Windsurf config" },
-  { re: /['"`\/\\]\.continue\/config\.(?:json|ya?ml)/i, label: "Continue config" },
-  { re: /['"`\/\\]\.aider(?:\.conf)?\.ya?ml/i, label: "Aider config" },
-  { re: /['"`\/\\]\.config\/github-copilot(?:\/|['"`])/i, label: "GitHub Copilot config" }
-];
 
 // Persistence destinations. Each pattern requires a quote/slash boundary
 // before the dotfile name so we match `path.join(home, '.bashrc')` and
@@ -7769,7 +7865,7 @@ const REGISTRY_PUBLISH_REGEX =
 // A release tool publishes one package it already knows about; a worm has to
 // enumerate, because it does not know whose account it landed in.
 const REGISTRY_ENUMERATE_REGEX =
-  /\bnpm\s+access\s+(?:list\s+packages|ls-packages)\b|\bnpm\s+owner\s+(?:ls|list)\b|\/-\/user\/[^"'`\s]*\/package\b|\bnpm\s+whoami\b/i;
+  /\bnpm\s+access\s+(?:list\s+packages|ls-packages)\b|\/-\/user\/[^"'`\s]*\/package\b/i;
 
 // --- Self-deleting dropper (anti-forensics) --------------------------------
 // A stage-1 that removes its own file after running leaves the installed tree
@@ -8333,6 +8429,7 @@ const BAND_DEFINITIONS = [
   { band: "persistence", label: "persistence", categories: ["persistence"], rationale: "Writes to a shell rc, crontab, launchagent, systemd unit, or Windows Run key." },
   { band: "exfiltration", label: "network-exfiltration", categories: ["network-exfil-or-loader"], rationale: "Code reaches a hardcoded public IP / shortener / webhook from a file that also has exec or net capability." },
   { band: "obfuscation", label: "obfuscation", categories: ["obfuscation"], rationale: "Large encoded blob co-located with an execution primitive — classic malware shape." },
+  { band: "concealed-runtime-execution", label: "concealed-runtime-execution", categories: ["concealed-runtime-execution"], rationale: "Static decoding reveals a hidden global eval or encoded child_process launcher immediately used for execution." },
   { band: "obfuscated-token", label: "obfuscated-token", categories: ["obfuscated-token"], rationale: "A sensitive path/domain is assembled from split string fragments and only appears after de-obfuscation — an evasion shape." },
   { band: "hidden-unicode", label: "hidden-unicode", categories: ["hidden-unicode"], rationale: "Bidi-override / zero-width Unicode in source — code can read differently than it executes (Trojan Source)." },
   { band: "logic-bomb", label: "logic-bomb", categories: ["logic-bomb"], rationale: "Destructive filesystem behavior gated on geography / locale / timezone — the node-ipc / protestware shape." },
@@ -9041,6 +9138,7 @@ const DOWNGRADE_IN_TEST_CATEGORIES = new Set([
   "self-deleting-dropper",
   "registry-self-publish",
   "persistence",
+  "concealed-runtime-execution",
   // A staged-dropper (decode->write->run) HIGH in a package's OWN test/fixture
   // file — not on its runtime path — is more likely a loader test than an
   // install-time threat, so review it rather than auto-blocking (mirrors the
@@ -9225,7 +9323,13 @@ function auditFiles(files, findings, evidence) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
     }
     inspectLogicBomb(file, content, findings);
-    inspectRemoteCodeLoad(file, content, findings);
+    findings.push(...inspectRuntimeLoaders({
+      file,
+      code: stripComments(content, file.path),
+      normalized: stripComments(normalized, file.path),
+      normChanged: normChanged && !suppressObfuscationHeuristics,
+      isInstallTime: isInstallTimeReferenced
+    }));
     inspectStagedDropper(file, content, findings, normalized, normChanged);
     inspectAlternateRuntime(file, content, lower, findings, normalized, normChanged);
     inspectCloudMetadataAccess(
@@ -11229,48 +11333,6 @@ function inspectLogicBomb(file, content, findings) {
   }
 }
 
-// --- Runtime-fetched payloads (#5) -----------------------------------------
-// A clean tarball that downloads and runs code after install is the inherent
-// blind spot of any static scanner — you can't see what isn't shipped. What we
-// CAN flag is the capability when its shape is unambiguous: a network read fed
-// straight into an interpreter. These shapes are essentially never benign, so
-// they're a review signal. (Post-install network execution generally is out of
-// scope for static analysis — see README.)
-const REMOTE_CODE_LOAD_REGEXES = [
-  // curl/wget piped into a shell or interpreter
-  /(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[a-z]*sh|node|python[0-9.]*|ruby|perl)\b/i,
-  // eval / new Function / vm over a freshly fetched body
-  /(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(\s*(?:await\s+)?(?:fetch|got|axios|node-fetch|https?\.get)\b/i,
-  // promise chain handing the response straight to eval
-  /\.then\s*\(\s*eval\s*\)/,
-  /\.then\s*\(\s*\w+\s*=>\s*eval\s*\(/,
-  // Callback-style accumulate-then-execute: the classic `https.get(url, res =>
-  // { let d=""; res.on("data", …); res.on("end", () => new Function(d)()) })`.
-  // Same download-then-execute conduct as the promise forms above, but written
-  // in the older Node idiom, which none of the patterns above matched — the
-  // unobfuscated variant of the Mastra dropper sat at review because of it.
-  // Anchored on an "end"/"close" stream handler so an ordinary response
-  // accumulator that merely parses JSON does not qualify.
-  /\.on\s*\(\s*['"`](?:end|close)['"`][\s\S]{0,120}?(?:eval|new\s+Function|vm\.runIn[A-Za-z]+Context)\s*\(/i
-];
-
-function inspectRemoteCodeLoad(file, content, findings) {
-  for (const re of REMOTE_CODE_LOAD_REGEXES) {
-    const match = re.exec(content);
-    if (match) {
-      findings.push({
-        severity: "medium",
-        category: "remote-code-load",
-        file: file.path,
-        snippet: clipAround(content, match.index),
-        rationale:
-          "Downloads content from the network and feeds it straight to an interpreter (curl | sh, eval/Function/vm over a fetched body). Download-then-execute fetches the real payload at runtime, where a static scan can't see it — flagged for review."
-      });
-      return;
-    }
-  }
-}
-
 // --- Staged-payload dropper: decode/unpack -> write to disk -> run the file --
 // The keyv "Mini Shai-Hulud" setup.mjs stage-1 (2026-08) and the generic
 // "drop-then-require" shape never call eval/Function/vm, so the obfuscation and
@@ -11637,11 +11699,10 @@ function inspectHiddenNodeExec(file, content, findings, normalized, normChanged)
 // decodes it, and executes it. The chain is the command channel, so there is no
 // server to seize and the loader never changes. An on-chain READ primitive alone
 // overlaps with legitimate web3 libraries, so it is not flagged by itself; the
-// tell is a chain-read co-located with a code EXECUTOR (dynamic eval / new
-// Function / vm, or child_process) — a wallet or explorer reads chain state, it
-// does not feed it to an interpreter. That co-location blocks; a chain-read plus
-// a raw calldata-extraction step (payload bytes pulled from a tx) without a
-// visible executor is the loader shape minus the sink, flagged for review.
+// tell is a chain-read plus raw calldata extraction co-located with a code
+// EXECUTOR (dynamic eval / new Function / vm, or child_process). Mere file-level
+// co-location is too broad for bundled web3 libraries, which legitimately ship
+// transaction readers and unrelated code-generation helpers together.
 function inspectOnChainLoader(file, content, findings, normalized, normChanged) {
   const testBoth = (re) => re.test(content) || (normChanged && re.test(normalized));
   if (!testBoth(ONCHAIN_C2_READ_REGEX)) return;
@@ -11651,7 +11712,7 @@ function inspectOnChainLoader(file, content, findings, normalized, normChanged) 
     testBoth(EXEC_REGEX);
   const extractsCalldata = testBoth(ONCHAIN_CALLDATA_EXTRACT_REGEX);
   const idx = (ONCHAIN_C2_READ_REGEX.exec(content) || { index: 0 }).index;
-  if (hasExecutor) {
+  if (hasExecutor && extractsCalldata) {
     findings.push({
       severity: "high",
       category: "onchain-c2-loader",
@@ -11659,7 +11720,7 @@ function inspectOnChainLoader(file, content, findings, normalized, normChanged) 
       keepHighInTests: true,
       snippet: clipAround(content, idx),
       rationale:
-        "Reads a payload out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos node) AND has a co-located code executor (eval / new Function / vm / child_process) — the EtherHiding shape: the on-chain transaction is the command channel and the committed loader fetches+runs whatever the attacker last broadcast. There is no domain to seize and the payload is invisible to a static scan of the repo. Blocks."
+        "Reads raw calldata out of public blockchain state (eth_getTransactionByHash / TronGrid / Aptos node) AND has a co-located code executor (eval / new Function / vm / child_process) — the EtherHiding shape: the on-chain transaction is the command channel and the committed loader fetches+runs whatever the attacker last broadcast. There is no domain to seize and the payload is invisible to a static scan of the repo. Blocks."
     });
     return;
   }
@@ -11787,7 +11848,7 @@ function decideVerdict(findings, evidence) {
 function gradeEvidence(findings, evidence) {
   const parameters = {
     installHooks: scoreParameter(findings, ["install-hook", "native-build", "agent-hook"], 0.1),
-    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "alternate-runtime-exec", "onchain-c2-loader", "self-deleting-dropper", "hidden-local-loader"], 0.15),
+    codeExecution: scoreParameter(findings, ["code-execution", "privileged-capability", "dynamic-require", "logic-bomb", "remote-code-load", "concealed-runtime-execution", "alternate-runtime-exec", "onchain-c2-loader", "self-deleting-dropper", "hidden-local-loader"], 0.15),
     dataAccess: scoreParameter(
       findings,
       ["credential-access", "agent-config-access", "environment-access", "data-access", "cloud-metadata-access"],

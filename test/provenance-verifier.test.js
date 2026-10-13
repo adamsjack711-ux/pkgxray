@@ -8,7 +8,8 @@ const crypto = require("node:crypto");
 const { parseAttestation, verifyFetchedProvenance } = require("../src/attestation");
 const { auditEvidence } = require("../src/auditor");
 const config = require("../src/config");
-const { verifyProvenanceBundle, resolveVerifier, boundSubject, digestBytes, expectedIdentity, runVerifier } = require("../src/provenance-verifier");
+const { verifyProvenanceBundle, resolveVerifier, boundSubject, digestBytes, expectedIdentity,
+  expectedIdentityPattern, certificateOIDPolicy, runVerifier } = require("../src/provenance-verifier");
 const fixture = require("./fixtures/attestation-actions-core-1.11.1.json");
 const signed = fixture.attestations.find(entry => parseAttestation(entry));
 const primary = parseAttestation(signed);
@@ -30,9 +31,19 @@ test("provenance binding requires exact package identity and full strong digests
   assert.notDeepEqual(digestBytes(bytes.toString("base64").toLowerCase(), "sha512"), bytes);
 });
 
-test("signer policy rejects unrelated repos, path escapes and ambiguous identities", () => {
+test("signer policy binds source claims while allowing authenticated reusable workflows", () => {
   assert.equal(expectedIdentity(primary, options.repository), identity);
   assert.equal(expectedIdentity(primary, "git+https://github.com/actions/toolkit.git"), identity);
+  const pattern = new RegExp(expectedIdentityPattern(primary, options.repository));
+  assert.equal(pattern.test(identity), true);
+  assert.equal(pattern.test("https://github.com/actions/toolkit/.github/workflows/reusable-release.yml@refs/heads/main"), true);
+  assert.equal(pattern.test("https://github.com/other/toolkit/.github/workflows/releases.yml@refs/heads/other"), true);
+  assert.equal(pattern.test("https://github.com/actions/toolkit/.github/workflows/releases.yml@0123456789abcdef0123456789abcdef01234567"), true);
+  assert.equal(pattern.test("https://github.com/actions/toolkit/.github/workflows/../releases.yml@refs/heads/main"), false);
+  assert.equal(pattern.test("https://example.invalid/actions/toolkit/.github/workflows/releases.yml@refs/heads/main"), false);
+  const oidPolicy = certificateOIDPolicy(primary);
+  assert.deepEqual([...Buffer.from(oidPolicy["1.3.6.1.4.1.57264.1.12"], "base64")].slice(0, 2), [0x0c, primary.repository.length]);
+  assert.equal(Buffer.from(oidPolicy["1.3.6.1.4.1.57264.1.12"], "base64").subarray(2).toString(), primary.repository);
   for (const repository of ["https://github.com/other/toolkit", "https://github.com.attacker.invalid/actions/toolkit", "https://github.com/actions/toolkit/extra", "http://github.com/actions/toolkit"]) {
     assert.equal(expectedIdentity(primary, repository), null);
   }
@@ -85,6 +96,9 @@ test("verifier subprocess has a real deadline, bounded output and scrubbed crede
   process.env.GITHUB_TOKEN = "synthetic-secret";
   try { assert.equal((await runVerifier(backend, signed.bundle, identity, 3000)).status, "verified"); }
   finally { if (previous === undefined) delete process.env.GITHUB_TOKEN; else process.env.GITHUB_TOKEN = previous; }
+  await fs.writeFile(modulePath, "exports.verify=async(b,o)=>{if(!o.certificateIdentityURI.test('https://github.com/other/toolkit/.github/workflows/reusable-release.yml@refs/heads/v1')||!Buffer.isBuffer(o.certificateOIDs['1.3.6.1.4.1.57264.1.12']))throw Error('bad reusable-workflow policy');};");
+  assert.equal((await runVerifier(backend, signed.bundle, identity, 3000,
+    expectedIdentityPattern(primary, options.repository), certificateOIDPolicy(primary))).status, "verified");
 });
 
 test("required provenance is a hold, invalid provenance blocks, authenticated provenance never offsets malware", () => {

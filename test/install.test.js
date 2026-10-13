@@ -8,7 +8,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
-const { installProject, validateLock, installEnvironment } = require("../src/install");
+const { installProject, validateLock, installEnvironment, resolveTrustedNpmCli } = require("../src/install");
 const { guardExtension } = require("../src/quarantine");
 const { DEFAULTS } = require("../src/config");
 const { parseArgs } = require("../bin/audit");
@@ -241,4 +241,38 @@ test("project PATH shims and Node preloads cannot hijack npm installation", asyn
   });
   const result = await installProject(f.project, { config: DEFAULTS }, { guard: f.guard });
   assert.equal(result.installed, 2);
+});
+
+test("trusted npm discovery supports split Node/npm prefixes and skips PATH shims", async t => {
+  const f = await fixture(t);
+  const hostile = path.join(f.root, "hostile-bin");
+  const npmRoot = path.join(f.root, "trusted", "lib", "node_modules", "npm");
+  const npmBin = path.join(npmRoot, "bin");
+  const trustedPath = path.join(f.root, "trusted", "bin");
+  await fs.mkdir(hostile);
+  await fs.mkdir(npmBin, { recursive: true });
+  await fs.mkdir(trustedPath, { recursive: true });
+  await fs.writeFile(path.join(hostile, "npm"), "#!/bin/sh\nexit 91\n", { mode: 0o755 });
+  await fs.writeFile(path.join(npmRoot, "package.json"), JSON.stringify({ name: "npm", version: "99.0.0" }));
+  const cli = path.join(npmBin, "npm-cli.js");
+  await fs.writeFile(cli, "#!/usr/bin/env node\n", { mode: 0o755 });
+  await fs.symlink(cli, path.join(trustedPath, "npm"));
+  const resolved = await resolveTrustedNpmCli(f.project, {
+    execPath: path.join(f.root, "split-node", "node"),
+    env: { PATH: `${hostile}${path.delimiter}${trustedPath}` }
+  });
+  assert.equal(resolved, await fs.realpath(cli));
+});
+
+test("trusted npm discovery rejects a project-controlled npm package", async t => {
+  const f = await fixture(t);
+  const npmRoot = path.join(f.project, "tools", "node_modules", "npm");
+  await fs.mkdir(path.join(npmRoot, "bin"), { recursive: true });
+  await fs.writeFile(path.join(npmRoot, "package.json"), JSON.stringify({ name: "npm", version: "99.0.0" }));
+  const cli = path.join(npmRoot, "bin", "npm-cli.js");
+  await fs.writeFile(cli, "#!/usr/bin/env node\n", { mode: 0o755 });
+  await assert.rejects(resolveTrustedNpmCli(f.project, {
+    execPath: path.join(f.root, "split-node", "node"),
+    env: { PATH: "" }, explicit: cli
+  }), /Trusted npm CLI not found/);
 });

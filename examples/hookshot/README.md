@@ -113,7 +113,7 @@ The hook shells out to the **pkgxray CLI** and depends on this contract:
 - exit codes `2`=block, `3`=review (denial-only fallback when the JSON
   can't be parsed).
 
-Use **pkgxray 1.0.5 or newer** and verify it with `pkgxray --version`. The hook
+Use **pkgxray 1.2.1 or newer** and verify it with `pkgxray --version`. The hook
 still **degrades safely** across output drift: a missing `file` omits only the
 location, while a missing, old, or erroring pkgxray yields `UNKNOWN`, which is
 denied under `strict`/`balanced` (never a false allow). Set
@@ -134,7 +134,7 @@ cd examples/pkgxray-guard
 go build -o pkgxray-guard .
 
 # 3. Install an exact pkgxray version for the long-lived hook process.
-npm install --global pkgxray@1.0.5
+npm install --global pkgxray@1.2.1
 pkgxray --version
 
 # 4. From the Hookshot repository root, build its installer and merge hooks.
@@ -285,7 +285,7 @@ Two workflows in this repo's [`.github/workflows/`](../../.github/workflows/):
 
 ## Troubleshooting
 
-- Run `pkgxray --version`; use 1.0.5 or newer.
+- Run `pkgxray --version`; use 1.2.1 or newer.
 - Set `PKGXRAY_BIN` to an absolute executable path because GUI agents often have
   a smaller PATH than an interactive shell.
 - Pipe a captured host event to the matching adapter command shown in

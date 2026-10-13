@@ -1,0 +1,12 @@
+{
+  "name": "computed-global-property",
+  "expect": "safe",
+  "note": "computed access to an ordinary global property without invocation is not an executor",
+  "evidence": {
+    "packageName": "computed-global-property",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"computed-global-property\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/computed-global-property\"}",
+      "index.js": "module.exports = globalThis['ev'+'ent']"
+    }
+  }
+}

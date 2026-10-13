@@ -1,0 +1,12 @@
+{
+  "name": "escaped-module-name",
+  "expect": "safe",
+  "note": "an escaped ordinary module name without process execution is only string obfuscation",
+  "evidence": {
+    "packageName": "escaped-module-name",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"escaped-module-name\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/escaped-module-name\"}",
+      "index.js": "module.exports = require('\\x75til').types"
+    }
+  }
+}

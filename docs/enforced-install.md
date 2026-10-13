@@ -10,7 +10,7 @@ node /path/to/pkgxray/bin/audit.js install /path/to/project
 pkgxray install . --format json
 ```
 
-The project must already contain consistent `package.json` and npm `package-lock.json` v2/v3 files. Lockfile generation and dependency selection happen separately. The command does not accept npm flags or options to disable inspection. It requires a trusted npm installation beside the running Node executable, system `/usr/bin/tar`, and currently targets POSIX systems (macOS/Linux).
+The project must already contain consistent `package.json` and npm `package-lock.json` v2/v3 files. Lockfile generation and dependency selection happen separately. The command does not accept npm flags or options to disable inspection. It requires a trusted npm installation discoverable beside Node, through an absolute `npm_execpath`, or through `PATH`; pkgxray resolves the candidate without executing it, authenticates its real target as npm's `npm-cli.js`, and rejects project-local candidates. System `/usr/bin/tar` is required, and enforced install currently targets POSIX systems (macOS/Linux).
 
 ## What the command enforces
 

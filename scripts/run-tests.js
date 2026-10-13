@@ -16,7 +16,10 @@ function discover(directory) {
 const files = ["test", "examples/pkgxray-proxy/test"].flatMap(dir => discover(path.join(root, dir))).sort();
 if (!files.length) throw new Error("No tests discovered");
 const result = spawnSync(process.execPath, ["--test", ...process.argv.slice(2), ...files], {
-  cwd: root, stdio: "inherit", timeout: 180000
+  // The suite intentionally exercises real process/network timeout paths. Keep
+  // a global ceiling below CI's five-minute job limit while leaving headroom
+  // for the full cross-platform matrix and per-test 60-second bounds.
+  cwd: root, stdio: "inherit", timeout: 240000
 });
 if (result.error) process.stderr.write(`Test runner failed: ${result.error.message}\n`);
 process.exitCode = result.status === null ? 1 : result.status;

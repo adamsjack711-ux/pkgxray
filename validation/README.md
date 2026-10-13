@@ -5,6 +5,26 @@ curated corpus of labelled fixtures. This harness proves the **"0 heuristic
 false blocks on the top-1000 most-downloaded packages"** claim at scale, against
 real packages nobody wrote as a test. Scope of the claim: [docs/benchmark.md](../docs/benchmark.md#scope-of-the-claim-read-this-first).
 
+## 2026-10-13 post-1.2.0 engineering rerun
+
+This run used the committed `src/data/top1000.txt` name list (the historical
+2019 most-depended-upon cohort) and resolved current registry versions. It is a
+stress/regression study, not a refreshed most-downloaded ranking. A concurrency-8
+bulk pass used 40-second per-package deadlines; incomplete large packages were
+retried at lower concurrency with 120/180-second bounds. The combined result was
+998 completed scans: 160 ALLOW, 807 REVIEW, 30 known-vulnerability blocks, one
+documented `pm2` persistence-capability block, and zero candidate heuristic
+false blocks. Two archives remained fail-closed acquisition errors: one manifest
+identity mismatch and one listing the extractor could not parse safely.
+
+The run exposed and fixed three real engineering defects before the final
+aggregate: reusable-workflow provenance false blocks, a web3/release-script pair
+of behavioral false blocks, and quadratic flow-state aggregation on generated
+export barrels. It also fixed timeout attribution and whole-process-tree cleanup
+in this harness. Raw rerun artifacts were kept outside the repository; reproduce
+the study with the commands below rather than treating this aggregate as a
+committed per-package verdict list.
+
 ## 2026-07-19 revalidation (current)
 
 The earlier run below ranked by **depended-upon count** from a fixed

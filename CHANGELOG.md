@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 (2026-10-13) — detector accuracy and scale hardening
+
+- Block literal remote dynamic imports, concealed global-eval and encoded
+  `child_process` launchers, wallet/cloud credential reads, and install-time
+  download-to-interpreter pipelines; add paired malicious/benign regression
+  fixtures for every new high-confidence rule.
+- Discover split Node/npm installations without executing PATH candidates;
+  authenticate the resolved target as npm's own `npm-cli.js` and reject
+  project-local shims.
+- Accept Sigstore-authenticated reusable GitHub Actions workflows when they are
+  bound to the package's declared repository and exact ref; retain issuer,
+  transparency-log, signature and artifact-digest verification.
+- Remove top-1,000 false blocks caused by bundled web3 executors, current-package
+  npm ownership checks, and cross-repository reusable publishing workflows.
+- Report at-scale child deadlines as timeouts instead of ambiguous no-JSON
+  errors and terminate the full audit process group, retaining honest incomplete
+  scan accounting without orphaned tar or verifier children under load.
+- Replace quadratic whole-namespace joins for generated export barrels with
+  incremental taint aggregation, preventing multi-gigabyte heap exhaustion on
+  packages with thousands of named exports.
+- Give the expanded full test suite a four-minute global ceiling (still below
+  CI's five-minute job limit) so bounded integration tests are not interrupted
+  by the former three-minute wrapper deadline.
+- Correct the README's stale Express SAFE demo, synchronize active setup
+  examples with `pkgxray@1.2.1`, and make contributor test commands canonical.
 
 - Add bounded, pinned third-party static corpus evaluation without executing or
   retaining malware. Eight historical npm samples produced seven REVIEW holds

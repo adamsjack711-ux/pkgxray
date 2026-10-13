@@ -343,6 +343,18 @@ test("#6 a legit web3 tx-status read (chain-read, NO executor) does not fire", (
   assert.notEqual(report.verdict, "block");
 });
 
+test("#6 a bundled web3 client with an unrelated executor does not BLOCK", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "dist/client.min.js":
+        'exports.tx=async p=>p.send("eth_getTransactionByHash",[hash]);exports.compile=s=>new Function("value",s);'
+    }
+  });
+  assert.ok(!categories(report).includes("onchain-c2-loader"));
+  assert.notEqual(report.verdict, "block");
+});
+
 test("#6 detached hidden `node -e` subprocess BLOCKS (eval-by-subprocess)", () => {
   const report = auditEvidence({
     sourceFiles: {
@@ -866,11 +878,23 @@ test("#8 enumerate-then-publish outside an install hook still BLOCKS", () => {
     sourceFiles: {
       "package.json": cleanPkg({ main: "index.js" }),
       "index.js":
-        'const cp=require("child_process");const mine=cp.execSync("npm owner ls").toString();cp.execSync("npm publish --access public");module.exports=mine;'
+        'const cp=require("child_process");const mine=cp.execSync("npm access list packages --json").toString();cp.execSync("npm publish --access public");module.exports=mine;'
     }
   });
   assert.equal(report.verdict, "block");
   assert.equal(findingFor(report, "registry-self-publish").severity, "high");
+});
+
+test("#8 a release script checking current-package ownership before publish does NOT fire", () => {
+  const report = auditEvidence({
+    sourceFiles: {
+      "package.json": cleanPkg(),
+      "scripts/release.sh":
+        'npm_user=$(npm whoami)\nnpm owner ls | grep "$npm_user"\nnpm access ls-collaborators | grep "$npm_user"\nnpm publish'
+    }
+  });
+  assert.ok(!categories(report).includes("registry-self-publish"));
+  assert.notEqual(report.verdict, "block");
 });
 
 test("#8 a release tool shelling out to npm publish does NOT fire", () => {

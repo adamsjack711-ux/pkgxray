@@ -66,6 +66,10 @@ jobs:
 
       # Zero runtime dependencies — no setup install. Tests use Node built-ins
       # and bundled npm to install inert local fixtures offline.
+      - name: Lint source and generated browser parity
+        if: matrix.node == '22'
+        run: npm run lint
+
       - name: Run tests
         run: npm test
 

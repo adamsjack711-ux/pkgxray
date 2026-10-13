@@ -151,6 +151,13 @@ side effects and language-specific behavior are not fully modeled. A parsed AST
 is not proof of complete semantic coverage. Findings remain REVIEW because
 legitimate authentication can export a credential to its intended service.
 
+To keep common framework object graphs inside those bounds, arguments crossing
+an unknown call boundary retain their taint bits without recursively copying the
+entire object shape. This prevents structure-only expansion from producing a
+spurious gap while preserving credential, environment and remote-source taint.
+Alternative callable targets are bounded independently; a relevant overflow
+still emits `flow-analysis-gap` rather than clearing the package.
+
 Class methods, fields and static blocks are inspected. Node TCP/TLS streams,
 execFile, reflected/bound calls, Bun environment values, array and Map aliases,
 promise callbacks over fetched data, and Function constructor chains are modeled.

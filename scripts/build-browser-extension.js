@@ -27,13 +27,13 @@ const extracted = INLINED.map((name) => {
 
 // Inline pure CommonJS modules in isolated scopes; the vendored parser keeps
 // its original MIT notice and exposes only its exports to the flow engine.
-const pureModules = ['vendor/acorn/acorn', 'shell-flows', 'flow-analysis', 'sensitive-flows', 'execution-graph'];
+const pureModules = ['vendor/acorn/acorn', 'shell-flows', 'flow-analysis', 'sensitive-flows', 'execution-graph', 'credential-targets', 'runtime-loaders'];
 const vendorLicense = fs.readFileSync(path.join(root, 'src/vendor/acorn/LICENSE'), 'utf8');
 const pureBundle = '/* Bundled Acorn 8.18.0 — MIT license\n' + vendorLicense + '\n*/\n' + pureModules.map(name => {
   const text = fs.readFileSync(path.join(root, 'src', name + '.js'), 'utf8');
   return `pure[${JSON.stringify('./' + name)}] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];\n${text}\nreturn module.exports; })();`;
 }).join('\n');
-const supportedImports = new Set(['./sensitive-flows', './flow-analysis', './execution-graph', './attestation']);
+const supportedImports = new Set(['./sensitive-flows', './flow-analysis', './execution-graph', './credential-targets', './runtime-loaders', './attestation']);
 for (const match of source.matchAll(/^const .* = require\("([^"\n]+)"\);$/gm)) {
   if (!supportedImports.has(match[1])) throw new Error(`Unbundled auditor dependency: ${match[1]}`);
 }
@@ -45,6 +45,10 @@ const withoutExports = source
     () => "const { createFlowAnalysis } = pure['./flow-analysis'];\n")
   .replace(/^const \{ createExecutionGraph \} = require\("\.\/execution-graph"\);\n/gm,
     () => "const { createExecutionGraph } = pure['./execution-graph'];\n")
+  .replace(/^const \{ SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS \} = require\("\.\/credential-targets"\);\n/gm,
+    () => "const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = pure['./credential-targets'];\n")
+  .replace(/^const \{ inspectRuntimeLoaders \} = require\("\.\/runtime-loaders"\);\n/gm,
+    () => "const { inspectRuntimeLoaders } = pure['./runtime-loaders'];\n")
   .replace(
     /^const \{ compareProvenanceToRepository \} = require\("\.\/attestation"\);\n/m,
     () => `// Inlined from src/attestation.js (pure, browser-safe):\n${extracted.join("\n\n")}\n`
@@ -76,5 +80,15 @@ if (/^const .* = require\("\.\/attestation"\)/m.test(bundle)) {
   );
 }
 
-fs.writeFileSync(targetPath, bundle, "utf8");
-process.stdout.write(`Built ${targetPath}\n`);
+if (process.argv.includes("--check")) {
+  const current = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, "utf8") : "";
+  if (current !== bundle) {
+    process.stderr.write("browser-extension/auditor.browser.js is stale; run npm run build:browser\n");
+    process.exitCode = 1;
+  } else {
+    process.stdout.write("Browser bundle is current.\n");
+  }
+} else {
+  fs.writeFileSync(targetPath, bundle, "utf8");
+  process.stdout.write(`Built ${targetPath}\n`);
+}

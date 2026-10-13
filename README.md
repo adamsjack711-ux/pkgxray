@@ -56,7 +56,7 @@ code does, before anything installs.
 **1. Scan a known-benign package** (no install of pkgxray needed):
 
 ```bash
-npx --yes pkgxray@1.2.0 guard npm:express@4.21.0
+npx --yes pkgxray@1.2.1 guard npm:express@4.21.0
 ```
 
 It stages the tarball in quarantine and runs the static and supply-chain checks.
@@ -90,7 +90,7 @@ payload downloaded only at runtime. See the [threat model](docs/threat-model.md)
 **3. See a BLOCK on the supplied inert fixture:**
 
 ```bash
-npx --yes pkgxray@1.2.0 --file examples/onboarding-malicious.json --format markdown
+npx --yes pkgxray@1.2.1 --file examples/onboarding-malicious.json --format markdown
 ```
 
 The fixture is inert source text that models a split-string SSH-key read and
@@ -116,12 +116,14 @@ cited file and evidence.
 servers, and AI-agent extensions.
 
 **Detects** — credential theft (incl. split-fragment paths), cloud
-instance-metadata and secret-store harvesting, prompt injection, Unicode
-smuggling, base64 payloads and stage-2 loaders, exfiltration, persistence
+instance-metadata, wallet keys and cloud/secret-store harvesting, prompt
+injection, Unicode smuggling, base64 payloads, remote dynamic imports and
+stage-2 loaders, split/encoded runtime execution, exfiltration, persistence
 (shell profile, OS scheduler, and injected CI/CD workflows), self-deleting
 droppers, registry worm replication (install-time `npm publish`), npm
-install-hook and PyPI `setup.py` install-time execution, obfuscated computed-arg
-execution, hallucinated / slopsquat names (a lockfile pin the registry never
+install-hook and PyPI `setup.py` install-time execution, install-time
+download-to-interpreter pipelines, obfuscated computed-arg execution,
+hallucinated / slopsquat names (a lockfile pin the registry never
 published), known CVEs (via OSV, before download), npm↔GitHub artifact
 divergence, trojaned updates (`recheck`), and MCP
 capability-surface abuse.
@@ -184,6 +186,10 @@ Python source adds an `unsupported-behavior` REVIEW finding. Behavioral coverage
 cannot be muted or promoted with `allow-review`; a pinned artifact approval remains
 an explicit operator override. Archives containing links or special files are rejected.
 
+`pkgxray install` authenticates npm's own `npm-cli.js` before invoking it through
+the trusted Node executable. Split Node/npm prefixes are supported; project-local
+and PATH shims are rejected without executing them.
+
 One optional `.pkgxray.json` tunes policy on the Node-based surfaces. The browser
 extension scans supplied evidence using engine defaults and cannot read project configuration. No config
 means the strictest settings. Config can never allow a CVE away, every loosening
@@ -195,7 +201,10 @@ trusted Node/npm runtime, never a dependency from the package being audited.
 `PKGXRAY_REQUIRE_PROVENANCE=1` makes authenticated, artifact-bound provenance a
 mandatory hold: missing/unavailable verification is REVIEW and invalid
 provenance is BLOCK. A separately maintained absolute verifier path can be set
-with `PKGXRAY_SIGSTORE_MODULE`; that path is trusted executable code.
+with `PKGXRAY_SIGSTORE_MODULE`; that path is trusted executable code. Reusable
+GitHub Actions publishing workflows are accepted only when Fulcio's signed
+source-repository URI and ref still match the package's declared repository and
+the SLSA subject digest matches the held archive.
 
 ## Integrations
 
@@ -244,12 +253,22 @@ code does. The full capability comparison is in
 ## Evidence
 
 Historical top-1000 runs and their [scope and methodology](docs/benchmark.md)
-remain available at [pkgxray.ca/stats](https://pkgxray.ca/stats). Those results
-predate the parser-based flow engine and have not been rerun for this change.
-The current engine passes all 272 internal frozen fixtures without a malicious
-SAFE or benign BLOCK; many malicious cases produce REVIEW. The sets comprise 72
-calibration cases, 180 adversarial challenge variants and 20 former-holdout
-variants. This is regression evidence, not a real-world detection-rate estimate.
+remain available at [pkgxray.ca/stats](https://pkgxray.ca/stats). A 2026-10-13
+stress rerun resolved current versions for the repository's committed 2019
+most-depended-upon name list: 998/1,000 completed, with 160 ALLOW, 807 REVIEW,
+30 known-vulnerability blocks, one documented `pm2` persistence-capability
+block, zero candidate heuristic false blocks, and two fail-closed archive
+refusals. This is a popular-package stress result, not a refreshed
+most-downloaded ranking or a whole-registry claim.
+
+The current engine also passes all 284 internal frozen fixtures without a
+malicious SAFE or benign BLOCK; many malicious cases produce REVIEW. The sets
+comprise 84 calibration cases, 180 adversarial challenge variants and 20
+former-holdout variants. This is regression evidence, not a real-world
+detection-rate estimate. Large generated export barrels are covered by a
+64 MiB regression; the Font Awesome stress case completes under 512 MiB after
+removing a quadratic namespace join and remains REVIEW when the 600-file source
+cap leaves coverage incomplete.
 
 The pinned third-party static run adds eight labeled malicious archives and four
 project-selected benign controls. Seven malicious samples were held at REVIEW,

@@ -107,6 +107,53 @@ function installEnvironment(home) {
   return { ...env, PATH: [path.dirname(process.execPath), "/usr/bin", "/bin"].join(path.delimiter), HOME: home, USERPROFILE: home, CI: "true", NO_UPDATE_NOTIFIER: "1" };
 }
 
+function within(parent, child) {
+  const rel = path.relative(parent, child);
+  return rel === "" || (!rel.startsWith(`..${path.sep}`) && rel !== "..");
+}
+
+async function validateNpmCli(candidate, project) {
+  if (!candidate || !path.isAbsolute(candidate)) return null;
+  let real;
+  try { real = await fs.realpath(candidate); } catch { return null; }
+  if (within(project, real) || path.basename(real) !== "npm-cli.js") return null;
+  const stat = await fs.lstat(real);
+  if (!stat.isFile() || stat.size > 2 * 1024 * 1024) return null;
+  let cursor = path.dirname(real);
+  for (let depth = 0; depth < 5; depth += 1) {
+    try {
+      const manifest = JSON.parse(await fs.readFile(path.join(cursor, "package.json"), "utf8"));
+      if (manifest.name === "npm" && typeof manifest.version === "string") return real;
+    } catch {}
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  return null;
+}
+
+// Node and npm are commonly installed together, but container images and nvm
+// can expose them from different prefixes. Resolve npm without executing PATH
+// shims, then authenticate the real target as npm's own npm-cli.js by walking to
+// a package.json named "npm". Project-local candidates are always rejected.
+async function resolveTrustedNpmCli(project, options = {}) {
+  project = await fs.realpath(project);
+  const env = options.env || process.env;
+  const execPath = options.execPath || process.execPath;
+  const candidates = [];
+  if (options.explicit) candidates.push(options.explicit);
+  candidates.push(path.join(path.dirname(execPath), "npm"));
+  if (path.isAbsolute(env.npm_execpath || "")) candidates.push(env.npm_execpath);
+  for (const directory of String(env.PATH || "").split(path.delimiter)) {
+    if (directory && path.isAbsolute(directory)) candidates.push(path.join(directory, "npm"));
+  }
+  for (const candidate of new Set(candidates)) {
+    const cli = await validateNpmCli(candidate, project);
+    if (cli) return cli;
+  }
+  throw new Error("Trusted npm CLI not found: install npm or expose its npm-cli.js through the Node prefix, npm_execpath, or PATH");
+}
+
 async function verifyInstalled(root, packages) {
   const expected = new Map();
   const installed = [];
@@ -206,8 +253,9 @@ async function installProject(project = ".", options = {}, deps = {}) {
     const globalconfig = path.join(home, "global.npmrc");
     await fs.writeFile(userconfig, "");
     await fs.writeFile(globalconfig, "");
-    // Use the npm shipped alongside this Node, never project-local PATH shims.
-    const npmCli = await fs.realpath(path.join(path.dirname(process.execPath), "npm"));
+    // Authenticate npm's real CLI before running it through the trusted Node.
+    // This supports split Node/npm layouts without executing PATH shims.
+    const npmCli = await resolveTrustedNpmCli(project, { explicit: deps.npmCli });
     await (deps.run || runCapture)(process.execPath, [npmCli, "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--no-update-notifier",
       "--include=dev", "--include=optional", "--include=peer", "--registry=http://127.0.0.1:9",
       `--cache=${path.join(workspace, "cache")}`, `--userconfig=${userconfig}`, `--globalconfig=${globalconfig}`],
@@ -241,4 +289,4 @@ async function installProject(project = ".", options = {}, deps = {}) {
   }
 }
 
-module.exports = { installProject, validateLock, installEnvironment, verifyInstalled };
+module.exports = { installProject, validateLock, installEnvironment, verifyInstalled, resolveTrustedNpmCli };

@@ -61,6 +61,14 @@ under-flags, see [`benchmark/README.md`](../benchmark/README.md).
 
 ## Real-world validation
 
+- **Committed-name stress rerun (2026-10-13)**: resolved current versions for
+  the fixed 2019 most-depended-upon 1,000-name list in `src/data/top1000.txt`.
+  A bounded bulk pass plus serial recovery completed 998 scans: 160 ALLOW, 807
+  REVIEW, 30 known-CVE blocks, one documented `pm2` capability block, and zero
+  candidate heuristic false blocks. Two archives were refused fail-closed for
+  manifest identity/listing problems. This is not the fresh-download-ranked
+  cohort below and must not be described as a current “most-downloaded” study.
+
 - **Top-47**: the 47 most-installed npm packages, 0 false blocks (the
   regression harness lives at `scripts/popular-scan.sh`).
 - **Top-1000 (2026-07-19 revalidation)**: 1,000 packages ranked by **real

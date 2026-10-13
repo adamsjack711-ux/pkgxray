@@ -12,15 +12,20 @@ const { spawn } = require("node:child_process");
 
 const MAX_BUNDLE_BYTES = 2 * 1024 * 1024;
 const ISSUER = "https://token.actions.githubusercontent.com";
+const GITHUB_SOURCE_REPOSITORY_URI_OID = "1.3.6.1.4.1.57264.1.12";
+const GITHUB_SOURCE_REPOSITORY_REF_OID = "1.3.6.1.4.1.57264.1.14";
 const WORKER = `
   const fs = require('node:fs');
   (async () => {
     const input = JSON.parse(fs.readFileSync(0, 'utf8'));
     const sdk = require(process.argv[1]);
     if (typeof sdk.verify !== 'function') throw new Error('Sigstore verify API unavailable');
+    const certificateOIDs = Object.fromEntries(Object.entries(input.certificateOIDs || {})
+      .map(([oid, value]) => [oid, Buffer.from(value, 'base64')]));
     await sdk.verify(input.bundle, {
       certificateIssuer: input.issuer,
       certificateIdentityURI: new RegExp(input.identityPattern),
+      certificateOIDs,
       ctLogThreshold: 1, tlogThreshold: 1,
       tufCachePath: process.cwd(), timeout: 3000, retry: 0
     });
@@ -107,7 +112,43 @@ function expectedIdentity(primary, repository) {
   return `https://github.com${claimed.pathname.replace(/\/$/, "")}/${primary.workflowPath}@${primary.ref}`;
 }
 
-async function runVerifier(backend, bundle, identity, timeoutMs = 15000) {
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function expectedIdentityPattern(primary, repository) {
+  const exact = expectedIdentity(primary, repository);
+  if (!exact) return null;
+  // npm trusted publishing can authenticate a reusable workflow from another
+  // repository and ref while SLSA externalParameters names the caller. The
+  // accompanying Fulcio source-repository OIDs are pinned separately below.
+  // Segments deliberately exclude empty, dot-only and traversal forms.
+  const segment = "[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*";
+  const workflow = `(?:${segment}/)*${segment}\\.ya?ml`;
+  const ref = "(?:refs/(?:heads|tags)/[^@\\x00-\\x20]+|[a-fA-F0-9]{40,64})";
+  return `^https://github\\.com/${segment}/${segment}/\\.github/workflows/${workflow}@${ref}$`;
+}
+
+function derUtf8String(value) {
+  const bytes = Buffer.from(String(value), "utf8");
+  let length;
+  if (bytes.length < 128) length = Buffer.from([bytes.length]);
+  else {
+    const octets = [];
+    for (let size = bytes.length; size > 0; size >>>= 8) octets.unshift(size & 0xff);
+    length = Buffer.from([0x80 | octets.length, ...octets]);
+  }
+  return Buffer.concat([Buffer.from([0x0c]), length, bytes]).toString("base64");
+}
+
+function certificateOIDPolicy(primary) {
+  return {
+    [GITHUB_SOURCE_REPOSITORY_URI_OID]: derUtf8String(primary.repository),
+    [GITHUB_SOURCE_REPOSITORY_REF_OID]: derUtf8String(primary.ref)
+  };
+}
+
+async function runVerifier(backend, bundle, identity, timeoutMs = 15000, identityPattern = null, certificateOIDs = null) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw new Error("Invalid provenance deadline");
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-provenance-"));
   await fsp.chmod(directory, 0o700);
@@ -147,8 +188,8 @@ async function runVerifier(backend, bundle, identity, timeoutMs = 15000) {
         return resolve({ status: /^TUF_|FETCH|TIMEOUT/.test(output.code || "") ? "unverified" : "invalid",
           reason: output.code || "signature-verification-failed" });
       });
-      child.stdin.end(JSON.stringify({ bundle, issuer: ISSUER,
-        identityPattern: `^${identity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$` }));
+      child.stdin.end(JSON.stringify({ bundle, issuer: ISSUER, certificateOIDs,
+        identityPattern: identityPattern || `^${escapeRegex(identity)}$` }));
     });
   } finally { await fsp.rm(directory, { recursive: true, force: true }); }
 }
@@ -168,12 +209,17 @@ async function verifyProvenanceBundle(attestation, { packageName, version, diges
   if (!boundSubject(primary, packageName, version, digests)) return { status: "invalid", reason: "artifact-subject-mismatch" };
   const identity = expectedIdentity(primary, repository);
   if (!identity) return { status: "unverified", reason: "signer-policy-unavailable" };
+  const identityPattern = expectedIdentityPattern(primary, repository);
+  if (!identityPattern) return { status: "unverified", reason: "signer-policy-unavailable" };
+  const certificateOIDs = certificateOIDPolicy(primary);
   if (Buffer.byteLength(JSON.stringify(attestation.bundle)) > MAX_BUNDLE_BYTES) return { status: "invalid", reason: "bundle-too-large" };
   const backend = resolveVerifier(modulePath);
   if (!backend) return { status: "unverified", reason: "sigstore-verifier-unavailable" };
-  const result = await backendRunner(backend, attestation.bundle, identity, timeoutMs);
+  const result = await backendRunner(backend, attestation.bundle, identity, timeoutMs, identityPattern, certificateOIDs);
   return { ...result, cryptographicallyVerified: result.status === "verified", artifactBound: result.status === "verified",
-    certificateIdentity: identity, certificateIssuer: ISSUER, verifier: `sigstore@${backend.version}` };
+    certificateIdentity: identity, certificateIdentityPolicy: identityPattern,
+    certificateIssuer: ISSUER, verifier: `sigstore@${backend.version}` };
 }
 
-module.exports = { verifyProvenanceBundle, resolveVerifier, boundSubject, digestBytes, expectedIdentity, runVerifier };
+module.exports = { verifyProvenanceBundle, resolveVerifier, boundSubject, digestBytes, expectedIdentity,
+  expectedIdentityPattern, certificateOIDPolicy, derUtf8String, runVerifier };

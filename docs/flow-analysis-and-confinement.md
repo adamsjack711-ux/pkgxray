@@ -75,6 +75,23 @@ resolution, arbitrary proxies/getters and TypeScript-specific syntax are not
 fully modeled. Unsupported syntax retains lexical and independent checks.
 Historical top-1000 results predate this engine and were not rerun.
 
+## October 2026 detector and bounded-flow follow-up
+
+The post-1.2.0 hardening pass adds BLOCK-level recognition for literal remote
+dynamic imports, split `globalThis` evaluation, encoded `child_process`
+launchers, install-time download-to-interpreter pipelines, and reads of common
+Ethereum, Bitcoin, Solana, GCP, Azure and GnuPG credential stores. Every new
+malicious calibration case has a benign near-neighbor to prevent a bare URL,
+computed property, encoded string, or documented path from blocking by itself.
+
+The flow engine now collapses unknown-call arguments to their taint bits instead
+of joining arbitrarily deep object structures. This removes framework-driven
+state explosion without discarding secret, environment, or remote-source taint.
+Clean Express 4.21.0 now completes as SAFE/A+ in a live scan; unresolved relevant
+effects and exhausted bounds still fail closed to REVIEW. The calibration set is
+84 cases and the combined calibration/challenge/former-holdout total is 284.
+These are internal regression results, not an independent accuracy estimate.
+
 Sandboxing is opt-in. Permitted files and explicitly passed environment values
 remain accessible to the server. The sandbox does not solve kernel exploits,
 CPU/memory exhaustion or malicious content sent through the authorized MCP
