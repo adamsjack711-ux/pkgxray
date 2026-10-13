@@ -77,7 +77,9 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
     URL → `pkgxray mcp` probe, an entry it can't read → **review** (never a
     silent allow). Env-only or formatting edits re-triage nothing. A post-edit
     hook can't undo the write, so a BLOCK becomes a file-edit block (honored by
-    Claude) and a review becomes agent context. Once the gate clears, the
+    supporting hosts) and REVIEW also remains a block pending human review.
+    The hook cannot undo a completed write; hosts that only report post-edit
+    feedback still require execution-time enforcement. Once the gate clears, the
     vetted stdio entries are **auto-wrapped in place** to launch behind
     `pkgxray mcp-proxy` (the per-call runtime gate): unlike a command, a config
     file is shared state the hook can rewrite, so the wrap needs no agent
@@ -108,7 +110,7 @@ The hook shells out to the **pkgxray CLI** and depends on this contract:
 - `pkgxray mcp <url> --format json` (pkgxray ≥ 0.16.0) emitting a top-level
   `verdict`, `manifest.server`/`manifest.tools`, and
   `manifestAudit.findings[]` — used to probe HTTP MCP-server registrations;
-- exit codes `2`=block, `3`=review, `0`=safe (used as the fallback when the JSON
+- exit codes `2`=block, `3`=review (denial-only fallback when the JSON
   can't be parsed).
 
 Use **pkgxray 1.0.5 or newer** and verify it with `pkgxray --version`. The hook

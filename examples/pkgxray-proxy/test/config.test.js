@@ -10,7 +10,9 @@ test('defaults apply with empty env', () => {
   const cfg = loadConfig({}, {});
   assert.equal(cfg.port, DEFAULTS.port);
   assert.equal(cfg.upstream, DEFAULTS.upstream);
-  assert.equal(cfg.reviewPolicy, 'warn');
+  assert.equal(cfg.reviewPolicy, 'block');
+  assert.equal(cfg.scanConcurrency, 4);
+  assert.equal(cfg.maxPendingScans, 64);
   assert.equal(cfg.scanErrorPolicy, 'fail-closed');
 });
 
@@ -59,6 +61,28 @@ test('rejects non-http upstream', () => {
 
 test('rejects invalid scanTimeoutMs', () => {
   assert.throws(() => loadConfig({ scanTimeoutMs: 0 }, {}), /scanTimeoutMs/);
+});
+
+test('scan capacity is configurable but bounded', () => {
+  const cfg = loadConfig({}, { PKGXRAY_PROXY_SCAN_CONCURRENCY: '2', PKGXRAY_PROXY_MAX_PENDING_SCANS: '0' });
+  assert.equal(cfg.scanConcurrency, 2);
+  assert.equal(cfg.maxPendingScans, 0);
+  for (const scanConcurrency of [0, -1, 1.5, 33]) assert.throws(() => loadConfig({ scanConcurrency }, {}), /scanConcurrency/);
+  for (const maxPendingScans of [-1, 1.5, 1025]) assert.throws(() => loadConfig({ maxPendingScans }, {}), /maxPendingScans/);
+});
+
+test('hold and error cache lifetimes have independent validated configuration', () => {
+  const defaults = loadConfig({}, {});
+  assert.equal(defaults.holdTtlMs, 300000);
+  assert.equal(defaults.scanErrorTtlMs, 60000);
+  const config = loadConfig({}, { PKGXRAY_PROXY_HOLD_TTL_MS: '0', PKGXRAY_PROXY_SCAN_ERROR_TTL_MS: '1200' });
+  assert.equal(config.holdTtlMs, 0);
+  assert.equal(config.scanErrorTtlMs, 1200);
+  for (const field of ['holdTtlMs', 'scanErrorTtlMs']) {
+    for (const value of [-1, 0.5, null, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.throws(() => loadConfig({ [field]: value }, {}), new RegExp(field));
+    }
+  }
 });
 
 test('adminToken defaults to undefined and is read from env', () => {

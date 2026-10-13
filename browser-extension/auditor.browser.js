@@ -6566,6 +6566,11 @@ function createFlowAnalysis(files) {
       // Acorn parses syntax only. No dynamic imports or source callbacks run.
       ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, allowHashBang: true });
     } catch { result.status = 'unsupported'; return result; }
+    // Keep default and named ESM exports in one namespace. A default value
+    // must not replace named exports (or inherit their properties).
+    if (ast.body.some(n => n.type.startsWith('Export'))) {
+      result.exports = { bits: 0, kind: 'module-namespace', props: new Map() };
+    }
     active.add(file);
     const seen = new Set();
     const callbacks = [];
@@ -6817,8 +6822,9 @@ function createFlowAnalysis(files) {
             } else bind(node.left, v, scope, false);
             return v;
           }
-          case 'FunctionExpression': case 'ArrowFunctionExpression': {
-            const fn = { bits: 0, kind: 'function', node, scope };
+          case 'FunctionDeclaration': case 'FunctionExpression': case 'ArrowFunctionExpression': {
+            const fn = node.type === 'FunctionDeclaration' && node.id && scope.get(node.id.name) ||
+              { bits: 0, kind: 'function', node, scope };
             invoke(fn, [], true);
             return fn;
           }
@@ -6859,8 +6865,8 @@ function createFlowAnalysis(files) {
       // ambient process/fetch semantics merely because their declaration is later.
       for (const n of nodes) {
         if (n.type === 'VariableDeclaration') for (const d of n.declarations) bind(d.id, clean(), scope);
-        const fn = n.type === 'ExportNamedDeclaration' ? n.declaration : n;
-        if (fn?.type === 'FunctionDeclaration') scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
+        const fn = ['ExportNamedDeclaration', 'ExportDefaultDeclaration'].includes(n.type) ? n.declaration : n;
+        if (fn?.type === 'FunctionDeclaration' && fn.id) scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
       }
       // Only return-bearing statements contribute a function's result. A
       // prototype assignment is a side effect, not another possible return.
@@ -6938,17 +6944,29 @@ function createFlowAnalysis(files) {
           case 'CatchClause': { const local = new Scope(scope); bind(node.param, clean(), local); return stmt(node.body, local); }
           case 'ImportDeclaration': {
             const value = load(node.source.value);
-            for (const s of node.specifiers) scope.set(s.local.name, s.type === 'ImportSpecifier' ? property(value, s.imported.name) : value, true);
+            for (const s of node.specifiers) scope.set(s.local.name,
+              s.type === 'ImportSpecifier' ? property(value, s.imported.name ?? s.imported.value) :
+              s.type === 'ImportDefaultSpecifier' && value.kind === 'module-namespace' ? property(value, 'default') : value, true);
             break;
           }
-          case 'ExportDefaultDeclaration': result.exports = expr(node.declaration, scope); break;
+          case 'ExportDefaultDeclaration': {
+            const value = expr(node.declaration, scope);
+            if (node.declaration.type === 'ClassDeclaration' && node.declaration.id) scope.set(node.declaration.id.name, value, true);
+            result.exports.props.set('default', value);
+            result.exports.bits |= value.bits;
+            break;
+          }
           case 'ExportNamedDeclaration': {
             if (node.declaration) stmt(node.declaration, scope);
             const value = node.source ? load(node.source.value) : null;
             const props = result.exports.props || new Map();
-            for (const s of node.specifiers) props.set(s.exported.name, value ? property(value, s.local.name) : scope.get(s.local.name) || clean());
+            for (const s of node.specifiers) props.set(s.exported.name ?? s.exported.value,
+              value ? property(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean());
             if (node.declaration?.type === 'VariableDeclaration') for (const d of node.declaration.declarations) if (d.id.name) props.set(d.id.name, scope.get(d.id.name));
-            result.exports = { bits: merge(...props.values()).bits, props };
+            if (['FunctionDeclaration', 'ClassDeclaration'].includes(node.declaration?.type)) {
+              props.set(node.declaration.id.name, scope.get(node.declaration.id.name));
+            }
+            result.exports = { bits: merge(...props.values()).bits, kind: 'module-namespace', props };
             break;
           }
           default: gap(); break;
@@ -8349,7 +8367,7 @@ const BAND_DEFINITIONS = [
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
   { band: "self-scan-verified", label: "self-scan-verified", categories: ["self-scan-verified"], rationale: "The scanned package is pkgxray itself, provenance-verified against its canonical repo; signature-database findings report as review instead of block." },
-  { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "Package has a sigstore-signed SLSA provenance attestation from npm linking it to a specific GitHub Action build. Strong 'really came from where it says it did' signal." },
+  { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "A SLSA provenance claim is present. The finding distinguishes authenticated artifact-bound provenance from an unverified claim; neither establishes harmless behavior." },
   { band: "provenance-mismatch", label: "provenance-mismatch", categories: ["provenance-mismatch"], rationale: "npm attestation claims the package was built from a different GitHub repo than the one listed in package.json. Strong tampering / typosquat signal." }
 ];
 
@@ -8417,6 +8435,18 @@ function auditMetadata(evidence, findings) {
 
 function inspectProvenance(evidence, findings) {
   const att = evidence.provenanceAttestation;
+  const verification = att?.verification;
+  if (verification?.status === "invalid") {
+    findings.push({ severity: "high", category: "provenance-invalid", file: "ATTESTATION",
+      snippet: clip(verification.reason || "provenance verification failed"),
+      rationale: "The published provenance failed signature, signer policy, or artifact identity verification. It cannot authenticate this package." });
+    return;
+  }
+  if (verification?.required && verification.status !== "verified") {
+    findings.push({ severity: "medium", category: "unverified-provenance", file: "ATTESTATION",
+      snippet: clip(verification.reason || verification.status || "verification unavailable"),
+      rationale: "The operator requires verified provenance, but this artifact's signature, signer identity and digest binding were not established. Installation remains on hold." });
+  }
   // Silent when no attestation — ~90% of packages don't have one, so this
   // is not a negative signal, just an absence of a positive one.
   if (!att || !att.attested || !att.primary) return;
@@ -8469,9 +8499,10 @@ function inspectProvenance(evidence, findings) {
       `built by ${builderId || "github-hosted runner"} from ${repository}${ref} via ${workflowPath} (SLSA ${primary.slsaVersion})${subjectNote}`
     ),
     rationale:
-      `Package has a sigstore-signed SLSA provenance attestation linking it to ${repository} → ${workflowPath}. ` +
-      "npm verified the sigstore signature when this attestation was published; pkgxray does not re-verify. " +
-      "Provenance proves where the artifact was built, NOT that it is safe — a compromised pipeline can attach valid provenance to malware (Miasma), so this never offsets a risk finding or the verdict." +
+      (verification?.status === "verified"
+        ? `Sigstore verified the attestation signature, certificate identity and transparency material, and pkgxray bound its subject to the downloaded bytes (${verification.verifier}). `
+        : `A parseable SLSA provenance claim names ${repository} → ${workflowPath}; pkgxray has not authenticated this claim (${verification?.reason || "parse-only"}). `) +
+      "Verified provenance establishes build origin, not harmless behavior. A compromised pipeline can sign malware, so provenance never offsets a risk finding or the verdict." +
       tlogNote
   });
 }

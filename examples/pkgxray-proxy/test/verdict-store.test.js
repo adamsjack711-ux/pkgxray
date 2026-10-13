@@ -104,3 +104,34 @@ test('stamps ts via injected clock and writes atomically', () => {
     cleanup();
   }
 });
+
+test('deny-only holds persist separately, replace old approvals and cannot store allow', () => {
+  const { path, cleanup } = tmpStore();
+  try {
+    const store = new VerdictStore(path);
+    store.set('@scope/demo', '1.0.0', 'allow');
+    const binding = { artifactSha256: 'a'.repeat(64), context: 'b'.repeat(64) };
+    assert.equal(store.setHold('@scope/demo', '1.0.0', 'allow', [], 'invalid', binding), false);
+    assert.equal(store.setHold('@scope/demo', '1.0.0', 'unbound', [], 'Incomplete coverage', binding), true);
+    assert.equal(store.get('@scope/demo', '1.0.0'), undefined);
+    const restarted = new VerdictStore(path);
+    assert.equal(restarted.getHold('@scope/demo', '1.0.0').note, 'Incomplete coverage');
+    assert.equal(restarted.get('@scope/demo', '1.0.0'), undefined);
+    assert.equal(restarted.entries()[0].name, '@scope/demo');
+    assert.equal(restarted.size(), 1);
+    restarted.set('@scope/demo', '1.0.0', 'review');
+    assert.equal(new VerdictStore(path).getHold('@scope/demo', '1.0.0'), undefined);
+  } finally { cleanup(); }
+});
+
+test('malformed or allow-valued persisted holds never enter either cache', () => {
+  const { path, cleanup } = tmpStore();
+  try {
+    writeFileSync(path, JSON.stringify({ version: 2, verdicts: {}, holds: {
+      'x@1.0.0': { kind: 'hold', decision: 'allow', binding: { artifactSha256: 'a', context: 'b' } },
+      'y@1.0.0': { kind: 'hold', decision: 'review' },
+    } }));
+    const store = new VerdictStore(path);
+    assert.equal(store.size(), 0);
+  } finally { cleanup(); }
+});

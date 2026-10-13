@@ -84,7 +84,14 @@ function parseGithubRepo(repository) {
   for (const pattern of patterns) {
     const match = cleaned.match(pattern);
     if (match) {
-      return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
+      const owner = match[1];
+      const repo = match[2].replace(/\.git$/, "");
+      // These values become URL path segments and cache keys. Reject traversal,
+      // separators, controls and suffix paths at the parsing boundary instead
+      // of relying on URL normalization or a downstream server to notice them.
+      const safeSegment = value => /^[A-Za-z0-9_.-]+$/.test(value) && value !== "." && value !== "..";
+      if (!safeSegment(owner) || !safeSegment(repo)) return null;
+      return { owner, repo };
     }
   }
   return null;
@@ -166,12 +173,12 @@ async function fetchRepoMetadata(repository, options = {}) {
       ? await cacheClient.getRepoJson(parsed.owner, parsed.repo, { token })
       : await githubApiGet(`/repos/${parsed.owner}/${parsed.repo}`, token);
     const result = reshapeRepo(parsed, repo);
-    await writeCache(cacheKey, result);
+    if (options.useCache !== false) await writeCache(cacheKey, result);
     return result;
   } catch (error) {
     if (error.statusCode === 404) {
       const result = { found: false, reason: "not-found", owner: parsed.owner, repo: parsed.repo };
-      await writeCache(cacheKey, result);
+      if (options.useCache !== false) await writeCache(cacheKey, result);
       return result;
     }
     // Don't cache transient errors — next call should retry.
@@ -186,12 +193,12 @@ const TARBALL_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const TARBALL_TIMEOUT_MS = 15000;
 const MAX_TARBALL_BYTES = 100 * 1024 * 1024; // 100MB
 
-function tarballCachePath(owner, repo, ref) {
+function tarballCachePath(owner, repo, ref, cacheDir = TARBALL_CACHE_DIR) {
   const key = crypto
     .createHash("sha1")
     .update(`${owner}/${repo}@${ref}`)
     .digest("hex");
-  return path.join(TARBALL_CACHE_DIR, `${key}.tgz`);
+  return path.join(cacheDir, `${key}.tgz`);
 }
 
 async function downloadCodeload(url, destination) {
@@ -391,8 +398,11 @@ function downloadFromCacheServer(owner, repo, ref, destination) {
 }
 
 // Try refs in order until one downloads. Caches the first successful one.
-async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch) {
-  await fsp.mkdir(TARBALL_CACHE_DIR, { recursive: true, mode: 0o700 });
+async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch, options = {}) {
+  // An alternate directory keeps tests and embedded callers from sharing the
+  // user's persistent cache; production callers retain the established path.
+  const cacheDir = options.cacheDir || TARBALL_CACHE_DIR;
+  await fsp.mkdir(cacheDir, { recursive: true, mode: 0o700 });
   const candidates = [];
   if (version) {
     candidates.push(`v${version}`);
@@ -403,7 +413,7 @@ async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch) {
   const useTeamCache = cacheClient.isEnabled();
 
   for (const ref of candidates) {
-    const cachePath = tarballCachePath(owner, repo, ref);
+    const cachePath = tarballCachePath(owner, repo, ref, cacheDir);
     try {
       const stat = await fsp.stat(cachePath);
       if (Date.now() - stat.mtimeMs < TARBALL_TTL_MS) {
@@ -412,7 +422,7 @@ async function fetchRepoTarballForVersion(owner, repo, version, defaultBranch) {
     } catch {
       // not cached, fall through to download
     }
-    const downloadDir = await fsp.mkdtemp(path.join(TARBALL_CACHE_DIR, ".download-"));
+    const downloadDir = await fsp.mkdtemp(path.join(cacheDir, ".download-"));
     const downloadPath = path.join(downloadDir, "archive.tgz");
     try {
       if (useTeamCache) {

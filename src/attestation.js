@@ -9,13 +9,10 @@
 // have it as of 2026: TypeScript-adjacent tooling, vite/vitest, sigstore,
 // @actions/*, @octokit/*, etc.).
 //
-// IMPORTANT — pkgxray does NOT cryptographically verify these attestations.
-// We base64-decode the DSSE payload and read the self-reported fields. We do
-// NOT check the sigstore signature, the Fulcio certificate chain, the Rekor
-// transparency-log inclusion proof, or that the subject digest binds to the
-// tarball we actually downloaded. A full sigstore client (Fulcio + Rekor +
-// certificate transparency) is ~hundreds of KB against a "zero-dep" goal, so
-// it is deliberately out of scope.
+// Parsing and verification are separate. fetchProvenanceAttestation returns
+// untrusted claims; verifyFetchedProvenance delegates certificate, signature,
+// transparency-log and TUF checks to an installed maintained Sigstore SDK and
+// binds its authenticated statement to the downloaded package bytes.
 //
 // Consequently `attested:true` means ONLY "a parseable, SLSA-shaped provenance
 // document is present" — NOT "verified provenance". Anyone can hand-craft an
@@ -129,22 +126,33 @@ function extractSubjectDigests(payload) {
 // Given a parsed attestation (or its subjectDigests array) and the digest of
 // the tarball we actually downloaded, return true only if some subject digest
 // binds to it. `downloadedDigest` is { algorithm, value } e.g.
-// { algorithm: "sha512", value: "abc..." }. Comparison is case-insensitive
-// hex/base64-agnostic exact-string. This is a BINDING check, NOT a signature
+// { algorithm: "sha512", value: "abc..." }. Full-length hex or canonical,
+// case-sensitive base64 is decoded and compared as bytes. This is a BINDING check, NOT a signature
 // check — a matching digest on an unsigned bundle still proves nothing about
 // authenticity, only that this artifact is the one the (unverified) claim
 // names.
 function verifySubjectDigest(parsedOrDigests, downloadedDigest) {
   if (!downloadedDigest || !downloadedDigest.algorithm || !downloadedDigest.value) return false;
   const wantAlg = String(downloadedDigest.algorithm).toLowerCase();
-  const wantVal = String(downloadedDigest.value).toLowerCase();
+  const length = { sha1: 20, sha256: 32, sha384: 48, sha512: 64 }[wantAlg];
+  if (!length) return false;
+  function bytes(value) {
+    if (typeof value !== "string") return null;
+    if (new RegExp(`^[a-fA-F0-9]{${length * 2}}$`).test(value)) return Buffer.from(value, "hex");
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return null;
+    const decoded = Buffer.from(value, "base64");
+    return decoded.length === length && decoded.toString("base64").replace(/=+$/, "") === value.replace(/=+$/, "") ? decoded : null;
+  }
+  const want = bytes(downloadedDigest.value);
+  if (!want) return false;
   const subjects = Array.isArray(parsedOrDigests)
     ? parsedOrDigests
     : (parsedOrDigests && parsedOrDigests.subjectDigests) || [];
   for (const subj of subjects) {
     const digest = (subj && subj.digest) || {};
     for (const [alg, val] of Object.entries(digest)) {
-      if (String(alg).toLowerCase() === wantAlg && String(val).toLowerCase() === wantVal) {
+      const actual = String(alg).toLowerCase() === wantAlg ? bytes(val) : null;
+      if (actual && require("node:crypto").timingSafeEqual(actual, want)) {
         return true;
       }
     }
@@ -292,7 +300,11 @@ async function fetchProvenanceAttestation(name, version, options = {}) {
   if (options.useCache !== false) {
     const cached = await readCache(name, version);
     if (cached) {
-      return { ...cached, fromCache: true };
+      // Cached assertions never carry verification authority. Reverify their
+      // bundles against this acquisition's bytes and current trust material.
+      return { ...cached, primary: cached.primary ? { ...cached.primary, cryptographicallyVerified: false } : undefined,
+        all: Array.isArray(cached.all) ? cached.all.map(p => ({ ...p, cryptographicallyVerified: false })) : [],
+        verification: { status: cached.attested ? "unverified" : "absent" }, fromCache: true };
     }
   }
 
@@ -349,11 +361,45 @@ async function fetchProvenanceAttestation(name, version, options = {}) {
     attested: true,
     primary,
     all: provenance,
+    bundles: attestations.filter(att => parseAttestation(att)),
+    verification: { status: "unverified" },
     attestationCount: attestations.length,
     checkedAt: new Date().toISOString()
   };
   await writeCache(name, version, result);
   return result;
+}
+
+async function verifyFetchedProvenance(attestation, options = {}) {
+  const required = options.required === true;
+  if (!attestation || !attestation.attested) {
+    return { ...(attestation || { attested: false }), verification: {
+      status: attestation?.reason === "fetch-error" ? "unverified" : "absent", required,
+      reason: attestation?.reason || "no-attestation"
+    } };
+  }
+  // Legacy caches hold parsed claims only. They cannot prove authenticity.
+  if (!Array.isArray(attestation.bundles) || !attestation.bundles.length) {
+    return { ...attestation, primary: { ...attestation.primary, cryptographicallyVerified: false },
+      verification: { status: "unverified", required, reason: "cached-bundle-unavailable" } };
+  }
+  if (attestation.bundles.length > 8) {
+    return { ...attestation, primary: { ...attestation.primary, cryptographicallyVerified: false },
+      verification: { status: "unverified", required, reason: "provenance-count-limit" } };
+  }
+  const { verifyProvenanceBundle } = require("./provenance-verifier");
+  const results = [];
+  const deadline = Date.now() + 15000;
+  for (const bundle of attestation.bundles) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) { results.push({ status: "unverified", reason: "verification-timeout" }); break; }
+    results.push(await verifyProvenanceBundle(bundle, { ...options, timeoutMs: Math.min(options.timeoutMs || 15000, remaining) }));
+  }
+  const invalid = results.find(result => result.status === "invalid");
+  const verifiedIndex = results.findIndex(result => result.status === "verified");
+  const verification = { ...(invalid || (verifiedIndex >= 0 ? results[verifiedIndex] : results[0])), required };
+  const primary = verifiedIndex >= 0 && !invalid ? parseAttestation(attestation.bundles[verifiedIndex]) : attestation.primary;
+  return { ...attestation, primary: { ...primary, cryptographicallyVerified: verification.status === "verified" }, verification };
 }
 
 // Helper for the auditor: given a parsed primary provenance + the
@@ -370,6 +416,7 @@ function compareProvenanceToRepository(primary, declaredRepository) {
 
 module.exports = {
   fetchProvenanceAttestation,
+  verifyFetchedProvenance,
   parseAttestation,
   compareProvenanceToRepository,
   canonicalGithubKey,

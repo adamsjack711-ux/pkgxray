@@ -16,7 +16,7 @@ const {
   extractTarballSubset
 } = require("./github");
 const { diffNpmVsGithub } = require("./diff");
-const { fetchProvenanceAttestation } = require("./attestation");
+const { fetchProvenanceAttestation, verifyFetchedProvenance } = require("./attestation");
 const cfg = require("./config");
 const artifact = require("./artifact");
 
@@ -214,7 +214,13 @@ async function guardExtension(reference, options = {}) {
   // Likewise for provenance — it ran concurrently with everything above.
   // provenanceResolveTime is set by the .then handler so it reflects the
   // actual cost of the fetch/parse, not the wait until we awaited.
-  const provenanceAttestation = await provenancePromise;
+  const fetchedProvenance = await provenancePromise;
+  const requireProvenance = process.env.PKGXRAY_REQUIRE_PROVENANCE === "1";
+  const provenanceAttestation = (resolved.type === "npm" && options.provenance !== false) || requireProvenance
+    ? await verifyFetchedProvenance(fetchedProvenance, {
+      packageName: resolved.packageName, version: resolved.version, digests: resolved.provenanceDigests,
+      repository: resolved.npmMetadata?.repository, required: requireProvenance
+    }) : fetchedProvenance;
   timings.provenanceMs = provenanceResolveTime !== null ? provenanceResolveTime : 0;
 
   // npm vs GitHub diff (Phase 3) — only for npm packages where we have repo
@@ -315,7 +321,8 @@ async function guardExtension(reference, options = {}) {
       checks: {
         source: options.sourceScan === false ? "disabled" : vulnerabilities.length ? "skipped" : sourceCoverage.complete ? "completed" : "partial",
         vulnerabilities: options.vulnerabilityCheck === false ? "disabled" : vulnerabilityScanError ? "failed" : "completed",
-        directDependencies: !options.scanDependencies ? "not-requested" : !dependencyAudit ? "skipped" : dependencyAudit.error ? "failed" : dependencyAudit.complete ? "completed" : "partial"
+        directDependencies: !options.scanDependencies ? "not-requested" : !dependencyAudit ? "skipped" : dependencyAudit.error ? "failed" : dependencyAudit.complete ? "completed" : "partial",
+        provenance: provenanceAttestation?.verification?.status || "not-requested"
       },
       rawVerdict: rawReport.verdict,
       authorization: require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit }),
@@ -933,6 +940,8 @@ async function downloadResolvedPackage(resolved, stagedPath) {
     await fsp.copyFile(resolved.archiveSource, archivePath);
     const verified = await artifact.verifyFile(archivePath, resolved.integrity);
     resolved.sha256 = verified.sha256;
+    const provenanceDigests = await hashFileMulti(archivePath, ["sha256", "sha512"]);
+    resolved.provenanceDigests = Object.fromEntries(Object.entries(provenanceDigests).map(([algorithm, bytes]) => [algorithm, bytes.toString("hex")]));
     await fsp.mkdir(stagedPath, { recursive: true, mode: 0o700 });
     await extractTarball(archivePath, stagedPath);
     await verifyStagedIdentity(resolved, stagedPath);
@@ -965,13 +974,14 @@ async function downloadResolvedPackage(resolved, stagedPath) {
   // integrity-verification digest (sha512 typically, sometimes sha1). Without
   // this we read the file twice — once for sha256, once for integrity — which
   // for a 30MB lodash tarball is ~100ms wasted per audit.
-  const algos = ["sha256"];
+  const algos = ["sha256", "sha512"];
   const integrityAlgo = pickIntegrityAlgo(resolved);
-  if (integrityAlgo && integrityAlgo !== "sha256") {
+  if (integrityAlgo && !algos.includes(integrityAlgo)) {
     algos.push(integrityAlgo);
   }
   const digests = await hashFileMulti(archivePath, algos);
   resolved.sha256 = digests.sha256.toString("hex");
+  resolved.provenanceDigests = { sha256: resolved.sha256, sha512: digests.sha512.toString("hex") };
 
   // Verify against the npm registry's published integrity field BEFORE
   // extracting. Delete the partial file on mismatch so we never leave a
@@ -992,6 +1002,7 @@ async function downloadResolvedPackage(resolved, stagedPath) {
         throw verifyError;
       }
       resolved.sha256 = fresh.sha256.toString("hex");
+      resolved.provenanceDigests = { sha256: resolved.sha256, sha512: fresh.sha512.toString("hex") };
     } else {
       throw error;
     }
@@ -1018,6 +1029,11 @@ async function verifyStagedIdentity(resolved, stagedPath) {
   if (resolved.type !== "npm") return;
   const identity = await readPackageIdentity(stagedPath);
   if (!identity || identity.name !== resolved.packageName || identity.version !== resolved.version) throw new Error("Artifact manifest identity does not match requested name/version");
+  // Signer policy must use the repository declared by these acquired bytes,
+  // including proxy-held archives that never fetch registry metadata. Do not
+  // let mutable registry metadata or an attestation supply that declaration.
+  resolved.npmMetadata = { ...(resolved.npmMetadata || {}),
+    name: identity.name, version: identity.version, repository: identity.repository || null };
 }
 
 function pickIntegrityAlgo(resolved) {
@@ -1194,7 +1210,8 @@ async function readPackageIdentity(stagedPath) {
     );
     return {
       name: packageJson.name,
-      version: packageJson.version
+      version: packageJson.version,
+      repository: packageJson.repository
     };
   } catch {
     return null;

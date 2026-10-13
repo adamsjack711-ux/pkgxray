@@ -44,7 +44,8 @@ export function runGuard(bin, ref, opts = {}) {
 
     let child;
     try {
-      child = spawnFn(bin, args, { env: childEnv, ...(opts.cwd ? { cwd: opts.cwd } : {}) });
+      child = spawnFn(bin, args, { env: childEnv, ...(opts.cwd ? { cwd: opts.cwd } : {}),
+        ...(process.platform !== 'win32' && spawnFn === spawn ? { detached: true } : {}) });
     } catch (err) {
       reject(new ScanError(`Failed to spawn pkgxray: ${err.message}`, { cause: err, ref }));
       return;
@@ -55,13 +56,18 @@ export function runGuard(bin, ref, opts = {}) {
     let settled = false;
     let timedOut = false;
 
+    const killTree = () => {
+      try {
+        if (process.platform !== 'win32' && spawnFn === spawn && Number.isInteger(child.pid)) process.kill(-child.pid, 'SIGKILL');
+        else child.kill('SIGKILL');
+      } catch {
+        try { child.kill('SIGKILL'); } catch { /* already gone */ }
+      }
+    };
+
     const timer = setTimeout(() => {
       timedOut = true;
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        /* already gone */
-      }
+      killTree();
     }, timeoutMs);
     if (typeof timer.unref === 'function') timer.unref();
 
@@ -76,7 +82,7 @@ export function runGuard(bin, ref, opts = {}) {
       if (settled) return;
       stdout += d;
       if (Buffer.byteLength(stdout) > 16 * 1024 * 1024) {
-        child.kill('SIGKILL'); finish(reject, new ScanError('Scanner output exceeded 16 MiB limit'));
+        killTree(); finish(reject, new ScanError('Scanner output exceeded 16 MiB limit'));
       }
     });
     if (child.stderr) child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-8192); });

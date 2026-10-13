@@ -16,8 +16,10 @@ export const DEFAULTS = Object.freeze({
   upstream: 'https://registry.npmjs.org',
   pkgxrayBin: 'pkgxray',
   scanTimeoutMs: 20000,
+  scanConcurrency: 4,
+  maxPendingScans: 64,
   // block | warn | allow  — what to do with a "review" verdict.
-  reviewPolicy: 'warn',
+  reviewPolicy: 'block',
   // fail-closed | fail-open — what to do when a scan errors or times out.
   scanErrorPolicy: 'fail-closed',
   allowlist: [],
@@ -27,6 +29,10 @@ export const DEFAULTS = Object.freeze({
   // next request, so new intelligence flips a stale allow instead of serving it
   // forever. 0 = always re-scan (never serve from cache). Default 24h.
   verdictTtlMs: 24 * 60 * 60 * 1000,
+  // Denials never authorize serving. Settled holds retry after five minutes;
+  // scanner failures back off for one minute. Zero disables that cache.
+  holdTtlMs: 5 * 60 * 1000,
+  scanErrorTtlMs: 60 * 1000,
   cacheUrl: undefined,
   logDecisions: true,
   // Shared secret guarding the state-changing admin endpoint
@@ -88,6 +94,8 @@ function readEnv(env) {
   if (env.PKGXRAY_PROXY_SCAN_TIMEOUT_MS !== undefined) {
     out.scanTimeoutMs = toInt(env.PKGXRAY_PROXY_SCAN_TIMEOUT_MS, 'PKGXRAY_PROXY_SCAN_TIMEOUT_MS');
   }
+  if (env.PKGXRAY_PROXY_SCAN_CONCURRENCY !== undefined) out.scanConcurrency = toInt(env.PKGXRAY_PROXY_SCAN_CONCURRENCY, 'PKGXRAY_PROXY_SCAN_CONCURRENCY');
+  if (env.PKGXRAY_PROXY_MAX_PENDING_SCANS !== undefined) out.maxPendingScans = toInt(env.PKGXRAY_PROXY_MAX_PENDING_SCANS, 'PKGXRAY_PROXY_MAX_PENDING_SCANS');
   if (env.PKGXRAY_PROXY_REVIEW_POLICY !== undefined) out.reviewPolicy = env.PKGXRAY_PROXY_REVIEW_POLICY;
   if (env.PKGXRAY_PROXY_SCAN_ERROR_POLICY !== undefined) out.scanErrorPolicy = env.PKGXRAY_PROXY_SCAN_ERROR_POLICY;
   if (env.PKGXRAY_PROXY_ALLOWLIST !== undefined) out.allowlist = splitList(env.PKGXRAY_PROXY_ALLOWLIST);
@@ -96,6 +104,8 @@ function readEnv(env) {
   if (env.PKGXRAY_PROXY_VERDICT_TTL_MS !== undefined) {
     out.verdictTtlMs = toInt(env.PKGXRAY_PROXY_VERDICT_TTL_MS, 'PKGXRAY_PROXY_VERDICT_TTL_MS');
   }
+  if (env.PKGXRAY_PROXY_HOLD_TTL_MS !== undefined) out.holdTtlMs = toInt(env.PKGXRAY_PROXY_HOLD_TTL_MS, 'PKGXRAY_PROXY_HOLD_TTL_MS');
+  if (env.PKGXRAY_PROXY_SCAN_ERROR_TTL_MS !== undefined) out.scanErrorTtlMs = toInt(env.PKGXRAY_PROXY_SCAN_ERROR_TTL_MS, 'PKGXRAY_PROXY_SCAN_ERROR_TTL_MS');
   // PKGXRAY_CACHE_URL is the shared-cache server URL forwarded to the CLI.
   if (env.PKGXRAY_CACHE_URL !== undefined) out.cacheUrl = env.PKGXRAY_CACHE_URL;
   if (env.PKGXRAY_PROXY_ADMIN_TOKEN !== undefined) out.adminToken = env.PKGXRAY_PROXY_ADMIN_TOKEN;
@@ -121,6 +131,12 @@ function validate(cfg) {
   if (!Number.isInteger(cfg.scanTimeoutMs) || cfg.scanTimeoutMs <= 0) {
     throw new Error(`Invalid scanTimeoutMs: ${cfg.scanTimeoutMs} (expected positive integer)`);
   }
+  if (!Number.isInteger(cfg.scanConcurrency) || cfg.scanConcurrency < 1 || cfg.scanConcurrency > 32) {
+    throw new Error('Invalid scanConcurrency (expected integer 1-32)');
+  }
+  if (!Number.isInteger(cfg.maxPendingScans) || cfg.maxPendingScans < 0 || cfg.maxPendingScans > 1024) {
+    throw new Error('Invalid maxPendingScans (expected integer 0-1024)');
+  }
   if (!REVIEW_POLICIES.has(cfg.reviewPolicy)) {
     throw new Error(`Invalid reviewPolicy: ${cfg.reviewPolicy} (expected block|warn|allow)`);
   }
@@ -138,6 +154,11 @@ function validate(cfg) {
   }
   if (!Number.isInteger(cfg.verdictTtlMs) || cfg.verdictTtlMs < 0) {
     throw new Error(`Invalid verdictTtlMs: ${cfg.verdictTtlMs} (expected non-negative integer; 0 = always re-scan)`);
+  }
+  for (const field of ['holdTtlMs', 'scanErrorTtlMs']) {
+    if (!Number.isSafeInteger(cfg[field]) || cfg[field] < 0) {
+      throw new Error(`Invalid ${field} (expected non-negative safe integer; 0 = always re-scan)`);
+    }
   }
   if (cfg.cacheUrl !== undefined && typeof cfg.cacheUrl !== 'string') {
     throw new Error('Invalid cacheUrl');

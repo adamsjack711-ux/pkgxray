@@ -12,11 +12,11 @@ const { DEFAULTS } = require('../src/config');
 const { parseLockfile, auditLockfile } = require('../src/lockfile');
 const offline = { vulnerabilityCheck: false, githubMetadata: false, githubDiff: false, provenance: false };
 const sri = (bytes, algorithm = 'sha512') => `${algorithm}-${crypto.createHash(algorithm).update(bytes).digest('base64')}`;
-async function fixture(t) {
+async function fixture(t, metadata = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-binding-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   await fs.mkdir(path.join(dir, 'package'));
-  await fs.writeFile(path.join(dir, 'package/package.json'), JSON.stringify({ name: 'demo', version: '1.0.0', main: 'index.js' }));
+  await fs.writeFile(path.join(dir, 'package/package.json'), JSON.stringify({ name: 'demo', version: '1.0.0', main: 'index.js', ...metadata }));
   await fs.writeFile(path.join(dir, 'package/index.js'), 'module.exports = 42;');
   const file = path.join(dir, 'demo.tgz');
   execFileSync('tar', ['-czf', file, '-C', dir, 'package']);
@@ -43,6 +43,17 @@ test('archive rejects changed bytes, mismatched identity and unpinned versions',
   await assert.rejects(guardExtension('npm:demo@latest', options), /exact npm version/);
   await fs.appendFile(file, 'changed');
   await assert.rejects(guardExtension('npm:demo@1.0.0', options), /integrity mismatch/);
+});
+test('held archives use their own manifest repository for provenance signer policy', async t => {
+  const repository = { type: 'git', url: 'git+https://github.com/example/demo.git' };
+  const { file, bytes } = await fixture(t, { repository });
+  const result = await guardExtension('npm:demo@1.0.0', { ...offline, artifact: { archivePath: file, integrity: sri(bytes) } });
+  assert.deepEqual(result.resolved.npmMetadata.repository, repository);
+  assert.equal(result.resolved.npmMetadata.name, 'demo');
+  assert.equal(result.resolved.npmMetadata.version, '1.0.0');
+  const plain = await fixture(t);
+  const withoutRepo = await guardExtension('npm:demo@1.0.0', { ...offline, artifact: { archivePath: plain.file, integrity: sri(plain.bytes) } });
+  assert.equal(withoutRepo.resolved.npmMetadata.repository, null);
 });
 test('stronger SRI cannot be bypassed by a matching weaker hash', async t => {
   const { file, bytes } = await fixture(t);

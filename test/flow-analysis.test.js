@@ -6,6 +6,90 @@ const { sensitiveFlowHints } = require('../src/sensitive-flows');
 const { shellUploadHints } = require('../src/shell-flows');
 function hints(source) { return sensitiveFlowHints(source); }
 
+test('ES module function declarations retain callable summaries through imports', () => {
+  const cases = [
+    ['export default function identity(value) { return value; }', 'import identity from "./helper.js";', 'identity(7)'],
+    ['export default function(value) { return value; }', 'import identity from "./helper.js";', 'identity(7)'],
+    ['export function identity(value) { return value; }', 'import {identity} from "./helper.js";', 'identity(7)'],
+    ['export default function identity(value) { return value; }', 'import {default as identity} from "./helper.js";', 'identity(7)'],
+    ['export default function identity(value) { return value; }', 'import * as helper from "./helper.js";', 'helper.default(7)'],
+    ['export function identity(value) { return value; }', 'import * as helper from "./helper.js";', 'helper.identity(7)'],
+    ['export default function identity(value) { return value; } export const label="ready";', 'import identity, {label} from "./helper.js";', 'identity(7)'],
+    ['export const label="ready"; export default function identity(value) { return value; }', 'import identity, {label} from "./helper.js";', 'identity(7)'],
+    ['export default class Box { static answer(){return 7} }', 'import Box from "./helper.js";', 'Box.answer()'],
+    ['export class Box { static answer(){return 7} }', 'import {Box} from "./helper.js";', 'Box.answer()'],
+    ['const value=identity(7); export default function identity(value){return value} export {value};', 'import {value} from "./helper.js";', 'value']
+  ];
+  for (const [helper, imports, expression] of cases) {
+    const run = createFlowAnalysis([
+      { path: 'helper.js', content: helper },
+      { path: 'index.js', content: `${imports} module.exports=${expression};` }
+    ]);
+    const result = run.analyze('index.js');
+    assert.equal(result.status, 'parsed', `${helper}: ${JSON.stringify(result.gaps)}`);
+    assert.equal(result.exports.value, 7, helper);
+    assert.deepEqual(run.analyze('helper.js').gaps, [], helper);
+  }
+});
+
+test('ES default exports survive named re-exports and CommonJS interop stays intact', () => {
+  for (const helper of [
+    'export default function identity(value){return value}',
+    'module.exports=function identity(value){return value}'
+  ]) {
+    const direct = createFlowAnalysis([
+      { path: 'helper.js', content: helper },
+      { path: 'index.js', content: 'import identity from "./helper.js"; module.exports=identity(7);' }
+    ]).analyze('index.js');
+    assert.equal(direct.status, 'parsed');
+    assert.equal(direct.exports.value, 7);
+  }
+  const bridged = createFlowAnalysis([
+    { path: 'helper.js', content: 'export default function identity(value){return value}' },
+    { path: 'bridge.js', content: 'export {default as identity} from "./helper.js";' },
+    { path: 'index.js', content: 'import {identity} from "./bridge.js"; module.exports=identity(7);' }
+  ]).analyze('index.js');
+  assert.equal(bridged.status, 'parsed');
+  assert.equal(bridged.exports.value, 7);
+});
+
+test('benign registry URL reader no longer receives an ESM coverage review', () => {
+  const { auditEvidence } = require('../src/auditor');
+  const fixture = require('../benchmark/corpus/benign/npmrc-read-for-registry-url.json');
+  const report = auditEvidence(fixture.evidence);
+  assert.equal(report.verdict, 'safe');
+  assert.ok(!report.findings.some(f => f.category === 'flow-analysis-gap'));
+});
+
+test('ES default and named exports coexist without overwriting each other', () => {
+  for (const helper of [
+    'export default 7; export const label="ready";',
+    'export const label="ready"; export default 7;'
+  ]) {
+    const result = createFlowAnalysis([
+      { path: 'helper.js', content: helper },
+      { path: 'index.js', content: 'import value, {label} from "./helper.js"; module.exports={value,label};' }
+    ]).analyze('index.js');
+    assert.equal(result.status, 'parsed');
+    assert.equal(result.exports.props.get('value').value, 7);
+    assert.equal(result.exports.props.get('label').value, 'ready');
+  }
+});
+
+test('exported function bodies are inspected without applying dormant writes', () => {
+  const run = createFlowAnalysis([{ path: 'index.js', content:
+    'let value=1; export default function update(){value=2} export const initial=value;' }]);
+  const result = run.analyze('index.js');
+  assert.equal(result.status, 'parsed');
+  assert.equal(result.exports.props.get('initial').value, 1);
+  for (const declaration of ['export default function', 'export function']) {
+    const result = createFlowAnalysis([{ path: 'index.js', content:
+      `${declaration} read(){ const item={get value(){return 1}}; return item.value; }` }]).analyze('index.js');
+    assert.equal(result.status, 'unmodeled', 'unsupported semantics inside exported functions still require review');
+    assert.ok(result.gaps.some(g => g.nodeType === 'ObjectExpression'));
+  }
+});
+
 test('class bodies and alternate APIs retain sensitive-flow warnings without executing source', () => {
   // Static evidence only. These strings are never evaluated or sent anywhere.
   const body = "fetch('/api', {body: process.env.TEST_TOKEN})";

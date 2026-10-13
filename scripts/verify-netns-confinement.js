@@ -14,7 +14,7 @@
 //
 // Exit 0 = netns confinement available and self-test passed.
 // Exit 1 = not available here (missing bwrap/ip, non-Linux, or self-test failed) —
-//          canary still runs, but on the shared-net/env-only tier (netConfined:false).
+//          Linux canary refuses execution; macOS uses its sandbox-exec backend.
 
 const os = require("node:os");
 const fsp = require("node:fs/promises");
@@ -43,7 +43,8 @@ async function main() {
       console.log("  captured via the in-sandbox forwarder, and direct non-loopback");
       console.log("  egress is refused by the kernel. canary reports netConfined:true,");
       console.log('  isolation "bwrap+netns".');
-      process.exit(0);
+      process.exitCode = 0;
+      return;
     }
     console.log("RESULT: netns confinement NOT available on this host.");
     if (process.platform !== "linux") {
@@ -53,10 +54,9 @@ async function main() {
     } else {
       console.log("  Reason: prerequisites present but the self-test could not PROVE");
       console.log("  confinement (unprivileged user+net namespaces may be restricted).");
-      console.log("  canary falls back to shared-net bwrap (netConfined:false) — it still");
-      console.log("  observes via the capture proxy, but does not kernel-block raw egress.");
+      console.log("  Canary refuses package execution until OS network confinement works.");
     }
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
   }

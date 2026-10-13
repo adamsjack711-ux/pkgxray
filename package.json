@@ -23,6 +23,7 @@
     "test": "node ./scripts/run-tests.js",
     "test:docs": "node --test ./test/docs-smoke.test.js",
     "benchmark": "node ./benchmark/run.js",
+    "validate:external": "node ./scripts/validate-external-corpus.js",
     "validate:website": "node ./website/stats/build.mjs && node ./website/validate.mjs",
     "audit:evidence": "node ./bin/audit.js",
     "mcp": "node ./bin/mcp-server.js",

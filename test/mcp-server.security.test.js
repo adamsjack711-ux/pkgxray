@@ -315,6 +315,44 @@ test("HIGH: MCP refuses local paths outside operator-approved roots", async () =
   assert.ok(!reply.error.message.includes("/etc"), "error message leaks the requested path");
 });
 
+test("CRITICAL: MCP guard cannot promote over an operator-approved root", async () => {
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-promote-"));
+  const source = path.join(tmpRoot, "source");
+  await fs.mkdir(source);
+  await fs.writeFile(path.join(source, "package.json"), JSON.stringify({ name: "safe", version: "1.0.0" }));
+  const { lines } = await driveServer(rpc(1, "tools/call", {
+    name: "guard_agent_extension_install",
+    arguments: { reference: source, promoteTo: tmpRoot, force: true }
+  }), { env: { PKGXRAY_MCP_ALLOWED_ROOTS: tmpRoot } });
+  const reply = lines.map(line => JSON.parse(line)).find(value => value.id === 1);
+  assert.equal(reply.error.code, -32602);
+  assert.match(reply.error.message, /promotion is not available/);
+  assert.equal(await fs.stat(path.join(source, "package.json")).then(() => true), true);
+  await fs.rm(tmpRoot, { recursive: true, force: true });
+});
+
+test("HIGH: MCP guard never returns raw local source or .env values", async () => {
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-redact-"));
+  const source = path.join(tmpRoot, "source");
+  const marker = "PKGXRAY_SECRET_MARKER_9381";
+  await fs.mkdir(source);
+  await fs.writeFile(path.join(source, "package.json"), JSON.stringify({ name: "safe", version: "1.0.0", main: "index.js" }));
+  await fs.writeFile(path.join(source, "index.js"), "module.exports = 1;");
+  await fs.writeFile(path.join(source, ".env"), `TOKEN=${marker}\n`);
+  const { lines } = await driveServer(rpc(1, "tools/call", {
+    name: "guard_agent_extension_install",
+    arguments: { reference: source, vulnerabilityCheck: false, githubMetadata: false,
+      githubDiff: false, outputFormat: "json" }
+  }), { env: { PKGXRAY_MCP_ALLOWED_ROOTS: tmpRoot } });
+  const raw = lines.find(line => JSON.parse(line).id === 1);
+  const reply = JSON.parse(raw);
+  assert.ok(reply.result, raw);
+  assert.equal(raw.includes(marker), false);
+  assert.equal(Object.hasOwn(reply.result.structuredContent, "sourceFiles"), false);
+  assert.equal(reply.result.structuredContent.sourceEvidence.contentReturned, false);
+  await fs.rm(tmpRoot, { recursive: true, force: true });
+});
+
 test("HIGH: MCP refuses ~ home-relative references", async () => {
   const { lines } = await driveServer(
     rpc(1, "tools/call", {

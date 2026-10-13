@@ -227,9 +227,7 @@ func (g Guard) checkMcp(ctx context.Context, spec InstallSpec) Result {
 		res.Summary = mcpSummary(parsed)
 		res.Reasons = mcpReasons(parsed)
 	}
-	if res.Verdict == "" || res.Verdict == Unknown {
-		res.Verdict = verdictFromExit(exitCode)
-	}
+	res.Verdict = executionVerdict(res.Verdict, exitCode)
 	if res.Verdict == Unknown && res.Err == nil {
 		res.Err = errors.New("pkgxray mcp produced no verdict")
 	}

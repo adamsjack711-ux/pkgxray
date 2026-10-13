@@ -93,6 +93,12 @@ function lastTo(sent, to) {
   return null;
 }
 
+test("runtime gate rejects package-policy values instead of silently relaxing reviews", () => {
+  for (const policy of ["safe-only", "allow-review", "unknown"]) {
+    assert.throws(() => makeGate({ policy }), /Invalid MCP runtime policy/);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // unit — manifest verification and list rewriting
 // ---------------------------------------------------------------------------
@@ -529,6 +535,41 @@ test("e2e: benign session flows through and prints a gate summary", async () => 
   const stderr = await proxy.close();
   assert.match(stderr, /session closed/);
   assert.match(stderr, /per-call gate p50/);
+});
+
+test("e2e: strict CLI policy denies mixed block/review calls while concurrent safe calls finish", async () => {
+  const proxy = startProxy("mixed-verdicts", ["--policy", "strict"]);
+  try {
+    const list = await e2eHandshake(proxy);
+    assert.deepEqual(list.result.tools.map(t => t.name).sort(), ["get_time", "get_weather"]);
+    const names = Array(20).fill("get_time");
+    names[5] = "get_quote";
+    names[15] = "helper2";
+    const results = await Promise.all(names.map((name, i) => proxy.request({
+      jsonrpc: "2.0", id: i + 10, method: "tools/call", params: { name, arguments: {} }
+    })));
+    for (let i = 0; i < results.length; i++) {
+      assert.equal(results[i].id, i + 10);
+      assert.equal(Boolean(results[i].result.isError), names[i] !== "get_time");
+    }
+    const stats = await proxy.request({ jsonrpc: "2.0", id: 40, method: "fixture/stats" });
+    assert.deepEqual(stats.result.forwardedCalls, { get_time: 18 });
+    assert.doesNotMatch(proxy.getStderr(), /policy:.*is not one of/);
+  } finally { await proxy.close(); }
+});
+
+test("e2e: default, balanced and permissive runtime policies retain their documented review handling", async () => {
+  for (const flags of [[], ["--policy", "balanced"], ["--policy", "permissive"]]) {
+    const proxy = startProxy("mixed-verdicts", flags);
+    try {
+      const list = await e2eHandshake(proxy);
+      assert.ok(list.result.tools.some(t => t.name === "helper2"));
+      assert.ok(!list.result.tools.some(t => t.name === "get_quote"));
+      const reply = await proxy.request({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "helper2", arguments: {} } });
+      assert.equal(reply.result.content[0].text, "ok:helper2");
+      assert.doesNotMatch(proxy.getStderr(), /policy:.*is not one of/);
+    } finally { await proxy.close(); }
+  }
 });
 
 test("e2e: malicious tools never reach the model and calls to them are denied", async () => {

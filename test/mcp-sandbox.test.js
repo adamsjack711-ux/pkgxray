@@ -19,6 +19,7 @@ function run(launch) {
   });
 }
 test('requested sandbox fails closed on unsupported platforms and excessive grants', () => {
+  assert.throws(() => prepareMcpSandbox(process.execPath, [], {}, { sandboxNetwork: true }), /require --sandbox/);
   assert.throws(() => prepareMcpSandbox(process.execPath, [], {}, { sandbox: true, platform: 'win32' }), /unavailable/);
   if (!['darwin', 'linux'].includes(process.platform)) return;
   const wrapper = process.platform === 'darwin' ? '/usr/bin/sandbox-exec' : '/usr/bin/bwrap';
@@ -65,8 +66,25 @@ test('real OS sandbox blocks private files, symlink escapes, writes and network 
   const result = await run(launch);
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), { readProject: true, readSecret: false, symlinkEscape: false,
-    writeProject: false, writeGrant: true, writeHome: true, spawnHelper: process.platform !== 'darwin', freshHome: true, network: false });
+    writeProject: false, writeGrant: true, writeHome: true, spawnHelper: true, freshHome: true, network: false });
   assert.equal(hits, 0);
   launch.cleanup();
   assert.equal(fs.existsSync(launch.scratchPath), false);
+});
+
+test('explicit network grant permits localhost while private files remain denied', { skip: !available, timeout: 20000 }, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pkgxray-network-grant-'));
+  const project = path.join(root, 'project'); fs.mkdirSync(project);
+  const secret = path.join(root, 'secret'); fs.writeFileSync(secret, 'synthetic-private');
+  const server = http.createServer((req, res) => res.end('granted'));
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  t.after(() => { server.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  const source = `const fs=require('fs'),http=require('http');let privateRead=false;try{fs.readFileSync(${JSON.stringify(secret)});privateRead=true}catch{};http.get('http://127.0.0.1:${server.address().port}',res=>{let body='';res.on('data',c=>body+=c);res.on('end',()=>console.log(JSON.stringify({privateRead,body})))})`;
+  const launch = prepareMcpSandbox(process.execPath, ['-e', source], scrubbedEnv(), {
+    sandbox: true, sandboxNetwork: true, cwd: project, sandboxRead: [fs.realpathSync(process.execPath)]
+  });
+  t.after(launch.cleanup);
+  const result = await run(launch);
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), { privateRead: false, body: 'granted' });
 });

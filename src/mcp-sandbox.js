@@ -11,6 +11,9 @@ function inside(file, dir) { return file === dir || file.startsWith(dir + path.s
 // OS confinement is explicit, with no downgrade to an unrestricted process.
 // The selected working directory is read-only; HOME and TMPDIR are fresh.
 function prepareMcpSandbox(command, args, env, options = {}) {
+  if (!options.sandbox && (options.sandboxNetwork || options.sandboxRead?.length || options.sandboxWrite?.length)) {
+    throw new Error('Sandbox grants require --sandbox; refusing unrestricted launch');
+  }
   if (!options.sandbox) return { command, args, env, cwd: options.cwd || process.cwd(), cleanup() {} };
   const platform = options.platform || process.platform;
   const wrapper = platform === 'darwin' ? '/usr/bin/sandbox-exec' : '/usr/bin/bwrap';
@@ -47,11 +50,12 @@ function prepareMcpSandbox(command, args, env, options = {}) {
     const profile = [
       '(version 1)', '(deny default)',
       '(import "dyld-support.sb")',
-      '(allow process-exec)', '(allow signal (target self))',
+      '(allow process-exec)', '(allow process-fork)', '(allow signal (target self))',
       '(allow sysctl-read)', '(allow file-read-metadata)',
       `(allow file-read* file-map-executable ${readable.map(p => `(subpath ${sbpl(p)})`).join(' ')} (literal "/dev/null") (literal "/dev/urandom") (literal "/dev/random"))`,
-      `(allow file-write* ${[scratchPath, ...writes].map(p => `(subpath ${sbpl(p)})`).join(' ')} (literal "/dev/null"))`
-      // No network, Unix sockets, mach service access or arbitrary IPC grants.
+      `(allow file-write* ${[scratchPath, ...writes].map(p => `(subpath ${sbpl(p)})`).join(' ')} (literal "/dev/null"))`,
+      ...(options.sandboxNetwork === true ? ['(allow network*)'] : [])
+      // Network access is a separate explicit capability; IPC stays denied.
     ].join('\n');
     return { command: wrapper, args: ['-p', profile, executable, ...args], env: childEnv, cwd, cleanup, level: 'sandbox-exec', scratchPath };
   }
@@ -62,7 +66,7 @@ function prepareMcpSandbox(command, args, env, options = {}) {
     if (fs.existsSync(alias) && real(alias) !== alias) binds.push('--symlink', real(alias), alias);
   }
   return { command: wrapper,
-    args: ['--unshare-all', '--die-with-parent', '--new-session', '--cap-drop', 'ALL', '--tmpfs', '/',
+    args: ['--unshare-all', ...(options.sandboxNetwork === true ? ['--share-net'] : []), '--die-with-parent', '--new-session', '--cap-drop', 'ALL', '--tmpfs', '/',
       ...binds, '--proc', '/proc', '--dev', '/dev', '--chdir', cwd, '--', executable, ...args],
     env: childEnv, cwd, cleanup, level: 'bwrap', scratchPath };
 }

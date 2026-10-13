@@ -41,9 +41,10 @@ const VALID_POLICIES = new Set(["safe-only", "allow-review"]);
 const VALID_FAIL_ON = new Set(["block", "review", "never"]);
 const VALID_SCAN_ERROR = new Set(["fail-closed", "fail-open"]);
 
-// Findings a human can never vouch away — a published vulnerability is not a
-// matter of opinion. Mutes and allowlist entries are refused against these.
-const IMMUTABLE_CATEGORIES = new Set(["known-vulnerability"]);
+// Published vulnerabilities and failed/required provenance checks cannot be
+// vouched away with a generic allowlist or mute. Change an explicit provenance
+// requirement at the operator boundary instead of fabricating verification.
+const IMMUTABLE_CATEGORIES = new Set(["known-vulnerability", "provenance-invalid", "unverified-provenance"]);
 
 const DEFAULT_MCP = Object.freeze({
   tools: null, // null = expose all tools
@@ -422,11 +423,11 @@ function applyConfig(report, context = {}) {
     effects.ignoredAllow = { pkg: allowHit.allow.pkg, reason: "expired" };
     effects.notices.push(`allowlist entry ${allowHit.allow.pkg} is expired (${allowHit.allow.expires}); not applied.`);
   } else if (allowHit) {
-    const survivingVuln = surviving.some((f) => IMMUTABLE_CATEGORIES.has(f.category));
-    if (survivingVuln) {
-      effects.ignoredAllow = { pkg: allowHit.allow.pkg, reason: "known-vulnerability" };
+    const immutable = surviving.find((f) => IMMUTABLE_CATEGORIES.has(f.category));
+    if (immutable) {
+      effects.ignoredAllow = { pkg: allowHit.allow.pkg, reason: immutable.category };
       effects.notices.push(
-        `allowlist entry ${allowHit.allow.pkg} NOT applied: the package has a published vulnerability, which cannot be allowed away.`
+        `allowlist entry ${allowHit.allow.pkg} NOT applied: ${immutable.category} cannot be allowed away.`
       );
     } else if (surviving.some(f => f.category === "incomplete-dependency-scan")) {
       verdict = "review";

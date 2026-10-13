@@ -1,15 +1,13 @@
-// File-backed verdict cache: name@version -> { decision, findings, ts }.
-//
-// Verdict caching is mandatory — a popular package is installed thousands of
-// times; the first requester pays the ~1.3s scan, everyone else hits cache.
-//
-// Only real verdicts are cached: allow | block | review. Scan errors and
-// "unknown" are NEVER persisted, so a transient failure can't poison the cache.
+// Separate persisted verdicts and deny-only holds. A hold is never an approval;
+// callers must check its artifact binding and bounded lifetime before reuse.
 
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const CACHEABLE = new Set(['allow', 'block', 'review']);
+const HOLD_DECISIONS = new Set(['block', 'review', 'unbound', 'scan-error']);
+const validHold = entry => entry?.kind === 'hold' && HOLD_DECISIONS.has(entry.decision) &&
+  typeof entry.binding?.artifactSha256 === 'string' && typeof entry.binding?.context === 'string';
 
 export class VerdictStore {
   /**
@@ -20,7 +18,9 @@ export class VerdictStore {
   constructor(path, opts = {}) {
     this.path = path;
     this._now = opts.now || (() => Date.now());
+    this._maxEntries = Number.isInteger(opts.maxEntries) ? opts.maxEntries : 10000;
     this._map = new Map(); // key -> {decision, findings, ts}
+    this._holds = new Map(); // one denial per name@version, separate from verdicts
     this._load();
   }
 
@@ -44,14 +44,16 @@ export class VerdictStore {
   isStale(entry, ttlMs) {
     if (!entry || ttlMs === 0) return true;
     if (ttlMs === undefined || ttlMs === null) return false;
-    if (typeof entry.ts !== 'number' || entry.ts <= 0) return true;
-    return this._now() - entry.ts > ttlMs;
+    if (!Number.isFinite(ttlMs) || ttlMs < 0) return true;
+    if (!Number.isFinite(entry.ts) || entry.ts <= 0) return true;
+    const age = this._now() - entry.ts;
+    return age < 0 || age >= ttlMs;
   }
 
   /** Snapshot of every cached entry as {name, version, decision, findings, ts}. */
   entries() {
     const out = [];
-    for (const [k, v] of this._map) {
+    for (const [k, v] of [...this._map, ...this._holds]) {
       const { name, version } = VerdictStore.parseKey(k);
       out.push({ name, version, decision: v.decision, findings: v.findings, ts: v.ts });
     }
@@ -84,6 +86,16 @@ export class VerdictStore {
         });
       }
     }
+    if (parsed.version === 2 && parsed.holds && typeof parsed.holds === 'object') {
+      for (const [k, v] of Object.entries(parsed.holds)) {
+        if (!validHold(v)) continue;
+        this._holds.set(k, { kind: 'hold', decision: v.decision,
+          findings: Array.isArray(v.findings) ? v.findings : [],
+          note: typeof v.note === 'string' ? v.note : 'Artifact remains held',
+          ts: typeof v.ts === 'number' ? v.ts : 0, binding: v.binding });
+        this._map.delete(k);
+      }
+    }
   }
 
   /**
@@ -95,6 +107,22 @@ export class VerdictStore {
 
   has(name, version) {
     return this._map.has(VerdictStore.key(name, version));
+  }
+
+  getHold(name, version) {
+    return this._holds.get(VerdictStore.key(name, version));
+  }
+
+  setHold(name, version, decision, findings, note, binding) {
+    const entry = { kind: 'hold', decision, binding, note,
+      findings: Array.isArray(findings) ? findings : [], ts: this._now() };
+    if (!validHold(entry)) return false;
+    const key = VerdictStore.key(name, version);
+    this._holds.set(key, entry);
+    this._map.delete(key); // a newer denial retires any old approval
+    this._evict();
+    this._persist();
+    return true;
   }
 
   /**
@@ -111,22 +139,37 @@ export class VerdictStore {
       ...(binding ? { binding } : {}),
     };
     this._map.set(VerdictStore.key(name, version), entry);
+    this._holds.delete(VerdictStore.key(name, version));
+    this._evict();
     this._persist();
     return true;
   }
 
   size() {
-    return this._map.size;
+    return this._map.size + this._holds.size;
   }
 
   _persist() {
-    const obj = { version: 1, verdicts: Object.fromEntries(this._map) };
+    const obj = { version: 2, verdicts: Object.fromEntries(this._map), holds: Object.fromEntries(this._holds) };
     const data = JSON.stringify(obj, null, 2);
-    mkdirSync(dirname(this.path), { recursive: true });
+    mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     // Atomic write: write to a temp file then rename over the target so a
     // crash mid-write can't truncate the store.
     const tmp = join(dirname(this.path), `.${process.pid}.${this._now()}.tmp`);
-    writeFileSync(tmp, data, 'utf8');
+    writeFileSync(tmp, data, { encoding: 'utf8', mode: 0o600 });
     renameSync(tmp, this.path);
+    chmodSync(this.path, 0o600);
+  }
+
+  _evict() {
+    while (this.size() > this._maxEntries) {
+      let oldestMap = null, oldestKey = null, oldestTs = Infinity;
+      for (const map of [this._map, this._holds]) for (const [key, entry] of map) {
+        const ts = Number.isFinite(entry.ts) ? entry.ts : 0;
+        if (ts < oldestTs) { oldestMap = map; oldestKey = key; oldestTs = ts; }
+      }
+      if (!oldestMap) break;
+      oldestMap.delete(oldestKey);
+    }
   }
 }

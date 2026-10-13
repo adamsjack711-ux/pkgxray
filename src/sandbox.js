@@ -24,9 +24,8 @@
 //     an HTTPS-body exfil is caught as "phoned <host> after reading a decoy",
 //     which is still a strong behavioral signal.
 //   • Raw-socket / dgram / non-proxied egress is not captured by an HTTP proxy.
-//   • Process isolation is best-effort: a decoy HOME + a scrubbed env always;
-//     an OS sandbox wrapper (sandbox-exec / bwrap / firejail) IF one is present.
-//     The achieved level is reported as `isolation`.
+//   • Real execution requires an OS boundary for files and network. Missing
+//     wrappers or unavailable Linux network namespaces refuse execution.
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -35,7 +34,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const tls = require("node:tls");
-const { spawn, spawnSync } = require("node:child_process");
+const { spawn } = require("node:child_process");
 
 const DEFAULT_TIMEOUT_MS = 20000;
 // After the runner settles (or is timeout-killed) keep the capture proxy alive
@@ -44,6 +43,7 @@ const DEFAULT_TIMEOUT_MS = 20000;
 // set it to 0 to avoid the wait).
 const DEFAULT_EGRESS_GRACE_MS = 750;
 const MAX_CAPTURED_BODY = 64 * 1024;
+const BWRAP_BINARY = '/usr/bin/bwrap';
 
 // Decoy files seeded into the sandbox HOME. Each carries a unique per-run token
 // so a captured leak can be attributed to the exact secret that was read.
@@ -587,10 +587,12 @@ function buildNetnsBootstrap({ nodeBin, selfPath, innerPort, sockPath, readyFile
   const graceS = Math.max(0, Math.ceil((Number(graceMs) || 0) / 1000));
   return [
     `${q(ipBin)} link set lo up 2>/dev/null`,
+    `rm -f ${q(readyFile)}`,
     `${q(nodeBin)} ${q(selfPath)} __forwarder ${innerPort} ${q(sockPath)} ${q(readyFile)} &`,
     `__fw=$!`,
     // Wait (bounded ~5s) for the forwarder to signal ready, then run the payload.
     `__i=0; while [ ! -f ${q(readyFile)} ] && [ $__i -lt 100 ]; do __i=$((__i+1)); sleep 0.05; done`,
+    `[ -f ${q(readyFile)} ] || { kill $__fw 2>/dev/null; exit 125; }`,
     payloadCmd,
     `__status=$?`,
     graceS > 0 ? `sleep ${graceS}` : `:`,
@@ -607,99 +609,73 @@ function sbplLiteral(p) {
   return `"${String(p).replace(/(["\\])/g, "\\$1")}"`;
 }
 
-// Detect a best-effort OS sandbox wrapper. We never REQUIRE one (the decoy HOME
-// + capture proxy are the primary controls), but if the platform ships one we
-// use it to confine filesystem writes AND real network egress while keeping
-// loopback access to the capture proxy. `netConfined` reports whether the OS
-// boundary — not just the proxy env vars — blocks non-loopback egress.
-function detectSandboxWrapper(sandboxRoot) {
-  const has = (cmd) => {
-    try {
-      return spawnSync("sh", ["-c", `command -v ${cmd}`], { encoding: "utf8" }).status === 0;
-    } catch {
-      return false;
-    }
-  };
-  if (process.platform === "darwin" && has("sandbox-exec")) {
-    // Deny writes outside the sandbox root, AND deny real network egress except
-    // loopback. Denying non-loopback network at the OS boundary means a payload
-    // that opens a raw socket / connects to a direct IP (bypassing the proxy
-    // env vars) is BLOCKED here instead of silently escaping — while the capture
-    // proxy on 127.0.0.1 stays reachable so proxy-respecting egress is still
-    // observed. Reads stay allowed so the payload can reach the decoy HOME.
+// Keep ambient readable roots to OS/runtime installations. A package may read
+// its staged tree and the decoy HOME, but not arbitrary host files or secrets.
+function sandboxReadableRoots(sandboxRoot, pkgDir) {
+  const runtime = process.platform === 'darwin'
+    ? ['/System', '/usr', '/bin', '/sbin', '/opt/homebrew', '/Library/Apple', '/private/var/db/dyld']
+    : ['/usr', '/bin', '/sbin', '/lib', '/lib64', '/etc/ld.so.cache'];
+  const roots = [...runtime, process.execPath, __filename, sandboxRoot, pkgDir].filter(Boolean);
+  return [...new Set(roots.filter(p => fs.existsSync(p)).map(p => fs.realpathSync(p)))];
+}
+
+function detectSandboxWrapper(sandboxRoot, options = {}) {
+  if (process.platform === "darwin" && fs.existsSync('/usr/bin/sandbox-exec')) {
+    const root = fs.existsSync(sandboxRoot) ? fs.realpathSync(sandboxRoot) : path.resolve(sandboxRoot);
+    const reads = sandboxReadableRoots(sandboxRoot, options.pkgDir);
+    const capture = options.proxyPort ? `localhost:${options.proxyPort}` : 'localhost:*';
     const profile =
-      "(version 1)(allow default)" +
-      `(deny file-write* (subpath ${sbplLiteral(os.homedir())}))` +
-      `(allow file-write* (subpath ${sbplLiteral(sandboxRoot)}) (subpath "/private/tmp") (subpath "/tmp"))` +
-      "(deny network*)" +
-      '(allow network-outbound (remote ip "localhost:*"))' +
-      '(allow network-inbound (local ip "localhost:*"))' +
-      '(allow network-bind (local ip "localhost:*"))';
-    return { level: "sandbox-exec", netConfined: true, wrap: (argv) => ["sandbox-exec", "-p", profile, ...argv] };
+      '(version 1)(deny default)(import "dyld-support.sb")' +
+      '(allow process-exec)(allow process-fork)(allow signal (target self))(allow sysctl-read)(allow file-read-metadata)' +
+      `(allow file-read* file-map-executable ${reads.map(p => `(subpath ${sbplLiteral(p)})`).join(' ')} (literal "/dev/null") (literal "/dev/urandom") (literal "/dev/random"))` +
+      `(allow file-write* (subpath ${sbplLiteral(root)}) (literal "/dev/null"))` +
+      `(allow network-outbound (remote ip ${sbplLiteral(capture)}))`;
+    return { level: "sandbox-exec", netConfined: true, wrap: (argv) => ["/usr/bin/sandbox-exec", "-p", profile, ...argv] };
   }
-  if (process.platform === "linux" && has("bwrap")) {
-    // bubblewrap: bind the sandbox root rw, everything else ro, and isolate the
-    // process/IPC/hostname namespaces. Net stays SHARED so loopback→proxy still
-    // works (the capture proxy, not the network namespace, is what denies real
-    // egress — so netConfined is false here; raw-socket egress can still leave).
-    // The `bwrap+netns` tier (detectNetnsConfinement) upgrades this to
-    // netConfined:true when an unprivileged network namespace can be stood up.
+  if (process.platform === "linux" && fs.existsSync(BWRAP_BINARY)) {
+    // Base filesystem descriptor only. Real execution requires the netns
+    // upgrade; this shared-network descriptor cannot authorize a package run.
     return {
       level: "bwrap",
       netConfined: false,
-      wrap: (argv) => ["bwrap", ...bwrapBaseArgs(sandboxRoot), ...argv]
+      wrap: (argv) => [BWRAP_BINARY, ...bwrapBaseArgs(sandboxRoot, options.pkgDir), ...argv]
     };
   }
   return { level: "env-only", netConfined: false, wrap: (argv) => argv };
 }
 
-// The bwrap arguments shared by the shared-net and netns tiers. A tmpfs is
-// stacked over the REAL home dir so the payload cannot read the operator's
-// actual ~/.aws, ~/.npmrc, ~/.ssh, etc. through the ro-bind of / (HOME itself
-// is repointed at the decoy tree via env). --die-with-parent guarantees no
-// sandbox process outlives pkgxray; --new-session detaches the controlling
-// terminal (blocks TIOCSTI input-injection). All flags are long-standing.
-// Mask the real home ONLY when it's a normal directory that does not contain
-// the sandbox root — the `--tmpfs /` edge (os.homedir() === "/") would shadow
-// the ro-bind of everything, including the staged package, making the payload
-// unable to read its own package.json (a false "not-observed" without executing).
-function bwrapBaseArgs(sandboxRoot) {
-  const realHome = os.homedir();
-  const resolvedHome = realHome ? path.resolve(realHome) : "";
-  const resolvedRoot = path.resolve(sandboxRoot);
-  const homeIsFsRoot = resolvedHome !== "" && resolvedHome === path.parse(resolvedHome).root;
-  const sandboxUnderHome =
-    resolvedHome !== "" && (resolvedRoot === resolvedHome || resolvedRoot.startsWith(resolvedHome + path.sep));
-  const maskRealHome = resolvedHome !== "" && !homeIsFsRoot && !sandboxUnderHome ? ["--tmpfs", realHome] : [];
+// Build an empty filesystem with only runtime files, staged package and probe
+// readable, and only the throwaway root writable. No ambient host HOME or /tmp
+// bind exists. --die-with-parent and --new-session contain subprocess lifetime
+// and controlling-terminal access. The real runner also requires --unshare-net.
+function bwrapBaseArgs(sandboxRoot, pkgDir) {
+  const resolvedRoot = fs.realpathSync(sandboxRoot);
+  const roots = sandboxReadableRoots(sandboxRoot, pkgDir).filter(p => p !== resolvedRoot);
+  const binds = roots.flatMap(p => ['--ro-bind', p, p]);
+  for (const alias of ['/bin', '/sbin', '/lib', '/lib64']) {
+    if (fs.existsSync(alias) && fs.realpathSync(alias) !== alias) binds.push('--symlink', fs.realpathSync(alias), alias);
+  }
   return [
-    "--ro-bind", "/", "/",
-    ...maskRealHome,
-    "--bind", sandboxRoot, sandboxRoot,
+    '--tmpfs', '/', ...binds,
+    "--bind", resolvedRoot, resolvedRoot,
     "--dev", "/dev",
     "--proc", "/proc",
     "--unshare-pid",
     "--unshare-ipc",
     "--unshare-uts",
+    '--cap-drop', 'ALL',
     "--die-with-parent",
     "--new-session"
   ];
 }
 
-function hasCmd(cmd) {
-  try {
-    return spawnSync("sh", ["-c", `command -v ${cmd}`], { encoding: "utf8" }).status === 0;
-  } catch {
-    return false;
-  }
-}
-
 // Resolve the loopback-up tool. A fresh network namespace starts with `lo`
 // DOWN, so a loopback-only egress path needs `ip link set lo up`. iproute2's
-// `ip` is the only dependency; absent it, the netns tier is unavailable and we
-// fall back to shared-net bwrap. (busybox `ifconfig` is intentionally not used —
+// `ip` is the only dependency; absent it, the netns tier is unavailable and
+// real execution is refused. (busybox `ifconfig` is intentionally not used —
 // keeping one well-known tool keeps the self-test's guarantee legible.)
 function resolveIpBin() {
-  return hasCmd("ip") ? "ip" : null;
+  return ['/usr/sbin/ip', '/usr/bin/ip', '/sbin/ip', '/bin/ip'].find(p => fs.existsSync(p)) || null;
 }
 
 // Module-level cache: the netns capability is a property of the HOST (kernel +
@@ -713,13 +689,13 @@ const NETNS_INNER_PORT = 18080; // arbitrary; inside an isolated netns, no confl
 // live self-test proves, using the exact same machinery a real run uses, that
 // (a) proxied egress is still captured and (b) a direct dial to a non-loopback
 // IP is refused by the kernel (ENETUNREACH). Any failure → null → the caller
-// falls back to shared-net bwrap. This is the safety contract: netConfined:true
+// refuses real execution. This is the safety contract: netConfined:true
 // is asserted only after it has been demonstrated in THIS environment, never
 // assumed.
-async function detectNetnsConfinement(sandboxRoot) {
+async function detectNetnsConfinement(sandboxRoot, pkgDir) {
   if (process.platform !== "linux") return null;
   const ipBin = resolveIpBin();
-  if (!hasCmd("bwrap") || !ipBin) return null;
+  if (!fs.existsSync(BWRAP_BINARY) || !ipBin) return null;
   if (_netnsCapable === undefined) {
     _netnsCapable = await selfTestNetnsConfinement(ipBin).catch(() => false);
   }
@@ -735,7 +711,7 @@ async function detectNetnsConfinement(sandboxRoot) {
     build: (graceMs) => ({
       level: "bwrap+netns",
       netConfined: true,
-      wrap: (argv) => netnsWrap(argv, { sandboxRoot, innerPort: NETNS_INNER_PORT, sockPath, readyFile, ipBin, graceMs })
+      wrap: (argv) => netnsWrap(argv, { sandboxRoot, pkgDir, innerPort: NETNS_INNER_PORT, sockPath, readyFile, ipBin, graceMs })
     })
   };
 }
@@ -756,7 +732,7 @@ function netnsWrap(argv, opts) {
     graceMs: opts.graceMs,
     payloadCmd: cmd
   });
-  return ["bwrap", ...bwrapBaseArgs(opts.sandboxRoot), "--unshare-net", "sh", "-c", bootstrap];
+  return [BWRAP_BINARY, ...bwrapBaseArgs(opts.sandboxRoot, opts.pkgDir), "--unshare-net", "sh", "-c", bootstrap];
 }
 
 // Spawn a raw argv (no shell), capture output, enforce a timeout with a
@@ -813,7 +789,7 @@ async function selfTestNetnsConfinement(ipBin) {
       nodeBin: process.execPath, selfPath: __filename, innerPort: NETNS_INNER_PORT,
       sockPath, readyFile, ipBin, graceMs: 500, payloadCmd
     });
-    const argv = ["bwrap", ...bwrapBaseArgs(root), "--unshare-net", "sh", "-c", bootstrap];
+    const argv = [BWRAP_BINARY, ...bwrapBaseArgs(root), "--unshare-net", "sh", "-c", bootstrap];
     const env = { ...process.env, HTTP_PROXY: `http://127.0.0.1:${NETNS_INNER_PORT}`, SELFTEST_TOKEN: token };
     const res = await spawnCapture(argv, { env, timeoutMs: 10000 });
 
@@ -832,8 +808,8 @@ async function selfTestNetnsConfinement(ipBin) {
 }
 
 // __forwarder / __capture entrypoints, invoked as `node sandbox.js <mode> …`
-// from inside the sandbox. Kept at module scope so bwrap's ro-bind of / makes
-// this file reachable by absolute path.
+// from inside the sandbox. The minimal filesystem explicitly mounts this
+// module so the forwarder can load it by absolute path.
 function forwarderMain(argv) {
   const [portStr, sockPath, readyFile] = argv;
   startTcpToUnixForwarder(Number(portStr), sockPath, () => {
@@ -1257,31 +1233,39 @@ async function runCanarySandbox(options = {}) {
   // fingerprints its HOME/CWD path can't trivially spot the sandbox. This only
   // raises the bar — a /tmp HOME is itself a tell; see `caveat`.
   const root = options.sandboxRoot || (await fsp.mkdtemp(path.join(os.tmpdir(), "npm-")));
+  await fsp.mkdir(root, { recursive: true, mode: 0o700 });
+  const resolvedRoot = fs.realpathSync(root);
+  if (resolvedRoot === path.parse(resolvedRoot).root || resolvedRoot === fs.realpathSync(os.homedir())) {
+    throw new Error('Canary sandbox root must be a dedicated throwaway directory, not HOME or filesystem root');
+  }
+  if (options.sandboxRoot && (await fsp.readdir(root)).length !== 0) {
+    throw new Error('Canary sandbox root must be empty; refusing to expose or remove pre-existing files');
+  }
   const home = path.join(root, "home");
   await fsp.mkdir(home, { recursive: true, mode: 0o700 });
 
-  // Decide isolation up front so a caller that DEMANDS real OS-level confinement
-  // (--require-sandbox) fails closed BEFORE we seed decoys, start the proxy, or
-  // execute anything, rather than silently running with env-only isolation.
-  let wrapperInfo = detectSandboxWrapper(root);
+  // Refuse inadequate isolation before seeding decoys, starting the proxy or
+  // executing package code. No flag can opt real execution into weaker tiers.
+  let wrapperInfo = detectSandboxWrapper(root, { pkgDir });
   // Upgrade shared-net bwrap to netns confinement when this host can prove it
   // (bwrap + ip + a passing self-test). The forwarder must outlive the payload
   // long enough for the parent's egress-grace read, so it is built with the
-  // run's grace window. Opt out with importPhase-style options.netnsConfinement:false.
+  // run's grace window. Disabling netns makes real Linux execution unavailable.
   const graceMs = Number.isFinite(options.egressGraceMs) && options.egressGraceMs >= 0
     ? options.egressGraceMs
     : DEFAULT_EGRESS_GRACE_MS;
   let netns = null;
   if (wrapperInfo.level === "bwrap" && options.netnsConfinement !== false && !options.runner) {
-    netns = await detectNetnsConfinement(root);
+    netns = await detectNetnsConfinement(root, pkgDir);
     if (netns) wrapperInfo = netns.build(graceMs);
   }
-  if (options.requireSandbox === true && wrapperInfo.level === "env-only") {
+  const isolationRequired = !options.runner || options.requireSandbox === true;
+  if (isolationRequired && (wrapperInfo.level === "env-only" || (!options.runner && !wrapperInfo.netConfined))) {
     await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
     const err = new Error(
-      "canary --require-sandbox: no OS sandbox wrapper (bwrap / sandbox-exec) is available; " +
-        "refusing to execute untrusted install scripts with env-only isolation. " +
-        "Install bubblewrap (Linux) or run on macOS with sandbox-exec, or drop --require-sandbox to accept env-only."
+      "Canary requires OS filesystem and network confinement; refusing to execute untrusted code. " +
+        "Use macOS sandbox-exec, or Linux bubblewrap + iproute2 with usable network namespaces. " +
+        "There is no env-only or shared-network execution fallback."
     );
     err.code = "SANDBOX_REQUIRED";
     throw err;
@@ -1305,6 +1289,7 @@ async function runCanarySandbox(options = {}) {
   );
 
   const proxyUrl = netns ? `http://127.0.0.1:${netns.innerPort}` : `http://127.0.0.1:${proxy.port}`;
+  if (wrapperInfo.level === 'sandbox-exec') wrapperInfo = detectSandboxWrapper(root, { pkgDir, proxyPort: proxy.port });
   // Scrubbed env: keep only what a script needs to run, repoint HOME at the
   // decoy tree, and force every proxy variable at our capture server.
   const env = {
@@ -1334,6 +1319,18 @@ async function runCanarySandbox(options = {}) {
 
   let execResult;
   try {
+    // Probe the actual wrapper before any package script/import. A binary on
+    // PATH is not proof that the current host permits its isolation backend.
+    if (!options.runner) {
+      const probe = await execWithTimeout(`${shellQuote(process.execPath)} -e 'process.stdout.write("PKGXRAY_SANDBOX_READY")'`, {
+        cwd: pkgDir, env, timeoutMs: Math.min(timeoutMs, 10000), wrapper: wrapperInfo.wrap, rlimits: false
+      });
+      if (probe.exitCode !== 0 || probe.timedOut || !String(probe.output).includes('PKGXRAY_SANDBOX_READY')) {
+        const error = new Error('Canary OS sandbox startup failed; refusing package execution');
+        error.code = 'SANDBOX_REQUIRED';
+        throw error;
+      }
+    }
     const runner = options.runner || runInstallAndImport;
     execResult = await runner({
       pkgDir,
@@ -1346,6 +1343,9 @@ async function runCanarySandbox(options = {}) {
       sandboxRoot: root,
       importPhase: options.importPhase
     });
+  } catch (error) {
+    if (!options.keepSandbox) await fsp.rm(root, { recursive: true, force: true }).catch(() => {});
+    throw error;
   } finally {
     // Keep the capture proxy alive for a short grace window after the runner
     // settles. A payload that backgrounds a delayed beacon —
@@ -1380,9 +1380,9 @@ async function runCanarySandbox(options = {}) {
   return {
     schemaVersion: 2,
     runId,
-    isolation: wrapperInfo.level,
-    isolationRequired: options.requireSandbox === true,
-    netConfined: wrapperInfo.netConfined === true,
+    isolation: options.runner ? 'injected-runner' : wrapperInfo.level,
+    isolationRequired,
+    netConfined: !options.runner && wrapperInfo.netConfined === true,
     // Honest about OUTCOME, not just intent: the ulimit caps are injected only by
     // the default lifecycle runner (`execWithTimeout`). A custom `options.runner`
     // (the injectable seam) spawns the child itself and applies none, so we

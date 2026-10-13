@@ -54,11 +54,12 @@ function request(url, method, headers = {}) {
 test('POST /-/pkgxray/recheck re-scans cached entries and flips a regressed verdict', async () => {
   const fresh = { 'good@1.0.0': 'allow', 'gonebad@1.0.0': 'block' };
   const p = await startProxy({
+    adminToken: 's3cret',
     seed: [['good', '1.0.0', 'allow'], ['gonebad', '1.0.0', 'allow']],
     runGuard: async (bin, ref) => ({ decision: fresh[ref], findings: [] }),
   });
   try {
-    const res = await request(`${p.url}/-/pkgxray/recheck`, 'POST');
+    const res = await request(`${p.url}/-/pkgxray/recheck`, 'POST', { authorization: 'Bearer s3cret' });
     assert.equal(res.status, 200);
     const body = JSON.parse(res.body.toString());
     assert.equal(body.ok, true);
@@ -138,13 +139,27 @@ test('isLoopbackAddress accepts loopback forms and rejects routable/empty', () =
   }
 });
 
-test('authorizeAdmin: no token -> loopback allowed, remote refused with 403', () => {
+test('authorizeAdmin: no token disables the endpoint even on loopback', () => {
   const cfg = { adminToken: undefined };
-  assert.deepEqual(authorizeAdmin(cfg, { headers: {}, socket: { remoteAddress: '127.0.0.1' } }), { ok: true });
+  const local = authorizeAdmin(cfg, { headers: {}, socket: { remoteAddress: '127.0.0.1' } });
+  assert.equal(local.ok, false);
+  assert.equal(local.status, 503);
   const remote = authorizeAdmin(cfg, { headers: {}, socket: { remoteAddress: '203.0.113.7' } });
   assert.equal(remote.ok, false);
-  assert.equal(remote.status, 403);
+  assert.equal(remote.status, 503);
   assert.match(remote.message, /adminToken/);
+});
+
+test('concurrent authorized refresh requests share one scan pass', async () => {
+  let scans = 0;
+  const p = await startProxy({ adminToken: 's3cret', seed: [['good', '1.0.0', 'allow']],
+    runGuard: async () => { scans++; await new Promise(resolve => setTimeout(resolve, 40)); return { decision: 'allow', findings: [] }; } });
+  try {
+    const headers = { authorization: 'Bearer s3cret' };
+    const results = await Promise.all(Array.from({ length: 5 }, () => request(`${p.url}/-/pkgxray/recheck`, 'POST', headers)));
+    assert.ok(results.every(result => result.status === 200));
+    assert.equal(scans, 1);
+  } finally { await p.close(); }
 });
 
 test('authorizeAdmin: token configured -> remote with the right token is allowed', () => {

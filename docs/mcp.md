@@ -102,7 +102,21 @@ pkgxray mcp --pin --package npm:some-mcp-server@1.4.2 npx some-mcp-server
 
 # Catch the rug-pull: diff the live manifest against the pin
 pkgxray mcp --recheck npx some-mcp-server
+
+# Confine enumeration of an already installed stdio server
+pkgxray mcp --sandbox /absolute/path/to/node ./server.js
 ```
+
+Connect-time stdio enumeration accepts the same `--sandbox-read PATH`,
+`--sandbox-write PATH` and `--sandbox-network` capabilities as the runtime
+proxy described below. Grants require `--sandbox`; missing OS confinement
+refuses launch. It uses a private temporary HOME, a read-only project and
+denied network access unless explicitly granted. Use a dedicated project
+directory and an installed launcher. These options apply to local processes;
+HTTP targets refuse them rather than ignoring requested isolation.
+
+Tool enumeration refuses malformed responses, duplicate tool names and
+unfinished pagination. A partial list cannot become an approved manifest.
 
 The manifest audit looks for:
 
@@ -154,6 +168,7 @@ installed server directly:
 ```sh
 pkgxray mcp-proxy --sandbox -- /absolute/path/to/node ./server.js
 pkgxray mcp-proxy --sandbox --sandbox-read /path/to/input --sandbox-write /path/to/output -- /absolute/path/to/node ./server.js
+pkgxray mcp-proxy --sandbox --sandbox-network -- /absolute/path/to/node ./network-server.js
 ```
 
 `--sandbox` is optional and fails closed if the backend cannot start. It denies
@@ -163,8 +178,12 @@ and are granted explicitly; root and whole-HOME grants are refused. macOS uses
 `sandbox-exec` and permits execution within the same inherited restrictions.
 Linux uses `/usr/bin/bwrap` with private namespaces and an isolated filesystem;
 subprocesses stay inside that namespace. Windows currently refuses this option.
-Use a direct installed launcher: `npx` installation and servers needing network
-access will fail under this restricted mode.
+Use a direct installed launcher. Network-dependent servers can explicitly add
+`--sandbox-network`, which grants the host network while preserving filesystem
+confinement. This is unrestricted network access, not a hostname allowlist;
+enforce narrower egress policy outside pkgxray when needed. Network and path
+grants require `--sandbox`. Dependency downloads still need explicit filesystem
+grants and may be incompatible with the read-only project directory.
 
 The macOS backend has passed real filesystem, symlink and network-denial tests.
 Linux startup remained blocked by nested namespace restrictions on the local

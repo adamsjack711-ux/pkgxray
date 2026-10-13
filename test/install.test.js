@@ -95,6 +95,28 @@ test("unbound, incomplete and modified approvals stop before npm or replacing no
   }
 });
 
+test("requiring provenance refuses an earlier complete approval before npm runs", async t => {
+  const previous = process.env.PKGXRAY_REQUIRE_PROVENANCE;
+  delete process.env.PKGXRAY_REQUIRE_PROVENANCE;
+  t.after(() => {
+    if (previous === undefined) delete process.env.PKGXRAY_REQUIRE_PROVENANCE;
+    else process.env.PKGXRAY_REQUIRE_PROVENANCE = previous;
+  });
+  const f = await fixture(t);
+  const oldScan = await f.guard('npm:demo@1.0.0', {
+    config: DEFAULTS, keepStaging: true, quarantineRoot: path.join(f.root, 'old-scan'),
+    sourceScan: true, vulnerabilityCheck: true, artifact: { integrity: f.lock.packages['node_modules/demo'].integrity }
+  });
+  assert.equal(oldScan.decision, 'allow');
+  assert.equal(oldScan.approval.checks.source, 'completed');
+  process.env.PKGXRAY_REQUIRE_PROVENANCE = '1';
+  let executed = false;
+  await assert.rejects(installProject(f.project, { config: DEFAULTS }, {
+    guard: async () => oldScan, run: async () => { executed = true; }
+  }), /lacks a complete ALLOW receipt/);
+  assert.equal(executed, false, 'an earlier permissive receipt never invokes npm');
+});
+
 test("post-install mutations and project lockfile changes prevent promotion", async t => {
   const f = await fixture(t);
   await fs.mkdir(path.join(f.project, "node_modules"));

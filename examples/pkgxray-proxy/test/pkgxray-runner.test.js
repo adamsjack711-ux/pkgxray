@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { fileURLToPath } from 'node:url';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { runGuard, ScanError } from '../src/pkgxray-runner.js';
 
@@ -83,6 +87,28 @@ test('throws ScanError and kills child on timeout', async () => {
     }),
     (err) => err instanceof ScanError && err.timeout === true,
   );
+});
+
+test('timeout kills the scanner process group including grandchildren', {
+  skip: process.platform === 'win32' ? 'POSIX process-group behavior' : false,
+}, async () => {
+  const fixture = fileURLToPath(new URL('./fixtures/spawn-grandchild.js', import.meta.url));
+  const dir = await mkdtemp(join(tmpdir(), 'pkgxray-process-tree-'));
+  const pidFile = join(dir, 'pid');
+  let pid;
+  try {
+    await assert.rejects(runGuard(fixture, 'ignored@1.0.0', {
+      timeoutMs: 150,
+      env: { ...process.env, PKGXRAY_GRANDCHILD_PID_FILE: pidFile },
+    }), err => err instanceof ScanError && err.timeout === true);
+    pid = Number(await readFile(pidFile, 'utf8'));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(Number.isInteger(pid), 'fixture did not report a grandchild pid');
+    assert.throws(() => process.kill(pid, 0), /ESRCH/);
+  } finally {
+    if (Number.isInteger(pid)) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('throws ScanError on spawn "error" event', async () => {

@@ -43,6 +43,7 @@ function printUsage() {
       "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
       "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
       "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
+      "                     [--sandbox] [--sandbox-read PATH] [--sandbox-write PATH] [--sandbox-network] # stdio only; explicit OS grants",
       "                     [--pin] [--recheck] [--lock <path>]                     #   pin the approved manifest / diff live manifest vs. the pin (rug-pull)",
       "  pkgxray recheck <lockfile> [--verbose] [--no-write]                      # re-evaluate pinned deps; diff verdict vs. stored baseline",
       "                     [--no-version-drift] [--fail-on-available-updates]     #   + pre-vet newer versions (informational unless --fail-on-...)",
@@ -59,13 +60,13 @@ function printUsage() {
       "                     # OPT-IN: EXECUTES untrusted package code (install + import) inside the sandbox — the one path that",
       "                     # runs the package. Decoy-credential HOME behind a capture proxy that never forwards egress; confirms",
       "                     # exfil behaviorally (cannot clear a pkg). Requires --yes-run-untrusted-code (or PKGXRAY_ALLOW_EXECUTION=1).",
-      "                     # --require-sandbox fails closed without an OS sandbox (bwrap/sandbox-exec).",
+      "                     # OS filesystem and network confinement is required; --require-sandbox remains accepted.",
       "                     # --tls-mitm: terminate HTTPS with an ephemeral per-host CA (node:crypto, no openssl) to scan decrypted",
       "                     #   request bodies; off by default (default records the CONNECT host only). See docs/canary-threat-model.md",
       "  pkgxray mcp-proxy [flags] [--] <command [args...]>                         # run a stdio MCP server behind a per-call runtime gate: every tools/call",
       "                     [--policy strict|balanced|permissive]                   #   is checked in-memory (µs), the manifest is re-audited on every",
       "                     [--pin] [--lock <path>] [--no-recheck]                  #   tools/list_changed, drifted tools are denied until re-pinned,",
-      "                     [--sandbox] [--sandbox-read PATH] [--sandbox-write PATH] # OS confinement: network denied, explicit file access",
+      "                     [--sandbox] [--sandbox-read PATH] [--sandbox-write PATH] [--sandbox-network] # explicit OS grants",
       "                     [--env NAME]                                         #   explicitly pass a required environment variable (repeatable)",
       "                     [--no-scan-results] [--timing]                          #   and tool RESULTS are scanned for injection (use in host config)",
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
@@ -142,6 +143,15 @@ function parseArgs(argv) {
         options.write = false;
       } else if (arg === "--force") {
         options.force = true;
+      } else if (arg === "--sandbox") {
+        options.sandbox = true;
+      } else if (arg === "--sandbox-network") {
+        options.sandboxNetwork = true;
+      } else if (arg === "--sandbox-read" || arg === "--sandbox-write") {
+        const value = argv.shift();
+        if (!value || value.startsWith("--")) throw new Error(`${arg} requires a path`);
+        const key = arg === "--sandbox-read" ? "sandboxRead" : "sandboxWrite";
+        (options[key] ||= []).push(value);
       } else if (arg === "--timeout") {
         options.timeoutMs = Number(argv.shift());
         if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
@@ -155,8 +165,10 @@ function parseArgs(argv) {
         throw new Error(`Unknown mcp argument: ${arg}`);
       }
     }
+    if ((options.sandboxRead || options.sandboxWrite || options.sandboxNetwork) && !options.sandbox) throw new Error("Sandbox grants require --sandbox");
     if (argv.length > 0) {
       if (/^https?:\/\//i.test(argv[0])) {
+        if (options.sandbox) throw new Error("MCP OS sandbox applies to stdio targets only");
         options.mcpTarget = { url: argv[0] };
         if (argv.length > 1) {
           throw new Error("an HTTP MCP target takes no further arguments");
@@ -180,6 +192,8 @@ function parseArgs(argv) {
         }
       } else if (arg === "--sandbox") {
         options.sandbox = true;
+      } else if (arg === "--sandbox-network") {
+        options.sandboxNetwork = true;
       } else if (arg === "--sandbox-read" || arg === "--sandbox-write") {
         const value = argv.shift();
         if (!value || value.startsWith('--')) throw new Error(`${arg} requires a path`);
@@ -205,7 +219,7 @@ function parseArgs(argv) {
         throw new Error(`Unknown mcp-proxy argument: ${arg}`);
       }
     }
-    if ((options.sandboxRead || options.sandboxWrite) && !options.sandbox) throw new Error("Sandbox path grants require --sandbox");
+    if ((options.sandboxRead || options.sandboxWrite || options.sandboxNetwork) && !options.sandbox) throw new Error("Sandbox grants require --sandbox");
     if (argv[0] === "--") argv = argv.slice(1);
     if (argv.length > 0) {
       if (/^https?:\/\//i.test(argv[0])) {
@@ -352,16 +366,20 @@ async function main() {
   // `--policy` flag is the highest-precedence override (it wins over the file
   // and env). Every warning is printed LOUD to stderr — a loosening or a
   // misconfig must never be silent.
+  // Runtime proxy modes (strict/balanced/permissive) are a separate policy
+  // vocabulary from package approval (safe-only/allow-review). Do not validate
+  // a runtime mode as a package policy or overwrite it with the package default.
+  const runtimeProxy = options.command === "mcpProxy";
   const { config, warnings } = cfg.loadConfig({
     cwd: options.command === "install" ? require("node:path").resolve(options.project) : process.cwd(),
-    overrides: options.policy ? { policy: options.policy } : {}
+    overrides: options.policy && !runtimeProxy ? { policy: options.policy } : {}
   });
   for (const warning of warnings) {
     process.stderr.write(`pkgxray: ${warning}\n`);
   }
   // Keep the existing --policy semantics working downstream (guardExtension,
   // decisionForReport) by carrying the effective policy back onto options.
-  options.policy = config.policy;
+  if (!runtimeProxy) options.policy = config.policy;
   // Config supplies enablement AND tuning ({maxDistance,minLen}) for the opt-in
   // typosquat heuristic; it wins over the bare --typosquat flag so file-configured
   // tuning is always honored. The flag alone (config disabled) still enables with

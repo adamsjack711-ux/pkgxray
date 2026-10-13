@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+- Add bounded, pinned third-party static corpus evaluation without executing or
+  retaining malware. Eight historical npm samples produced seven REVIEW holds
+  and one extraction-limit refusal. Four hash-pinned benign controls produced
+  three SAFE and one REVIEW verdict; report hold/block and benign review metrics
+  separately from synthetic regression benchmarks, without an accuracy claim.
+- Reject traversal and suffix paths in parsed GitHub repository identities before
+  they become API paths or cache keys. Cover metadata failure modes, tarball
+  inventory and both subset-extraction paths with focused acquisition tests.
+- Bound cache and registry-proxy HTTP work across redirects, interrupted bodies,
+  slow responses and disconnected clients; strip conflicting framing headers
+  when rewriting metadata and isolate tarball deduplication by cache directory.
+- Require filesystem and network confinement before canary execution. Remove
+  environment-only and shared-network fallbacks; narrow native filesystem and
+  capture-network grants. Add explicit MCP sandbox network capability.
+- Refuse malformed or unknown Hookshot verdicts and incomplete MCP manifests;
+  protect runtime result screening from request-ID collisions and retain
+  file-edit review holds.
+- Authenticate npm provenance with an installed maintained Sigstore verifier,
+  bind identities and strong digests to acquired bytes, and add operator
+  `PKGXRAY_REQUIRE_PROVENANCE=1` enforcement across guard, proxy and installer.
+  Unverified claims remain informational; verified origin never clears malware.
+
+- Separate artifact approvals from deny-only holds in the example registry proxy. Reuse unresolved holds for five minutes and scanner failures for a one-minute retry delay without releasing bytes; expire or invalidate them when artifact/scanner/policy context changes. Preserve findings, retire superseded approvals, include holds in admin refreshes, and keep cache hits independent of scan queue capacity.
+- Preserve MCP runtime CLI policy modes independently of package approval policy. `mcp-proxy --policy strict` now holds review calls as requested; invalid runtime policy values are rejected. Add a real CLI regression with 18 allowed calls, one block and one review sent concurrently.
+- Hold REVIEW archives by default in the example registry proxy. Share concurrent scans only for matching artifact bytes, package identity and policy context; limit active/queued scans and queue wait time. Fresh bound approvals bypass the scan queue. Explicit warn/allow settings remain opt-in.
+- Model default-exported JavaScript function declarations without an unsupported-syntax review. Preserve named function/class exports and keep default and named exports together through imports and named re-exports.
+- Retain dormant-body inspection and coverage holds for unsupported semantics. The existing benign registry-URL reader calibration case now returns SAFE instead of an unnecessary flow-analysis REVIEW; challenge and former-holdout baselines are unchanged.
+
 ## 1.2.0 — 2026-09-25 — Enforced installs and security hardening
 
 This release adds artifact-bound npm installs, broader static analysis and

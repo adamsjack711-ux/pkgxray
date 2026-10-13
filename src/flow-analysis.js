@@ -149,6 +149,11 @@ function createFlowAnalysis(files) {
       // Acorn parses syntax only. No dynamic imports or source callbacks run.
       ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, allowHashBang: true });
     } catch { result.status = 'unsupported'; return result; }
+    // Keep default and named ESM exports in one namespace. A default value
+    // must not replace named exports (or inherit their properties).
+    if (ast.body.some(n => n.type.startsWith('Export'))) {
+      result.exports = { bits: 0, kind: 'module-namespace', props: new Map() };
+    }
     active.add(file);
     const seen = new Set();
     const callbacks = [];
@@ -400,8 +405,9 @@ function createFlowAnalysis(files) {
             } else bind(node.left, v, scope, false);
             return v;
           }
-          case 'FunctionExpression': case 'ArrowFunctionExpression': {
-            const fn = { bits: 0, kind: 'function', node, scope };
+          case 'FunctionDeclaration': case 'FunctionExpression': case 'ArrowFunctionExpression': {
+            const fn = node.type === 'FunctionDeclaration' && node.id && scope.get(node.id.name) ||
+              { bits: 0, kind: 'function', node, scope };
             invoke(fn, [], true);
             return fn;
           }
@@ -442,8 +448,8 @@ function createFlowAnalysis(files) {
       // ambient process/fetch semantics merely because their declaration is later.
       for (const n of nodes) {
         if (n.type === 'VariableDeclaration') for (const d of n.declarations) bind(d.id, clean(), scope);
-        const fn = n.type === 'ExportNamedDeclaration' ? n.declaration : n;
-        if (fn?.type === 'FunctionDeclaration') scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
+        const fn = ['ExportNamedDeclaration', 'ExportDefaultDeclaration'].includes(n.type) ? n.declaration : n;
+        if (fn?.type === 'FunctionDeclaration' && fn.id) scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
       }
       // Only return-bearing statements contribute a function's result. A
       // prototype assignment is a side effect, not another possible return.
@@ -521,17 +527,29 @@ function createFlowAnalysis(files) {
           case 'CatchClause': { const local = new Scope(scope); bind(node.param, clean(), local); return stmt(node.body, local); }
           case 'ImportDeclaration': {
             const value = load(node.source.value);
-            for (const s of node.specifiers) scope.set(s.local.name, s.type === 'ImportSpecifier' ? property(value, s.imported.name) : value, true);
+            for (const s of node.specifiers) scope.set(s.local.name,
+              s.type === 'ImportSpecifier' ? property(value, s.imported.name ?? s.imported.value) :
+              s.type === 'ImportDefaultSpecifier' && value.kind === 'module-namespace' ? property(value, 'default') : value, true);
             break;
           }
-          case 'ExportDefaultDeclaration': result.exports = expr(node.declaration, scope); break;
+          case 'ExportDefaultDeclaration': {
+            const value = expr(node.declaration, scope);
+            if (node.declaration.type === 'ClassDeclaration' && node.declaration.id) scope.set(node.declaration.id.name, value, true);
+            result.exports.props.set('default', value);
+            result.exports.bits |= value.bits;
+            break;
+          }
           case 'ExportNamedDeclaration': {
             if (node.declaration) stmt(node.declaration, scope);
             const value = node.source ? load(node.source.value) : null;
             const props = result.exports.props || new Map();
-            for (const s of node.specifiers) props.set(s.exported.name, value ? property(value, s.local.name) : scope.get(s.local.name) || clean());
+            for (const s of node.specifiers) props.set(s.exported.name ?? s.exported.value,
+              value ? property(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean());
             if (node.declaration?.type === 'VariableDeclaration') for (const d of node.declaration.declarations) if (d.id.name) props.set(d.id.name, scope.get(d.id.name));
-            result.exports = { bits: merge(...props.values()).bits, props };
+            if (['FunctionDeclaration', 'ClassDeclaration'].includes(node.declaration?.type)) {
+              props.set(node.declaration.id.name, scope.get(node.declaration.id.name));
+            }
+            result.exports = { bits: merge(...props.values()).bits, kind: 'module-namespace', props };
             break;
           }
           default: gap(); break;

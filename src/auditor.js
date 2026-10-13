@@ -880,7 +880,7 @@ const BAND_DEFINITIONS = [
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
   { band: "self-scan-verified", label: "self-scan-verified", categories: ["self-scan-verified"], rationale: "The scanned package is pkgxray itself, provenance-verified against its canonical repo; signature-database findings report as review instead of block." },
-  { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "Package has a sigstore-signed SLSA provenance attestation from npm linking it to a specific GitHub Action build. Strong 'really came from where it says it did' signal." },
+  { band: "provenance-attested", label: "provenance-attested", categories: ["provenance-attested"], rationale: "A SLSA provenance claim is present. The finding distinguishes authenticated artifact-bound provenance from an unverified claim; neither establishes harmless behavior." },
   { band: "provenance-mismatch", label: "provenance-mismatch", categories: ["provenance-mismatch"], rationale: "npm attestation claims the package was built from a different GitHub repo than the one listed in package.json. Strong tampering / typosquat signal." }
 ];
 
@@ -948,6 +948,18 @@ function auditMetadata(evidence, findings) {
 
 function inspectProvenance(evidence, findings) {
   const att = evidence.provenanceAttestation;
+  const verification = att?.verification;
+  if (verification?.status === "invalid") {
+    findings.push({ severity: "high", category: "provenance-invalid", file: "ATTESTATION",
+      snippet: clip(verification.reason || "provenance verification failed"),
+      rationale: "The published provenance failed signature, signer policy, or artifact identity verification. It cannot authenticate this package." });
+    return;
+  }
+  if (verification?.required && verification.status !== "verified") {
+    findings.push({ severity: "medium", category: "unverified-provenance", file: "ATTESTATION",
+      snippet: clip(verification.reason || verification.status || "verification unavailable"),
+      rationale: "The operator requires verified provenance, but this artifact's signature, signer identity and digest binding were not established. Installation remains on hold." });
+  }
   // Silent when no attestation — ~90% of packages don't have one, so this
   // is not a negative signal, just an absence of a positive one.
   if (!att || !att.attested || !att.primary) return;
@@ -1000,9 +1012,10 @@ function inspectProvenance(evidence, findings) {
       `built by ${builderId || "github-hosted runner"} from ${repository}${ref} via ${workflowPath} (SLSA ${primary.slsaVersion})${subjectNote}`
     ),
     rationale:
-      `Package has a sigstore-signed SLSA provenance attestation linking it to ${repository} → ${workflowPath}. ` +
-      "npm verified the sigstore signature when this attestation was published; pkgxray does not re-verify. " +
-      "Provenance proves where the artifact was built, NOT that it is safe — a compromised pipeline can attach valid provenance to malware (Miasma), so this never offsets a risk finding or the verdict." +
+      (verification?.status === "verified"
+        ? `Sigstore verified the attestation signature, certificate identity and transparency material, and pkgxray bound its subject to the downloaded bytes (${verification.verifier}). `
+        : `A parseable SLSA provenance claim names ${repository} → ${workflowPath}; pkgxray has not authenticated this claim (${verification?.reason || "parse-only"}). `) +
+      "Verified provenance establishes build origin, not harmless behavior. A compromised pipeline can sign malware, so provenance never offsets a risk finding or the verdict." +
       tlogNote
   });
 }

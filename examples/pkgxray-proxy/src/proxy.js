@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { acquireArtifact, gateArtifact } from './artifact-gate.js';
+import { createScanCoordinator } from './scan-coordinator.js';
 
 import { parsePath, canonicalTarballPath } from './path-parser.js';
 import { runGuard as defaultRunGuard, ScanError } from './pkgxray-runner.js';
@@ -58,6 +59,19 @@ export function loadSharedPolicy({ cwd = process.cwd(), log } = {}) {
 
 const HEADER_VERDICT = 'x-pkgxray-verdict';
 const HEADER_SOURCE = 'x-pkgxray-source'; // allowlist | denylist | cache | scan
+
+// Connection can nominate arbitrary additional hop-by-hop fields. Never
+// forward these across either side of the proxy's transport boundary.
+function endToEndHeaders(headers) {
+  const excluded = new Set(['connection', 'keep-alive', 'proxy-authenticate',
+    'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === 'connection') {
+      for (const token of String(value).split(',')) excluded.add(token.trim().toLowerCase());
+    }
+  }
+  return Object.fromEntries(Object.entries(headers).filter(([key]) => !excluded.has(key.toLowerCase())));
+}
 
 /**
  * Legacy name/version diagnostic planner; NOT used to authorize HTTP delivery.
@@ -233,7 +247,7 @@ function sharedToProxy(verdict, fallback) {
  *
  * @returns {Promise<{total:number, changed:Array, errors:Array, unchanged:number}>}
  */
-export async function adminRecheck({ config, store, runGuard = defaultRunGuard, log = () => {} }) {
+export async function adminRecheck({ config, store, runGuard = defaultRunGuard, log = () => {}, scanCoordinator }) {
   const entries = store.entries();
   const changed = [];
   const errors = [];
@@ -242,10 +256,12 @@ export async function adminRecheck({ config, store, runGuard = defaultRunGuard, 
   for (const e of entries) {
     let result;
     try {
-      result = await runGuard(config.pkgxrayBin, `${e.name}@${e.version}`, {
-        timeoutMs: config.scanTimeoutMs,
-        cacheUrl: config.cacheUrl,
+      const scan = () => runGuard(config.pkgxrayBin, `${e.name}@${e.version}`, {
+        timeoutMs: config.scanTimeoutMs, cacheUrl: config.cacheUrl,
       });
+      result = await (scanCoordinator
+        ? scanCoordinator.run(`admin:${e.name}@${e.version}`, scan)
+        : scan());
     } catch (err) {
       // Never overwrite a good stored verdict with an error state.
       errors.push({ name: e.name, version: e.version, message: err.message });
@@ -379,13 +395,10 @@ export function authorizeAdmin(config, req) {
     if (presented && timingSafeEqualStr(presented, config.adminToken)) return { ok: true };
     return { ok: false, status: 401, message: 'admin token required (Authorization: Bearer <token>)' };
   }
-  const remote = req.socket && req.socket.remoteAddress;
-  if (isLoopbackAddress(remote)) return { ok: true };
   return {
     ok: false,
-    status: 403,
-    message:
-      'admin recheck is restricted to loopback; set adminToken (PKGXRAY_PROXY_ADMIN_TOKEN) to allow remote admin access',
+    status: 503,
+    message: 'admin recheck is disabled until adminToken (PKGXRAY_PROXY_ADMIN_TOKEN) is configured',
   };
 }
 
@@ -400,6 +413,15 @@ export function createServer(config, store, deps = {}) {
   const runGuard = deps.runGuard || defaultRunGuard;
   const upstreamRequest = deps.upstreamRequest || makeUpstreamRequest();
   const log = deps.log || (config.logDecisions ? defaultLog : () => {});
+  // All registry transports share a bounded wall-clock budget. The existing
+  // metadata seam lets embedders/tests shorten it without disabling the limit.
+  const transportTimeoutMs = Math.min(30_000, Math.max(1, deps.metadataTimeoutMs || 30_000));
+  const scanCoordinator = createScanCoordinator({ concurrency: config.scanConcurrency,
+    maxPending: config.maxPendingScans, queueTimeoutMs: config.scanTimeoutMs });
+  const acquisitionCoordinator = createScanCoordinator({ concurrency: config.scanConcurrency,
+    maxPending: config.maxPendingScans, queueTimeoutMs: config.scanTimeoutMs });
+  const artifactTokenSecret = crypto.randomBytes(32);
+  let recheckInFlight = null;
   // Load the shared team policy ONCE, at startup. Tests inject `deps.sharedPolicy`
   // (which may be `null` to disable it). Warnings are printed through the logger.
   const sharedPolicy = deps.sharedPolicy !== undefined
@@ -429,13 +451,156 @@ export function createServer(config, store, deps = {}) {
       return handleAdminRecheck(req, res);
     }
 
+    const opaque = pathname.match(/^\/-\/pkgxray\/artifact\/([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
+    if (opaque) return handleOpaqueArtifact(req, res, opaque[1], opaque[2]);
+
     const parsed = parsePath(req.url);
 
     if (parsed.kind === 'tarball') {
       return handleTarball(req, res, parsed);
     }
-    // metadata + other -> transparent pass-through.
-    return passthrough(req, res);
+    if (parsed.kind === 'metadata') {
+      // The permissive diagnostic path parser tolerates extra segments. The
+      // delivery surface accepts only packuments and exact version metadata.
+      let decoded;
+      try { decoded = decodeURIComponent(pathname).replace(/^\/|\/$/g, ''); }
+      catch { return sendJson(res, 400, { error: 'invalid_registry_path' }); }
+      const expected = parsed.version ? `${parsed.name}/${parsed.version}` : parsed.name;
+      if (decoded !== expected) return sendJson(res, 404, { error: 'unsupported_registry_route' });
+      return handleMetadata(req, res);
+    }
+    // Unknown registry routes are never allowed to become an alternate archive
+    // delivery channel. Known npm service endpoints retain passthrough.
+    if ((req.url || '').startsWith('/-/')) return passthrough(req, res);
+    return sendJson(res, 404, { error: 'unsupported_registry_route' });
+  }
+
+  function signArtifactTarget(payload) {
+    const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const signature = crypto.createHmac('sha256', artifactTokenSecret).update(body).digest('base64url');
+    return `${body}.${signature}`;
+  }
+
+  function readArtifactTarget(body, signature) {
+    const expected = crypto.createHmac('sha256', artifactTokenSecret).update(body).digest();
+    let supplied;
+    try { supplied = Buffer.from(signature, 'base64url'); }
+    catch { return null; }
+    if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) return null;
+    try {
+      const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+      if (!parsed || typeof parsed.name !== 'string' || typeof parsed.version !== 'string' || typeof parsed.target !== 'string') return null;
+      return parsed;
+    } catch { return null; }
+  }
+
+  async function handleOpaqueArtifact(req, res, body, signature) {
+    const token = readArtifactTarget(body, signature);
+    if (!token) return sendJson(res, 400, { error: 'invalid_artifact_token' });
+    const base = new URL(config.upstream);
+    let target;
+    try { target = new URL(token.target, base); }
+    catch { return sendJson(res, 400, { error: 'invalid_artifact_target' }); }
+    if (target.origin !== base.origin) {
+      return sendJson(res, 403, { error: 'cross_origin_artifact_blocked' });
+    }
+    const identity = parsePath(canonicalTarballPath(token.name, token.version));
+    if (identity.kind !== 'tarball' || identity.invalid) return sendJson(res, 400, { error: 'invalid_artifact_identity' });
+    return handleTarball(req, res, identity, `${target.pathname}${target.search}`);
+  }
+
+  function handleMetadata(req, res) {
+    if (req.method !== 'GET') return passthrough(req, res);
+    return new Promise((resolve) => {
+      let settled = false;
+      let upReq, upRes;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        res.removeListener('close', disconnected);
+        res.removeListener('finish', finish);
+        resolve();
+      };
+      const fail = (err) => {
+        if (settled) return;
+        if (!res.headersSent && !res.destroyed) sendJson(res, 502, { error: 'upstream_error', message: err.message });
+        else res.destroy();
+        finish();
+        upRes?.destroy();
+        upReq?.destroy();
+      };
+      const disconnected = () => {
+        if (!res.writableFinished) fail(new Error('metadata client disconnected'));
+      };
+      // A total deadline cannot be extended by slowly dripping bytes or by
+      // keeping downstream output blocked after the upstream has ended.
+      const timer = setTimeout(() => fail(new Error('metadata total deadline exceeded')), transportTimeoutMs);
+      timer.unref();
+      res.on('close', disconnected);
+      res.once('finish', finish);
+      const headers = { ...endToEndHeaders(req.headers), 'accept-encoding': 'identity' };
+      delete headers.host;
+      const onResponse = (incoming) => {
+        upRes = incoming;
+        if (settled) { upRes.destroy(); return; }
+        const chunks = [];
+        let bytes = 0;
+        upRes.on('data', chunk => {
+          bytes += chunk.length;
+          if (bytes > 8 * 1024 * 1024) fail(new Error('metadata exceeds 8 MiB limit'));
+          else chunks.push(chunk);
+        });
+        upRes.on('end', () => {
+          if (settled) return;
+          const raw = Buffer.concat(chunks);
+          if ((upRes.statusCode || 500) < 200 || (upRes.statusCode || 500) >= 300) {
+            res.writeHead(upRes.statusCode || 502, { ...endToEndHeaders(upRes.headers), 'content-length': raw.length });
+            res.end(raw); return;
+          }
+          let document;
+          try { document = JSON.parse(raw.toString('utf8')); }
+          catch { sendJson(res, 502, { error: 'invalid_registry_metadata' }); return; }
+          try { rewriteDocumentTarballs(document, req); }
+          catch { sendJson(res, 502, { error: 'invalid_registry_metadata' }); return; }
+          const output = Buffer.from(JSON.stringify(document));
+          const outHeaders = { ...endToEndHeaders(upRes.headers), 'content-type': 'application/json; charset=utf-8',
+            'content-length': output.length, 'content-encoding': undefined };
+          // Validators and digests describe the upstream representation, which
+          // changes when artifact URLs are rewritten for this proxy instance.
+          for (const key of ['etag', 'last-modified', 'content-md5', 'digest', 'content-digest', 'repr-digest']) delete outHeaders[key];
+          for (const [key, value] of Object.entries(outHeaders)) if (value === undefined) delete outHeaders[key];
+          res.writeHead(upRes.statusCode || 200, outHeaders);
+          res.end(output);
+        });
+        upRes.on('error', fail);
+        upRes.on('aborted', () => fail(new Error('metadata upstream response aborted')));
+      };
+      try {
+        upReq = upstreamRequest(req.url, { method: 'GET', headers }, onResponse);
+        upReq.on('error', fail);
+        upReq.end();
+      } catch (err) { fail(err); }
+    });
+  }
+
+  function rewriteDocumentTarballs(document, req) {
+    const rewrite = (entry, fallbackName, fallbackVersion) => {
+      if (!entry || typeof entry !== 'object' || !entry.dist || typeof entry.dist.tarball !== 'string') return;
+      const name = typeof entry.name === 'string' ? entry.name : fallbackName;
+      const version = typeof entry.version === 'string' ? entry.version : fallbackVersion;
+      if (typeof name !== 'string' || typeof version !== 'string') throw new Error('invalid artifact identity');
+      const identity = parsePath(canonicalTarballPath(name || '', version || ''));
+      if (identity.kind !== 'tarball' || identity.invalid) throw new Error('invalid artifact identity');
+      const token = signArtifactTarget({ name, version, target: entry.dist.tarball });
+      const protocol = req.socket?.encrypted ? 'https' : 'http';
+      const host = req.headers.host || `${config.host}:${config.port}`;
+      entry.dist.tarball = `${protocol}://${host}/-/pkgxray/artifact/${token}`;
+    };
+    rewrite(document, document?.name, document?.version);
+    if (document?.versions && typeof document.versions === 'object') {
+      for (const [version, entry] of Object.entries(document.versions)) rewrite(entry, document.name, version);
+    }
   }
 
   async function handleAdminRecheck(req, res) {
@@ -448,7 +613,11 @@ export function createServer(config, store, deps = {}) {
       });
       return sendJson(res, auth.status, { error: 'unauthorized', message: auth.message });
     }
-    const summary = await adminRecheck({ config, store, runGuard, log });
+    if (!recheckInFlight) {
+      recheckInFlight = adminRecheck({ config, store, runGuard, log, scanCoordinator })
+        .finally(() => { recheckInFlight = null; });
+    }
+    const summary = await recheckInFlight;
     log({
       event: 'admin-recheck',
       total: summary.total,
@@ -459,7 +628,7 @@ export function createServer(config, store, deps = {}) {
     return sendJson(res, 200, { ok: true, ...summary });
   }
 
-  async function handleTarball(req, res, parsed) {
+  async function handleTarball(req, res, parsed, targetPath = canonicalTarballPath(parsed.name, parsed.version)) {
     const { name, version } = parsed;
 
     // Fail closed on any tarball request that isn't in strict canonical form.
@@ -477,14 +646,23 @@ export function createServer(config, store, deps = {}) {
       });
     }
 
-    if (!['GET', 'HEAD'].includes(req.method)) return sendJson(res, 405, { error: 'method_not_allowed' });
+    if (req.method === 'HEAD') return sendJson(res, 405, { error: 'method_not_allowed', message: 'HEAD cannot authorize an artifact' });
+    if (req.method !== 'GET') return sendJson(res, 405, { error: 'method_not_allowed' });
     if (listMatches(config.denylist, name, version)) return sendJson(res, 403, { error: 'blocked_by_pkgxray', decision: 'block', source: 'denylist' });
+    const abortController = new AbortController();
+    const abort = () => abortController.abort();
+    req.once('aborted', abort);
+    res.once('close', () => { if (!res.writableEnded) abort(); });
     let snapshot;
-    try { snapshot = await acquireArtifact(upstreamRequest, canonicalTarballPath(name, version), req.headers); }
+    try {
+      const acquisitionKey = `download:${crypto.randomUUID()}`;
+      snapshot = await acquisitionCoordinator.run(acquisitionKey,
+        () => acquireArtifact(upstreamRequest, targetPath, req.headers, abortController.signal));
+    }
     catch (error) { return sendJson(res, 502, { error: 'artifact_download_failed', message: error.message }); }
     try {
       const currentPolicy = deps.sharedPolicy !== undefined ? sharedPolicy : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
-      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy: currentPolicy });
+      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy: currentPolicy, scanCoordinator });
 
       log({
         event: 'decision',
@@ -514,40 +692,75 @@ export function createServer(config, store, deps = {}) {
 
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': snapshot.size,
         [HEADER_VERDICT]: decision.decision, [HEADER_SOURCE]: decision.source, 'x-pkgxray-sha256': snapshot.sha256 });
-      if (req.method === 'HEAD') res.end();
-      else await pipeline(createReadStream(snapshot.file), res);
+      // Approval completes before delivery starts, but a stalled downloader
+      // must not keep the private snapshot and file descriptor indefinitely.
+      const deliveryAbort = new AbortController();
+      const deliveryTimer = setTimeout(() => deliveryAbort.abort(), transportTimeoutMs);
+      deliveryTimer.unref();
+      try { await pipeline(createReadStream(snapshot.file), res, { signal: deliveryAbort.signal }); }
+      finally { clearTimeout(deliveryTimer); }
     } finally { await snapshot.cleanup(); }
   }
 
   /** Transparent reverse-proxy to upstream, streaming the response. */
   function passthrough(req, res, extraHeaders = {}, targetPath) {
     return new Promise((resolve) => {
-      const headers = { ...req.headers };
+      let settled = false;
+      let upReq, upRes;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        req.removeListener('aborted', aborted);
+        // Keep the error guard for a late error following the abort event.
+        res.removeListener('close', disconnected);
+        if (upReq) req.unpipe(upReq);
+        upRes?.destroy();
+        upReq?.destroy();
+        resolve();
+      };
+      const fail = (err) => {
+        if (settled) return;
+        if (!res.headersSent && !res.destroyed) {
+          // Stop receiving an unfinished upload once this operation has failed.
+          if (!req.complete) res.shouldKeepAlive = false;
+          sendJson(res, 502, { error: 'upstream_error', message: err.message });
+        } else res.destroy();
+        finish();
+      };
+      const aborted = () => fail(new Error('registry request aborted'));
+      const disconnected = () => {
+        if (!res.writableFinished) fail(new Error('registry client disconnected'));
+      };
+      const timer = setTimeout(() => fail(new Error('registry total deadline exceeded')), transportTimeoutMs);
+      timer.unref();
+      req.on('aborted', aborted);
+      req.on('error', fail);
+      res.on('close', disconnected);
+      const headers = endToEndHeaders(req.headers);
       delete headers.host; // let the upstream client set the correct Host
       delete headers['accept-encoding']; // avoid decompression surprises; stream as-is is fine
 
       // Tarball serves pass an explicit canonical targetPath; metadata/other
       // passthrough uses the incoming URL verbatim.
       const upstreamPath = targetPath || req.url;
-      const upReq = upstreamRequest(upstreamPath, { method: req.method, headers }, (upRes) => {
-        const outHeaders = { ...upRes.headers, ...extraHeaders };
-        res.writeHead(upRes.statusCode || 502, outHeaders);
-        upRes.pipe(res);
-        upRes.on('end', resolve);
-        upRes.on('error', () => { res.destroy(); resolve(); });
-      });
-
-      upReq.on('error', (err) => {
-        if (!res.headersSent) {
-          sendJson(res, 502, { error: 'upstream_error', message: err.message });
-        } else {
-          res.destroy();
-        }
-        resolve();
-      });
-
-      // Forward the request body (npm registry reads are GET, but be correct).
-      req.pipe(upReq);
+      try {
+        upReq = upstreamRequest(upstreamPath, { method: req.method, headers }, (incoming) => {
+          upRes = incoming;
+          if (settled) { upRes.destroy(); return; }
+          if (!req.complete) res.shouldKeepAlive = false;
+          const outHeaders = { ...endToEndHeaders(upRes.headers), ...extraHeaders };
+          res.writeHead(upRes.statusCode || 502, outHeaders);
+          upRes.on('aborted', () => fail(new Error('registry upstream response aborted')));
+          // Completion includes draining output to the client. An upstream
+          // end event must not clear the deadline while output is blocked.
+          pipeline(upRes, res).then(finish, fail);
+        });
+        upReq.on('error', fail);
+        // pipe preserves upload backpressure; disconnect/deadline handlers
+        // unpipe and destroy the upstream even before its response arrives.
+        req.pipe(upReq);
+      } catch (err) { fail(err); }
     });
   }
 

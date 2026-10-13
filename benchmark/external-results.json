@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 2,
+  "repository": "DataDog/malicious-software-packages-dataset",
+  "commit": "df32a361b27b78c5de4cdb4b4c549b666accaa40",
+  "sourceUrl": "https://github.com/DataDog/malicious-software-packages-dataset/tree/df32a361b27b78c5de4cdb4b4c549b666accaa40",
+  "datasetReadme": "https://github.com/DataDog/malicious-software-packages-dataset/blob/df32a361b27b78c5de4cdb4b4c549b666accaa40/README.md",
+  "startedAt": "2026-10-13T18:37:27.037Z",
+  "scannerVersion": "1.2.0",
+  "scannerBuildId": "3bfa1ba92182dea75cb4826df035f215163eabbc2d4f373b21a665007ddd9956",
+  "scannerState": "Local working tree containing uncommitted hardening changes; build identity hashes runtime files, not an immutable published release.",
+  "command": "node scripts/validate-external-corpus.js",
+  "selection": "Malicious: at pinned revision, one lexicographically first pre-2025 discovery ZIP per distinct npm package, ZIP <= 4 MiB; rank paths by SHA256 and take four per category. Benign: four declared exact-version registry controls with pinned SHA256. No replacement on errors and no selection by scanner verdict.",
+  "bounds": {
+    "zipBytes": 4194304,
+    "zipExpandedBytes": 16777216,
+    "zipEntries": 512,
+    "tarballExpandedBytes": 67108864,
+    "sourceFiles": 1000,
+    "sourceBytes": 33554432
+  },
+  "mode": "Static-only derived package source trees; original encrypted ZIPs contain extracted source rather than original npm TGZs.",
+  "disabledChecks": ["provenance", "githubMetadata", "githubDiff", "vulnerabilityCheck", "scanDependencies"],
+  "executedPackageCode": false,
+  "payloadsRetained": false,
+  "interpretation": "All seven scanned malicious samples were held for REVIEW; none received SAFE or BLOCK. The eighth was refused by the extraction byte bound. Three of four benign controls were SAFE and one was REVIEW. This demonstrates strict-policy holds and review burden on these inputs, not measured population accuracy.",
+  "limitations": [
+    "Small third-party labeled malicious sample plus four project-selected benign controls; labels and accuracy are not independently certified.",
+    "The dataset README identifies GuardDog-based selection bias; these samples are not a representative malware population.",
+    "The four malicious_intent selections appear to share a spam-package family; distinct package names do not establish family independence.",
+    "Four convenience controls are too small and project-selected, so population false-positive rate or precision cannot be inferred.",
+    "All seven scans contain missing-metadata and flow-analysis-gap findings; derived-tree scans without enrichment increase uncertainty.",
+    "Two scans report incomplete source coverage, and REVIEW is not equivalent to a confirmed malicious BLOCK.",
+    "ZIP hashes identify original corpus archives; derived-tree hashes do not establish original npm tarball identity.",
+    "Selection and safety bounds were fixed before verdicts; the size-bound failure was retained without replacement or relaxing limits.",
+    "No malware was installed, imported, executed, or submitted to canary; all private temporary samples and staged source trees were removed."
+  ],
+  "counts": {
+    "malicious": { "safe": 0, "review": 7, "block": 0, "errors": 1 },
+    "benign": { "safe": 3, "review": 1, "block": 0, "errors": 0 }
+  },
+  "metrics": {
+    "maliciousHoldRate": 1,
+    "maliciousBlockRate": 0,
+    "benignFalseBlockRate": 0,
+    "benignReviewRate": 0.25
+  },
+  "cases": [
+    {
+      "label": "malicious", "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/vant/2.13.3/2024-12-20-vant-v2.13.3.zip",
+      "packageName": "vant", "version": "2.13.3", "zipBytes": 1157688,
+      "zipSha256": "448f080faf66a90e6ca13596eb414291c9acfaa1d601c9f167e2b1c63d288238",
+      "scanInput": "derived-package-tree",
+      "derivedTreeSha256": "3a40024589dbbb13f2837018c7cc33bf77aa988b2125a6f0d628843e358ee90f",
+      "derivedTreeFiles": 252, "verdict": "review", "decision": "review", "sourceComplete": false,
+      "findingCategories": ["flow-analysis-gap", "incomplete-source-scan", "install-hook", "missing-metadata", "network-access", "unresolved-runtime-execution"]
+    },
+    {
+      "label": "malicious", "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/@rspack@cli/1.1.7/2024-12-20-@rspack_cli-v1.1.7.zip",
+      "packageName": "@rspack/cli", "version": "1.1.7", "zipBytes": 683418,
+      "zipSha256": "f77f3b9068bb0478b3f005249370489038bef26fd9de6c5978d7a3a1dc997646",
+      "scanInput": "derived-package-tree",
+      "derivedTreeSha256": "25eefcd49790a956798aebd283ce28c08d3041ffeb3bbd7b5cefeca17e745ff3",
+      "derivedTreeFiles": 24, "verdict": "review", "decision": "review", "sourceComplete": true,
+      "findingCategories": ["code-execution", "dynamic-require", "flow-analysis-gap", "install-hook", "missing-metadata", "network-access", "structural-obfuscation"]
+    },
+    {
+      "label": "malicious", "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/@rspack@core/1.1.7/2024-12-20-@rspack_core-v1.1.7.zip",
+      "packageName": "@rspack/core", "version": "1.1.7", "zipBytes": 1170459,
+      "zipSha256": "ccb55d450eef5dec8732fbe4d9df92b31511198ab38b00ab1c50dbb83bdcd34d",
+      "scanInput": "derived-package-tree",
+      "derivedTreeSha256": "f45b26febf837eae7f2b55048e8e77fded22521f1cb02dbb952985667210283a",
+      "derivedTreeFiles": 244, "verdict": "review", "decision": "review", "sourceComplete": false,
+      "findingCategories": ["code-execution", "dynamic-require", "flow-analysis-gap", "incomplete-source-scan", "install-hook", "missing-metadata", "network-access", "structural-obfuscation", "unresolved-runtime-execution"]
+    },
+    {
+      "label": "malicious", "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/@solana@web3.js/1.95.7/2024-12-03-@solana_web3.js-v1.95.7.zip",
+      "packageName": "@solana/web3.js", "version": "1.95.7", "zipBytes": 3305138,
+      "zipSha256": "9059d6e4265a83aa89f47b6254947ae147889c2bada930f67c9cc7c0521a46bb",
+      "error": "ValueError: ZIP expanded-byte limit exceeded"
+    },
+    {
+      "label": "malicious", "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/kurnia-bubur54-sluey/4.3.2/2024-05-09-kurnia-bubur54-sluey-v4.3.2.zip",
+      "packageName": "kurnia-bubur54-sluey", "version": "4.3.2", "zipBytes": 23927,
+      "zipSha256": "5947e7a527e5d4b6074eca901bdb154d22f9068971769d0c15c5564ba5d99231",
+      "scanInput": "derived-package-tree",
+      "derivedTreeSha256": "479516a004420651dc4462068e3c9b62ab29624eb9192670d57272acfec3c898",
+      "derivedTreeFiles": 14, "verdict": "review", "decision": "review", "sourceComplete": true,
+      "findingCategories": ["code-execution", "flow-analysis-gap", "missing-metadata", "supply-chain-signal"]
+    },
+    {
+      "label": "malicious", "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/nurul-kue46-breki/3.1.4/2024-05-12-nurul-kue46-breki-v3.1.4.zip",
+      "packageName": "nurul-kue46-breki", "version": "3.1.4", "zipBytes": 23915,
+      "zipSha256": "3c942380ef4889f73778941120ea8cb951ef7e7a0ef4e0e140823fe86fee4e28",
+      "scanInput": "derived-package-tree",
+      "derivedTreeSha256": "4911dcefe27f842ff627d456da4b5320f0f9600beb10134ebfd88a297236ea19",
+      "derivedTreeFiles": 14, "verdict": "review", "decision": "review", "sourceComplete": true,
+      "findingCategories": ["code-execution", "flow-analysis-gap", "missing-metadata", "supply-chain-signal"]
+    },
+    {
+      "label": "malicious", "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/lutfi-ongol-ongol65-sukiwir/2.3.2/2024-05-11-lutfi-ongol-ongol65-sukiwir-v2.3.2.zip",
+      "packageName": "lutfi-ongol-ongol65-sukiwir", "version": "2.3.2", "zipBytes": 23951,
+      "zipSha256": "50eab1988f6acf15a0e382b1631d729ed22ed30aebc41a5f49dd7e127f67455b",
+      "scanInput": "derived-package-tree",
+      "derivedTreeSha256": "fa0017c13f6fbe647b8e3ef8e416ccdd6426403205ba5b5aecfd14830fc03839",
+      "derivedTreeFiles": 14, "verdict": "review", "decision": "review", "sourceComplete": true,
+      "findingCategories": ["code-execution", "flow-analysis-gap", "missing-metadata", "supply-chain-signal"]
+    },
+    {
+      "label": "malicious", "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/lutfi-botok93-ruro/1.1.4/2024-05-08-lutfi-botok93-ruro-v1.1.4.zip",
+      "packageName": "lutfi-botok93-ruro", "version": "1.1.4", "zipBytes": 23915,
+      "zipSha256": "777c774d2b6040232e4b1830ab0ae91104bb744fa4860a04b93b282d811cd60e",
+      "scanInput": "derived-package-tree",
+      "derivedTreeSha256": "b73dc60a53ad7793d78a553dc88f9acb7e991a38f963bff0b57e392408cdcdd1",
+      "derivedTreeFiles": 14, "verdict": "review", "decision": "review", "sourceComplete": true,
+      "findingCategories": ["code-execution", "flow-analysis-gap", "missing-metadata", "supply-chain-signal"]
+    },
+    {
+      "label": "benign", "packageName": "escape-string-regexp", "version": "5.0.0",
+      "sourceUrl": "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz",
+      "artifactSha256": "c8b662afe8aa2b852ecc27d766e584a502f8351fbbd890611f2509bf083d28e6",
+      "artifactBytes": 1964, "verdict": "safe", "decision": "allow", "sourceComplete": true,
+      "findingCategories": ["missing-metadata"]
+    },
+    {
+      "label": "benign", "packageName": "is-number", "version": "7.0.0",
+      "sourceUrl": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+      "artifactSha256": "7b75c1057198cf97696909a9bee176c9c5e9bcb5b03bf3ecef2f484defadd51e",
+      "artifactBytes": 3730, "verdict": "safe", "decision": "allow", "sourceComplete": true,
+      "findingCategories": ["missing-metadata"]
+    },
+    {
+      "label": "benign", "packageName": "picocolors", "version": "1.1.1",
+      "sourceUrl": "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz",
+      "artifactSha256": "d3aedb2807967b7eb37fd11b03b7e3701e725af79c650d0812ff7213f8f882d9",
+      "artifactBytes": 2625, "verdict": "safe", "decision": "allow", "sourceComplete": true,
+      "findingCategories": ["missing-metadata"]
+    },
+    {
+      "label": "benign", "packageName": "yocto-queue", "version": "1.2.1",
+      "sourceUrl": "https://registry.npmjs.org/yocto-queue/-/yocto-queue-1.2.1.tgz",
+      "artifactSha256": "2b3bd9bfcd6ca5e17556846221a11e15b43c81f76cb6bce3059405fed9753055",
+      "artifactBytes": 3197, "verdict": "review", "decision": "review", "sourceComplete": true,
+      "findingCategories": ["flow-analysis-gap", "missing-metadata"]
+    }
+  ]
+}

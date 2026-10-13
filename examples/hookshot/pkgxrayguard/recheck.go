@@ -115,8 +115,16 @@ func (rc Rechecker) Recheck(ctx context.Context, lockfilePath string) RecheckRep
 	if err := json.Unmarshal(stdout, &parsed); err != nil {
 		return RecheckReport{Worst: Unknown, Err: errors.New("pkgxray recheck produced no parseable verdict")}
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(stdout, &fields); err != nil || fields["worstRegression"] == nil {
+		return RecheckReport{Worst: Unknown, Err: errors.New("pkgxray recheck omitted its regression verdict")}
+	}
 
-	report := RecheckReport{Worst: worstRegressionVerdict(parsed.WorstRegression)}
+	exitCode := 0
+	if exitErr != nil {
+		exitCode = exitErr.ExitCode()
+	}
+	report := RecheckReport{Worst: executionVerdict(worstRegressionVerdict(parsed.WorstRegression), exitCode)}
 	for _, r := range parsed.Buckets.Regressed {
 		report.Regressed = append(report.Regressed, RegressedDep{
 			Name:     r.Name,
@@ -146,8 +154,10 @@ func worstRegressionVerdict(worst *string) Verdict {
 		return Block
 	case "review":
 		return Review
-	default:
+	case "safe", "allow":
 		return Safe
+	default:
+		return Unknown
 	}
 }
 
@@ -166,6 +176,11 @@ func (r RecheckReport) AsResults() []Result {
 			Verdict: verdictFromDecision(d.Verdict),
 			Summary: "regressed since install: " + d.Baseline + " → " + d.Verdict,
 		})
+	}
+	// The summary may be stricter than a missing or contradictory detail list.
+	// Preserve it so an empty bucket cannot erase a reported regression.
+	if severity(r.Worst) > severity(Worst(results)) {
+		results = append(results, Result{Verdict: r.Worst, Summary: "pkgxray reported a project regression"})
 	}
 	return results
 }
