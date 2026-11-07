@@ -32,7 +32,9 @@ function printUsage() {
       "",
       "Common commands — vet before you install or connect:",
       "  pkgxray guard npm:<name>@<version> --archive <file.tgz> --integrity <SRI> [--receipt-only]",
-      "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps] [--typosquat]",
+      "  pkgxray guard <npm-package|npm:name@version|github:owner/repo[#ref]|./path> [--promote-to dir] [--no-source-scan] [--deps] [--typosquat] [--ai-review]",
+      "                     # --ai-review sends a bounded, cited source excerpt to the configured Package X-Ray review API",
+      "                     #   requires PKGXRAY_REVIEW_ALLOW_SOURCE_SUBMISSION=1; AI can add REVIEW, never clear BLOCK or approve",
       "                     # vet a package before install (static; no package code runs).",
       "                     # --deps also OSV-scans the package's DIRECT dependencies (transitive worm entry point)",
       "                     # --no-vulnerability-check skips the OSV lookup entirely (offline / air-gapped use).",
@@ -241,6 +243,8 @@ function parseArgs(argv) {
       options.quarantineRoot = argv[++i];
     } else if (arg === "--promote-to") {
       options.promoteTo = argv[++i];
+    } else if (arg === "--ai-review") {
+      options.aiReview = true;
     } else if (arg === "--policy") {
       options.policy = argv[++i];
     } else if (arg === "--force") {
@@ -387,9 +391,16 @@ async function main() {
     // Keep the staging tree so the user can inspect / promote it from the
     // printed Quarantine path; non-interactive callers reap it by default.
     let result;
+    const aiReviewAbort = options.aiReview ? new AbortController() : null;
+    const abortAiReview = () => { if (aiReviewAbort) aiReviewAbort.abort(); };
+    if (aiReviewAbort) {
+      process.once("SIGINT", abortAiReview);
+      process.once("SIGTERM", abortAiReview);
+    }
     try {
       result = await guardExtension(options.reference, {
         ...options,
+        aiReviewSignal: aiReviewAbort && aiReviewAbort.signal,
         config,
         scanErrorPolicy: config.scanErrorPolicy,
         keepStaging: !options.artifact
@@ -420,6 +431,11 @@ async function main() {
       }
       process.exitCode = cfg.exitCodeForVerdict(verdict, config);
       return;
+    } finally {
+      if (aiReviewAbort) {
+        process.removeListener("SIGINT", abortAiReview);
+        process.removeListener("SIGTERM", abortAiReview);
+      }
     }
 
     const adjusted = result.report;
@@ -824,6 +840,14 @@ function renderGuardMarkdown(result) {
   }
 
   lines.push(renderMarkdown(result.report));
+  if (result.aiReview) {
+    const state = result.aiReview.status || "failed";
+    const label = state === "completed" ? "COMPLETED" : state === "pending" ? "PENDING" : state === "failed" ? "FAILED" : "SKIPPED";
+    lines.push("", `AI shadow review: **${label}**${result.aiReview.reason ? ` — ${sanitizeForTerminal(result.aiReview.reason)}` : ""}`);
+    if (result.aiReview.findings && result.aiReview.findings.length) {
+      lines.push(`Validated cited findings: ${result.aiReview.findings.length} (candidate findings can only raise the result to REVIEW).`);
+    }
+  }
   return lines.join("\n");
 }
 

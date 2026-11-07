@@ -8,6 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { auditEvidence } = require("./auditor");
+const aiReviewer = require("./ai-reviewer");
 const {
   fetchRepoMetadata,
   fetchRepoTarballForVersion,
@@ -294,14 +295,43 @@ async function guardExtension(reference, options = {}) {
   timings.auditMs = elapsed(auditStart);
   // A missing CVE check can't clear a package, but it must not un-block one
   // either — static evidence stands on its own. See floorVerdictForScanGap.
-  const decision = cfg.guardDecision(report, {
+  const policyContext = {
     policy: options.policy || config.policy, config,
     vulnerabilityScanError, sourceCoverage, dependencyAudit
-  });
+  };
+  let decision = cfg.guardDecision(report, policyContext);
+  let aiReview = { status: "skipped", reason: "not-opted-in", findings: [] };
+  if (options.aiReview === true) {
+    aiReview = await aiReviewer.reviewPackage({
+      report,
+      sourceFiles,
+      artifact: { name: resolved.packageName || reference, version: resolved.version || null, sha256: resolved.sha256 || null }
+    }, {
+      signal: options.aiReviewSignal,
+      onState: (state) => {
+        if (state && state.status === "pending") {
+          try { process.stderr.write(`pkgxray: AI review pending (${state.stage || "queued"})\\n`); } catch { /* logging must not affect the scan */ }
+        }
+      }
+    });
+    if (aiReview.status === "completed") {
+      const folded = aiReviewer.foldReviewFindings(report, evidence, aiReview);
+      if (folded.findingsAdded > 0) {
+        const explicitOverride = Boolean(report.configEffects && report.configEffects.allowlisted);
+        const staticDecision = decision;
+        decision = cfg.guardDecision(report, policyContext);
+        // AI evidence may hold an unapproved artifact for a person, but cannot
+        // turn allow-review into approval or disturb an explicit pinned allow.
+        if (staticDecision !== "block" && !explicitOverride) decision = "review";
+        aiReview.enforcement = explicitOverride ? "pinned-allow-preserved" : "review-hold";
+      }
+    }
+  }
 
   const result = {
     schemaVersion: 1,
     decision,
+    aiReview,
     reference,
     resolved,
     sourceFiles,
@@ -315,7 +345,8 @@ async function guardExtension(reference, options = {}) {
       checks: {
         source: options.sourceScan === false ? "disabled" : vulnerabilities.length ? "skipped" : sourceCoverage.complete ? "completed" : "partial",
         vulnerabilities: options.vulnerabilityCheck === false ? "disabled" : vulnerabilityScanError ? "failed" : "completed",
-        directDependencies: !options.scanDependencies ? "not-requested" : !dependencyAudit ? "skipped" : dependencyAudit.error ? "failed" : dependencyAudit.complete ? "completed" : "partial"
+        directDependencies: !options.scanDependencies ? "not-requested" : !dependencyAudit ? "skipped" : dependencyAudit.error ? "failed" : dependencyAudit.complete ? "completed" : "partial",
+        aiReview: aiReview.status
       },
       rawVerdict: rawReport.verdict,
       authorization: require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit }),

@@ -1,0 +1,14 @@
+{
+  "name": "pkgxray-review-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private authenticated server-side OpenAI adapter for Package X-Ray reviews",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test ./test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
