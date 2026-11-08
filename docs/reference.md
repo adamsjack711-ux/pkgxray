@@ -8,6 +8,58 @@ see [compatibility.md](compatibility.md).
 
 ---
 
+## Synthetic BLOCK example
+
+This optional walkthrough uses an inert synthetic fixture. It is scanned as
+source data only; it is never installed or executed. Download the file from an
+immutable commit, then run the published scanner:
+
+```bash
+curl --fail --location --output pkgxray-onboarding.json \
+  https://raw.githubusercontent.com/adamsjack711-ux/pkgxray/751ff97332650f983fdc39a013dfcec855a8b4de/examples/onboarding-malicious.json
+npx --yes pkgxray@1.2.1 --file ./pkgxray-onboarding.json --format markdown
+```
+
+Expected exit code: **`2`** (`BLOCK`). The excerpt below is from the published
+1.2.1 run:
+
+```text
+Verdict: **BLOCK**
+- **HIGH credential-access** — Reads a path to a credential / wallet / key store near a filesystem read. (`index.js`)
+```
+
+The cited fragments resolve to `/.ssh/id_rsa` beside `fs.readFileSync`. This is
+a static finding in a synthetic sample, not an observed exploit or proof that a
+real package stole credentials.
+
+---
+
+## Package and project scans
+
+```bash
+pkgxray guard npm:some-package@1.2.3 [--format json]   # vet a package before install
+pkgxray guard pypi:some-package@1.2.3                  # same, for a PyPI package (sdist staged + scanned)
+pkgxray mcp --package npm:some-mcp-server@1.4.2 npx some-mcp-server   # vet an MCP server; --recheck catches the rug-pull
+pkgxray audit package-lock.json [--deep-all]               # also: yarn.lock, pnpm-lock.yaml, package.json
+pkgxray audit requirements.txt [--deep]                # PyPI: also poetry.lock, Pipfile.lock, pyproject.toml
+pkgxray recheck package-lock.json                      # scheduled: non-zero only on a regression
+```
+
+`audit` checks resolved dependencies against OSV. `--deep` adds source scans for
+blocked dependencies; `--deep-all` requests source scans for all resolved dependencies.
+Failed deep scans and incomplete source collection return REVIEW unless already BLOCK.
+`guard --deps` includes direct-dependency findings in its decision; only exact pins
+are checked, with ranges and other unresolved sources left at REVIEW. Guard output
+lists completed, partial, disabled and failed checks so a passing verdict does not
+imply checks that never ran.
+PyPI scans cover source-distribution manifests, vulnerability metadata, and text-level
+injection checks; they do not provide full Python module behavioral analysis or wheel inspection.
+Python source adds an `unsupported-behavior` REVIEW finding. Behavioral coverage gaps
+cannot be muted or promoted with `allow-review`; a pinned artifact approval remains
+an explicit operator override. Archives containing links or special files are rejected.
+
+Policy configuration is documented in [configuration.md](configuration.md).
+
 ## Severity policy (what lands in block / review / info)
 
 **block** (HIGH). Any one of these:

@@ -354,7 +354,7 @@ exactly why they survived.
   new categories appear in `findings[].category` and `riskBands[]`, which
   the [compatibility policy](docs/compatibility.md) permits in a patch release
   (detection may become stricter as signatures improve).
-- `docs/design/evasion-triage.md` listed the F4 bulk-env spread gap as open; it
+- `maintainer/design/evasion-triage.md` listed the F4 bulk-env spread gap as open; it
   was closed by `BULK_ENV_CLONE_REGEXES` and the row is now marked accordingly.
 - Windows and macOS are now blocking CI gates, not advisory ones. A handful of
   tests are skipped there for reasons recorded inline — POSIX mode bits, AF_UNIX
