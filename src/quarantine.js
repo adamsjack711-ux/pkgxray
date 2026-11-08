@@ -104,6 +104,7 @@ const TEXT_FILE_PATTERNS = [
 ];
 
 async function guardExtension(reference, options = {}) {
+  options.signal?.throwIfAborted();
   if (!reference) {
     throw new Error("Missing extension reference");
   }
@@ -130,6 +131,7 @@ async function guardExtension(reference, options = {}) {
   const stageStart = now();
   const resolved = await stageReference(reference, stagedPath, options);
   timings.stageMs = elapsed(stageStart);
+  options.signal?.throwIfAborted();
 
   // Start the GitHub metadata fetch the moment we have npm metadata. It runs
   // concurrently with vuln-check and tarball download so it only adds latency
@@ -281,7 +283,11 @@ async function guardExtension(reference, options = {}) {
   const auditStart = now();
   // typosquat is scan CONFIG, not evidence: `true` from the CLI flag, or the
   // validated tuning object from .pkgxray.json — passed through unchanged.
-  const rawReport = auditEvidence(evidence, { typosquat: options.typosquat });
+  options.signal?.throwIfAborted();
+  const shared = options.sharedAnalysis ? await require('./shared-scans').analyzeShared(evidence,
+    { typosquat: options.typosquat }, { signal: options.signal, artifactSha256: resolved.sha256 }) : null;
+  const rawReport = shared ? shared.evidence : auditEvidence(evidence, { typosquat: options.typosquat });
+  options.signal?.throwIfAborted();
   const config = options.config || {
     ...cfg.DEFAULTS,
     policy: options.policy || cfg.DEFAULTS.policy,
@@ -301,6 +307,7 @@ async function guardExtension(reference, options = {}) {
 
   const result = {
     schemaVersion: 1,
+    scanSource: shared?.source,
     decision,
     reference,
     resolved,
@@ -347,6 +354,7 @@ async function guardExtension(reference, options = {}) {
     result.approval = { schemaVersion: 2, artifactSha256: resolved.sha256,
       name: resolved.packageName, version: resolved.version,
       scannerBuildId: artifact.BUILD_ID, policySha256: result.assessment.policySha256,
+      analysisSha256: artifact.fingerprint({ typosquat: options.typosquat || false }), evidenceSha256: artifact.fingerprint(rawReport),
       checks: result.assessment.checks, sourceComplete: sourceCoverage.complete,
       authorization: result.assessment.authorization,
       decision, issuedAt: new Date().toISOString() };
@@ -354,7 +362,20 @@ async function guardExtension(reference, options = {}) {
 
   if (dependencyAudit) result.dependencyAudit = dependencyAudit;
 
-  if (options.promoteTo && shouldPromote(decision)) {
+  options.validatePolicy?.();
+  const reviews = require("./review");
+  const reviewId = reviews.reviewIdentity(result.approval, { action: options.promoteTo ? 'promote' : options.reviewAction || 'use', target: options.promoteTo ? path.resolve(options.promoteTo) : null });
+  const eligible = require("./approval-policy").receiptAuthorizes(result.approval, { allowReview: true });
+  if (options.reviewChoice && eligible && decision === 'review') {
+    if (options.reviewId !== reviewId) throw new Error('Artifact, policy or scanner changed; inspect the fresh REVIEW before choosing');
+    options.reviewDecisions?.choose(options.reviewScope, reviewId, options.reviewChoice);
+  }
+  Object.assign(result, reviews.reviewOutcome(decision, {
+    reviewId, scope: options.reviewScope, decisions: options.reviewDecisions, eligible
+  }));
+
+  options.signal?.throwIfAborted();
+  if (options.promoteTo && result.allowed) {
     result.promotedPath = await promoteStagedPackage(stagedPath, options.promoteTo, options);
   }
 
@@ -1654,7 +1675,7 @@ function decisionForReport(report, policy) {
     return "block";
   }
   if (report.verdict === "review") {
-    return policy === "allow-review" ? "allow" : "review";
+    return "review";
   }
   return "allow";
 }
@@ -1665,16 +1686,26 @@ function shouldPromote(decision) {
 
 async function promoteStagedPackage(stagedPath, promoteTo, options = {}) {
   const destination = path.resolve(promoteTo);
-  const exists = await pathExists(destination);
-  if (exists && !options.force) {
-    throw new Error(`Promotion target already exists: ${destination}`);
-  }
-  if (exists) {
-    await fsp.rm(destination, { recursive: true, force: true });
-  }
-  await fsp.mkdir(path.dirname(destination), { recursive: true });
-  await fsp.cp(stagedPath, destination, { recursive: true, dereference: false });
-  return destination;
+  const parent = path.dirname(destination);
+  options.signal?.throwIfAborted();
+  await fsp.mkdir(parent, { recursive: true });
+  const transaction = await fsp.mkdtemp(path.join(parent, '.pkgxray-promotion-'));
+  const prepared = path.join(transaction, 'package'), previous = path.join(transaction, 'previous');
+  try {
+    await fsp.cp(stagedPath, prepared, { recursive: true, dereference: false,
+      filter: () => { options.signal?.throwIfAborted(); return true; } });
+    options.validatePolicy?.();
+    options.signal?.throwIfAborted();
+    // The final checks and rename form one synchronous commit point. A cancel
+    // before commit leaves the destination intact; later cancellation cannot
+    // undo an already authorized completed action.
+    const exists = fs.existsSync(destination);
+    if (exists && !options.force) throw new Error(`Promotion target already exists: ${destination}`);
+    if (exists) fs.renameSync(destination, previous);
+    try { fs.renameSync(prepared, destination); }
+    catch (error) { if (exists) fs.renameSync(previous, destination); throw error; }
+    return destination;
+  } finally { await fsp.rm(transaction, { recursive: true, force: true }); }
 }
 
 function now() {

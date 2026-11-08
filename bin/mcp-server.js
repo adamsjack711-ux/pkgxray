@@ -9,6 +9,11 @@ const { guardExtension, parseReference } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
 const { triageLockfile } = require("../src/triage");
 const cfg = require("../src/config");
+const reviewDecisions = new (require("../src/review").ReviewDecisions)();
+// Before an immutable identity is known, preparation still needs a resource
+// bound. Unique keys prohibit sharing caller-owned staging or side effects.
+const guardAdmission = new (require('../src/shared-scans').SharedScans)({ concurrency: 4,
+  maxQueue: 124, maxBytes: 16 * 1024 * 1024, timeoutMs: 60000, maxCacheBytes: 0 });
 
 const AUDIT_TOOL_NAME = "audit_agent_extension_supply_chain";
 const GUARD_TOOL_NAME = "guard_agent_extension_install";
@@ -170,7 +175,7 @@ function guardToolDefinition() {
     name: GUARD_TOOL_NAME,
     title: "Guard a package before installation",
     description:
-      "Fetch and stage one package reference (pin an exact version for reproducibility), then return a structured SAFE, REVIEW, or BLOCK report without running lifecycle scripts or package code. It performs network requests to npm, OSV, and optionally GitHub. promoteTo writes files only after policy allows; force may replace an existing destination. Local references and caller-supplied paths are confined to operator-approved roots.",
+      "Fetch and stage one package reference (pin an exact version for reproducibility), then return SAFE or UNSAFE, or a pending REVIEW with evidence requiring the user’s Proceed or Decline without running lifecycle scripts or package code. It performs network requests to npm, OSV, and optionally GitHub. promoteTo writes files only after policy allows; force may replace an existing destination. Local references and caller-supplied paths are confined to operator-approved roots.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -190,6 +195,8 @@ function guardToolDefinition() {
           type: "string",
           description: "Optional staging root under an operator-approved filesystem root. Omit to use an internally selected OS temporary directory."
         },
+        reviewId: { type: "string", description: "Exact REVIEW ID previously presented in this session." },
+        reviewChoice: { type: "string", enum: ["Proceed", "Decline"], description: "The user's explicit decision after inspecting evidence. Never choose on the user's behalf." },
         promoteTo: {
           type: "string",
           description:
@@ -533,7 +540,7 @@ function validateToolCall(toolName, args) {
   return null;
 }
 
-function handleRequest(request) {
+async function handleRequest(request, signal) {
   const { id, method, params } = request;
 
   if (method === "initialize") {
@@ -566,6 +573,8 @@ function handleRequest(request) {
   }
 
   if (method === "tools/call") {
+    const currentConfig = cfg.loadConfig({ cwd: process.cwd() }).config;
+    const currentMcpConfig = cfg.mcpConfig(currentConfig);
     const name = params && params.name;
     if (!TOOL_NAMES.has(name)) {
       return {
@@ -580,7 +589,7 @@ function handleRequest(request) {
 
     // A tool the config filtered out of tools/list must not run even if a
     // client calls it directly — treat it as if it doesn't exist.
-    if (!toolExposed(name)) {
+    if (!cfg.mcpToolAllowed(currentConfig, CONFIG_TOOL_KEY[name])) {
       return {
         jsonrpc: "2.0",
         id,
@@ -602,23 +611,29 @@ function handleRequest(request) {
       // Stricter MCP defaults: when the caller doesn't pin a policy, fall back
       // to the (stricter) MCP-view policy rather than guard's own safe-only
       // default, so the agent surface can be tightened centrally in config.
-      const guardOpts = { ...toolOptions(name, args), config: CONFIG, keepStaging: false };
-      if (guardOpts.policy === undefined) guardOpts.policy = MCP_CONFIG.policy;
+      const guardOpts = { ...toolOptions(name, args), config: currentConfig, keepStaging: false, reviewScope: "stdio-session", reviewDecisions, signal, sharedAnalysis: true };
+      if (guardOpts.policy === undefined) guardOpts.policy = currentMcpConfig.policy;
       // The opt-in typosquat heuristic is a config knob, not a tool argument —
       // .pkgxray.json is the single switch for the agent surface.
-      guardOpts.typosquat = CONFIG.typosquat;
+      guardOpts.typosquat = currentConfig.typosquat;
+      guardOpts.validatePolicy = () => {
+        const { fingerprint } = require('../src/artifact');
+        if (fingerprint(cfg.loadConfig({ cwd: process.cwd() }).config) !== fingerprint(currentConfig)) throw new Error('Policy changed during scan; retry for a fresh REVIEW');
+      };
       // Set AFTER the spread on purpose: `args` is caller-controlled, and a
       // scan-error policy is the server operator's decision, not the calling
       // agent's. This also stops a caller from passing scanErrorPolicy:
       // "fail-open" to talk the server out of a scan-gap review.
-      guardOpts.scanErrorPolicy = CONFIG.scanErrorPolicy;
+      guardOpts.scanErrorPolicy = currentConfig.scanErrorPolicy;
       // packageScanFirst (default true): the agent surface insists on a static
       // package scan before it will vouch for anything. Only when config
       // explicitly disables it (and the caller didn't ask for a scan) do we let
       // guard stage without collecting source.
-      if (guardOpts.sourceScan === undefined) guardOpts.sourceScan = MCP_CONFIG.packageScanFirst !== false;
+      if (guardOpts.sourceScan === undefined) guardOpts.sourceScan = currentMcpConfig.packageScanFirst !== false;
       // MCP staging is ephemeral; requested promotion occurs before cleanup.
-      return guardExtension(args.reference, guardOpts).then((guardResult) => {
+      return guardAdmission.get(Symbol('caller-owned-guard'), jobSignal =>
+        guardExtension(args.reference, { ...guardOpts, signal: jobSignal }),
+        { signal, bytes: Buffer.byteLength(JSON.stringify(args)), cache: false }).then(({ evidence: guardResult }) => {
         // Apply shared config to the resolved artifact: mutes, and — since guard
         // resolved a real sha256 — a pinned allowlist that can force `safe`.
         // applyConfig never changes a verdict silently; renderConfigEffects
@@ -649,7 +664,7 @@ function handleRequest(request) {
       if (fileError) return invalidParams(id, fileError);
       // Thread the config's typosquat setting into the deep-scan path (the
       // shallow pass is OSV-only; typosquat applies wherever auditEvidence runs).
-      return auditLockfile(args.lockfilePath, { ...toolOptions(name, args), typosquat: CONFIG.typosquat }).then((result) => {
+      return auditLockfile(args.lockfilePath, { ...toolOptions(name, args), typosquat: currentConfig.typosquat, signal }).then((result) => {
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(result, null, 2)
@@ -685,9 +700,10 @@ function handleRequest(request) {
       };
       return triageLockfile(args.lockfilePath, {
         ...toolOptions(name, args),
+        signal,
         // Honor the config typosquat setting through triage's deep scan
         // (triageLockfile spreads options into auditLockfile → runDeep).
-        typosquat: CONFIG.typosquat,
+        typosquat: currentConfig.typosquat,
         stdout: fakeStdout,
         stderr: fakeStderr,
         isTTY: true // skip the !isTTY refusal — auto mode runs without input
@@ -708,7 +724,11 @@ function handleRequest(request) {
     }
 
     // audit_agent_extension_supply_chain
-    const report = auditEvidence(args, { typosquat: CONFIG.typosquat });
+    const { outputFormat, ...evidence } = args;
+    const shared = await require('../src/shared-scans').analyzeShared(evidence, { typosquat: currentConfig.typosquat }, { signal });
+    signal?.throwIfAborted();
+    const report = { ...cfg.applyConfig(shared.evidence, { config: currentConfig, packageName: evidence.packageName,
+      evidence: { sourceFiles: Object.keys(evidence.sourceFiles || {}) } }), scanSource: shared.source };
     const text =
       args.outputFormat === "json"
         ? JSON.stringify(report, null, 2)
@@ -835,12 +855,13 @@ function sourceFilesEvidence(sourceFiles) {
 
 function renderGuardMarkdown(result) {
   const lines = [
-    `Decision: **${result.decision.toUpperCase()}**`,
+    `Outcome: **${result.outcome || (result.decision === "review" ? "Pending decision" : result.decision === "allow" ? "SAFE" : "UNSAFE")}**`,
     `Reference: \`${sanitizeForTerminal(result.reference)}\``,
     `Quarantine: \`${sanitizeForTerminal(result.quarantinePath)}\``,
     ""
   ];
 
+  if (result.review) lines.push(`REVIEW ${result.review.state}: ${result.review.id || 'unavailable'}. ${result.review.choice ? 'Decision remembered for this session.' : result.review.eligible ? 'Show evidence to the user and request Proceed or Decline before use or promotion.' : 'Complete required checks before use or promotion.'}`, '');
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,
@@ -892,7 +913,7 @@ function requestId(request) {
   return null;
 }
 
-async function processLine(line) {
+async function processLine(line, controller = new AbortController()) {
   if (!line.trim()) {
     return;
   }
@@ -921,7 +942,9 @@ async function processLine(line) {
   }
 
   try {
-    const response = await handleRequest(request);
+    controller.signal.throwIfAborted();
+    const response = await handleRequest(request, controller.signal);
+    controller.signal.throwIfAborted();
     if (response) {
       send(response);
     }
@@ -929,7 +952,7 @@ async function processLine(line) {
     send({
       jsonrpc: "2.0",
       id: requestId(request),
-      error: { code: -32603, message: sanitizeErrorMessage(error.message) }
+      error: { code: error.code === 'SCAN_OVERLOADED' ? -32001 : error.code === 'SCAN_TIMEOUT' ? -32002 : controller.signal.aborted || error.code === 'SCAN_CANCELLED' ? -32800 : -32603, message: sanitizeErrorMessage(error.message) }
     });
   }
 }
@@ -940,12 +963,29 @@ async function processLine(line) {
 // stdin listener and hanging.
 function attachStdin() {
   const { BoundedQueue } = require("../src/bounded-queue");
-  const queue = new BoundedQueue({ concurrency: 4, maxTasks: 32, maxBytes: 8 * 1024 * 1024 });
+  const queue = new BoundedQueue({ concurrency: 128, maxTasks: 256, maxBytes: 16 * 1024 * 1024 });
+  const controllers = new Map();
   const submit = line => {
     if (!line.trim()) return;
-    if (!queue.enqueue(() => processLine(line), Buffer.byteLength(line))) {
-      send({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "MCP request capacity exceeded; session closed" } });
-      queue.close(); process.stdin.destroy(); process.exitCode = 1;
+    let request;
+    try { request = JSON.parse(line); } catch { /* processLine returns parse error */ }
+    if (request?.method === 'notifications/cancelled') {
+      controllers.get(request.params?.requestId)?.abort(); return;
+    }
+    const id = requestId(request || {});
+    if (id !== null && controllers.has(id)) {
+      send({ jsonrpc: '2.0', id, error: { code: -32600, message: 'Duplicate active request ID' } }); return;
+    }
+    const controller = new AbortController();
+    if (id !== null) controllers.set(id, controller);
+    const run = async () => {
+      const timer = setTimeout(() => controller.abort(), 60000);
+      try { await processLine(line, controller); }
+      finally { clearTimeout(timer); if (id !== null) controllers.delete(id); }
+    };
+    if (!queue.enqueue(run, Buffer.byteLength(line))) {
+      if (id !== null) controllers.delete(id);
+      send({ jsonrpc: '2.0', id, error: { code: -32001, message: 'MCP request capacity exceeded; no action authorized; retry later' } });
     }
   };
   process.stdin.setEncoding("utf8");
@@ -983,6 +1023,7 @@ if (require.main === module) {
 // tests only — the wire behavior is unchanged whether or not they are consumed;
 // they let the offline suite unit-test the config seam.
 module.exports = {
+  guardAdmission,
   applyConfigToGuardResult,
   toolExposed,
   listTools,

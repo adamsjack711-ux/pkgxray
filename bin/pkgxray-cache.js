@@ -18,6 +18,7 @@ const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
 const os = require("node:os");
+const { requestText, downloadFile } = require("../src/http-client");
 
 const VERSION = "0.10.0";
 const USER_AGENT = `pkgxray-cache/${VERSION}`;
@@ -193,6 +194,7 @@ async function dirSizeBytes(root) {
 // Without dedup that fires two upstream fetches; with it the second arriver
 // awaits the same promise. Map<key, Promise>.
 const inFlight = new Map();
+const cacheReservations = new Map();
 
 function dedup(key, factory) {
   const existing = inFlight.get(key);
@@ -204,6 +206,45 @@ function dedup(key, factory) {
   return promise;
 }
 
+async function reserveCacheCapacity(cacheDir, maxCacheBytes) {
+  const key = path.resolve(cacheDir);
+  const used = await dirSizeBytes(key);
+  const alreadyReserved = cacheReservations.get(key) || 0;
+  const available = maxCacheBytes - used - alreadyReserved;
+  if (available <= 0) return null;
+  const bytes = Math.min(MAX_TARBALL_BYTES, available);
+  cacheReservations.set(key, alreadyReserved + bytes);
+  let released = false;
+  return {
+    bytes,
+    release() {
+      if (released) return;
+      released = true;
+      const remaining = (cacheReservations.get(key) || 0) - bytes;
+      if (remaining > 0) cacheReservations.set(key, remaining);
+      else cacheReservations.delete(key);
+    }
+  };
+}
+
+async function reserveExactCacheCapacity(cacheDir, maxCacheBytes, bytes) {
+  const key = path.resolve(cacheDir);
+  const used = await dirSizeBytes(key);
+  const alreadyReserved = cacheReservations.get(key) || 0;
+  if (bytes > maxCacheBytes - used - alreadyReserved) return null;
+  cacheReservations.set(key, alreadyReserved + bytes);
+  let released = false;
+  return {
+    release() {
+      if (released) return;
+      released = true;
+      const remaining = (cacheReservations.get(key) || 0) - bytes;
+      if (remaining > 0) cacheReservations.set(key, remaining);
+      else cacheReservations.delete(key);
+    }
+  };
+}
+
 const { createUpstreamPolicy } = require("../src/cache-upstream-policy");
 
 // --- Upstream fetch helpers ---
@@ -212,158 +253,65 @@ function pickTransport(url) {
   return url.protocol === "https:" ? https : http;
 }
 
-function upstreamGetJson(urlString, headers, policy, hops = 0) {
-  return new Promise((resolve, reject) => {
-    if (hops > 4) return reject(new Error("Too many upstream redirects"));
-    const { url, lookup } = policy(urlString);
-    const transport = pickTransport(url);
-    const request = transport.get(
-      {
-        hostname: url.hostname.replace(/^\[|\]$/g, ""),
-        lookup,
-        port: url.port || (url.protocol === "https:" ? 443 : 80),
-        path: url.pathname + url.search,
-        headers,
-        timeout: UPSTREAM_REPO_TIMEOUT_MS
-      },
-      (response) => {
-        if ([301, 302, 307, 308].includes(response.statusCode) && response.headers.location) {
-          response.resume();
-          let next;
-          try { next = policy(new URL(response.headers.location, url)).url; }
-          catch (error) { return reject(error); }
-          // SECURITY: never forward the Authorization (or token-bearing) header
-          // across an origin change. A misconfigured / hostile upstream that
-          // 302s api.github.com → attacker.example.com would otherwise leak
-          // the GitHub bearer token in the rerequest. Same-origin redirects
-          // (path rewrites) keep the token so private repos still
-          // work behind well-behaved CDNs.
-          let nextHeaders = headers;
-          if (next.origin !== url.origin) {
-            nextHeaders = {};
-            for (const [key, value] of Object.entries(headers)) {
-              const lower = key.toLowerCase();
-              if (lower === "authorization") continue;
-              if (lower === "cookie") continue;
-              if (lower === "proxy-authorization") continue;
-              nextHeaders[key] = value;
-            }
-          }
-          return upstreamGetJson(next.toString(), nextHeaders, policy, hops + 1).then(resolve, reject);
-        }
-        let body = "";
-        let size = 0;
-        let aborted = false;
-        response.setEncoding("utf8");
-        response.on("data", (chunk) => {
-          if (aborted) return;
-          // Cap the upstream JSON body (finding 3b): a hostile/compromised
-          // upstream serving a giant body would otherwise OOM the server.
-          size += Buffer.byteLength(chunk);
-          if (size > MAX_JSON_BYTES) {
-            aborted = true;
-            response.destroy();
-            return reject(new Error(`upstream JSON exceeded ${MAX_JSON_BYTES} bytes`));
-          }
-          body += chunk;
-        });
-        response.on("end", () => {
-          if (aborted) return;
-          if (response.statusCode === 404) {
-            const err = new Error("upstream 404");
-            err.statusCode = 404;
-            return reject(err);
-          }
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            const err = new Error(`upstream HTTP ${response.statusCode}: ${body.slice(0, 120)}`);
-            err.statusCode = response.statusCode;
-            return reject(err);
-          }
-          resolve(body);
-        });
+async function upstreamGetJson(urlString, headers, policy, timeoutMs = UPSTREAM_REPO_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  let current = urlString;
+  let currentHeaders = headers;
+  for (let hops = 0; hops <= 4; hops += 1) {
+    const { url, lookup } = policy(current);
+    const response = await requestText(url, {
+      transport: pickTransport(url),
+      lookup,
+      agent: false,
+      headers: currentHeaders,
+      timeoutMs,
+      deadline,
+      maxBytes: MAX_JSON_BYTES
+    });
+    if ([301, 302, 307, 308].includes(response.statusCode) && response.headers?.location) {
+      const next = policy(new URL(response.headers.location, url)).url;
+      // SECURITY: never forward credential-bearing headers across origins.
+      if (next.origin !== url.origin) {
+        currentHeaders = Object.fromEntries(Object.entries(currentHeaders).filter(([key]) =>
+          !["authorization", "cookie", "proxy-authorization"].includes(key.toLowerCase())
+        ));
       }
-    );
-    request.on("error", reject);
-    request.on("timeout", () => request.destroy(new Error("upstream timed out")));
-  });
+      current = next.toString();
+      continue;
+    }
+    if (response.statusCode === 404) {
+      const error = new Error("upstream 404");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      const error = new Error(`upstream HTTP ${response.statusCode}: ${response.body.slice(0, 120)}`);
+      error.statusCode = response.statusCode;
+      throw error;
+    }
+    return response.body;
+  }
+  throw new Error("Too many upstream redirects");
 }
 
 // Streams the upstream tarball straight to a temp file, then renames into
 // place on success. Lets the response also pipe to the live client when a
 // writable was provided.
-function upstreamFetchTarball(urlString, destination, policy) {
-  return new Promise((resolve, reject) => {
-    const tempPath = `${destination}.tmp-${process.pid}-${Date.now()}`;
-    const file = fs.createWriteStream(tempPath, { mode: 0o644 });
-    let written = 0;
-    let cleanedUp = false;
-    const cleanup = (err) => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      file.destroy();
-      fs.unlink(tempPath, () => reject(err));
-    };
-    file.on("error", cleanup);
-
-    const get = (currentUrl, hops) => {
-      if (hops > 5) return cleanup(new Error("Too many redirects"));
-      let url, lookup;
-      try { ({ url, lookup } = policy(currentUrl)); }
-      catch (error) { return cleanup(error); }
-      const transport = pickTransport(url);
-      const request = transport.get(
-        {
-          hostname: url.hostname.replace(/^\[|\]$/g, ""),
-          lookup,
-          port: url.port || (url.protocol === "https:" ? 443 : 80),
-          path: url.pathname + url.search,
-          headers: { "user-agent": USER_AGENT },
-          timeout: UPSTREAM_TARBALL_TIMEOUT_MS
-        },
-        (response) => {
-          if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-            response.resume();
-            try { return get(new URL(response.headers.location, url).toString(), hops + 1); }
-            catch (error) { return cleanup(error); }
-          }
-          if (response.statusCode === 404) {
-            response.resume();
-            const err = new Error("upstream 404");
-            err.statusCode = 404;
-            return cleanup(err);
-          }
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            response.resume();
-            const err = new Error(`upstream HTTP ${response.statusCode}`);
-            err.statusCode = response.statusCode;
-            return cleanup(err);
-          }
-          response.on("data", (chunk) => {
-            written += chunk.length;
-            if (written > MAX_TARBALL_BYTES) {
-              response.destroy();
-              cleanup(new Error(`Tarball exceeded ${MAX_TARBALL_BYTES} bytes`));
-            }
-          });
-          response.on("error", cleanup);
-          response.on("aborted", () => cleanup(new Error("Upstream tarball aborted")));
-          response.pipe(file);
-          file.on("finish", () => {
-            file.close((closeErr) => {
-              if (closeErr) return cleanup(closeErr);
-              fsp.rename(tempPath, destination).then(
-                () => resolve({ bytes: written }),
-                cleanup
-              );
-            });
-          });
-        }
-      );
-      request.on("error", cleanup);
-      request.on("timeout", () => request.destroy(new Error("upstream tarball timed out")));
-    };
-    get(urlString, 0);
-  });
+async function upstreamFetchTarball(urlString, destination, policy, timeoutMs = UPSTREAM_TARBALL_TIMEOUT_MS, maxBytes = MAX_TARBALL_BYTES) {
+  const tempPath = `${destination}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    const result = await downloadFile(urlString, tempPath, {
+      validate: policy,
+      timeoutMs,
+      maxBytes,
+      headers: { "user-agent": USER_AGENT }
+    });
+    await fsp.rename(tempPath, destination);
+    return { bytes: result.bytes };
+  } catch (error) {
+    await fsp.unlink(tempPath).catch(() => {});
+    throw error;
+  }
 }
 
 // Streams an upstream tarball straight to `sink` (the live client response)
@@ -371,14 +319,26 @@ function upstreamFetchTarball(urlString, destination, policy) {
 // 3c). Rejects (before any bytes reach the sink) on 404 / non-2xx so the
 // caller can still send a proper error status. The MAX_TARBALL_BYTES ceiling
 // still applies.
-function upstreamStreamTarball(urlString, sink, policy) {
+function upstreamStreamTarball(urlString, sink, policy, timeoutMs = UPSTREAM_TARBALL_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let activeRequest;
+    let activeResponse;
     const fail = (err) => {
       if (settled) return;
       settled = true;
+      clearTimeout(deadlineTimer);
+      activeResponse?.destroy();
+      activeRequest?.destroy();
       reject(err);
     };
+    const deadlineTimer = setTimeout(
+      () => fail(new Error(`upstream tarball timed out after ${timeoutMs} ms`)),
+      timeoutMs
+    );
+    sink.once("close", () => {
+      if (!settled) fail(new Error("downstream client disconnected"));
+    });
     const get = (currentUrl, hops) => {
       if (hops > 5) return fail(new Error("Too many redirects"));
       let url, lookup;
@@ -392,9 +352,10 @@ function upstreamStreamTarball(urlString, sink, policy) {
           port: url.port || (url.protocol === "https:" ? 443 : 80),
           path: url.pathname + url.search,
           headers: { "user-agent": USER_AGENT },
-          timeout: UPSTREAM_TARBALL_TIMEOUT_MS
+          timeout: Math.max(1, timeoutMs)
         },
         (response) => {
+          activeResponse = response;
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
             response.resume();
             try { return get(new URL(response.headers.location, url).toString(), hops + 1); }
@@ -429,12 +390,18 @@ function upstreamStreamTarball(urlString, sink, policy) {
           response.on("end", () => {
             if (!settled) {
               settled = true;
+              clearTimeout(deadlineTimer);
               resolve({ bytes: written });
             }
           });
           response.on("error", fail);
+          response.on("aborted", () => fail(new Error("Upstream tarball aborted")));
+          response.on("close", () => {
+            if (!settled && !response.complete) fail(new Error("Upstream tarball closed before completion"));
+          });
         }
       );
+      activeRequest = request;
       request.on("error", fail);
       request.on("timeout", () => request.destroy(new Error("upstream tarball timed out")));
     };
@@ -495,22 +462,41 @@ async function handleRepo(request, response, options, owner, repo) {
       // client that wants private-repo access must present its own token.
       if (forwardedToken) headers.authorization = `Bearer ${forwardedToken}`;
       const upstreamUrl = `${options.upstreamGithubApi}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
-      const text = await upstreamGetJson(upstreamUrl, headers, options.repoPolicy);
-      if (forwardedToken) return text; // Never persist credentials-scoped metadata.
-      await fsp.mkdir(path.dirname(cachePath), { recursive: true, mode: 0o755 });
+      const text = await upstreamGetJson(
+        upstreamUrl,
+        headers,
+        options.repoPolicy,
+        options.upstreamRepoTimeoutMs || UPSTREAM_REPO_TIMEOUT_MS
+      );
+      if (forwardedToken) return { body: text, cacheStatus: "BYPASS" }; // Never persist credentials-scoped metadata.
+      const bytes = Buffer.byteLength(text);
+      const reservation = options.maxCacheBytes > 0
+        ? await reserveExactCacheCapacity(options.cacheDir, options.maxCacheBytes, bytes)
+        : null;
+      if (options.maxCacheBytes > 0 && !reservation) {
+        return { body: text, cacheStatus: "BYPASS" };
+      }
       const tempPath = `${cachePath}.tmp-${process.pid}-${Date.now()}`;
-      await fsp.writeFile(tempPath, text, { mode: 0o644 });
-      await fsp.rename(tempPath, cachePath);
-      return text;
+      try {
+        await fsp.mkdir(path.dirname(cachePath), { recursive: true, mode: 0o755 });
+        await fsp.writeFile(tempPath, text, { mode: 0o644 });
+        await fsp.rename(tempPath, cachePath);
+        return { body: text, cacheStatus: "MISS" };
+      } catch (error) {
+        await fsp.unlink(tempPath).catch(() => {});
+        throw error;
+      } finally {
+        reservation?.release();
+      }
     };
-    const body = forwardedToken ? await fetchRepo() : await dedup(`${options.cacheDir}:${dedupKey}`, fetchRepo);
+    const fetched = forwardedToken ? await fetchRepo() : await dedup(`${options.cacheDir}:${dedupKey}`, fetchRepo);
     response.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
-      "content-length": Buffer.byteLength(body),
+      "content-length": Buffer.byteLength(fetched.body),
       "cache-control": forwardedToken ? "private, no-store" : "public, max-age=3600",
-      "x-pkgxray-cache": forwardedToken ? "BYPASS" : "MISS"
+      "x-pkgxray-cache": fetched.cacheStatus
     });
-    response.end(body);
+    response.end(fetched.body);
   } catch (error) {
     if (error.statusCode === 404) {
       return sendJson(response, 404, { error: "repo not found", owner, repo }, { "x-pkgxray-cache": "MISS" });
@@ -537,34 +523,36 @@ async function handleTarball(request, response, options, owner, repo, ref) {
     return;
   }
 
-  // Disk cap (finding 3c): if the on-disk cache is already over the ceiling,
-  // don't persist a new artifact — proxy it live from upstream instead so the
-  // client still succeeds but the cache stops growing. `maxCacheBytes === 0`
-  // disables the cap entirely.
   const upstreamUrl = `${options.upstreamCodeload}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tar.gz/${encodeURIComponent(ref)}`;
-  if (options.maxCacheBytes > 0) {
-    const used = await dirSizeBytes(options.cacheDir);
-    if (used >= options.maxCacheBytes) {
-      try {
-        await upstreamStreamTarball(upstreamUrl, response, options.tarballPolicy);
-      } catch (error) {
-        if (!response.headersSent) {
-          if (error.statusCode === 404) {
-            return sendJson(response, 404, { error: "tarball not found", owner, repo, ref }, { "x-pkgxray-cache": "BYPASS" });
-          }
-          return sendJson(response, 502, { error: "upstream tarball fetch failed", message: error.message }, { "x-pkgxray-cache": "BYPASS" });
-        }
-        response.destroy();
-      }
-      return;
-    }
-  }
 
   const dedupKey = `tarball:${owner}/${repo}@${ref}`;
   try {
-    await dedup(dedupKey, async () => {
-      await fsp.mkdir(path.dirname(cachePath), { recursive: true, mode: 0o755 });
-      await upstreamFetchTarball(upstreamUrl, cachePath, options.tarballPolicy);
+    await dedup(`${options.cacheDir}:${dedupKey}`, async () => {
+      const reservation = options.maxCacheBytes > 0
+        ? await reserveCacheCapacity(options.cacheDir, options.maxCacheBytes)
+        : null;
+      if (options.maxCacheBytes > 0 && !reservation) {
+        const error = new Error("cache capacity exhausted");
+        error.cacheBypass = true;
+        throw error;
+      }
+      try {
+        await fsp.mkdir(path.dirname(cachePath), { recursive: true, mode: 0o755 });
+        await upstreamFetchTarball(
+          upstreamUrl,
+          cachePath,
+          options.tarballPolicy,
+          options.upstreamTarballTimeoutMs || UPSTREAM_TARBALL_TIMEOUT_MS,
+          reservation?.bytes || MAX_TARBALL_BYTES
+        );
+      } catch (error) {
+        if (reservation && reservation.bytes < MAX_TARBALL_BYTES && /response exceeded/.test(error.message)) {
+          error.cacheBypass = true;
+        }
+        throw error;
+      } finally {
+        reservation?.release();
+      }
     });
     // After dedup resolves, the file is fully on disk. Stream it to the
     // client like a HIT — but mark MISS so the client sees the first-arrival
@@ -578,6 +566,25 @@ async function handleTarball(request, response, options, owner, repo, ref) {
     });
     fs.createReadStream(cachePath).pipe(response);
   } catch (error) {
+    if (error.cacheBypass) {
+      try {
+        await upstreamStreamTarball(
+          upstreamUrl,
+          response,
+          options.tarballPolicy,
+          options.upstreamTarballTimeoutMs || UPSTREAM_TARBALL_TIMEOUT_MS
+        );
+      } catch (streamError) {
+        if (!response.headersSent) {
+          if (streamError.statusCode === 404) {
+            return sendJson(response, 404, { error: "tarball not found", owner, repo, ref }, { "x-pkgxray-cache": "BYPASS" });
+          }
+          return sendJson(response, 502, { error: "upstream tarball fetch failed", message: streamError.message }, { "x-pkgxray-cache": "BYPASS" });
+        }
+        response.destroy();
+      }
+      return;
+    }
     if (error.statusCode === 404) {
       return sendJson(response, 404, { error: "tarball not found", owner, repo, ref }, { "x-pkgxray-cache": "MISS" });
     }
@@ -602,45 +609,60 @@ function buildRouter(options) {
     tarballPolicy: createUpstreamPolicy(options.upstreamCodeload, { ...options, codeload: true })
   };
   return async function onRequest(request, response) {
-    // Only GET (and HEAD as a convenience for liveness probes).
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      response.writeHead(405, { "content-type": "application/json", allow: "GET" });
-      response.end(JSON.stringify({ error: "method not allowed" }));
-      return;
-    }
-
-    let parsed;
     try {
-      parsed = new URL(request.url, "http://placeholder");
-    } catch {
-      return sendJson(response, 400, { error: "invalid url" });
+      // Only GET (and HEAD as a convenience for liveness probes).
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        response.writeHead(405, { "content-type": "application/json", allow: "GET" });
+        response.end(JSON.stringify({ error: "method not allowed" }));
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = new URL(request.url, "http://placeholder");
+      } catch {
+        return sendJson(response, 400, { error: "invalid url" });
+      }
+      const pathname = parsed.pathname;
+
+      if (pathname === "/healthz") return handleHealth(response);
+
+      // /github/repos/{owner}/{repo}
+      const repoMatch = pathname.match(/^\/github\/repos\/([^\/]+)\/([^\/]+)\/?$/);
+      if (repoMatch) {
+        return handleRepo(request, response, options, decodeURIComponent(repoMatch[1]), decodeURIComponent(repoMatch[2]));
+      }
+
+      // /github/tarball/{owner}/{repo}/{ref...}
+      // Refs can contain slashes (release/v1 etc.), so match everything after
+      // the third segment as the ref.
+      const tarballMatch = pathname.match(/^\/github\/tarball\/([^\/]+)\/([^\/]+)\/(.+?)\/?$/);
+      if (tarballMatch) {
+        return handleTarball(
+          request,
+          response,
+          options,
+          decodeURIComponent(tarballMatch[1]),
+          decodeURIComponent(tarballMatch[2]),
+          decodeURIComponent(tarballMatch[3])
+        );
+      }
+
+      return notFound(response);
+    } catch (error) {
+      // Node's HTTP server does not observe a rejected promise returned by an
+      // async request listener. Without this boundary, a malformed escape such
+      // as "%ZZ" makes decodeURIComponent throw and becomes an unhandled
+      // rejection, which terminates Node under the default rejection mode.
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      if (error instanceof URIError) {
+        return sendJson(response, 400, { error: "invalid url encoding" });
+      }
+      return sendJson(response, 500, { error: "internal cache error" });
     }
-    const pathname = parsed.pathname;
-
-    if (pathname === "/healthz") return handleHealth(response);
-
-    // /github/repos/{owner}/{repo}
-    const repoMatch = pathname.match(/^\/github\/repos\/([^\/]+)\/([^\/]+)\/?$/);
-    if (repoMatch) {
-      return handleRepo(request, response, options, decodeURIComponent(repoMatch[1]), decodeURIComponent(repoMatch[2]));
-    }
-
-    // /github/tarball/{owner}/{repo}/{ref...}
-    // Refs can contain slashes (release/v1 etc.), so match everything after
-    // the third segment as the ref.
-    const tarballMatch = pathname.match(/^\/github\/tarball\/([^\/]+)\/([^\/]+)\/(.+?)\/?$/);
-    if (tarballMatch) {
-      return handleTarball(
-        request,
-        response,
-        options,
-        decodeURIComponent(tarballMatch[1]),
-        decodeURIComponent(tarballMatch[2]),
-        decodeURIComponent(tarballMatch[3])
-      );
-    }
-
-    return notFound(response);
   };
 }
 

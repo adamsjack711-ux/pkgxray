@@ -19,6 +19,13 @@ class BoundedQueue {
       });
     }
   }
+  remove(fn) {
+    const index = this.tasks.findIndex(task => task.fn === fn);
+    if (index < 0) return false;
+    const [task] = this.tasks.splice(index, 1);
+    this.count--; this.bytes -= task.bytes;
+    return true;
+  }
   close() {
     this.closed = true;
     for (const task of this.tasks) { this.count--; this.bytes -= task.bytes; }

@@ -8,6 +8,8 @@
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 const CACHEABLE = new Set(['allow', 'block', 'review']);
 
@@ -52,6 +54,7 @@ export class VerdictStore {
   entries() {
     const out = [];
     for (const [k, v] of this._map) {
+      if (k.startsWith("artifact:")) continue;
       const { name, version } = VerdictStore.parseKey(k);
       out.push({ name, version, decision: v.decision, findings: v.findings, ts: v.ts });
     }
@@ -81,6 +84,8 @@ export class VerdictStore {
           findings: Array.isArray(v.findings) ? v.findings : [],
           ts: typeof v.ts === 'number' ? v.ts : 0,
           ...(v.binding ? { binding: v.binding } : {}),
+          ...(v.recheckRevision ? { recheckRevision: v.recheckRevision,
+            reviewRevision: v.reviewRevision || null, rechecked: true } : {}),
         });
       }
     }
@@ -113,6 +118,38 @@ export class VerdictStore {
     this._map.set(VerdictStore.key(name, version), entry);
     this._persist();
     return true;
+  }
+
+  // Artifact keys retain distinct hashes/policies/builds instead of overwriting
+  // the name/version slot. That slot remains an index for admin diagnostics.
+  getArtifact(key) { return this._map.get(`artifact:${key}`); }
+  recheckRevision(name, version) { return this.get(name, version)?.recheckRevision || null; }
+  reviewRevision(name, version) { return this.get(name, version)?.reviewRevision || null; }
+  recordRecheck(name, version, decision, findings = []) {
+    if (!CACHEABLE.has(decision)) throw new Error('Invalid recheck verdict');
+    // Always invalidate scan work, including scans already in flight. Preserve
+    // a caller's unchanged review; new findings/verdicts revoke that choice.
+    const previous = this.get(name, version);
+    const reviewRevision = previous?.decision === decision && isDeepStrictEqual(previous.findings, findings)
+      ? this.reviewRevision(name, version) : randomBytes(16).toString('hex');
+    for (const [key, entry] of this._map) {
+      const receipt = entry.binding?.approval;
+      if (key.startsWith('artifact:') && (entry === previous ||
+          (receipt?.name === name && receipt?.version === version))) this._map.delete(key);
+    }
+    this._map.set(VerdictStore.key(name, version), { decision, findings, ts: this._now(),
+      rechecked: true, reviewRevision, recheckRevision: randomBytes(16).toString('hex') });
+    this._persist();
+  }
+  setArtifact(key, name, version, decision, findings, binding) {
+    if (!CACHEABLE.has(decision)) return;
+    const entry = { decision, findings: findings || [], binding, ts: this._now() };
+    this._map.set(`artifact:${key}`, entry);
+    const revision = this.recheckRevision(name, version);
+    const reviewRevision = this.reviewRevision(name, version);
+    this._map.set(VerdictStore.key(name, version), { ...entry,
+      ...(revision ? { rechecked: true, recheckRevision: revision, reviewRevision } : {}) });
+    this._persist();
   }
 
   size() {

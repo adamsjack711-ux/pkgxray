@@ -87,7 +87,7 @@ test('allowed tarball streams real bytes with verdict header', async () => {
     const res = await get(`${p.url}/lodash/-/lodash-4.17.21.tgz`);
     assert.equal(res.status, 200);
     assert.equal(res.body.toString(), 'TARBALL-BYTES');
-    assert.equal(res.headers['x-pkgxray-verdict'], 'allow');
+    assert.equal(res.headers['x-pkgxray-verdict'], 'SAFE');
     assert.match(res.headers['x-pkgxray-sha256'], /^[a-f0-9]{64}$/);
   } finally { await p.close(); }
 });
@@ -99,7 +99,7 @@ test('blocked tarball returns 403 with findings, never releases upstream bytes',
   try {
     const res = await get(`${p.url}/evil/-/evil-1.0.0.tgz`);
     assert.equal(res.status, 403);
-    assert.equal(res.headers['x-pkgxray-verdict'], 'block');
+    assert.equal(res.headers['x-pkgxray-verdict'], 'UNSAFE');
     const body = JSON.parse(res.body.toString());
     assert.equal(body.error, 'blocked_by_pkgxray');
     assert.equal(body.findings[0].reason, 'malware');
@@ -145,7 +145,7 @@ test('scan error refuses unverified bytes even with fail-open configured', async
   try {
     const res = await get(`${p.url}/lodash/-/lodash-4.17.21.tgz`);
     assert.equal(res.status, 403);
-    assert.equal(res.headers['x-pkgxray-verdict'], 'scan-error');
+    assert.equal(res.headers['x-pkgxray-verdict'], 'UNSAFE');
     assert.ok(!res.body.includes('TARBALL-BYTES'));
   } finally { await p.close(); }
 });
@@ -180,7 +180,7 @@ test('missing and mismatched receipts never release bytes, even for allowlisted 
     try {
       const res = await get(`${p.url}/demo/-/demo-1.0.0.tgz`);
       assert.equal(res.status, 403);
-      assert.equal(res.headers['x-pkgxray-verdict'], 'unbound');
+      assert.equal(res.headers['x-pkgxray-verdict'], 'UNSAFE');
       assert.ok(!res.body.includes(tarballBytes));
     } finally { await p.close(); }
   }
@@ -216,4 +216,38 @@ test('client range is stripped and a partial upstream response is rejected befor
     assert.equal(scans, 1);
     assert.ok(!partial.body.includes(tarballBytes));
   } finally { tarballStatus = 200; await p.close(); }
+});
+
+test('HTTP review requires evidence and a session-scoped explicit choice before delivery', async () => {
+  let scans = 0;
+  const proxy = await startProxy({ reviewPolicy: 'allow', runGuard: async () => {
+    scans++; return { decision: 'review', findings: [{ reason: 'inspect this behavior' }] };
+  } });
+  async function choose(session, reviewId, choice) {
+    const res = await fetch(`${proxy.url}/-/pkgxray/review`, { method: 'POST',
+      headers: { 'x-pkgxray-session': session, 'content-type': 'application/json' },
+      body: JSON.stringify({ reviewId, choice }) });
+    return res.status;
+  }
+  try {
+    const url = `${proxy.url}/demo/-/demo-1.0.0.tgz`;
+    const first = await get(url), second = await get(url);
+    assert.equal(first.status, 409); assert.equal(second.status, 409);
+    assert.equal(first.headers['x-pkgxray-verdict'], 'PENDING');
+    const evidence = JSON.parse(first.body);
+    assert.equal(evidence.outcome, null);
+    assert.equal(evidence.findings[0].reason, 'inspect this behavior');
+    const a = first.headers['x-pkgxray-session'], b = second.headers['x-pkgxray-session'];
+    assert.notEqual(a, b);
+    assert.equal(await choose('unknown', evidence.review.id, 'Proceed'), 401);
+    assert.equal(await choose(a, 'wrong-review', 'Proceed'), 400);
+    assert.equal(await choose(a, evidence.review.id, 'Proceed'), 200);
+    assert.equal((await get(url, { headers: { 'x-pkgxray-session': a } })).status, 200);
+    assert.equal((await get(url, { headers: { 'x-pkgxray-session': a } })).status, 200);
+    assert.equal((await get(url, { headers: { 'x-pkgxray-session': b } })).status, 409);
+    assert.equal(await choose(b, evidence.review.id, 'Decline'), 200);
+    assert.equal((await get(url, { headers: { 'x-pkgxray-session': b } })).status, 403);
+    assert.equal(scans, 1);
+    assert.equal(lastHeaders['x-pkgxray-session'], undefined);
+  } finally { await proxy.close(); }
 });

@@ -310,7 +310,7 @@ function validateConfig(raw, warnings) {
     mcp: validateMcp(raw.mcp, warnings)
   };
   if (config.policy === "allow-review") {
-    warnings.push('policy "allow-review" promotes review-grade packages — this is a loosening of the default safe-only.');
+    warnings.push('policy "allow-review" no longer approves REVIEW; each developer must choose Proceed or Decline.');
   }
   if (config.typosquat) {
     warnings.push("typosquat heuristic enabled — an opt-in name-similarity check with a high false-positive rate on short/intentional names.");
@@ -495,7 +495,7 @@ function floorVerdictForScanGap(verdict, hasGap, config) {
 // remains an explicit operator override.
 function guardDecision(report, { policy = "safe-only", config = DEFAULTS, vulnerabilityScanError, sourceCoverage, dependencyAudit } = {}) {
   let decision = report.verdict === "safe" ? "allow" : report.verdict;
-  if (decision === "review" && policy === "allow-review") decision = "allow";
+
   const authorization = require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit });
   if (authorization.explicitOverride) return decision;
   if (authorization.mandatoryHoldReasons.length && decision !== "block") return "review";

@@ -126,7 +126,8 @@ function loadDecisionsSync(lockPath) {
   }
 }
 
-async function saveDecisions(lockPath, decisionsMap) {
+async function saveDecisions(lockPath, decisionsMap, { signal } = {}) {
+  signal?.throwIfAborted();
   const entries = Array.from(decisionsMap.values()).slice();
   entries.sort((a, b) => {
     const ka = `${a.name}@${a.version}`;
@@ -152,8 +153,7 @@ async function saveDecisions(lockPath, decisionsMap) {
       return record;
     })
   };
-  // Atomic write: a concurrent triage/recheck must not lose updates, and a
-  // reader mid-write must never see truncated JSON. Write to a unique temp file
+  // Atomic replacement prevents readers seeing truncated JSON. Write to a unique temp file
   // in the same directory (rename is only atomic within a filesystem) then
   // rename over the target. Clean up the temp file on any failure.
   const data = `${JSON.stringify(payload, null, 2)}\n`;
@@ -163,8 +163,10 @@ async function saveDecisions(lockPath, decisionsMap) {
     `.${path.basename(lockPath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
   );
   try {
-    await fsp.writeFile(tmp, data, "utf8");
-    await fsp.rename(tmp, lockPath);
+    await fsp.writeFile(tmp, data, { encoding: "utf8", signal });
+    // No asynchronous gap between the cancellation check and the commit.
+    signal?.throwIfAborted();
+    fs.renameSync(tmp, lockPath);
   } catch (error) {
     try { await fsp.unlink(tmp); } catch { /* best effort */ }
     throw error;
@@ -312,6 +314,7 @@ function createKeyReader(stdin) {
 // ---------------------------------------------------------------------------
 
 async function triageLockfile(lockfilePath, options = {}) {
+  options.signal?.throwIfAborted();
   const stdout = options.stdout || process.stdout;
   const stderr = options.stderr || process.stderr;
   const stdin = options.stdin || process.stdin;
@@ -319,6 +322,7 @@ async function triageLockfile(lockfilePath, options = {}) {
 
   const lockPath = lockPathForLockfile(lockfilePath);
   let decisions = await loadDecisions(lockPath);
+  options.signal?.throwIfAborted();
 
   // Run the underlying audit. We pass the existing decisions so the lockfile
   // audit can tag entries with triaged status.
@@ -326,6 +330,7 @@ async function triageLockfile(lockfilePath, options = {}) {
     ...options,
     triageDecisions: decisions
   });
+  options.signal?.throwIfAborted();
 
   // Build the worklist.
   const includeSafe = Boolean(options.includeSafe);
@@ -365,7 +370,7 @@ async function triageLockfile(lockfilePath, options = {}) {
 
   const auto = normalizeAuto(options.auto || process.env.PKGXRAY_TRIAGE_AUTO);
   if (auto) {
-    return runAuto(worklist, decisions, lockPath, auto, { stdout });
+    return runAuto(worklist, decisions, lockPath, auto, { stdout, signal: options.signal });
   }
 
   if (!isTTY) {
@@ -476,7 +481,7 @@ async function triageLockfile(lockfilePath, options = {}) {
     process.off("SIGINT", sigintHandler);
   }
 
-  await saveDecisions(lockPath, decisions);
+  await saveDecisions(lockPath, decisions, { signal: options.signal });
 
   const relLock = path.relative(process.cwd(), lockPath) || lockPath;
   const summary = `Triage complete. ${allowed} allowed, ${blocked} blocked, ${skipped} skipped. Saved to ./${relLock}\n`;
@@ -509,7 +514,7 @@ function normalizeAuto(value) {
   return null;
 }
 
-async function runAuto(worklist, decisions, lockPath, mode, { stdout }) {
+async function runAuto(worklist, decisions, lockPath, mode, { stdout, signal }) {
   let allowed = 0;
   let blocked = 0;
   for (const r of worklist) {
@@ -539,7 +544,7 @@ async function runAuto(worklist, decisions, lockPath, mode, { stdout }) {
       blocked += 1;
     }
   }
-  await saveDecisions(lockPath, decisions);
+  await saveDecisions(lockPath, decisions, { signal });
   const relLock = path.relative(process.cwd(), lockPath) || lockPath;
   stdout.write(`Triage complete (auto ${mode}). ${allowed} allowed, ${blocked} blocked, 0 skipped. Saved to ./${relLock}\n`);
   return {

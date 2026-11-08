@@ -839,10 +839,15 @@ function runMcpProxy(target, options = {}) {
     // gate handlers (audit, pin IO) are async.
     const queue = new (require("./bounded-queue").BoundedQueue)({ maxTasks: 128, maxBytes: 64 * 1024 * 1024,
       onError: error => { log(`session held: ${error.message}`); settle(1); } });
+    let peakQueue = 0;
+    const observe = () => {
+      if (options.onMetrics) { try { options.onMetrics({ calls: gate.stats.calls, denied: gate.stats.denied, resultsScanned: gate.stats.resultsScanned, resultsBlocked: gate.stats.resultsBlocked, audits: gate.stats.audits, held: gate.stats.held, queueDepth: queue.tasks.length, peakQueue }); } catch { /* telemetry cannot affect enforcement */ } }
+    };
     const enqueue = (fn, bytes = 0) => {
-      if (!settled && !queue.enqueue(() => { if (!settled) return fn(); }, bytes)) {
+      if (!settled && !queue.enqueue(async () => { try { if (!settled) return await fn(); } finally { observe(); } }, bytes)) {
         log("frame queue capacity exceeded"); settle(1);
       }
+      peakQueue = Math.max(peakQueue, queue.tasks.length);
     };
 
     const feedFrom = (source, onMessage, onRaw) =>

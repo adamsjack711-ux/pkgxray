@@ -32,6 +32,29 @@
 
 ### Security hardening
 
+- Keep REVIEW pending until an explicit caller-scoped Proceed or Decline,
+  bound to artifact bytes, policy, scanner build and requested action. Share
+  immutable static analysis through bounded queues without sharing approvals.
+- Revoke stale proxy delivery approvals after changed administrator rechecks,
+  reject stale scanner builds, and prevent in-flight scans from restoring old
+  cache entries. Preserve the same developer's choice for unchanged reviews.
+- Propagate MCP cancellation through lockfile audits and triage, check it at
+  the decision-file commit point, and escape terminal controls in the local
+  folder-report example. Add regression coverage for all four audit findings.
+- Reject malformed route encodings at the cache HTTP boundary instead of letting
+  an async listener rejection terminate the process. Bound cache upstream JSON
+  and tarball transfers with total deadlines, including slow-drip and aborted
+  responses.
+- Enforce the cache disk ceiling with per-directory byte reservations. Oversized
+  artifacts, concurrent distinct tarballs, and repository metadata now bypass
+  persistence instead of racing or writing past the configured quota.
+- Close credential-export detection bypasses using dynamic imports and
+  constant-computed module or method names built with template literals,
+  string transforms, array joins, and array reversal.
+- Close SAFE credential-export gaps across common HTTP clients, HTTP/2, UDP,
+  WebSockets, Promise/timer/EventEmitter handoffs, and alternate built-in module
+  loaders. The added flow rules require an identified runtime/module and retain
+  paired benign controls to limit review noise.
 - Remediate the September 23 audit: unify MCP path authorization and runtime option allowlists; remove temporary MCP staging after scans.
 - Preserve abstract aliases and branch/try/closure effects with bounded graph snapshots and joins. Unsupported runtime syntax now reports lexical-only coverage; eight additional benign challenge cases intentionally require review (historical baseline retained).
 - Add version-2 approval authorization with mandatory coverage holds, enforced by the registry proxy and installer; include all nested runtime/parser files in build identity. Legacy approvals must be rescanned.

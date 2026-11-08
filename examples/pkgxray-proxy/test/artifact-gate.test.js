@@ -48,7 +48,7 @@ test('fresh and cached mandatory holds never become discretionary reviews', asyn
     const store = new VerdictStore(config.verdictStorePath);
     const valid = withReceipt(async () => ({ decision: 'review', findings: [] }));
     const check = runGuard => gateArtifact({ config, store, name: 'demo', version: '1.0.0', snapshot, runGuard });
-    assert.equal((await check(valid)).serve, reviewPolicy !== 'block', 'ordinary review remains discretionary');
+    assert.equal((await check(valid)).serve, false, 'ordinary review requires a caller decision under every policy');
     for (const category of MANDATORY_CATEGORIES) {
       const cached = store.get('demo', '1.0.0');
       cached.binding.approval.authorization = { mandatoryHoldReasons: [category], behavioralCoverage: 'partial', explicitOverride: false };

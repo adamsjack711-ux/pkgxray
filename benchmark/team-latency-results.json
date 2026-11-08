@@ -1,0 +1,45 @@
+{
+  "node": "v26.8.2",
+  "platform": "darwin arm64",
+  "cpu": "Apple M1 Max",
+  "rounds": 20,
+  "fixture": {
+    "files": 26,
+    "archiveBytes": 2318
+  },
+  "scope": "In-process team gate plus disk cache, real guard/archive/static scan; OSV stubbed; excludes network, artifact download, process startup and human decision latency; concurrent timings are whole-batch wall time.",
+  "results": {
+    "cold": {
+      "medianMs": 29.949,
+      "p95Ms": 36.497,
+      "minMs": 28.368,
+      "maxMs": 63.737,
+      "measuredScans": 20,
+      "warmupScans": 0
+    },
+    "cacheHit": {
+      "medianMs": 0.036,
+      "p95Ms": 0.044,
+      "minMs": 0.031,
+      "maxMs": 0.096,
+      "measuredScans": 0,
+      "warmupScans": 20
+    },
+    "concurrent4": {
+      "medianMs": 28.448,
+      "p95Ms": 29.929,
+      "minMs": 26.984,
+      "maxMs": 29.98,
+      "measuredScans": 20,
+      "warmupScans": 0
+    },
+    "concurrent5": {
+      "medianMs": 28.465,
+      "p95Ms": 31.081,
+      "minMs": 26.742,
+      "maxMs": 31.6,
+      "measuredScans": 20,
+      "warmupScans": 0
+    }
+  }
+}
