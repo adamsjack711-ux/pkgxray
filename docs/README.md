@@ -1,7 +1,8 @@
 # pkgxray documentation
 
 The [top-level README](../README.md) is the project homepage — install, quick
-start, and a tour of the capabilities. Everything deeper lives here.
+start, and one reproducible verdict. This is the canonical detailed documentation
+index. Everything deeper lives here.
 
 ## User guides
 
@@ -13,6 +14,8 @@ start, and a tour of the capabilities. Everything deeper lives here.
 | [mcp-registry.md](mcp-registry.md) | MCP Registry metadata, ownership, release verification, and manual publication checklist |
 | [integrations/github-actions.md](integrations/github-actions.md) | Pull-request scans, scheduled rechecks, exact package scans, and the reusable GitHub Actions workflow |
 | [integrations/coding-agents.md](integrations/coding-agents.md) | Codex, Claude Code, Cursor, Windsurf, generic MCP/command agents, and Hookshot enforcement |
+| [enforced-install.md](enforced-install.md) | This checkout’s explicit approved-archive installation command and its boundaries |
+| [comparison.md](comparison.md) | Dated capability comparisons and source notes |
 | [configuration.md](configuration.md) | The `.pkgxray.json` policy file — schema, precedence, and the "tighten freely, loosen loudly" invariants |
 | [reference.md](reference.md) | Severity policy, `recheck` monitoring, performance numbers, JSON output, browser extension, cache server |
 | [benchmark.md](benchmark.md) | The calibration benchmark — how the 0-false-block claim is measured and regression-gated |
@@ -35,5 +38,5 @@ start, and a tour of the capabilities. Everything deeper lives here.
 | Doc | What it covers |
 |---|---|
 | [design.md](design.md) | Design principles and the reasoning behind them |
-| [design/](design/) | Internal design and triage working notes, kept for provenance |
+| [Maintainer materials](../maintainer/README.md) | Internal design notes, draft posts, and README guidance |
 | [adoption.md](adoption.md) | The playbook for getting pkgxray exercised against real-world traffic |

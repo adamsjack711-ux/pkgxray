@@ -3,7 +3,7 @@
 Internal design and triage notes kept for provenance. These are **working
 documents**, not user-facing docs — they record how a capability was specified
 and how the implementation was checked against that spec. For usage, see the
-[top-level README](../../README.md) and the [reference](../reference.md).
+[top-level README](../../README.md) and the [reference](../../docs/reference.md).
 
 | Doc | What it covers |
 |---|---|

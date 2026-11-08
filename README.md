@@ -29,8 +29,9 @@ npx --yes pkgxray@1.2.1 guard npm:express@4.21.0
 `pkgxray 1.2.1` · checked 2026-11-08 · exit 0
 
 ```text
-Verdict: SAFE
-- INFO — network-access in lib/request.js: Performs outbound network activity.
+Verdict: **SAFE**
+Findings:
+- **INFO - network-access** in `lib/request.js`: Performs outbound network activity.
 ```
 
 Source and vulnerability checks completed; direct dependencies were not requested.
