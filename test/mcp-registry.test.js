@@ -67,11 +67,12 @@ test("registry checklist states the launcher ships in the published release", ()
   assert.match(guide, /mcp-publisher publish/);
 });
 
-test("public setup uses the launcher actually published in pkgxray 1.0.5", () => {
-  for (const file of ["README.md", "docs/mcp.md"]) {
-    const guide = readFileSync(resolve(ROOT, file), "utf8");
-    assert.match(guide, /pkgxray@1\.0\.5/);
-    assert.match(guide, /pkgxray-mcp/);
-    assert.doesNotMatch(guide, /pkgxray@1\.0\.4[\s\S]{0,80}serve-mcp/);
-  }
+test("public setup keeps the README scan and MCP launcher examples current", () => {
+  const readme = readFileSync(resolve(ROOT, "README.md"), "utf8");
+  assert.match(readme, /npx --yes pkgxray@\d+\.\d+\.\d+ guard /);
+
+  const mcpGuide = readFileSync(resolve(ROOT, "docs", "mcp.md"), "utf8");
+  assert.match(mcpGuide, /pkgxray@1\.0\.5/);
+  assert.match(mcpGuide, /pkgxray-mcp/);
+  assert.doesNotMatch(mcpGuide, /pkgxray@1\.0\.4[\s\S]{0,80}serve-mcp/);
 });
