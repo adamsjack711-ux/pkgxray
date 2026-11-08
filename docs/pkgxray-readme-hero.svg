@@ -1,39 +1,53 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="title desc">
   <title id="title">pkg x-ray</title>
-  <desc id="desc">A static ASCII pkg x-ray wordmark over a dim monochrome character field in a rounded dark panel.</desc>
+  <desc id="desc">A static, font-independent ASCII wordmark in a rounded monochrome terminal panel.</desc>
   <defs>
-    <clipPath id="panel"><rect x="1" y="1" width="1198" height="388" rx="24"/></clipPath>
     <linearGradient id="surface" x2="0" y2="1">
-      <stop offset="0" stop-color="#090a0c"/>
+      <stop offset="0" stop-color="#0b0c0e"/>
       <stop offset="1" stop-color="#050607"/>
     </linearGradient>
-    <radialGradient id="shade">
-      <stop offset="0.12" stop-color="#08090b" stop-opacity="0.02"/>
-      <stop offset="0.64" stop-color="#08090b" stop-opacity="0.18"/>
+    <radialGradient id="shade" cx="50%" cy="47%" r="74%">
+      <stop offset="0.18" stop-color="#08090b" stop-opacity="0"/>
+      <stop offset="0.72" stop-color="#08090b" stop-opacity="0.24"/>
       <stop offset="1" stop-color="#08090b" stop-opacity="0.78"/>
     </radialGradient>
-    <pattern id="field" width="360" height="24" patternUnits="userSpaceOnUse">
-      <text x="0" y="17" textLength="360" lengthAdjust="spacingAndGlyphs" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#eef0f1" opacity="0.25">.:;-=+xX#%@.:;-=+xX#%@.:;-=+xX#%@.:;-=+</text>
+    <pattern id="field" width="178" height="88" patternUnits="userSpaceOnUse">
+      <g fill="#d9dde0" opacity="0.27">
+        <rect x="8" y="10" width="12" height="2" rx="1"/>
+        <rect x="29" y="10" width="4" height="2" rx="1"/>
+        <circle cx="53" cy="11" r="1.25"/>
+        <rect x="76" y="9" width="8" height="2" rx="1"/>
+        <path d="M111 8v6m-3-3h6" fill="none" stroke="#d9dde0" stroke-width="1.2"/>
+        <rect x="143" y="10" width="17" height="2" rx="1"/>
+        <rect x="18" y="34" width="5" height="2" rx="1"/>
+        <circle cx="43" cy="35" r="1.1"/>
+        <rect x="63" y="33" width="14" height="2" rx="1"/>
+        <rect x="91" y="34" width="3" height="2" rx="1"/>
+        <circle cx="129" cy="35" r="1.2"/>
+        <rect x="151" y="33" width="9" height="2" rx="1"/>
+        <rect x="5" y="59" width="17" height="2" rx="1"/>
+        <path d="M47 56v6m-3-3h6" fill="none" stroke="#d9dde0" stroke-width="1.1"/>
+        <rect x="76" y="59" width="4" height="2" rx="1"/>
+        <circle cx="102" cy="60" r="1.2"/>
+        <rect x="122" y="58" width="12" height="2" rx="1"/>
+        <rect x="158" y="59" width="7" height="2" rx="1"/>
+        <circle cx="30" cy="78" r="1.1"/>
+        <rect x="57" y="76" width="10" height="2" rx="1"/>
+        <rect x="93" y="77" width="16" height="2" rx="1"/>
+        <path d="M141 74v6m-3-3h6" fill="none" stroke="#d9dde0" stroke-width="1.1"/>
+      </g>
     </pattern>
-    <pattern id="field-soft" width="360" height="32" patternUnits="userSpaceOnUse">
-      <text x="24" y="22" textLength="335" lengthAdjust="spacingAndGlyphs" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#c7cbd0" opacity="0.17">xX#%@.:;-=+xX#%@.:;-=+xX#%@.:;-=+xX#%@.</text>
+    <pattern id="at-mark" width="20" height="25" x="10" y="7" patternUnits="userSpaceOnUse">
+      <circle cx="10" cy="12.5" r="8.1" fill="#f1f2f3"/>
+      <circle cx="10" cy="12.5" r="4.25" fill="#090a0c"/>
+      <circle cx="9.3" cy="12.2" r="1.8" fill="#f1f2f3"/>
+      <path d="M10.4 12.8c1.7-.7 3.2-.3 4.3.8" fill="none" stroke="#f1f2f3" stroke-width="1.65" stroke-linecap="round"/>
     </pattern>
   </defs>
-  <g clip-path="url(#panel)">
-    <rect width="1200" height="390" fill="url(#surface)"/>
-    <rect width="1200" height="390" fill="url(#field)"/>
-    <rect width="1200" height="390" fill="url(#field-soft)"/>
-    <rect width="1200" height="390" fill="url(#shade)"/>
-    <g fill="#f1f2f3" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="29" letter-spacing="1.2" xml:space="preserve">
-      <text x="155" y="98">@@@   @  @   @@        @  @               @@   @  @</text>
-      <text x="155" y="130">@  @  @ @   @  @        @@         @ @@     @  @  @</text>
-      <text x="155" y="162">@@@   @@    @  @        @@         @@     @@@   @@@</text>
-      <text x="155" y="194">@     @ @    @@@        @@   @@@@  @     @  @     @</text>
-      <text x="155" y="226">@     @  @     @        @@         @     @  @    @</text>
-      <text x="155" y="258">@     @  @  @  @       @  @        @      @@@   @@</text>
-      <text x="155" y="290">@     @  @   @@        @  @        @           @@</text>
-    </g>
-    <text x="40" y="354" fill="#a9adb2" opacity="0.42" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="10" letter-spacing="2">LOCAL · STATIC · EVIDENCE-LED</text>
-  </g>
-  <rect x="1" y="1" width="1198" height="388" rx="24" fill="none" stroke="#c4c8ce" stroke-opacity="0.17" stroke-width="2"/>
+  <rect x="1" y="1" width="1198" height="388" rx="24" fill="url(#surface)"/>
+  <rect x="2" y="2" width="1196" height="386" rx="23" fill="url(#field)" opacity="0.62"/>
+  <path d="M2 72H1198M2 160H1198M2 248H1198M2 336H1198" stroke="#d9dde0" stroke-opacity="0.035" stroke-width="1"/>
+  <rect x="2" y="2" width="1196" height="386" rx="23" fill="url(#shade)"/>
+  <path fill="url(#at-mark)" d="M90 107h20v25h-20z M110 107h20v25h-20z M130 107h20v25h-20z M90 132h20v25h-20z M150 132h20v25h-20z M90 157h20v25h-20z M110 157h20v25h-20z M130 157h20v25h-20z M90 182h20v25h-20z M90 207h20v25h-20z M90 232h20v25h-20z M90 257h20v25h-20z M210 107h20v25h-20z M270 107h20v25h-20z M210 132h20v25h-20z M250 132h20v25h-20z M210 157h20v25h-20z M230 157h20v25h-20z M210 182h20v25h-20z M250 182h20v25h-20z M210 207h20v25h-20z M270 207h20v25h-20z M210 232h20v25h-20z M270 232h20v25h-20z M210 257h20v25h-20z M270 257h20v25h-20z M350 107h20v25h-20z M370 107h20v25h-20z M330 132h20v25h-20z M390 132h20v25h-20z M330 157h20v25h-20z M390 157h20v25h-20z M350 182h20v25h-20z M370 182h20v25h-20z M390 182h20v25h-20z M390 207h20v25h-20z M330 232h20v25h-20z M390 232h20v25h-20z M350 257h20v25h-20z M370 257h20v25h-20z M550 107h20v25h-20z M610 107h20v25h-20z M570 132h20v25h-20z M590 132h20v25h-20z M570 157h20v25h-20z M590 157h20v25h-20z M570 182h20v25h-20z M590 182h20v25h-20z M570 207h20v25h-20z M590 207h20v25h-20z M550 232h20v25h-20z M610 232h20v25h-20z M550 257h20v25h-20z M610 257h20v25h-20z M670 182h20v25h-20z M690 182h20v25h-20z M710 182h20v25h-20z M730 182h20v25h-20z M790 132h20v25h-20z M830 132h20v25h-20z M850 132h20v25h-20z M790 157h20v25h-20z M810 157h20v25h-20z M790 182h20v25h-20z M790 207h20v25h-20z M790 232h20v25h-20z M790 257h20v25h-20z M930 107h20v25h-20z M950 107h20v25h-20z M970 132h20v25h-20z M930 157h20v25h-20z M950 157h20v25h-20z M970 157h20v25h-20z M910 182h20v25h-20z M970 182h20v25h-20z M910 207h20v25h-20z M970 207h20v25h-20z M930 232h20v25h-20z M950 232h20v25h-20z M970 232h20v25h-20z M1030 107h20v25h-20z M1090 107h20v25h-20z M1030 132h20v25h-20z M1090 132h20v25h-20z M1050 157h20v25h-20z M1070 157h20v25h-20z M1090 157h20v25h-20z M1090 182h20v25h-20z M1070 207h20v25h-20z M1050 232h20v25h-20z M1070 232h20v25h-20z M1030 257h20v25h-20z M1050 257h20v25h-20z"/>
+  <rect x="1" y="1" width="1198" height="388" rx="24" fill="none" stroke="#c4c8ce" stroke-opacity="0.18" stroke-width="2"/>
 </svg>
