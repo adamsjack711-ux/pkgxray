@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="title desc">
+  <title id="title">pkg x-ray</title>
+  <desc id="desc">A static ASCII pkg x-ray wordmark over a dim monochrome character field in a rounded dark panel.</desc>
+  <defs>
+    <clipPath id="panel"><rect x="1" y="1" width="1198" height="388" rx="24"/></clipPath>
+    <linearGradient id="surface" x2="0" y2="1">
+      <stop offset="0" stop-color="#090a0c"/>
+      <stop offset="1" stop-color="#050607"/>
+    </linearGradient>
+    <radialGradient id="shade">
+      <stop offset="0.12" stop-color="#08090b" stop-opacity="0.02"/>
+      <stop offset="0.64" stop-color="#08090b" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#08090b" stop-opacity="0.78"/>
+    </radialGradient>
+    <pattern id="field" width="360" height="24" patternUnits="userSpaceOnUse">
+      <text x="0" y="17" textLength="360" lengthAdjust="spacingAndGlyphs" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#eef0f1" opacity="0.25">.:;-=+xX#%@.:;-=+xX#%@.:;-=+xX#%@.:;-=+</text>
+    </pattern>
+    <pattern id="field-soft" width="360" height="32" patternUnits="userSpaceOnUse">
+      <text x="24" y="22" textLength="335" lengthAdjust="spacingAndGlyphs" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#c7cbd0" opacity="0.17">xX#%@.:;-=+xX#%@.:;-=+xX#%@.:;-=+xX#%@.</text>
+    </pattern>
+  </defs>
+  <g clip-path="url(#panel)">
+    <rect width="1200" height="390" fill="url(#surface)"/>
+    <rect width="1200" height="390" fill="url(#field)"/>
+    <rect width="1200" height="390" fill="url(#field-soft)"/>
+    <rect width="1200" height="390" fill="url(#shade)"/>
+    <g fill="#f1f2f3" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="29" letter-spacing="1.2" xml:space="preserve">
+      <text x="155" y="98">@@@   @  @   @@        @  @               @@   @  @</text>
+      <text x="155" y="130">@  @  @ @   @  @        @@         @ @@     @  @  @</text>
+      <text x="155" y="162">@@@   @@    @  @        @@         @@     @@@   @@@</text>
+      <text x="155" y="194">@     @ @    @@@        @@   @@@@  @     @  @     @</text>
+      <text x="155" y="226">@     @  @     @        @@         @     @  @    @</text>
+      <text x="155" y="258">@     @  @  @  @       @  @        @      @@@   @@</text>
+      <text x="155" y="290">@     @  @   @@        @  @        @           @@</text>
+    </g>
+    <text x="40" y="354" fill="#a9adb2" opacity="0.42" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="10" letter-spacing="2">LOCAL · STATIC · EVIDENCE-LED</text>
+  </g>
+  <rect x="1" y="1" width="1198" height="388" rx="24" fill="none" stroke="#c4c8ce" stroke-opacity="0.17" stroke-width="2"/>
+</svg>
