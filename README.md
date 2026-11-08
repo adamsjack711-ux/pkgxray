@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/pkgxray-readme-hero.svg" alt="pkg x-ray, written in static ASCII lettering over a dim character field" width="820">
+  <img src="docs/pkgxray-readme-hero.png" alt="pkg x-ray, written in static ASCII lettering over a dim character field" width="820">
 </p>
 
 <p align="center"><sub>PRE-INSTALL PACKAGE SECURITY</sub></p>
