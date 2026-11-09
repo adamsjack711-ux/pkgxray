@@ -1,0 +1,28 @@
+name: Bug or missing flow
+description: Report an incorrect result or a missing supported connection.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Use synthetic code and no real secrets. For exploitable scanner flaws, see SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: Commit and runtime
+      description: Compose-ray commit, Node version, OS, and pkgxray build if used.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Command, inert source files, and relevant package/lockfile layout.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual results
+      description: Include reported gaps and a harmless control if possible.
+    validations:
+      required: true

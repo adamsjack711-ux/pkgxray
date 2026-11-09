@@ -1,0 +1,19 @@
+name: Coverage or integration proposal
+description: Propose a useful supported behavior or integration improvement.
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: What should a user be able to investigate?
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Sensitive and harmless examples
+      description: Show the difference the scanner should preserve. Use synthetic data.
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Coverage and trust boundaries
+      description: What should remain incomplete? Does this affect pkgxray decisions?

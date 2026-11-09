@@ -1,8 +1,14 @@
 {
   "name": "package-compose-ray",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
-  "description": "Research prototype for tracing sensitive flows across package boundaries.",
+  "description": "Check the packages. Trace the connections. Cross-package dataflow analysis alongside pkgxray.",
+  "license": "MIT",
+  "author": "Jack Adams-Lovell",
+  "repository": { "type": "git", "url": "git+https://github.com/adamsjack711-ux/package-compose-ray.git" },
+  "bugs": { "url": "https://github.com/adamsjack711-ux/package-compose-ray/issues" },
+  "homepage": "https://github.com/adamsjack711-ux/package-compose-ray#readme",
+  "keywords": ["pkgxray", "supply-chain-security", "static-analysis", "dataflow", "npm", "security"],
   "type": "module",
   "bin": { "compose-ray": "./bin/compose-ray.mjs" },
   "scripts": {
@@ -10,7 +16,8 @@
     "test": "node --test test/*.test.mjs",
     "demo": "node examples/demo.mjs",
     "demo:real": "node examples/real-package-demo.mjs",
-    "demo:strings": "node examples/string-flow-demo.mjs"
+    "demo:strings": "node examples/string-flow-demo.mjs",
+    "demo:integration": "node examples/together.mjs"
   },
   "engines": { "node": ">=18" }
 }

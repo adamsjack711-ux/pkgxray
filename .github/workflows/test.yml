@@ -1,7 +1,10 @@
-name: Test prototype
+name: Tests
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,3 +23,29 @@ jobs:
       - run: npm run demo
       - run: npm run demo:real
       - run: npm run demo:strings
+  pkgxray-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: compose-ray
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: adamsjack711-ux/pkgxray
+          ref: 1b48ce81767acfa032fa2e7a2b37ec00cc4048f3
+          path: pkgxray
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test test/integration.test.mjs
+        working-directory: compose-ray
+        env:
+          PKGXRAY_CHECKOUT: ${{ github.workspace }}/pkgxray
+      - run: npm run demo:integration -- ../pkgxray
+        working-directory: compose-ray

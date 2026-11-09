@@ -1,212 +1,181 @@
-# package-compose-ray
+<div align="center">
 
-A local research prototype that traces environment data across npm package
-boundaries into modeled network calls. It complements pkgxray's individual
-package analysis with an explicit source → call → sink report.
+<img src="docs/assets/banner.svg" alt="Compose-ray — Check the packages. Trace the connections." width="900">
 
-**Status: CommonJS prototype, version 0.2.1.** This is not a production security
-scanner, package safety verdict, or replacement for pkgxray. The project remains
-private to npm publication (`private: true`); the GitHub repository is public.
+# Compose-ray
+
+**pkgxray checks the packages. Compose-ray follows the data between them.**
+
+[![Tests](https://github.com/adamsjack711-ux/package-compose-ray/actions/workflows/test.yml/badge.svg)](https://github.com/adamsjack711-ux/package-compose-ray/actions/workflows/test.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-67e8c2)](LICENSE)
+[![Status: prototype](https://img.shields.io/badge/status-prototype-f4b860)](docs/roadmap.md)
+
+[Try it](#try-it) · [How it fits](#how-it-fits-with-pkgxray) · [Documentation](docs/README.md) · [Roadmap](docs/roadmap.md) · [Contribute](CONTRIBUTING.md)
+
+</div>
+
+An app can use one package to read a token, another to format it, and a third
+to send a request. Reviewing each package separately does not explain the whole
+journey. **Compose-ray follows that journey and gives you a source-to-network
+trail with package versions, files, and line numbers.**
+
+It complements [pkgxray](https://github.com/adamsjack711-ux/pkgxray), which checks
+packages for suspicious behavior and supply-chain risk. Together, they can put
+package findings and cross-package connections into one review report.
+
+> **Working prototype · v0.3.0.** The local integration runs real pkgxray static
+> checks on selected source files. Verified registry acquisition and installation
+> approval are future integration work. A clear flow result is not proof of safety.
+
+## See the connection
+
+```text
+ demo-reader@1.0.0       demo-formatter@1.0.0       demo-sender@1.0.0
+ ┌─────────────────┐    ┌────────────────────┐    ┌───────────────────┐
+ │ Read NPM_TOKEN  │ ─► │ Format as JSON     │ ─► │ Send HTTP request │
+ └─────────────────┘    └────────────────────┘    └───────────────────┘
+          └──────────── Compose-ray follows the data ──────────┘
+
+ REVIEW: environment data reaches a network call across package boundaries.
+ Evidence: source → return → call → return → call → sink, with file locations.
+```
+
+The transfer may be intentional. The report gives you the route to investigate;
+it does not label every token-bearing request as malware.
 
 ## Try it
 
-Node.js 18 or newer is required. No dependency installation is needed; the
-third-party Acorn parser is bundled with its license and provenance metadata.
+Use Node.js 22 or 24 for the CI-tested setup. Node.js 18+ is supported by the
+standalone scanner. No `npm install` is needed; the parser is bundled.
 
 ```sh
+git clone https://github.com/adamsjack711-ux/package-compose-ray.git
+cd package-compose-ray
 npm test
-npm run demo
-npm run demo:real
 npm run demo:strings
 ```
 
-The demo creates disposable synthetic package trees and analyzes two cases:
+The offline demo checks credential formatting alongside harmless controls:
 
-- A token passed to another package's sender function → `review`, with the
-  package identities and source, call, and network sink locations.
-- A public constant passed to that same sender → `no-flow-found`.
-
-Fixture code is never executed, installed, or downloaded. The demo deletes its
-own temporary trees after analysis.
-
-`demo:real` parses a pinned copy of `ms@2.1.3`: numeric formatting completes,
-credentials alongside formatted output are flagged, and regex parsing/unknown
-environment inputs remain incomplete. Package code is never executed. This is
-a selected regression fixture, not a general npm accuracy benchmark.
-
-`demo:strings` checks the formatting regressions repaired in 0.2.1:
-`"Bearer " + process.env.TOKEN + " suffix"` and
-`"payload=" + JSON.stringify({token: process.env.TOKEN})` now retain a
-cross-package credential finding. The paired public-data examples stay clear;
-custom serialization callbacks remain incomplete.
-
-## Scan an existing source snapshot
-
-Supply an npm v2/v3 `package-lock.json`, a matching root `package.json`, and
-materialized package sources in their locked `node_modules` locations. A copied
-or otherwise reviewed source tree is enough; compose-ray never runs npm install.
-
-```sh
-node bin/compose-ray.mjs /path/to/source-tree --entry index.js
-node bin/compose-ray.mjs /path/to/source-tree --entry index.js --json
+```text
+review        Credential with prefix and suffix (1 finding(s), 0 gap(s))
+review        Credential serialized then prefixed (1 finding(s), 0 gap(s))
+review        Mixed template and concatenation (1 finding(s), 0 gap(s))
+no-flow-found Harmless prefix and suffix (0 finding(s), 0 gap(s))
+no-flow-found Harmless JSON formatting (0 finding(s), 0 gap(s))
+incomplete    Unsupported custom serialization (0 finding(s), 2 gap(s))
 ```
 
-The entry is a file relative to the source root, defaulting to `index.js`.
-The CLI reads files beneath that root and emits its report to stdout. It does
-not execute target code, read actual environment values, or make network calls.
-Source strings such as `process.env.NPM_TOKEN` are tracked symbolically.
+### Run both engines
 
-| Result | Exit | Meaning |
+Point to a **trusted pkgxray checkout or unpacked distribution**, separate from
+the source being scanned. This loads the scanner's code; target packages remain
+inert source strings.
+
+```sh
+npm run demo:integration -- /path/to/pkgxray
+```
+
+The demo creates disposable synthetic packages, runs both real engines, prints
+the credential trail, and checks three controls:
+
+```text
+COMPOSE-RAY + PKGXRAY
+Check the packages. Trace the connections.
+
+Decision: REVIEW | Coverage: partial | Execution: completed
+...
+Connections: review (1 flow(s))
+  CROSS-PACKAGE environment data → network
+...
+CONTROL CASES
+public       decision=review flow=no-flow-found coverage=partial
+unsupported  decision=review flow=incomplete coverage=partial
+blocked      decision=block flow=no-flow-found coverage=partial
+```
+
+The public-data control still needs review because the combined scan does not
+inventory every file or verify registry artifacts. The blocked control shows
+the other direction: pkgxray flags an uncalled private-key reader in a selected
+file. **A clear Compose-ray result cannot erase pkgxray evidence.**
+The demo exits `0` when its assertions pass; that is not a package approval.
+
+### Scan your own snapshot
+
+Supply an npm v2/v3 lockfile and matching local package sources. Compose-ray does
+not download dependencies or run installation scripts.
+
+```sh
+# Trace connections from a CommonJS entry file.
+node bin/compose-ray.mjs /path/to/project --entry index.js
+
+# Add package checks and emit the complete combined evidence report.
+node bin/compose-ray.mjs /path/to/project --entry index.js \
+  --pkgxray /path/to/pkgxray --json > combined-report.json
+```
+
+| Mode | Results and exit codes |
+| --- | --- |
+| Flow only | `0` no modeled flow · `1` review finding · `2` incomplete or invalid usage |
+| With pkgxray | `2` block or invalid usage · `3` review, including incomplete coverage |
+
+Combined mode deliberately has no install-allow result. Use the JSON fields to
+distinguish findings, execution failures, and coverage limits.
+
+## How it fits with pkgxray
+
+| Responsibility | pkgxray | Compose-ray |
 | --- | --- | --- |
-| `no-flow-found` | 0 | No modeled flow was found from this entry in the supported subset. This does not mean safe. |
-| `review` | 1 | Environment data reaches a modeled network call. The transfer may be legitimate. |
-| `incomplete` | 2 | Input, semantics, resolution or budget gaps prevent completing the analysis. Any findings already collected remain in the report. |
+| Package inspection | Suspicious code, supply-chain evidence, vulnerability checks in its full workflow | Consumes package sources and locked identities |
+| Flow analysis | Existing within-package analysis | Follows supported calls and values across dependencies |
+| Review evidence | Package findings and severity | Source, call, return, and network locations |
+| Install decisions | Owns acquisition, policy, and artifact approval in its full workflow | Adds evidence; never issues installation approval |
 
-Invalid CLI arguments also exit 2. A finding is not a malware determination:
-legitimate clients send credentials to intended services. Destination policy and
-approval rules are not implemented yet.
+**Available today:** an offline adapter runs pkgxray's `auditEvidence` against
+the manifests and sources selected by Compose-ray. File hashes are checked
+between scans, nested package instances stay distinct, and both engines' original
+results remain in the combined JSON. The adapter does not run pkgxray's full
+`guard`, vulnerability lookup, provenance verification, or install workflow.
 
-## What works
+**Next:** consume pkgxray's verified package snapshots, inventory the intended
+scan scope, and feed composition evidence into its policy without weakening
+existing holds. See the [integration contract](docs/integration.md).
 
-- npm lockfile v2/v3 package-instance identities, including scoped names, hoisted
-  dependencies and nested versions. Source manifest names/versions must match
-  the locked instances.
-- Literal CommonJS `require`, package `main`, `.js`/explicit `.cjs` files, legacy
-  directory indexes, and exact string `exports` targets. A package instance is
-  selected from the importing file's location, not just its name.
-- `var` hoisting/redeclaration, `const`/`let` block scope, local variable assignment,
-  literal properties and object/array values, function declarations/expressions/
-  arrows, identifier parameters, return values and direct CommonJS exports.
-- Primitive arithmetic/comparisons, conversions, selected `Math` functions,
-  concatenation/templates, `typeof`, known-condition `if`/ternary branches and
-  short-circuit operators. Unknown conditions explore both alternatives with
-  saved/restored state and an explicit `uncertain-control-flow` gap. Such results
-  remain incomplete; they do not claim to prove path feasibility.
-- `process.env` sources, `fetch` arguments, Node HTTP/HTTPS request/get arguments
-  and request-stream write/end sinks. `JSON.stringify(value)` preserves tracked
-  data when no custom serialization callback is present.
-- Primitive result types are tracked separately from their unknown contents and
-  source traces. Repeated concatenation, templates, supported conversions and
-  JSON formatting preserve those traces through later operations and package
-  returns. An unknown call or arbitrary object does not become a modeled string.
-- File/line/column evidence, import edges, source/call/return/sink traces, and
-  per-instance hashes of the manifest and source files actually read.
+## What makes it useful
 
-Variable/branch semantics follow a bounded subset of the
-[ECMAScript statement specification](https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html).
-The resolver uses a deliberately limited subset of the documented
-[npm lockfile format](https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/)
-and [Node CommonJS resolution](https://nodejs.org/api/modules.html#all-together).
-It is not a complete Node loader.
+- **Follow the actual connection.** An unused sender or an unrelated public
+  message does not become a credential-flow finding just because both exist.
+- **Keep the right package instance.** Nested and hoisted versions resolve from
+  the calling file, using the npm lockfile and source manifests.
+- **Track ordinary formatting.** Concatenation, templates, supported primitive
+  conversions, JSON formatting, and package returns retain source traces.
+- **Explain the evidence.** Every route cites source files, locations, and package
+  identities; JSON preserves findings and analysis gaps from both engines.
+- **Keep uncertainty visible.** Unsupported semantics and exhausted budgets
+  prevent a completed flow result. A package block always takes precedence.
+- **Read target code without running it.** No target imports, lifecycle scripts,
+  real environment-secret reads, or network requests are needed for these scans.
 
-## Explicit limits
+## Coverage, honestly
 
-Coverage is scoped to one entry and the functions it calls. Uncalled exports,
-other entrypoints, lifecycle scripts and runtime-fetched payloads are outside
-that scope. The parser budgets the entire loaded module, but semantic gaps are
-reported when unsupported constructs are reached on the selected entry path.
-Dormant function bodies no longer prevent analysis of a supported call. Syntax
-parse errors still stop that module. Unsupported reached statements produce
-explicit gaps; later supported statements can still contribute findings.
+The scanner models a bounded CommonJS subset from one entrypoint. ESM, loops,
+async behavior, regex execution, most callbacks, and many runtime APIs are not
+modeled. Uncalled functions and other entrypoints are outside the flow scope.
+Selected real-package paths work; broad npm compatibility has not been established.
 
-These cases return `incomplete`, rather than an implied safety verdict:
+`no-flow-found` means no modeled flow was found in the reported scope. It does
+not mean an application is safe. The tests are regression evidence, not an
+independent detection-rate benchmark.
 
-- ESM/TypeScript/native modules, dynamic require, conditional/wildcard exports,
-  package self-references, nested package scopes, workspace links and symlinks.
-- Unknown branch feasibility, loops/switches, async/generators, destructuring,
-  getters, classes, regex execution, most builtins/APIs, unknown calls, outer-scope
-  writes and object mutation beyond top-level direct CommonJS exports, exceptions,
-  custom object coercion/serialization, import cycles and recursive calls.
-- Missing source, manifest mismatches, unlocked imported packages and exhausted
-  file, graph, evaluation or output budgets.
+[Full scanner reference](docs/reference.md) · [Threat model](SECURITY.md) ·
+[Architecture](docs/architecture.md) · [Changelog](CHANGELOG.md)
 
-The default bounds are 2,048 locked instances, 128 loaded modules, 256 KiB per
-manifest/source file, a 2 MiB lockfile, 4 MiB total manifest/source bytes, 50,000
-syntax nodes, 50,000 evaluation steps, depth 64, 100 findings, 100 gaps and 32
-tracked paths per value. Alternative control flow is limited to 64 paths and
-computed strings to the configured per-file size limit. The API permits lowering
-these bounds.
+## Build with us
 
-Use a stable local snapshot. Paths are checked for traversal and symlinks, but
-this is not a filesystem sandbox against another process actively replacing
-parent directories during a scan. Input bytes and parser work are bounded;
-this prototype has not received a hostile-input security audit.
+The most useful contribution is a small example that exposes a missing flow,
+paired with a harmless example that should stay clear. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md) and the [roadmap](docs/roadmap.md).
 
-`analyzedContentSha256` fingerprints only the recorded file list and those
-files' hashes. It is **not** a hash of an entire package archive. Lockfile
-integrity is reported as metadata and is **not verified** against a registry
-archive. Matching a manifest name/version does not authenticate source bytes.
-
-## Programmatic use
-
-```js
-import { analyzeProject } from './src/analyze.mjs';
-
-const report = analyzeProject({
-  root: '/path/to/source-tree',
-  entry: 'index.js',
-  limits: { maxModules: 64 },
-});
-```
-
-The report includes `verdict`, `coverage`, `findings`, `gaps`, `packages`,
-`imports`, `lockfileSha256`, resource counters and the applied limits. Analysis
-input errors become structured gaps; invalid API limit options throw.
-
-## Verification
-
-The test suite covers the sensitive/benign pair, unused capabilities, relative
-imports, nested-version selection, hoisted/scoped imports, return/object flows,
-HTTP streams, var/lexical scope, branch isolation and early returns, the pinned
-real `ms` numeric path, resolution limits, unsupported semantics, source identity, input
-bounds, cycles, symlinks, evidence hashes, CLI behavior, and parser provenance.
-Formatting regressions include repeated transformations, harmless pairs,
-overwrites, returned values, unknown branches, custom coercion, serialization
-callbacks/cycles, and trace deduplication without hiding budget exhaustion.
-All examples use synthetic data and non-routable `.invalid` destinations.
-
-## Confirmed boundary
-
-In the reviewed pkgxray checkout, `src/flow-analysis.js` follows relative local
-imports. Bare package imports become symbolic values rather than resolving to
-the dependency's source. Supplying both modules to the engine does not close
-that boundary.
-
-The probe compares the same credential-to-network flow through two imports:
-
-- `require("./sender.js")`: produces a `credential-export` flow hint.
-- `require("sender")`: no flow hint and no coverage gap in this fixture.
-
-Both variants also have a benign control that sends a public constant.
-This establishes a limitation of the flow engine. It does not establish the
-verdict of a complete package scan, and a credential flow alone does not prove
-malice: an authorized service can legitimately receive credentials.
-
-Run against a trusted local pkgxray checkout:
-
-```sh
-npm run probe -- /path/to/pkgxray/supply-chain-auditor
-```
-
-No dependencies need installing. The probe loads the supplied scanner and
-passes it synthetic source strings. It never executes fixture code or makes
-network requests. Exit 0 means the controls pass and the historical gap
-reproduces; exit 1 means the baseline needs review; exit 2 means invalid usage.
-
-The reviewed checkout was on `architecture/1.3-auto-resolution` at `3ff5fa5`
-with additional uncommitted changes. These observations describe that local
-state, not a claim about all published pkgxray versions.
-
-## Next increments
-
-1. Add string and regex summaries, then bounded switch/array/callback handling,
-   with paired sensitive/benign cases from real packages. The existing unknown
-   input scenarios for `ms`, `wordwrap` and `qs` still return incomplete.
-2. Reduce noisy coverage diagnostics without hiding the first blocking reason
-   or resource exhaustion. Broader traversal of complex trees can now hit budgets.
-3. Add narrowly specified ESM support and bind supplied trees to verified
-   archives before treating them as authenticated registry evidence.
-4. Define a versioned pkgxray integration contract. One scanner's clean result
-   must never erase the other's uncertainty.
-
-No registry package or production scanner release has been published.
+MIT licensed. Vendored Acorn and the pinned `ms` test fixture retain their own
+license and provenance files. The repository is public; no npm release is
+published by this project.
