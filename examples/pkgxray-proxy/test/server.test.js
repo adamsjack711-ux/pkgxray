@@ -198,13 +198,16 @@ for (const kind of ['service', 'metadata-post']) {
   }
 }
 
-test('registry passthrough deadline cancels blocked client output', { timeout: 4000 }, async () => {
-  const p = await startProxy({ metadataTimeoutMs: 160, runGuard: async () => ({ decision: 'block', findings: [] }) });
+test('registry passthrough deadline cancels blocked client output', { timeout: 5000 }, async () => {
+  // Leave enough time for the large upstream response to start on a loaded
+  // runner; this case tests stalled delivery, not connection startup.
+  const p = await startProxy({ metadataTimeoutMs: 1000, runGuard: async () => ({ decision: 'block', findings: [] }) });
   let request, response, completion;
   try {
     await new Promise((resolve, reject) => {
       request = http.get(`${p.url}/-/transport-blocked`, { agent: false }, incoming => {
         response = incoming;
+        if (response.statusCode !== 200) { reject(new Error(`Expected upstream body, received ${response.statusCode}`)); return; }
         completion = new Promise((complete, failed) => {
           response.on('end', complete);
           response.on('error', failed);
@@ -216,6 +219,9 @@ test('registry passthrough deadline cancels blocked client output', { timeout: 4
       });
       request.on('error', reject);
     });
+    // Upstream closure can precede downstream delivery when OS socket buffers
+    // absorb queued data. Keep the client paused past the actual deadline.
+    await new Promise(resolve => setTimeout(resolve, 1200));
     await waitForTransportCleanup();
     response.resume();
     await assert.rejects(completion, /aborted|reset|closed/i);
