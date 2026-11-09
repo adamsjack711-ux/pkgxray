@@ -33,7 +33,11 @@ for (const file of roots.flatMap(filesUnder).sort()) {
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const server = JSON.parse(fs.readFileSync(path.join(ROOT, "server.json"), "utf8"));
 if (Object.keys(pkg.dependencies || {}).length) failures.push("package.json must keep runtime dependencies empty");
-if (server.version !== pkg.version || server.packages?.[0]?.version !== pkg.version) {
+// Registry entries are immutable. Metadata-only revisions sort after the
+// current release and before the next patch, while retaining its exact package.
+const nextRegistryPatch = pkg.version.replace(/\.(\d+)$/, (_, patch) => `.${Number(patch) + 1}`);
+const registryRevision = new RegExp(`^${nextRegistryPatch.replaceAll(".", "\\.")}-registry\\.[1-9]\\d*$`);
+if ((server.version !== pkg.version && !registryRevision.test(server.version)) || server.packages?.[0]?.version !== pkg.version) {
   failures.push("package.json and server.json versions are not synchronized");
 }
 

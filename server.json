@@ -4,12 +4,19 @@
   "title": "pkgxray",
   "description": "Pre-install security scans for npm packages, MCP servers, and AI agents with cited verdict evidence.",
   "websiteUrl": "https://pkgxray.ca/",
+  "icons": [
+    {
+      "src": "https://pkgxray.ca/assets/favicon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": ["any"]
+    }
+  ],
   "repository": {
     "url": "https://github.com/adamsjack711-ux/pkgxray",
     "source": "github",
     "id": "1276320499"
   },
-  "version": "1.2.1",
+  "version": "1.2.2-registry.1",
   "remotes": [
     {
       "type": "streamable-http",

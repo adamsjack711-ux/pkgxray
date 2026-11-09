@@ -13,8 +13,10 @@ export const tools = [
     description: 'Statically inspect up to 16 KiB across 16 supplied source files. Does not download or execute packages. Results cover only the supplied evidence, not a verified package artifact. Never send credentials or private source without permission.',
     annotations: { ...annotations, openWorldHint: false },
     inputSchema: { type: 'object', additionalProperties: false, required: ['sourceFiles'], properties: {
-      packageName: { type: 'string', maxLength: 214 },
-      sourceFiles: { type: 'object', minProperties: 1, maxProperties: 16, additionalProperties: { type: 'string' } }
+      packageName: { type: 'string', maxLength: 214, description: 'Optional package label for the report, such as express or @scope/package. This label does not trigger a package download or establish its identity; omitted labels use supplied-evidence.' },
+      sourceFiles: { type: 'object', minProperties: 1, maxProperties: 16,
+        description: 'Map 1–16 file names to their literal source text, for example {"index.js":"module.exports = 42;"}. Names are report labels, not paths to read. File names and contents together must fit within 16 KiB of UTF-8 data. Include only source you are permitted to share, with credentials removed.',
+        additionalProperties: { type: 'string', description: 'Literal source text for the named file. It is inspected as data and never executed; the file map shares one 16 KiB UTF-8 budget.' } }
     } }
   },
   {
@@ -22,7 +24,8 @@ export const tools = [
     description: 'Check registry metadata and OSV advisories for one exact public npm version. Does not inspect package source, verify provenance, install or execute code. An advisory-free result is still REVIEW, not installation approval.',
     annotations: { ...annotations, openWorldHint: true },
     inputSchema: { type: 'object', additionalProperties: false, required: ['name', 'version'], properties: {
-      name: { type: 'string', maxLength: 214 }, version: { type: 'string', maxLength: 100 }
+      name: { type: 'string', maxLength: 214, description: 'Public npm package name, such as express or @scope/package. Supply the name only, without a version suffix, registry URL, or local path.' },
+      version: { type: 'string', maxLength: 100, description: 'Exact published npm version, such as 4.21.0. Semver prerelease and build suffixes are accepted; tags such as latest and version ranges such as ^4.0.0 are not.' }
     } }
   }
 ];

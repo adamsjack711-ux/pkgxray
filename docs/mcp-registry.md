@@ -21,17 +21,24 @@ local or uses `npx` does not depend on the Registry at all.
 - metadata: [`server.json`](../server.json)
 - npm ownership marker: `package.json#mcpName`
 
-`server.json`, `package.json`, and the npm artifact must all use the same exact
-release version. Published `pkgxray@1.2.1` already carries `mcpName` and the
-`mcp-server` launcher, so the registry entry can be submitted from that release;
-keep the three versions in lockstep on every future bump.
+The package entry in `server.json`, `package.json`, and the npm artifact must
+use the same exact release version. Published `pkgxray@1.2.1` already carries `mcpName` and the
+`mcp-server` launcher. The top-level Registry version normally matches that
+release, but immutable Registry records require a fresh version even for an
+icon change. Metadata-only updates use the next patch with a `-registry.N`
+suffix: `1.2.2-registry.1` still installs `pkgxray@1.2.1`, sorts after the existing
+`1.2.1` entry, and sorts before a future `1.2.2` release. The hosted protocol
+continues reporting its underlying implementation version. This revision adds
+the existing public website icon; it does not announce a new npm release.
+See the Registry's [versioning rules](https://modelcontextprotocol.io/registry/versioning).
 
 ## Pre-release verification
 
-1. Choose the next release version without changing it only for registry
-   submission.
-2. Update `package.json`, `server.json.version`, and
-   `server.json.packages[0].version` together.
+1. For a package release, choose the next release version. For a Registry-only
+   metadata update, use the metadata revision convention above.
+2. For a package release, update `package.json`, `server.json.version`, and
+   `server.json.packages[0].version` together. For metadata-only updates, preserve
+   the published package version and change only the top-level Registry version.
 3. Run the complete [release checklist](release.md).
 4. Inspect `npm pack --dry-run`; confirm `server.json`, `bin/mcp-server.js`, and
    the `pkgxray` launcher are included.
@@ -96,7 +103,7 @@ curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.ada
 
 Confirm:
 
-- the returned name and version match the release;
+- the returned name and Registry version match the reviewed `server.json`;
 - the npm identifier and exact version are correct;
 - the repository ID is `1276320499`;
 - installation launches `pkgxray mcp-server`, not the audit CLI;
@@ -104,6 +111,17 @@ Confirm:
   `streamable-http`;
 - a fresh client can initialize, list all intended tools, and remove the server
   without leaving a global package installation.
+
+## Directory quality checks
+
+MCPtry imports the Registry and evaluates the public endpoint's `tools/list`.
+Every hosted-tool argument describes its purpose, accepted form, and limits.
+The Registry icon is the existing `https://pkgxray.ca/assets/favicon.svg` asset.
+Maintainer ownership was verified on MCPtry on 2026-11-09. Ranking and its
+separate security-text grade are external observations, not security guarantees.
+Registry import and endpoint checks can occur at different times, so verify the
+[live breakdown](https://mcptry.com/servers/io.github.adamsjack711-ux/pkgxray)
+after publishing instead of treating an expected score as an achieved one.
 
 If package validation fails, first inspect the published npm artifact's
 `mcpName`. If namespace authorization fails, repeat

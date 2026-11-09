@@ -13,7 +13,8 @@ const server = JSON.parse(readFileSync(resolve(ROOT, "server.json"), "utf8"));
 test("MCP Registry and npm ownership metadata agree", () => {
   assert.equal(pkg.mcpName, server.name);
   assert.equal(server.name, "io.github.adamsjack711-ux/pkgxray");
-  assert.equal(server.version, pkg.version);
+  const nextPatch = pkg.version.replace(/\.(\d+)$/, (_, patch) => `.${Number(patch) + 1}`);
+  assert.ok(server.version === pkg.version || new RegExp(`^${nextPatch.replaceAll(".", "\\.")}-registry\\.[1-9]\\d*$`).test(server.version));
   assert.equal(server.description.length <= 100, true);
   assert.equal(server.repository.id, "1276320499");
   assert.equal(server.packages.length, 1);
