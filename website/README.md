@@ -7,12 +7,37 @@ served from this directory of the main repo. Live at
 Monochrome ASCII hero and recorded scan evidence, synchronized with the production
 homepage from the website mirror. Static files only, no homepage build step.
 The public MCP section links the hosted endpoint, client guide, source and limits.
+The live cold scanner accepts public npm packages and GitHub repositories at
+<https://pkgxray.ca/#cold-scan>. It downloads source as data into a browser Web
+Worker and runs the bundled pkgxray static engine. Package code is never installed
+or executed. This is not the experimental VM service.
+
+Bare npm names resolve a published tag (default `latest`); GitHub references
+resolve to an immutable commit. Reports include npm archive SHA-256 and verified
+SHA-512/SHA-256 registry integrity when available, or commit-pinned Git blob
+identities. OSV lookups run separately. Findings, coverage gaps, resolved identity,
+and duration can be downloaded as JSON. Results are always REVIEW or BLOCK, never
+installation approval. Transitive dependencies and provenance signatures are not
+checked; native and unrecognized formats are skipped and reported.
+
+Downloads go directly to npm, GitHub and OSV, which receive the visitor's IP and
+requested reference. No credentials are sent and no scan report is stored by
+pkgxray. Each request has a 12-second deadline. The UI terminates its worker after
+60 seconds or on cancellation. Caps: 8 MiB compressed, 32 MiB expanded, 5,000 tree
+or archive entries, 100 source files, 128 KiB per file, 1 MiB source text. Browser
+API support and upstream CORS/rate limits can prevent completion. No clean
+result is claimed for a failed scan.
+
+When changing the engine, run `npm run build:website-scanner` from the repository
+root. Commit the generated `scanner/engine.mjs` with its preserved bundled
+licenses. CI verifies parity and runs deterministic hostile archive, reference,
+integrity, coverage, and detection tests: `node --test website/test/*.test.mjs`.
 
 > **Canonical source.** This directory is the source of truth. The separate
 > [`pkgxray-site`](https://github.com/adamsjack711-ux/pkgxray-site) repo is a
 > deploy mirror and must be synced *from here* (copy `index.html`, `app.js`,
 > `home.css`, `styles.css`, `_headers`, `validate.mjs`, `check-home.mjs`, `test/`,
-> `stats/`, and `assets/`, then run `node stats/build.mjs` and
+> `stats/`, `scanner/`, and `assets/`, then run `node stats/build.mjs` and
 > `node validate.mjs` in the mirror). Do not edit the mirror by hand.
 
 ## Local preview
@@ -41,8 +66,9 @@ npx wrangler pages deploy . --project-name=pkgxray
 Custom domains attach under the project's **Custom domains** tab in the
 Cloudflare dashboard.
 
-The `_headers` CSP keeps scripts and media local and allows only Google Fonts'
-stylesheet and font origins. `img-src data:` is required by the small SVG noise
+The `_headers` CSP keeps scripts, workers and media local. Network connections
+are restricted to the site, npm registry, GitHub API/raw source, and OSV. Google
+Fonts' stylesheet and font origins are allowed. `img-src data:` supports the SVG noise
 texture embedded in `styles.css`; no inline script, `unsafe-inline`, or
 `unsafe-eval` exception is used.
 

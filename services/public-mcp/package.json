@@ -6,6 +6,8 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "npm run build && node --test test/*.test.mjs",
+    "test:integration": "npm run build && node test/integration.mjs",
+    "test:live": "node test/smoke.mjs https://mcp.pkgxray.ca/mcp --website https://pkgxray.ca/ --report reports/live.json",
     "types": "wrangler types",
     "dry-run": "wrangler deploy --dry-run --outdir dist/worker",
     "dev": "wrangler dev",

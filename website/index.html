@@ -25,12 +25,14 @@
   <link rel="stylesheet" href="./home.css">
   <script src="./assets/pkgx-ascii-hero.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./scanner/ui.mjs" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header wrap" id="top">
     <nav aria-label="Primary navigation">
       <a href="#scan">Example scan</a>
+      <a href="#cold-scan">Scan a package</a>
       <a href="#public-mcp">Public MCP</a>
       <a href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/README.md">Docs <span aria-hidden="true">↗</span></a>
       <a href="https://github.com/adamsjack711-ux/pkgxray">GitHub <span aria-hidden="true">↗</span></a>
@@ -54,6 +56,20 @@
         <p class="intro-description">Inspect npm packages and MCP servers before install or connection.<br class="desktop-break"> Local static analysis. A SAFE, REVIEW, or BLOCK verdict with cited evidence.</p>
         <div class="actions"><a class="button primary" href="#install">Run your first scan <span aria-hidden="true">↗</span></a><a class="button secondary" href="https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/README.md">Read the docs <span aria-hidden="true">↗</span></a></div>
       </div>
+    </section>
+
+    <section class="section wrap" id="cold-scan" aria-labelledby="cold-scan-title">
+      <div class="section-heading"><div><p class="eyebrow">Live static scan</p><h2 id="cold-scan-title">Check it before you install.</h2></div><p>Public npm packages and GitHub repositories.<br>Fresh source. No installation or package execution.</p></div>
+      <form id="cold-scan-form" class="cold-scan-form" aria-describedby="cold-scan-help">
+        <label for="cold-scan-reference">Package or repository</label>
+        <div class="cold-scan-inputs"><input id="cold-scan-reference" name="reference" type="text" maxlength="500" required spellcheck="false" autocomplete="off" placeholder="npm:express@4.21.0 or github:owner/repo#ref"><button id="cold-scan-start" class="button primary" type="submit">Scan source</button><button id="cold-scan-cancel" class="button secondary" type="button" hidden>Cancel</button></div>
+        <p id="cold-scan-help">A name without a version resolves the current npm tag or GitHub commit. Downloads and analysis run in your browser. npm, GitHub, and OSV receive the requests; pkgxray does not store your scan.</p>
+        <p class="cold-scan-limits">Up to 8 MiB compressed, 100 source files, and 1 MiB of source text. Large or unsupported sources may need the local CLI. Private repositories and local files are not supported.</p>
+      </form>
+      <p id="cold-scan-status" class="cold-scan-status" role="status" aria-live="polite">Ready. Source is inspected as data; package code is never run.</p>
+      <article id="cold-scan-result" class="cold-scan-result" aria-label="Static scan report" hidden></article>
+      <button id="cold-scan-download" class="button secondary" type="button" hidden>Download JSON report</button>
+      <noscript><p>Enable JavaScript to run the browser scanner, or use the local pkgxray CLI.</p></noscript>
     </section>
 
     <section class="section wrap" id="scan" aria-labelledby="scan-title">

@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build:browser": "node ./scripts/build-browser-extension.js",
+    "build:website-scanner": "node ./scripts/build-website-scanner.mjs",
     "lint": "node ./scripts/lint.js",
     "test": "node ./scripts/run-tests.js",
     "test:docs": "node --test ./test/docs-smoke.test.js",

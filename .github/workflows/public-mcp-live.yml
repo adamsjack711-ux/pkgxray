@@ -1,0 +1,34 @@
+name: public MCP live smoke
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: public-mcp-live
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: services/public-mcp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+      - run: npm run test:live
+      - name: Live check summary
+        if: always()
+        run: node test/summarize.mjs reports/live.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: public-mcp-live
+          path: services/public-mcp/reports/live.json
+          retention-days: 14

@@ -6,6 +6,7 @@ package-lock.json
 !services/public-mcp/package-lock.json
 .dev.vars*
 .wrangler/
+services/public-mcp/reports/
 
 # analysis tooling output
 graphify-out/

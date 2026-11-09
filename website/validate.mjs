@@ -20,7 +20,8 @@ const htmlFiles = files.filter((file) => extname(file) === ".html");
 const rel = (file) => relative(ROOT, file).split(sep).join("/");
 const fail = (file, message) => errors.push(`${rel(file)}: ${message}`);
 
-for (const file of files.filter((candidate) => [".html", ".js", ".mjs"].includes(extname(candidate)))) {
+// HTML attributes are not JavaScript property assignments or string literals.
+for (const file of htmlFiles) {
   const source = readFileSync(file, "utf8");
   for (const match of source.matchAll(/\b(href|src)\s*=/gi)) {
     const remainder = source.slice(match.index + match[0].length);

@@ -20,6 +20,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: services/public-mcp
@@ -34,3 +35,13 @@ jobs:
       - run: npm test
       - run: npm run types
       - run: npm run dry-run
+      - run: npm run test:integration
+      - name: Integration summary
+        if: always()
+        run: node test/summarize.mjs reports/integration.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: public-mcp-integration
+          path: services/public-mcp/reports/integration.json
+          retention-days: 14

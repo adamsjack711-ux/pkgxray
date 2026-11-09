@@ -65,6 +65,7 @@ npm ci --ignore-scripts
 npm test
 npm run types
 npm run dry-run
+npm run test:integration
 npm run dev
 node test/smoke.mjs http://127.0.0.1:8787/mcp
 ```
@@ -83,6 +84,16 @@ node test/smoke.mjs https://mcp.pkgxray.ca/mcp
 The smoke test uses inert supplied source and public package metadata. It never
 executes those package samples. Rate-limit tests should be run sparingly and
 separately from normal availability tests.
+
+CI runs offline protocol tests and a real local Wrangler HTTP integration test.
+The `public MCP live smoke` workflow checks the deployed endpoint and website
+every six hours and can be dispatched manually. It sends four bounded scans
+(two inert source fixtures and two public npm metadata queries), never executes
+package code, and records check durations and failures in the Actions summary
+and a JSON artifact retained for 14 days. Each exchange has a 15-second deadline
+and a 256 KiB response cap. GitHub schedules are best effort, not an uptime SLA;
+failures are surfaced through normal Actions status/notifications. Run it locally
+with `npm run test:live`. Reports under `reports/` are ignored by git.
 
 Rollback uses `wrangler rollback <previous-version-id>` after inspecting
 `wrangler versions list`. The npm release and official Registry descriptor

@@ -5,11 +5,17 @@ on:
     paths:
       - "website/**"
       - "package.json"
+      - "src/**"
+      - "browser-extension/auditor.browser.js"
+      - "scripts/build*"
       - ".github/workflows/website-validation.yml"
   pull_request:
     paths:
       - "website/**"
       - "package.json"
+      - "src/**"
+      - "browser-extension/auditor.browser.js"
+      - "scripts/build*"
       - ".github/workflows/website-validation.yml"
 
 permissions:
@@ -29,7 +35,10 @@ jobs:
         run: npm run validate:website
 
       - name: Check homepage interactions and calibration preservation
-        run: node --test website/check-home.mjs website/test/stats.test.mjs
+        run: node --test website/check-home.mjs website/test/*.test.mjs
+
+      - name: Verify scanner engine matches the audited browser bundle
+        run: node scripts/build-website-scanner.mjs --check
 
       - name: Verify generated calibration files are current
         run: git diff --exit-code -- website/stats
