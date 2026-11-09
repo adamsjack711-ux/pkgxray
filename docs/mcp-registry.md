@@ -5,6 +5,10 @@ Status: `io.github.adamsjack711-ux/pkgxray` was published at **v1.2.1 on
 Streamable HTTP endpoint `https://mcp.pkgxray.ca/mcp`. The hosted endpoint
 provides bounded static source-evidence analysis and npm metadata/advisory
 checks; it does not expose the complete local toolset or VM execution.
+Metadata revision **1.2.2-registry.1**, published later on **2026-11-09**, adds
+the public website icon and is verified as the Registry's latest entry. Its npm
+package remains `pkgxray@1.2.1`; the hosted tool argument descriptions were
+updated independently and verified through the live endpoint.
 The Registry is still in
 **preview, and it resets its data from time to time**. A live lookup can come
 back empty, and then you have to **submit the entry again** with
