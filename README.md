@@ -4,7 +4,7 @@ A local research prototype that traces environment data across npm package
 boundaries into modeled network calls. It complements pkgxray's individual
 package analysis with an explicit source → call → sink report.
 
-**Status: CommonJS prototype, version 0.2.** This is not a production security
+**Status: CommonJS prototype, version 0.2.1.** This is not a production security
 scanner, package safety verdict, or replacement for pkgxray. The project remains
 private to npm publication (`private: true`); the GitHub repository is public.
 
@@ -17,6 +17,7 @@ third-party Acorn parser is bundled with its license and provenance metadata.
 npm test
 npm run demo
 npm run demo:real
+npm run demo:strings
 ```
 
 The demo creates disposable synthetic package trees and analyzes two cases:
@@ -32,6 +33,12 @@ own temporary trees after analysis.
 credentials alongside formatted output are flagged, and regex parsing/unknown
 environment inputs remain incomplete. Package code is never executed. This is
 a selected regression fixture, not a general npm accuracy benchmark.
+
+`demo:strings` checks the formatting regressions repaired in 0.2.1:
+`"Bearer " + process.env.TOKEN + " suffix"` and
+`"payload=" + JSON.stringify({token: process.env.TOKEN})` now retain a
+cross-package credential finding. The paired public-data examples stay clear;
+custom serialization callbacks remain incomplete.
 
 ## Scan an existing source snapshot
 
@@ -78,6 +85,10 @@ approval rules are not implemented yet.
 - `process.env` sources, `fetch` arguments, Node HTTP/HTTPS request/get arguments
   and request-stream write/end sinks. `JSON.stringify(value)` preserves tracked
   data when no custom serialization callback is present.
+- Primitive result types are tracked separately from their unknown contents and
+  source traces. Repeated concatenation, templates, supported conversions and
+  JSON formatting preserve those traces through later operations and package
+  returns. An unknown call or arbitrary object does not become a modeled string.
 - File/line/column evidence, import edges, source/call/return/sink traces, and
   per-instance hashes of the manifest and source files actually read.
 
@@ -149,6 +160,9 @@ imports, nested-version selection, hoisted/scoped imports, return/object flows,
 HTTP streams, var/lexical scope, branch isolation and early returns, the pinned
 real `ms` numeric path, resolution limits, unsupported semantics, source identity, input
 bounds, cycles, symlinks, evidence hashes, CLI behavior, and parser provenance.
+Formatting regressions include repeated transformations, harmless pairs,
+overwrites, returned values, unknown branches, custom coercion, serialization
+callbacks/cycles, and trace deduplication without hiding budget exhaustion.
 All examples use synthetic data and non-routable `.invalid` destinations.
 
 ## Confirmed boundary

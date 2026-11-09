@@ -1,6 +1,6 @@
 {
   "name": "package-compose-ray",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Research prototype for tracing sensitive flows across package boundaries.",
   "type": "module",
@@ -9,7 +9,8 @@
     "probe": "node research/pkgxray-boundary-probe.mjs",
     "test": "node --test test/*.test.mjs",
     "demo": "node examples/demo.mjs",
-    "demo:real": "node examples/real-package-demo.mjs"
+    "demo:real": "node examples/real-package-demo.mjs",
+    "demo:strings": "node examples/string-flow-demo.mjs"
   },
   "engines": { "node": ">=18" }
 }

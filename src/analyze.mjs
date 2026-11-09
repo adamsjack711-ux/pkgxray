@@ -62,7 +62,7 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
     return copy;
   }
   function merged(values) {
-    const all = values.flatMap(value => traces(value));
+    const all = [...new Map(values.flatMap(value => traces(value)).map(trace => [JSON.stringify(trace), trace])).values()];
     if (all.length > limits.maxTraces) gap('trace-budget', 'Some dataflow paths were truncated.');
     return val('unknown', { traces: all.slice(0, limits.maxTraces) });
   }
@@ -170,7 +170,20 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
     }
   }
 
-  function primitive(value) { return value.kind === 'literal' || value.kind === 'secret'; }
+  // Preserve primitive type information independently from provenance. Losing
+  // a concrete value does not make a known string an arbitrary object, while
+  // an unsupported call must never be promoted to a modeled primitive.
+  function primitiveTypes(value) {
+    if (value.kind === 'literal') return [value.value === null ? 'null' : typeof value.value];
+    if (value.kind === 'secret') return ['string', 'undefined'];
+    if (value.kind === 'scalar') return value.types;
+    return [];
+  }
+  function primitive(value) { return primitiveTypes(value).length > 0; }
+  function primitiveAlternatives(value) { return alternatives(value).every(primitive); }
+  function scalar(types, inputs) {
+    return { ...merged(inputs), kind: 'scalar', types: [...new Set(types)].sort() };
+  }
   function calculated(value, inputs = []) {
     if (typeof value === 'string' && value.length > limits.maxFileBytes) fail('value-budget', 'Computed string exceeds the value limit.');
     return { ...literal(value), traces: merged(inputs).traces };
@@ -188,7 +201,12 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
       tick(0);
       if (!primitive(a) || !primitive(b)) { values.push(unknown(file, node, 'Unknown operand or object coercion is not modeled.')); continue; }
       if (a.kind === 'literal' && b.kind === 'literal') values.push(calculated(operations[operator](a.value, b.value), [a, b]));
-      else values.push(merged([a, b]));
+      else {
+        let types;
+        if (operator === '+') types = primitiveTypes(a).flatMap(x => primitiveTypes(b).map(y => x === 'string' || y === 'string' ? 'string' : 'number'));
+        else types = ['===', '!==', '==', '!=', '<', '>', '<=', '>='].includes(operator) ? ['boolean'] : ['number'];
+        values.push(scalar(types, [a, b]));
+      }
     }
     return union(values);
   }
@@ -267,17 +285,22 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
         }
         const value = expression(node.argument, scope, file, depth + 1);
         if (node.operator === 'void') return literal(undefined);
-        if (node.operator === '!') { const test = truth(value); return test === undefined ? merged([value]) : calculated(!test, [value]); }
+        if (node.operator === '!') { const test = truth(value); return test === undefined ? scalar(['boolean'], [value]) : calculated(!test, [value]); }
         if (node.operator === 'typeof') {
           if (value.kind === 'literal') return calculated(typeof value.value, [value]);
           if (value.kind === 'function') return literal('function');
           if (['object', 'regexp'].includes(value.kind)) return literal('object');
           if (['require', 'fetch', 'primitive-call'].includes(value.kind)) return literal('function');
           if (['process', 'JSON', 'console', 'Math'].includes(value.kind)) return literal('object');
-          return merged([value]);
+          if (primitiveAlternatives(value)) {
+            const types = [...new Set(alternatives(value).flatMap(primitiveTypes).map(type => type === 'null' ? 'object' : type))];
+            // A single established type produces a constant public label.
+            return types.length === 1 ? literal(types[0]) : scalar(['string'], [value]);
+          }
+          return unknown(file, node, 'Cannot determine the type of an unmodeled value.');
         }
         if (['+', '-', '~'].includes(node.operator) && value.kind === 'literal') return calculated(node.operator === '+' ? +value.value : node.operator === '-' ? -value.value : ~value.value, [value]);
-        if (['+', '-', '~'].includes(node.operator) && value.kind === 'secret') return merged([value]);
+        if (['+', '-', '~'].includes(node.operator) && primitiveAlternatives(value)) return scalar(['number'], [value]);
         return unknown(file, node, `Unmodeled unary operation: ${node.operator}`);
       }
       case 'LogicalExpression': {
@@ -299,8 +322,8 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
           for (let i = 0; i < node.quasis.length; i++) output = calculated(output + node.quasis[i].value.cooked + (i < values.length ? String(values[i].value) : '')).value;
           return calculated(output, values);
         }
-        if (values.some(value => !['literal', 'secret', 'unknown'].includes(value.kind))) return unknown(file, node, 'Template object coercion is not modeled.');
-        return merged(values);
+        if (!values.every(primitiveAlternatives)) return unknown(file, node, 'Template object coercion or unknown operand is not modeled.');
+        return scalar(['string'], values);
       }
       case 'AssignmentExpression': {
         const left = node.left;
@@ -345,9 +368,9 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
       const builtins = { String, Number, Boolean, parseFloat, parseInt, isFinite, isNaN,
         'Math.abs': Math.abs, 'Math.round': Math.round, 'Math.floor': Math.floor,
         'Math.ceil': Math.ceil, 'Math.min': Math.min, 'Math.max': Math.max, 'Math.trunc': Math.trunc };
-      if (!args.every(primitive)) return unknown(file, node, 'Primitive builtin with object or unknown operands is not modeled.');
+      if (!args.every(primitiveAlternatives)) return unknown(file, node, 'Primitive builtin with object or unknown operands is not modeled.');
       if (args.every(value => value.kind === 'literal')) return calculated(builtins[target.name](...args.map(value => value.value)), args);
-      return { ...merged(args), kind: 'secret' };
+      return scalar([target.name === 'String' ? 'string' : ['Boolean', 'isFinite', 'isNaN'].includes(target.name) ? 'boolean' : 'number'], args);
     }
     if (target.kind === 'require') {
       if (node.arguments.length !== 1 || node.arguments[0].type !== 'Literal' || typeof node.arguments[0].value !== 'string') return unknown(file, node, 'Dynamic require is not modeled.', 'dynamic-import');
@@ -390,16 +413,25 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
     if (target.kind === 'network-sink') { sink(args, target.label, target.destination, file, node); return literal(undefined); }
     if (target.kind === 'stringify') {
       if (args.length !== 1 || args[0].kind === 'function') return unknown(file, node, 'Only JSON.stringify(value) without callbacks is modeled.');
-      const pending = [args[0]];
-      while (pending.length) {
-        tick(depth);
-        const value = pending.pop();
-        if (value.kind === 'object') {
-          if (value.props.has('toJSON')) return unknown(file, node, 'JSON toJSON callbacks are not modeled.');
-          pending.push(...value.props.values());
-        }
+      const active = new Set();
+      function serializable(value, nesting) {
+        tick(nesting);
+        if (primitive(value) || ['environment', 'regexp', 'function'].includes(value.kind)) return true;
+        if (value.kind === 'union') return value.options.every(option => serializable(option, nesting + 1));
+        if (value.kind !== 'object') { unknown(file, node, 'JSON input includes an unmodeled value.'); return false; }
+        if (value.props.has('toJSON')) { unknown(file, node, 'JSON toJSON callbacks are not modeled.'); return false; }
+        if (active.has(value)) { unknown(file, node, 'Cyclic JSON input may throw.', 'serialization-cycle'); return false; }
+        active.add(value);
+        try { return [...value.props.values()].every(child => serializable(child, nesting + 1)); }
+        finally { active.delete(value); }
       }
-      return merged(args);
+      if (!serializable(args[0], depth + 1)) return val();
+      if (args[0].kind === 'literal') return calculated(JSON.stringify(args[0].value), args);
+      // Object serialization returns a string; a root undefined/function may
+      // instead return undefined. Both outcomes remain primitive, never truthy
+      // merely because they are serializable.
+      const canBeUndefined = alternatives(args[0]).some(value => value.kind === 'function' || primitiveTypes(value).includes('undefined'));
+      return scalar(canBeUndefined ? ['string', 'undefined'] : ['string'], args);
     }
     if (target.kind === 'console-call') return literal(undefined);
     return unknown(file, node, 'Call target/effects are not modeled.', 'unknown-call');

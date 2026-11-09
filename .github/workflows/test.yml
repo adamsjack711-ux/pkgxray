@@ -19,3 +19,4 @@ jobs:
       - run: npm test
       - run: npm run demo
       - run: npm run demo:real
+      - run: npm run demo:strings

@@ -411,3 +411,101 @@ test('pinned real ms package formats numbers across the dependency boundary', t 
   const provenance = JSON.parse(fs.readFileSync(new URL('provenance.json', folder)));
   for (const [file, expected] of Object.entries(provenance.files)) assert.equal(createHash('sha256').update(fs.readFileSync(new URL(file, folder))).digest('hex'), expected);
 });
+
+test('repeated concatenation and JSON formatting retain the credential trace', t => {
+  for (const payload of [
+    '"Bearer "+process.env.TOKEN+" suffix"',
+    '"payload="+JSON.stringify({token:process.env.TOKEN})',
+    '"prefix "+JSON.stringify({nested:{token:process.env.TOKEN}})+" suffix"',
+    '"prefix "+String(process.env.TOKEN)+" suffix"',
+    '`Bearer ${process.env.TOKEN}`+" suffix"',
+  ]) {
+    const r = fixture(t, { entry: `require("sender")(${payload});` }).scan();
+    assert.equal(r.verdict, 'review', JSON.stringify({ payload, gaps: r.gaps }));
+    assert.equal(r.coverage, 'complete-for-supported-entry');
+    assert.ok(r.findings.some(f => f.crossPackage && f.trace[0].label === 'process.env.TOKEN'), payload);
+  }
+});
+
+test('formatting transformations compose across package returns and local assignments', t => {
+  const f = fixture(t, { entry: 'const format=require("formatter");let value=format(process.env.TOKEN);value+=";";value=`${value} suffix`;require("sender")(value);' });
+  f.addPackage('node_modules/formatter', 'formatter', '1.0.0', 'module.exports=value=>"payload="+JSON.stringify({token:value})+";";');
+  const r = f.scan();
+  assert.equal(r.verdict, 'review');
+  const trace = r.findings[0].trace;
+  assert.equal(trace[0].label, 'process.env.TOKEN');
+  assert.ok(trace.some(step => step.kind === 'return' && step.package.id === 'node_modules/formatter'));
+  assert.equal(trace.at(-1).package.id, 'node_modules/sender');
+});
+
+test('benign formatting chains and overwritten sensitive values stay clear', t => {
+  for (const payload of [
+    '"Bearer "+"public"+" suffix"',
+    '"payload="+JSON.stringify({message:"public",nested:{value:42}})+" suffix"',
+    '`prefix ${JSON.stringify(["public",1,null])}`+" suffix"',
+    '"prefix "+String(Number("42")+1)+" suffix"',
+    '"prefix "+JSON.stringify(undefined)+" suffix"',
+  ]) assert.equal(fixture(t, { entry: `require("sender")(${payload});` }).scan().verdict, 'no-flow-found', payload);
+  assert.equal(fixture(t, { entry: 'let value="Bearer "+process.env.TOKEN+" suffix";value="public";require("sender")(value);' }).scan().verdict, 'no-flow-found');
+});
+
+test('all modeled primitive results survive further conversions and formatting', t => {
+  for (const payload of [
+    '"n="+String((Number(process.env.TOKEN)+1)*2)+";"',
+    '"b="+String(Boolean(process.env.TOKEN))+";"',
+    '"n="+String(Math.abs(Number(process.env.TOKEN)))+";"',
+    '"b="+String(!(process.env.TOKEN))+";"',
+    '"n="+String(-Number(process.env.TOKEN))+";"',
+    'JSON.stringify("prefix "+process.env.TOKEN)+" suffix"',
+    '"p="+JSON.stringify(process.env)+";"',
+  ]) {
+    const r = fixture(t, { entry: `require("sender")(${payload});` }).scan();
+    assert.equal(r.verdict, 'review', JSON.stringify({ payload, gaps: r.gaps }));
+    assert.ok(r.findings.length);
+  }
+});
+
+test('typed results do not invent truthiness or conflate data with its fixed type label', t => {
+  const entry = 'if(Boolean(process.env.TOKEN)){require("sender")(process.env.TOKEN);}';
+  const r = fixture(t, { entry }).scan();
+  assert.equal(r.verdict, 'incomplete'); assert.ok(hasGap(r, 'uncertain-control-flow')); assert.ok(r.findings.length);
+  assert.equal(fixture(t, { entry: 'if(typeof ("prefix "+process.env.TOKEN+" suffix")!=="string"){require("sender")(process.env.TOKEN);}' }).scan().verdict, 'no-flow-found');
+  assert.equal(fixture(t, { entry: 'require("sender")(typeof String(process.env.TOKEN));' }).scan().verdict, 'no-flow-found');
+  assert.equal(fixture(t, { entry: 'if(JSON.stringify(undefined)!==undefined){require("sender")(process.env.TOKEN);}' }).scan().verdict, 'no-flow-found');
+});
+
+test('unknown branch value alternatives retain formatted traces and coverage gaps', t => {
+  const r = fixture(t, { entry: 'const value=process.env.MODE ? process.env.TOKEN : "public";require("sender")("prefix "+JSON.stringify(value)+" suffix");' }).scan();
+  assert.equal(r.verdict, 'incomplete'); assert.ok(hasGap(r, 'uncertain-control-flow'));
+  assert.ok(r.findings.some(f => f.trace[0].label === 'process.env.TOKEN'));
+});
+
+test('custom coercion and nested or conditional serialization callbacks stay incomplete', t => {
+  for (const entry of [
+    'require("sender")("prefix "+{toString:()=>process.env.TOKEN}+" suffix");',
+    'require("sender")(`${{valueOf:()=>process.env.TOKEN}}`);',
+    'require("sender")("prefix "+JSON.stringify({nested:{toJSON:()=>process.env.TOKEN}}));',
+    'const value=process.env.MODE?{toJSON:()=>process.env.TOKEN}:{};require("sender")("prefix "+JSON.stringify(value));',
+    'require("sender")("prefix "+JSON.stringify({toJSON:null,token:process.env.TOKEN}));',
+    'require("sender")("prefix "+JSON.stringify({token:process.env.TOKEN},()=>"public"));',
+    'require("sender")("prefix "+JSON.stringify(mystery()));',
+    'require("sender")("prefix "+String(mystery())+" suffix");',
+    'require("sender")(`${mystery()} suffix`);',
+  ]) {
+    const r = fixture(t, { entry }).scan();
+    assert.equal(r.verdict, 'incomplete', entry); assert.ok(r.gaps.length, entry);
+  }
+});
+
+test('serialization distinguishes cycles from shared noncyclic objects', t => {
+  const r = fixture(t, { entry: 'exports.self=exports;require("sender")("prefix "+JSON.stringify(exports));' }).scan();
+  assert.equal(r.verdict, 'incomplete'); assert.ok(hasGap(r, 'serialization-cycle'));
+  assert.equal(fixture(t, { entry: 'const part={token:process.env.TOKEN};require("sender")("prefix "+JSON.stringify({a:part,b:part}));' }).scan().verdict, 'review');
+});
+
+test('duplicated provenance does not consume the budget but distinct sources still do', t => {
+  const repeated = fixture(t, { entry: 'const token=process.env.TOKEN;require("sender")("prefix "+token+token+token);' }).scan({ limits: { maxTraces: 1 } });
+  assert.equal(repeated.verdict, 'review'); assert.equal(repeated.findings.length, 1);
+  const distinct = fixture(t, { entry: 'require("sender")("prefix "+process.env.A+process.env.B);' }).scan({ limits: { maxTraces: 1 } });
+  assert.equal(distinct.verdict, 'incomplete'); assert.ok(hasGap(distinct, 'trace-budget'));
+});
