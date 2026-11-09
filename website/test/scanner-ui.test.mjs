@@ -24,7 +24,7 @@ function scene() {
     terminate() { this.terminated = true; }
     send(data) { this.onmessage({ data }); }
   }
-  const context = vm.createContext({ document: { getElementById: id => ids[id.replace('cold-scan-', '')], createElement: tag => new Element(tag), createTextNode: text => { const n = new Element(); n.textContent = text; return n; } }, Worker, URL, Blob,
+  const context = vm.createContext({ document: { querySelectorAll: () => [], getElementById: id => ids[id.replace('cold-scan-', '')], createElement: tag => new Element(tag), createTextNode: text => { const n = new Element(); n.textContent = text; return n; } }, Worker, URL, Blob,
     setTimeout(fn) { timers.set(++sequence, fn); return sequence; }, clearTimeout(id) { timers.delete(id); } });
   const source = fs.readFileSync(new URL('../scanner/ui.mjs', import.meta.url), 'utf8').replaceAll('import.meta.url', JSON.stringify('https://pkgxray.ca/scanner/ui.mjs'));
   vm.runInContext(source, context);

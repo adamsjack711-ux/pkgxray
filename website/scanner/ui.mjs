@@ -5,6 +5,7 @@ const cancel = document.getElementById('cold-scan-cancel');
 const status = document.getElementById('cold-scan-status');
 const output = document.getElementById('cold-scan-result');
 const download = document.getElementById('cold-scan-download');
+const examples = document.querySelectorAll('[data-scan-example]');
 let worker, timer, report;
 const readable = value => String(value ?? '').replace(/[\u0000-\u0008\u000b-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ch => `[U+${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}]`);
 function element(tag, value, className) {
@@ -16,7 +17,15 @@ function element(tag, value, className) {
 function stop() {
   worker?.terminate(); worker = null; clearTimeout(timer);
   start.disabled = false; cancel.hidden = true; input.disabled = false; form.setAttribute('aria-busy', 'false');
+  for (const button of examples) button.disabled = false;
 }
+for (const button of examples) button.addEventListener('click', () => {
+  if (worker) return;
+  input.value = button.dataset.scanExample;
+  report = null; output.hidden = true; download.hidden = true;
+  status.textContent = `${input.value} selected. Select Scan source to check the latest published version.`;
+  input.focus();
+});
 function show(result) {
   output.replaceChildren(); output.hidden = false; report = result; download.hidden = false;
   output.append(element('p', result.verdict.toUpperCase(), 'cold-verdict'), element('h3', result.reference), element('p', result.summary));
@@ -55,6 +64,7 @@ form.addEventListener('submit', event => {
   if (!input.value.trim()) { input.focus(); status.textContent = 'Enter an npm package or public GitHub repository.'; return; }
   if (typeof Worker !== 'function') { status.textContent = 'This browser cannot run the isolated analysis worker. Use a current browser or the local CLI.'; return; }
   start.disabled = true; input.disabled = true; cancel.hidden = false; form.setAttribute('aria-busy', 'true');
+  for (const button of examples) button.disabled = true;
   status.textContent = 'Starting a fresh static scan…';
   try {
     worker = new Worker(new URL('./worker.mjs', import.meta.url), { type: 'module' });
