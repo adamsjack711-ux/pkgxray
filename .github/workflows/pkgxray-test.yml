@@ -153,4 +153,7 @@ jobs:
       - name: Require real Linux confinement tests
         env:
           PKGXRAY_REQUIRE_OS_SANDBOX_TESTS: "1"
-        run: node --test --test-timeout=30000 test/sandbox.test.js test/mcp-sandbox.test.js test/mcp-proxy.test.js
+        # The runner applies this deadline to each test FILE, including all
+        # sequential namespace startup probes. Individual executions retain
+        # their shorter command deadlines inside the test suite.
+        run: node --test --test-timeout=120000 test/sandbox.test.js test/mcp-sandbox.test.js test/mcp-proxy.test.js

@@ -643,9 +643,16 @@ realExecutionTest('#6 real canary confines private reads, symlink escapes, write
   assert.equal(result.isolationRequired, true);
   assert.equal(result.netConfined, true);
   const observed = JSON.parse(result.executed.importPhase.output.split('\n').find(line => line.startsWith('{')));
-  assert.deepEqual(observed, { privateRead: false, symlinkEscape: false, outsideWrite: false, decoyRead: true, scratchWrite: true, otherLoopback: false });
+  const { outsideWrite, ...access } = observed;
+  assert.deepEqual(access, { privateRead: false, symlinkEscape: false, decoyRead: true, scratchWrite: true, otherLoopback: false });
+  // bubblewrap creates mount ancestors in its private tmpfs root. Creating a
+  // sibling there may succeed without touching the host path. Seatbelt uses
+  // the host namespace, so the syscall itself must be denied on macOS.
+  assert.equal(typeof outsideWrite, 'boolean');
+  if (process.platform === 'darwin') assert.equal(outsideWrite, false);
   assert.equal(hits, 0);
   assert.equal(fs.existsSync(path.join(root, 'unexpected')), false);
+  assert.equal(await fsp.readFile(privateFile, 'utf8'), 'synthetic-private');
 });
 
 // --- netns confinement: forwarder + unix-socket proxy plumbing ---------------
