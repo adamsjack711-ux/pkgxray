@@ -67,7 +67,8 @@ export async function readJson(stream, limit, timeoutMs = 5000) {
     catch { throw new RequestError('Invalid JSON'); }
   } finally {
     clearTimeout(timer);
-    await reader.cancel().catch(() => {});
+    // Cleanup is best-effort: a stalled cancellation must not extend the read deadline.
+    void reader.cancel().catch(() => {});
   }
 }
 
@@ -102,7 +103,7 @@ function validateArguments(name, args) {
 async function upstreamJson(url, init, fetcher) {
   const res = await fetcher(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(6000),
     headers: { accept: 'application/json', 'user-agent': 'pkgxray-public-mcp/1.2.1', ...init?.headers } });
-  if (!res.ok) { await res.body?.cancel(); throw new Error('Upstream unavailable'); }
+  if (!res.ok) { void res.body?.cancel().catch(() => {}); throw new Error('Upstream unavailable'); }
   return readJson(res.body, 256 * 1024, 6000);
 }
 

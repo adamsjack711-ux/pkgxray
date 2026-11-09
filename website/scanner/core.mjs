@@ -60,7 +60,7 @@ async function acquire(url, limit, fetcher, options = {}) {
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetcher(target.href, { ...options, credentials: 'omit', cache: 'no-store', redirect: 'error', signal: controller.signal });
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`Source returned HTTP ${response.status}. Check the reference; public API limits may require trying later.`); }
+    if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new Error(`Source returned HTTP ${response.status}. Check the reference; public API limits may require trying later.`); }
     return await readBounded(response.body, limit, controller.signal);
   } finally { clearTimeout(timer); }
 }

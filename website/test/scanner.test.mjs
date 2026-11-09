@@ -119,3 +119,70 @@ test('GitHub reads commit-pinned, blob-verified files and reports incomplete tre
   assert.ok(r.coverage.gaps.some(g => /truncated/.test(g))); assert.ok(r.coverage.gaps.some(g => /could not be fetched or verified/.test(g)));
   assert.equal(calls.length, 5);
 });
+
+function pax(key, value) {
+  const record = `${key}=${value}\n`; let length = Buffer.byteLength(record) + 2;
+  while (Buffer.byteLength(`${length} ${record}`) !== length) length = Buffer.byteLength(`${length} ${record}`);
+  return `${length} ${record}`;
+}
+test('PAX and GNU long names cannot bypass traversal or duplicate-path checks', () => {
+  for (const path of ['package/../outside.js', '/absolute.js', 'package/a\\b.js']) {
+    assert.throws(() => unpackTar(tar([['package/pax', pax('path', path), 'x'], ['package/short.js', 'x']])), /Unsafe/);
+    assert.throws(() => unpackTar(tar([['package/long', path + '\0', 'L'], ['package/short.js', 'x']])), /Unsafe/);
+  }
+  assert.throws(() => unpackTar(tar([['package/index.js', 'x'], ['package/pax', pax('path', 'package/index.js'), 'x'], ['package/other.js', 'y']])), /duplicate/);
+  const valid = unpackTar(tar([['package/pax', pax('path', 'package/src/valid.js'), 'x'], ['package/short.js', 'x']]));
+  assert.equal(valid[0].path, 'src/valid.js');
+});
+test('archive parser rejects multiple roots, sparse headers, incomplete extensions and entry floods', () => {
+  assert.throws(() => unpackTar(tar([['package/a.js', 'x'], ['other/b.js', 'y']])), /multiple roots/);
+  assert.throws(() => unpackTar(tar([['package/pax', pax('GNU.sparse.size', '100'), 'x'], ['package/a.js', 'x']])), /Sparse/);
+  assert.throws(() => unpackTar(tar([['package/pax', pax('path', 'package/a.js'), 'x']])), /Incomplete/);
+  assert.throws(() => unpackTar(tar(Array.from({length:LIMITS.entries+1}, (_,i)=>[`package/f${i}.js`, '']))), /too many entries/);
+});
+test('gzip corruption and broken JSON manifests never issue a verdict', async () => {
+  await assert.rejects(scanReference('fixture', {...fixture({archive:Buffer.from('not gzip')}), audit}));
+  const archive = gzipSync(tar([['package/package.json', '{'], ['package/index.js', 'module.exports=1;']]));
+  await assert.rejects(scanReference('fixture', {...fixture({archive}), audit}));
+});
+test('strong integrity must match even when a weaker digest matches', async () => {
+  const f=fixture();
+  const fetcher=async(url,options)=>{
+    const response=await f.fetcher(url,options);
+    if(url==='https://registry.npmjs.org/fixture/latest') {
+      const metadata=await response.json();
+      const archive=await (await f.fetcher(metadata.dist.tarball,options)).arrayBuffer();
+      metadata.dist.integrity='sha512-AAAA sha256-'+createHash('sha256').update(Buffer.from(archive)).digest('base64');
+      return Response.json(metadata);
+    }
+    return response;
+  };
+  await assert.rejects(scanReference('fixture',{fetcher,audit}),/integrity/);
+});
+test('missing strong integrity and non-UTF-8 source are explicit coverage gaps', async () => {
+  const f=fixture({extra:[['package/binary.js',Buffer.from([0xff,0xfe])]]});
+  const fetcher=async(url,options)=>{const r=await f.fetcher(url,options);if(url==='https://registry.npmjs.org/fixture/latest'){const data=await r.json();delete data.dist.integrity;return Response.json(data);}return r;};
+  const r=await scanReference('fixture',{fetcher,audit});
+  assert.equal(r.coverage.integrity,'unverified');assert.equal(r.coverage.scannedFiles,2);
+  assert.ok(r.coverage.gaps.some(g=>/UTF-8/.test(g)));assert.ok(r.coverage.gaps.some(g=>/integrity/.test(g)));
+  assert.equal(r.installationApproved,false);
+});
+test('source text budget includes UTF-8 bytes across files', async () => {
+  const extra=Array.from({length:12},(_,i)=>[`package/unicode${i}.js`, '//'+ '💥'.repeat(30000)]);
+  const r=await scanReference('fixture',{...fixture({extra}),audit});
+  assert.ok(r.coverage.sourceBytes<=LIMITS.source);assert.ok(r.coverage.gaps.some(g=>/limits/.test(g)));
+});
+test('malformed advisory records remain unavailable, and withdrawn records do not block',async()=>{
+  for(const osv of [[],{vulns:null},{vulns:'none'},{vulns:[null]},{vulns:[{id:42}]}]){
+    const r=await scanReference('fixture',{...fixture({osv}),audit});assert.equal(r.coverage.vulnerabilities,'unavailable');assert.equal(r.installationApproved,false);
+  }
+  const r=await scanReference('fixture',{...fixture({osv:{vulns:[{id:'WITHDRAWN',withdrawn:'2020-01-01'}]}}),audit});
+  assert.equal(r.verdict,'review');assert.equal(r.advisories.length,0);
+});
+test('an upstream failure returns promptly even when its stream cleanup stalls',async()=>{
+  let timer;
+  try {
+    const scan=scanReference('fixture',{audit,fetcher:async()=>new Response(new ReadableStream({cancel(){return new Promise(()=>{});}}),{status:503})});
+    await assert.rejects(Promise.race([scan,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('cleanup stalled')),250);})]), /HTTP 503/);
+  } finally {clearTimeout(timer);}
+});

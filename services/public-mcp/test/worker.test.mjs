@@ -101,3 +101,33 @@ test('streaming limits apply without Content-Length, and slow bodies time out',a
 test('query strings are rejected to avoid source/credential leakage in URL logs',async()=>{
   assert.equal((await worker.fetch(new Request('https://mcp.pkgxray.ca/mcp?source=secret'),env)).status,400);
 });
+
+async function bounded(promise) {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('cleanup stalled')), 250); })]); }
+  finally { clearTimeout(timer); }
+}
+test('body deadline and byte-limit rejection do not await stalled stream cleanup',async()=>{
+  const never = () => new Promise(() => {});
+  await assert.rejects(bounded(readJson(new ReadableStream({ cancel: never }), 1024, 10)), /deadline/);
+  const oversized = new ReadableStream({ start(c) { c.enqueue(new Uint8Array(1025)); }, cancel: never });
+  await assert.rejects(bounded(readJson(oversized, 1024)), /size limit/);
+});
+test('upstream error bodies with stalled cleanup do not stall metadata results',async()=>{
+  const r = await bounded(checkMetadata({name:'fixture',version:'1.0.0'}, async () =>
+    new Response(new ReadableStream({ cancel() { return new Promise(() => {}); } }), { status: 503 })));
+  assert.equal(r.checks.registry,'unavailable'); assert.equal(r.checks.vulnerabilities,'unavailable');
+  assert.equal(r.verdict,'review'); assert.equal(r.installationApproved,false);
+});
+test('source budget counts UTF-8 bytes, invalid arguments do not consume scan quota',async()=>{
+  let scans = 0;
+  const metered = { ...env, SCAN_RATE_LIMITER: { limit: async () => { scans++; return { success: true }; } } };
+  const r = await worker.fetch(request(audit({ sourceFiles: { 'index.js': '💥'.repeat(4200) } })), metered);
+  assert.equal((await r.json()).error.code, -32602); assert.equal(scans, 0);
+});
+test('malformed advisory records never produce a completed clean lookup',async()=>{
+  for (const body of [null, [], {vulns:null}, {vulns:'none'}, {vulns:[null]}, {vulns:[{id:42}]}]) {
+    const r=await checkMetadata({name:'fixture',version:'1.0.0'},async url=>Response.json(url.includes('registry.npmjs.org')?{name:'fixture',version:'1.0.0'}:body));
+    assert.equal(r.checks.vulnerabilities,'unavailable'); assert.equal(r.verdict,'review'); assert.equal(r.installationApproved,false);
+  }
+});
