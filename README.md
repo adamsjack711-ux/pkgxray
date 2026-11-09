@@ -4,7 +4,7 @@ A local research prototype that traces environment data across npm package
 boundaries into modeled network calls. It complements pkgxray's individual
 package analysis with an explicit source → call → sink report.
 
-**Status: first working CommonJS prototype.** This is not a production security
+**Status: CommonJS prototype, version 0.2.** This is not a production security
 scanner, package safety verdict, or replacement for pkgxray. The project remains
 private to npm publication (`private: true`); the GitHub repository is public.
 
@@ -16,6 +16,7 @@ third-party Acorn parser is bundled with its license and provenance metadata.
 ```sh
 npm test
 npm run demo
+npm run demo:real
 ```
 
 The demo creates disposable synthetic package trees and analyzes two cases:
@@ -26,6 +27,11 @@ The demo creates disposable synthetic package trees and analyzes two cases:
 
 Fixture code is never executed, installed, or downloaded. The demo deletes its
 own temporary trees after analysis.
+
+`demo:real` parses a pinned copy of `ms@2.1.3`: numeric formatting completes,
+credentials alongside formatted output are flagged, and regex parsing/unknown
+environment inputs remain incomplete. Package code is never executed. This is
+a selected regression fixture, not a general npm accuracy benchmark.
 
 ## Scan an existing source snapshot
 
@@ -61,15 +67,22 @@ approval rules are not implemented yet.
 - Literal CommonJS `require`, package `main`, `.js`/explicit `.cjs` files, legacy
   directory indexes, and exact string `exports` targets. A package instance is
   selected from the importing file's location, not just its name.
-- Straight-line `const`/`let` declarations, literal properties and object/array
-  values, function declarations/expressions/arrows, identifier parameters,
-  return values, simple concatenation/templates and direct CommonJS exports.
+- `var` hoisting/redeclaration, `const`/`let` block scope, local variable assignment,
+  literal properties and object/array values, function declarations/expressions/
+  arrows, identifier parameters, return values and direct CommonJS exports.
+- Primitive arithmetic/comparisons, conversions, selected `Math` functions,
+  concatenation/templates, `typeof`, known-condition `if`/ternary branches and
+  short-circuit operators. Unknown conditions explore both alternatives with
+  saved/restored state and an explicit `uncertain-control-flow` gap. Such results
+  remain incomplete; they do not claim to prove path feasibility.
 - `process.env` sources, `fetch` arguments, Node HTTP/HTTPS request/get arguments
   and request-stream write/end sinks. `JSON.stringify(value)` preserves tracked
   data when no custom serialization callback is present.
 - File/line/column evidence, import edges, source/call/return/sink traces, and
   per-instance hashes of the manifest and source files actually read.
 
+Variable/branch semantics follow a bounded subset of the
+[ECMAScript statement specification](https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html).
 The resolver uses a deliberately limited subset of the documented
 [npm lockfile format](https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/)
 and [Node CommonJS resolution](https://nodejs.org/api/modules.html#all-together).
@@ -79,16 +92,19 @@ It is not a complete Node loader.
 
 Coverage is scoped to one entry and the functions it calls. Uncalled exports,
 other entrypoints, lifecycle scripts and runtime-fetched payloads are outside
-that scope. A module containing unsupported syntax is withheld from evaluation
-and produces a coverage gap, including unsupported syntax inside dormant
-functions.
+that scope. The parser budgets the entire loaded module, but semantic gaps are
+reported when unsupported constructs are reached on the selected entry path.
+Dormant function bodies no longer prevent analysis of a supported call. Syntax
+parse errors still stop that module. Unsupported reached statements produce
+explicit gaps; later supported statements can still contribute findings.
 
 These cases return `incomplete`, rather than an implied safety verdict:
 
 - ESM/TypeScript/native modules, dynamic require, conditional/wildcard exports,
   package self-references, nested package scopes, workspace links and symlinks.
-- Branches, loops, async/generators, destructuring, getters, classes, most
-  builtins/APIs, unknown calls, mutation beyond top-level direct CommonJS exports,
+- Unknown branch feasibility, loops/switches, async/generators, destructuring,
+  getters, classes, regex execution, most builtins/APIs, unknown calls, outer-scope
+  writes and object mutation beyond top-level direct CommonJS exports, exceptions,
   custom object coercion/serialization, import cycles and recursive calls.
 - Missing source, manifest mismatches, unlocked imported packages and exhausted
   file, graph, evaluation or output budgets.
@@ -96,7 +112,9 @@ These cases return `incomplete`, rather than an implied safety verdict:
 The default bounds are 2,048 locked instances, 128 loaded modules, 256 KiB per
 manifest/source file, a 2 MiB lockfile, 4 MiB total manifest/source bytes, 50,000
 syntax nodes, 50,000 evaluation steps, depth 64, 100 findings, 100 gaps and 32
-tracked paths per value. The API permits lowering these bounds.
+tracked paths per value. Alternative control flow is limited to 64 paths and
+computed strings to the configured per-file size limit. The API permits lowering
+these bounds.
 
 Use a stable local snapshot. Paths are checked for traversal and symlinks, but
 this is not a filesystem sandbox against another process actively replacing
@@ -128,7 +146,8 @@ input errors become structured gaps; invalid API limit options throw.
 
 The test suite covers the sensitive/benign pair, unused capabilities, relative
 imports, nested-version selection, hoisted/scoped imports, return/object flows,
-HTTP streams, resolution limits, unsupported semantics, source identity, input
+HTTP streams, var/lexical scope, branch isolation and early returns, the pinned
+real `ms` numeric path, resolution limits, unsupported semantics, source identity, input
 bounds, cycles, symlinks, evidence hashes, CLI behavior, and parser provenance.
 All examples use synthetic data and non-routable `.invalid` destinations.
 
@@ -166,13 +185,14 @@ state, not a claim about all published pkgxray versions.
 
 ## Next increments
 
-1. Add narrowly specified ESM import/export support with matching resolution
-   tests, keeping conditional exports incomplete until their conditions are modeled.
-2. Support additional useful syntax with paired sensitive/benign tests; preserve
-   explicit gaps for effects that are still unknown.
-3. Bind supplied trees to verified package archives before treating them as
-   authenticated registry evidence.
-4. Define a versioned integration contract for pkgxray findings and compose-ray
-   flows. Do not let one scanner's clean result erase the other's uncertainty.
+1. Add string and regex summaries, then bounded switch/array/callback handling,
+   with paired sensitive/benign cases from real packages. The existing unknown
+   input scenarios for `ms`, `wordwrap` and `qs` still return incomplete.
+2. Reduce noisy coverage diagnostics without hiding the first blocking reason
+   or resource exhaustion. Broader traversal of complex trees can now hit budgets.
+3. Add narrowly specified ESM support and bind supplied trees to verified
+   archives before treating them as authenticated registry evidence.
+4. Define a versioned pkgxray integration contract. One scanner's clean result
+   must never erase the other's uncertainty.
 
 No registry package or production scanner release has been published.

