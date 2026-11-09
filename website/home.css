@@ -35,7 +35,7 @@ code, pre { font-family: var(--mono); }
 .cold-scan-limits { color: var(--dim); }
 .cold-scan-examples { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 18px; font: 12px/1.6 var(--mono); }
 .cold-scan-examples span { color: var(--muted); margin-right: 4px; }
-.cold-scan-examples button { padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.cold-scan-examples button { appearance: none; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
 .cold-scan-examples button:hover { border-color: var(--text); }
 .cold-scan-examples button:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 .cold-scan-examples button:disabled { opacity: .5; cursor: wait; }

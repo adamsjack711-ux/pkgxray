@@ -9,6 +9,9 @@
 /*.html
   Cache-Control: public, max-age=0, must-revalidate
 
+/home.css
+  Cache-Control: public, max-age=0, must-revalidate
+
 /assets/*
   Cache-Control: public, max-age=86400
 
