@@ -30,7 +30,23 @@ The local snapshot had `jose@6.2.14` and `ws` as its two direct dependencies.
 This exposed a collection bug: unsupported ESM was rejected before its bytes
 were fingerprinted or passed to pkgxray. Version 0.3.1 retains bounded JavaScript
 source evidence before reporting the unsupported format. It does not interpret
-ESM, execute it, or silently clear its flow coverage.
+ESM, execute it, or silently clear its flow coverage in that version.
+
+## ESM progress · 0.4
+
+The same local snapshot was scanned with the restricted ESM loader:
+
+| Entry | Source modules collected | Flow result |
+| --- | --- | --- |
+| Application | 58 | Incomplete |
+| Apple sign-in | 54 | Incomplete |
+| Voice upstream | 8 | Incomplete |
+
+The Apple sign-in scan includes 46 JavaScript source files from `jose`, plus its
+manifest. All three pkgxray runs completed their selected-file calls and retained
+review decisions. Async functions, classes, unmodeled APIs, unresolved values,
+and diagnostic budgets remain gaps. No complete credential route was established.
+Counts describe this local snapshot, not every Tapp version.
 
 ## Next path: Apple sign-in
 
@@ -40,8 +56,8 @@ alone must not be mistaken for transmission of the identity token.
 
 Work in this order:
 
-1. Model a narrow ESM import/export subset and exact package-export resolution,
-   with unresolved bindings and module cycles remaining explicit gaps.
+1. Done: model a [narrow ESM subset](esm.md) and exact package-export resolution,
+   keeping unresolved bindings and cycles explicit.
 2. Add an explicit callable entry scenario with synthetic token input. Loading an
    exported verifier alone does not exercise its verification path.
 3. Model the required async/callback behavior without running the target code.

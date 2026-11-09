@@ -16,15 +16,15 @@ a passing protocol stub test is not evidence of real-engine compatibility.
 ## Input and source binding
 
 - npm lockfile v2/v3 and local sources at matching locked paths.
-- One relative CommonJS entrypoint, defaulting to `index.js`.
+- One relative CommonJS or ESM entrypoint, defaulting to `index.js`.
 - Each instance receives its own selected manifest/source files. The root ID is
   `.`; dependencies retain their full nested `node_modules` paths.
 - Before pkgxray receives the bytes, the adapter checks the lockfile hash, file
   ownership, and selected file SHA-256 hashes against Compose-ray's report.
 - Each input explicitly has `sourceCoverage.complete: false`: unselected files
   and other entrypoints have not been inventoried.
-- Since 0.3.1, bounded ESM entry bytes are retained for static package checks.
-  Compose-ray still reports an unsupported-format gap and does not follow ESM imports.
+- ESM imports are followed within the [supported subset](esm.md). Unsupported
+  semantics retain source evidence and explicit gaps for both engines.
 
 Use a stable snapshot. These checks detect ordinary between-scan changes; they
 are not a filesystem sandbox against a concurrent hostile writer. Local hashes

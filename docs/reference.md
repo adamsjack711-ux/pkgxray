@@ -4,7 +4,7 @@ A local research prototype that traces environment data across npm package
 boundaries into modeled network calls. It complements pkgxray's individual
 package analysis with an explicit source → call → sink report.
 
-**Status: CommonJS prototype, version 0.3.1.** This is not a production security
+**Status: CommonJS/ESM prototype, version 0.4.0.** This is not a production security
 scanner, package safety verdict, or replacement for pkgxray. The project remains
 private to npm publication (`private: true`); the GitHub repository is public.
 
@@ -74,6 +74,10 @@ approval rules are not implemented yet.
 - Literal CommonJS `require`, package `main`, `.js`/explicit `.cjs` files, legacy
   directory indexes, and exact string `exports` targets. A package instance is
   selected from the importing file's location, not just its name.
+- Explicit `.mjs` and module-typed `.js`, named/default/namespace/side-effect
+  imports, const/function exports, default expressions, and named re-exports.
+  Exact package exports can select ordered `node`/`import`/`default` conditions.
+  See [ESM support](esm.md) for the restricted resolution and binding contract.
 - `var` hoisting/redeclaration, `const`/`let` block scope, local variable assignment,
   literal properties and object/array values, function declarations/expressions/
   arrows, identifier parameters, return values and direct CommonJS exports.
@@ -92,9 +96,9 @@ approval rules are not implemented yet.
 - File/line/column evidence, import edges, source/call/return/sink traces, and
   per-instance hashes of the manifest and source files actually read.
 
-Unsupported ESM entry files are collected and fingerprinted for pkgxray's
-selected-source checks before the flow interpreter reports its format gap.
-Collection does not imply ESM interpretation or dependency traversal.
+Source bytes remain available to pkgxray's selected-source checks even when
+Compose-ray encounters unsupported semantics. Reading a file is not proof that
+all its behavior was modeled.
 
 Variable/branch semantics follow a bounded subset of the
 [ECMAScript statement specification](https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html).
@@ -115,7 +119,8 @@ explicit gaps; later supported statements can still contribute findings.
 
 These cases return `incomplete`, rather than an implied safety verdict:
 
-- ESM/TypeScript/native modules, dynamic require, conditional/wildcard exports,
+- TypeScript/native modules, dynamic imports/requires, wildcard exports,
+  CommonJS/ESM interop, star re-exports, mutable live exports, unsupported export conditions,
   package self-references, nested package scopes, workspace links and symlinks.
 - Unknown branch feasibility, loops/switches, async/generators, destructuring,
   getters, classes, regex execution, most builtins/APIs, unknown calls, outer-scope
@@ -208,7 +213,7 @@ state, not a claim about all published pkgxray versions.
    input scenarios for `ms`, `wordwrap` and `qs` still return incomplete.
 2. Reduce noisy coverage diagnostics without hiding the first blocking reason
    or resource exhaustion. Broader traversal of complex trees can now hit budgets.
-3. Add narrowly specified ESM support and bind supplied trees to verified
+3. Extend the restricted ESM and async model and bind supplied trees to verified
    archives before treating them as authenticated registry evidence.
 4. Extend the [local pkgxray integration contract](integration.md) to verified
    snapshots. One scanner's clean result must never erase the other's uncertainty.

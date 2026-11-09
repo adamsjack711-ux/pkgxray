@@ -137,11 +137,31 @@ export class Project {
     if (!/\.(?:[cm]?js)$/.test(file)) fail('unsupported-module-format', `Only JavaScript source files are collected: ${file}`);
     const bytes = this.read(file);
     pkg.files.set(file, sha256(bytes));
-    // Retain bounded ESM bytes as evidence for the companion static scanner.
-    // Collection is not interpretation: flow coverage remains incomplete.
-    if (file.endsWith('.mjs') || (pkg.manifest.type === 'module' && !file.endsWith('.cjs'))) fail('unsupported-module-format', `ES modules are not supported yet: ${file}`);
     try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
     catch { fail('invalid-encoding', `Source is not UTF-8: ${file}`); }
+  }
+
+  format(file) {
+    return file.endsWith('.mjs') || (!file.endsWith('.cjs') && this.owner(file).manifest.type === 'module') ? 'module' : 'commonjs';
+  }
+
+  exactTarget(candidate, pkg) {
+    if (this.owner(candidate).id !== pkg.id) fail('cross-boundary-path', `Relative target escapes its package: ${candidate}`);
+    if (!this.inspect(candidate)?.stat.isFile()) fail('unsupported-esm-resolution', `ESM needs an existing exact file target: ${candidate}`);
+    return candidate;
+  }
+
+  importTarget(value, depth = 0) {
+    if (depth > 8) fail('resolution-budget', 'Conditional export nesting limit exceeded.');
+    if (typeof value === 'string') return value;
+    if (!object(value)) fail('unsupported-exports', 'Export target is missing, blocked, or unsupported.');
+    for (const [condition, target] of Object.entries(value)) {
+      if (['types', 'require'].includes(condition)) continue;
+      if (!['node', 'import', 'default'].includes(condition)) fail('unsupported-exports', `Unsupported export condition: ${condition}`);
+      const selected = this.importTarget(target, depth + 1);
+      if (selected !== undefined) return selected;
+    }
+    return undefined;
   }
 
   fileTarget(candidate, pkg, depth = 0) {
@@ -172,10 +192,12 @@ export class Project {
     fail('missing-module', `Cannot resolve module: ${candidate}`);
   }
 
-  resolve(from, specifier) {
+  resolve(from, specifier, mode = 'require') {
     if (typeof specifier !== 'string' || !specifier || specifier.includes('\\') || specifier.includes('\0')) fail('unsupported-import', 'Require must use a supported literal module specifier.');
+    if (mode === 'import' && /[%?#]/.test(specifier)) fail('unsupported-esm-resolution', 'URL-encoded, query and fragment specifiers are not modeled.');
     if (specifier.startsWith('./') || specifier.startsWith('../')) {
       const target = path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier));
+      if (mode === 'import') return this.exactTarget(target, this.owner(from));
       return this.fileTarget(target, this.owner(from));
     }
     const match = specifier.match(/^((?:@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+)(?:\/(.+))?$/);
@@ -197,11 +219,23 @@ export class Project {
     if (Object.hasOwn(pkg.manifest, 'exports')) {
       const exp = pkg.manifest.exports;
       const key = subpath ? `./${subpath}` : '.';
-      const target = typeof exp === 'string' && !subpath ? exp : object(exp) ? exp[key] : undefined;
-      if (typeof target !== 'string' || !target.startsWith('./') || target.includes('*') || target.split('/').includes('..')) fail('unsupported-exports', `Only exact string exports are modeled: ${pkg.id} ${key}`);
+      let target;
+      if (mode === 'import') {
+        const keys = object(exp) ? Object.keys(exp) : [];
+        const subpaths = keys.some(k => k.startsWith('.'));
+        if (subpaths && keys.some(k => !k.startsWith('.'))) fail('unsupported-exports', 'Mixed subpath and conditional export keys.');
+        target = this.importTarget(subpaths ? exp[key] : !subpath ? exp : undefined);
+      } else target = typeof exp === 'string' && !subpath ? exp : object(exp) ? exp[key] : undefined;
+      if (typeof target !== 'string' || !target.startsWith('./') || /[\\%?#*]/.test(target) ||
+          target.slice(2).split('/').some(part => ['', '.', '..', 'node_modules'].includes(part))) fail('unsupported-exports', `Only exact local export files are modeled: ${pkg.id} ${key}`);
       const file = path.posix.join(pkg.path, target);
       if (this.owner(file).id !== pkg.id || !this.inspect(file)?.stat.isFile()) fail('missing-module', `Missing export target: ${file}`);
       return file;
+    }
+    if (mode === 'import') {
+      const target = subpath || pkg.manifest.main || 'index.js';
+      if (typeof target !== 'string' || /[\\%?#]/.test(target) || path.posix.isAbsolute(target)) fail('unsupported-esm-resolution', `Unsupported package main: ${pkg.id}`);
+      return this.exactTarget(path.posix.normalize(path.posix.join(pkg.path, target)), pkg);
     }
     return this.fileTarget(subpath ? path.posix.join(pkg.path, subpath) : pkg.path, pkg);
   }

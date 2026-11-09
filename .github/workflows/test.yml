@@ -23,6 +23,7 @@ jobs:
       - run: npm run demo
       - run: npm run demo:real
       - run: npm run demo:strings
+      - run: npm run demo:esm
   pkgxray-compatibility:
     runs-on: ubuntu-latest
     timeout-minutes: 5

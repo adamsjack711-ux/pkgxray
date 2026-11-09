@@ -16,7 +16,7 @@ function fixture(t) {
   fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': manifest } }));
   fs.mkdirSync(path.join(root, 'src'));
   for (const file of ['server.mjs', 'apple-auth.mjs', 'voice.mjs']) {
-    fs.writeFileSync(path.join(root, 'src', file), 'export const fixture=true;');
+    fs.writeFileSync(path.join(root, 'src', file), 'export const fixture=async()=>true;');
   }
   return root;
 }
@@ -25,7 +25,7 @@ test('Tapp baseline fingerprints all selected entries without clearing unsupport
   const root = fixture(t);
   const r = tappBaseline({ root });
   assert.equal(r.cases.length, 3);
-  assert.ok(r.cases.every(c => c.sourceCollected && c.flow === 'incomplete' && c.gapCodes.includes('unsupported-module-format')));
+  assert.ok(r.cases.every(c => c.sourceCollected && c.flow === 'incomplete' && c.gapCodes.includes('unsupported-semantics')));
   assert.ok(r.cases.every(c => c.flowFindings === 0 && c.packageChecks === 'not-requested'));
   assert.equal(baselineExitCode(r), 2);
 });

@@ -1,6 +1,6 @@
 {
   "name": "package-compose-ray",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "description": "Check the packages. Trace the connections. Cross-package dataflow analysis alongside pkgxray.",
   "license": "MIT",
@@ -18,6 +18,7 @@
     "demo:real": "node examples/real-package-demo.mjs",
     "demo:strings": "node examples/string-flow-demo.mjs",
     "demo:integration": "node examples/together.mjs",
+    "demo:esm": "node examples/esm-demo.mjs",
     "baseline:tapp": "node research/tapp-baseline.mjs"
   },
   "engines": { "node": ">=18" }

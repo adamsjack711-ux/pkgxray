@@ -155,7 +155,7 @@ test('unlocked physical package cannot be used in place of a locked dependency',
   assert.ok(hasGap(f.scan(), 'unlocked-package'));
 });
 
-test('unsupported exports, ESM, native modules and nested package scopes are incomplete', t => {
+test('unsupported require exports, ESM interop, native modules and nested scopes are incomplete', t => {
   for (const manifest of [{ exports: { import: './index.js', require: './index.js' } }, { type: 'module' }, { main: 'index.node' }]) {
     const f = fixture(t);
     f.write('node_modules/sender/package.json', { name: 'sender', version: '1.0.0', ...manifest });

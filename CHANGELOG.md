@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+- Follow a restricted static ESM graph: named/default/namespace/side-effect
+  imports, const/function exports, default expressions, and named re-exports.
+- Resolve exact ESM files and ordered `node`/`import`/`default` package exports;
+  retain explicit gaps for unsupported interop, cycles, live mutations, and async.
+- Add synthetic authentication-shaped controls and a new Tapp baseline. Apple
+  sign-in now traverses 54 source modules in the reviewed local snapshot, but
+  complete token-route analysis remains blocked by unsupported semantics.
+
 ## 0.3.1
 
 - Retain unsupported ESM source bytes for pkgxray evidence and fingerprinting;

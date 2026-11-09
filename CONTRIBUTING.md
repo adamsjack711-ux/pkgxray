@@ -12,6 +12,7 @@ npm test
 npm run demo
 npm run demo:strings
 npm run demo:real
+npm run demo:esm
 ```
 
 For the real pkgxray integration, use a trusted checkout:

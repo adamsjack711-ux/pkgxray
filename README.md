@@ -46,7 +46,7 @@ node bin/compose-ray.mjs /path/to/project --entry index.js \
 | Supplies package findings | Adds source → call → return → network evidence |
 | Owns its full installation-policy workflow | Adds evidence without issuing approval |
 
-**v0.3.1 prototype:** combined mode checks selected local files and preserves both
+**v0.4 prototype:** CommonJS/ESM tracing preserves both
 engines’ findings and gaps. It does not yet verify registry archives or authorize
 installation. A detected transfer may be legitimate; no finding does not mean safe.
 

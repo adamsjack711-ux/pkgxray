@@ -11,7 +11,7 @@ const val = (kind = 'unknown', fields = {}) => ({ kind, traces: [], ...fields })
 const literal = value => val('literal', { value });
 const obj = entries => val('object', { props: new Map(entries) });
 class Scope {
-  constructor(parent, frame = false) { this.parent = parent; this.bindings = new Map(); this.kinds = new Map(); this.frame = frame || !parent ? this : parent.frame; }
+  constructor(parent, frame = false) { this.parent = parent; this.format = parent?.format || 'commonjs'; this.bindings = new Map(); this.kinds = new Map(); this.frame = frame || !parent ? this : parent.frame; }
   get(name) { return this.bindings.has(name) ? this.bindings.get(name) : this.parent?.get(name); }
   has(name) { return this.bindings.has(name) || Boolean(this.parent?.has(name)); }
   set(name, value, kind) { this.bindings.set(name, value); if (kind) this.kinds.set(name, kind); }
@@ -250,6 +250,7 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
           return value;
         }
         if (node.name === 'undefined') return literal(undefined);
+        if (scope.format === 'module' && ['require', 'module', 'exports'].includes(node.name)) return unknown(file, node, `CommonJS global is unavailable in ESM: ${node.name}`, 'unresolved-binding');
         if (['require', 'process', 'fetch', 'JSON', 'console', 'Math'].includes(node.name)) return val(node.name);
         if (['String', 'Number', 'Boolean', 'parseFloat', 'parseInt', 'isFinite', 'isNaN'].includes(node.name)) return val('primitive-call', { name: node.name });
         return unknown(file, node, `Unresolved identifier: ${node.name}`, 'unresolved-binding');
@@ -380,6 +381,10 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
       try {
         const resolved = project.resolve(file, specifier);
         edges.push({ specifier, from: loc(file, node), to: project.reference(resolved) });
+        if (project.format(resolved) === 'module') {
+          project.source(resolved);
+          return unknown(file, node, 'CommonJS require of ESM is not modeled.', 'unsupported-module-interop');
+        }
         const result = load(resolved, depth + 1);
         return withStep(result, { kind: 'import', label: specifier, ...loc(file, node) });
       } catch (error) { gap(error.code || 'resolution-error', error.message, loc(file, node)); return val(); }
@@ -468,6 +473,9 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
         return next();
       case 'ExpressionStatement': expression(node.expression, scope, file, depth + 1); return next();
       case 'ReturnStatement': return expression(node.argument, scope, file, depth + 1);
+      case 'ExportDefaultDeclaration':
+        scope.set(node.binding, expression(node.declaration, scope, file, depth + 1), 'const');
+        return next();
       case 'FunctionDeclaration': case 'EmptyStatement': return next();
       case 'BlockStatement': return statements(node.body, new Scope(scope), file, depth + 1, next);
       case 'IfStatement': {
@@ -483,6 +491,88 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
     }
   }
 
+  function importModule(specifier, file, node, depth) {
+    tick(depth);
+    if (['http', 'https', 'node:http', 'node:https'].includes(specifier)) {
+      return obj([['default', val('http', { label: specifier })],
+        ...['request', 'get'].map(name => [name, val('http-call', { label: `${specifier}.${name}` })])]);
+    }
+    if (builtins.has(specifier.replace(/^node:/, '')) || specifier.startsWith('node:')) return unknown(file, node, `Unmodeled Node builtin: ${specifier}`, 'unsupported-builtin');
+    try {
+      const resolved = project.resolve(file, specifier, 'import');
+      edges.push({ specifier, from: loc(file, node), to: project.reference(resolved) });
+      if (project.format(resolved) !== 'module') {
+        project.source(resolved);
+        return unknown(file, node, 'ESM imports of CommonJS are not modeled.', 'unsupported-module-interop');
+      }
+      return load(resolved, depth + 1);
+    } catch (error) { gap(error.code || 'resolution-error', error.message, loc(file, node)); return val(); }
+  }
+
+  function imported(namespace, name, file, node) {
+    if (namespace.kind !== 'object') return unknown(file, node, 'Imported module did not provide a known namespace.', 'unresolved-import');
+    if (!namespace.props.has(name)) return unknown(file, node, `Module does not export: ${name}`, 'missing-export');
+    return namespace.props.get(name);
+  }
+
+  function esm(body, scope, file, depth) {
+    const statementsToRun = [], exported = new Map();
+    const name = node => node.name ?? node.value;
+    // Evaluate module requests in source order before any importer statements.
+    // Cycles are explicitly incomplete; no partial namespace is guessed.
+    for (const node of body) {
+      tick(depth);
+      if (node.type === 'ImportDeclaration') {
+        const namespace = importModule(node.source.value, file, node, depth + 1);
+        for (const spec of node.specifiers) {
+          const value = spec.type === 'ImportNamespaceSpecifier' ? namespace
+            : imported(namespace, spec.type === 'ImportDefaultSpecifier' ? 'default' : name(spec.imported), file, spec);
+          scope.set(spec.local.name, withStep(value, { kind: 'import', label: node.source.value, ...loc(file, node) }), 'const');
+        }
+      } else if (node.type === 'ExportNamedDeclaration') {
+        if (node.source) {
+          const namespace = importModule(node.source.value, file, node, depth + 1);
+          for (const spec of node.specifiers) exported.set(name(spec.exported), {
+            value: withStep(imported(namespace, name(spec.local), file, spec), { kind: 'import', label: node.source.value, ...loc(file, node) }),
+          });
+        } else if (node.declaration) {
+          const declaration = node.declaration;
+          statementsToRun.push(declaration);
+          if (declaration.type === 'VariableDeclaration') {
+            for (const dec of declaration.declarations) {
+              if (dec.id.type !== 'Identifier') { unknown(file, dec, 'Destructured exports are not modeled.', 'unsupported-export'); continue; }
+              exported.set(dec.id.name, { local: dec.id.name, node });
+            }
+          } else if (declaration.id) exported.set(declaration.id.name, { local: declaration.id.name, node });
+        } else for (const spec of node.specifiers) exported.set(name(spec.exported), { local: name(spec.local), node });
+      } else if (node.type === 'ExportDefaultDeclaration') {
+        if (node.declaration.type === 'FunctionDeclaration' && node.declaration.id) {
+          statementsToRun.push(node.declaration);
+          exported.set('default', { local: node.declaration.id.name, node });
+        } else {
+          const binding = Symbol('default');
+          statementsToRun.push({ ...node, binding, declaration: node.declaration.type === 'FunctionDeclaration'
+            ? { ...node.declaration, type: 'FunctionExpression' } : node.declaration });
+          exported.set('default', { local: binding, node });
+        }
+      } else if (node.type === 'ExportAllDeclaration') {
+        unknown(file, node, 'Star and namespace re-exports are not modeled.', 'unsupported-export');
+      } else statementsToRun.push(node);
+    }
+    declareVars(statementsToRun, scope, file);
+    statements(statementsToRun, scope, file, depth + 1);
+    const entries = [];
+    for (const [key, descriptor] of exported) {
+      tick(depth);
+      if ('value' in descriptor) { entries.push([key, descriptor.value]); continue; }
+      const { local, node } = descriptor;
+      if (!scope.has(local)) { entries.push([key, unknown(file, node, 'Export binding is unavailable.', 'missing-export')]); continue; }
+      if (!['const', 'function'].includes(scope.kinds.get(local))) unknown(file, node, 'Mutable live exports are not modeled.', 'unsupported-live-export');
+      entries.push([key, scope.get(local)]);
+    }
+    return obj(entries);
+  }
+
   function load(file, depth) {
     tick(depth);
     if (activeModules.has(file)) { gap('module-cycle', `Cyclic import: ${file}`, { file }); return val(); }
@@ -492,11 +582,18 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
     activeModules.add(file);
     try {
       const source = project.source(file);
+      const format = project.format(file);
       let ast;
-      try { ast = acorn.parse(source, { ecmaVersion: 2022, sourceType: 'script', locations: true, allowHashBang: true }); }
-      catch (error) { gap('parse-error', `Unsupported or invalid CommonJS syntax: ${error.message}`, { file }); return val(); }
+      try { ast = acorn.parse(source, { ecmaVersion: 2022, sourceType: format === 'module' ? 'module' : 'script', locations: true, allowHashBang: true }); }
+      catch (error) { gap('parse-error', `Unsupported or invalid JavaScript syntax: ${error.message}`, { file }); return val(); }
       preflight(ast, file);
       const scope = new Scope();
+      scope.format = format;
+      if (format === 'module') {
+        const result = esm(ast.body, scope, file, depth + 1);
+        cache.set(file, result);
+        return result;
+      }
       const exports = obj([]); exports.isExports = true;
       const module = obj([['exports', exports]]); module.isModule = true;
       scope.set('module', module, 'builtin'); scope.set('exports', exports, 'builtin');
@@ -518,7 +615,7 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
   } catch (error) { gap(error.code || 'input-error', error.message); }
   const coverage = gaps.length ? 'incomplete' : 'complete-for-supported-entry';
   return { schemaVersion: 1, tool: 'package-compose-ray', entry, verdict: gaps.length ? 'incomplete' : findings.length ? 'review' : 'no-flow-found',
-    coverage, scope: 'Bounded CommonJS entry analysis; no safety or malware verdict. Uncalled exports, lifecycle scripts and other entrypoints are not analyzed for flows.',
+    coverage, scope: 'Bounded CommonJS/ESM entry analysis; no safety or malware verdict. Uncalled exports, lifecycle scripts and other entrypoints are not analyzed for flows.',
     lockfileSha256: project?.lockfileSha256 || null, packages: project?.identities() || [], imports: edges,
     findings, gaps, stats: { modules: cache.size, sourceBytes: project?.totalBytes || 0, steps, astNodes, paths }, limits };
 }

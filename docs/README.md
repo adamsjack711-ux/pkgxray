@@ -8,6 +8,7 @@ Start with the [project overview and quick start](../README.md).
 | [Integration contract](integration.md) | What runs today, what JSON comes back, and what remains unverified? |
 | [Tapp baseline](tapp-baseline.md) | What does the first real-project run show, and which path comes next? |
 | [Scanner reference](reference.md) | Which JavaScript, package layouts, limits, and verdicts are supported? |
+| [ESM support](esm.md) | Which imports, exports, and package entry conditions work? |
 | [Roadmap](roadmap.md) | What must happen before installation policy can use the result? |
 | [Security](../SECURITY.md) | What is trusted, what is analyzed, and how do I report a flaw? |
 | [Contributing](../CONTRIBUTING.md) | How do I reproduce, test, and propose a change? |
@@ -32,6 +33,6 @@ them for you. Workspace links and symlinks are unsupported.
 before or alongside an analysis gap. Both are retained. Inspect the gap and the
 route; neither cancels the other.
 
-**A large application hits limits:** start with a smaller, relevant CommonJS
+**A large application hits limits:** start with a smaller, relevant JavaScript
 entrypoint and inspect the first gap. Raising limits is not a substitute for
 modeling unsupported behavior.

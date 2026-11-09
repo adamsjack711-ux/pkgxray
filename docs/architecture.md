@@ -20,7 +20,8 @@ flowchart TD
 1. `src/project.mjs` resolves locked package instances and reads bounded local
    files. Nested versions remain separate instances even when names match.
 2. `src/analyze.mjs` parses with vendored Acorn and symbolically follows a bounded
-   CommonJS entry path. It never loads target code through Node's module loader.
+   CommonJS/ESM entry path. Static ESM imports and named re-exports are resolved
+   before importer statements. It never loads target code through Node's loader.
 3. `src/integration.mjs` re-reads recorded files, checks hashes and the lockfile,
    and prepares evidence per package instance. Paths become relative to that
    instance for pkgxray's existing local analysis.

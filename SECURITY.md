@@ -23,7 +23,7 @@ findings can be reported publicly with inert fixtures.
   not an OS sandbox for an untrusted scanner.
 - Inputs must be stable snapshots. Path and symlink checks do not confine an
   attacker concurrently replacing parent directories.
-- Only a bounded CommonJS entry path is modeled. Dynamic behavior, native code,
+- Only a bounded CommonJS/ESM entry path is modeled. Dynamic behavior, native code,
   unsupported syntax/APIs, other entrypoints, and later downloaded payloads may
   escape this model. Coverage is not whole-application coverage.
 - Local file hashes identify analyzed bytes, not entire archives or authenticated

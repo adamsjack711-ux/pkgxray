@@ -22,7 +22,7 @@ export function tappBaseline({ root, scannerRoot }) {
       packageChecks: report.pkgxray?.status || 'not-requested', report };
   });
   return { schemaVersion: 1, target: 'tapp-backend',
-    scope: 'Selected entry-file coverage baseline, not a complete application scan or proof of a credential route.',
+    scope: 'Selected entrypoint coverage baseline, not a complete application scan or proof of a credential route.',
     cases };
 }
 
