@@ -4,7 +4,7 @@ A local research prototype that traces environment data across npm package
 boundaries into modeled network calls. It complements pkgxray's individual
 package analysis with an explicit source → call → sink report.
 
-**Status: CommonJS prototype, version 0.3.0.** This is not a production security
+**Status: CommonJS prototype, version 0.3.1.** This is not a production security
 scanner, package safety verdict, or replacement for pkgxray. The project remains
 private to npm publication (`private: true`); the GitHub repository is public.
 
@@ -91,6 +91,10 @@ approval rules are not implemented yet.
   returns. An unknown call or arbitrary object does not become a modeled string.
 - File/line/column evidence, import edges, source/call/return/sink traces, and
   per-instance hashes of the manifest and source files actually read.
+
+Unsupported ESM entry files are collected and fingerprinted for pkgxray's
+selected-source checks before the flow interpreter reports its format gap.
+Collection does not imply ESM interpretation or dependency traversal.
 
 Variable/branch semantics follow a bounded subset of the
 [ECMAScript statement specification](https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html).

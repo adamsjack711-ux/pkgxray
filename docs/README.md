@@ -6,6 +6,7 @@ Start with the [project overview and quick start](../README.md).
 | --- | --- |
 | [Architecture](architecture.md) | How do the engines fit together? |
 | [Integration contract](integration.md) | What runs today, what JSON comes back, and what remains unverified? |
+| [Tapp baseline](tapp-baseline.md) | What does the first real-project run show, and which path comes next? |
 | [Scanner reference](reference.md) | Which JavaScript, package layouts, limits, and verdicts are supported? |
 | [Roadmap](roadmap.md) | What must happen before installation policy can use the result? |
 | [Security](../SECURITY.md) | What is trusted, what is analyzed, and how do I report a flaw? |

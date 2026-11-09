@@ -134,10 +134,12 @@ export class Project {
       if (this.inspect(path.posix.join(dir, 'package.json'))) fail('nested-package-scope', `Nested package scope is unsupported: ${dir}`);
       dir = path.posix.dirname(dir);
     }
-    if (file.endsWith('.mjs') || (pkg.manifest.type === 'module' && !file.endsWith('.cjs'))) fail('unsupported-module-format', `ES modules are not supported yet: ${file}`);
-    if (!/\.(?:c?js)$/.test(file)) fail('unsupported-module-format', `Only CommonJS .js/.cjs files are modeled: ${file}`);
+    if (!/\.(?:[cm]?js)$/.test(file)) fail('unsupported-module-format', `Only JavaScript source files are collected: ${file}`);
     const bytes = this.read(file);
     pkg.files.set(file, sha256(bytes));
+    // Retain bounded ESM bytes as evidence for the companion static scanner.
+    // Collection is not interpretation: flow coverage remains incomplete.
+    if (file.endsWith('.mjs') || (pkg.manifest.type === 'module' && !file.endsWith('.cjs'))) fail('unsupported-module-format', `ES modules are not supported yet: ${file}`);
     try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
     catch { fail('invalid-encoding', `Source is not UTF-8: ${file}`); }
   }

@@ -23,6 +23,8 @@ a passing protocol stub test is not evidence of real-engine compatibility.
   ownership, and selected file SHA-256 hashes against Compose-ray's report.
 - Each input explicitly has `sourceCoverage.complete: false`: unselected files
   and other entrypoints have not been inventoried.
+- Since 0.3.1, bounded ESM entry bytes are retained for static package checks.
+  Compose-ray still reports an unsupported-format gap and does not follow ESM imports.
 
 Use a stable snapshot. These checks detect ordinary between-scan changes; they
 are not a filesystem sandbox against a concurrent hostile writer. Local hashes

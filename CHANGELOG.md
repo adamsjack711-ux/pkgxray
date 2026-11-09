@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- Retain unsupported ESM source bytes for pkgxray evidence and fingerprinting;
+  flow coverage remains explicitly incomplete.
+- Add a read-only Tapp entry-file baseline and regressions for evidence retention,
+  source changes, byte bounds, symlinks, and nonexecution. Private application
+  source and generated reports stay outside the repository.
+
 ## 0.3.0
 
 - Center the project on package inspection plus cross-package connection tracing.
