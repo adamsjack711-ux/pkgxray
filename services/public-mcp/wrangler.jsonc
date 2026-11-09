@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pkgxray-public-mcp",
+  "account_id": "13dba9786951c287c425cdbafd02243e",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-11-09",
+  "workers_dev": false,
+  "preview_urls": false,
+  "build": { "command": "npm run build" },
+  "routes": [{ "pattern": "mcp.pkgxray.ca", "custom_domain": true }],
+  "vars": { "PUBLIC_ORIGIN": "https://mcp.pkgxray.ca" },
+  "ratelimits": [
+    { "name": "MCP_RATE_LIMITER", "namespace_id": "731903", "simple": { "limit": 60, "period": 60 } },
+    { "name": "SCAN_RATE_LIMITER", "namespace_id": "731904", "simple": { "limit": 10, "period": 60 } }
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "upload_source_maps": true
+}

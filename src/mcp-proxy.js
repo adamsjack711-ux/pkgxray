@@ -40,7 +40,7 @@ const { spawn } = require("node:child_process");
 const { prepareMcpSandbox } = require("./mcp-sandbox");
 
 const { auditManifest, manifestEntries, scanResultText } = require("./mcp-audit");
-const { normalizeTool, scrubbedEnv, resolveCommand, isAllowedEnvOverride } = require("./mcp-client");
+const { normalizeTool, validateToolsPage, scrubbedEnv, resolveCommand, isAllowedEnvOverride } = require("./mcp-client");
 const { pinMcpManifest, recheckMcpManifest } = require("./mcp-pin");
 
 const VERDICT_RANK = { safe: 0, review: 1, block: 2 };
@@ -99,6 +99,7 @@ class McpGate {
   constructor(options) {
     this.send = options.send;
     this.policy = options.policy || "balanced";
+    if (!["strict", "balanced", "permissive"].includes(this.policy)) throw new Error("Invalid MCP runtime policy");
     this.scanResults = options.scanResults !== false;
     this.recheck = options.recheck !== false;
     this.pin = options.pin === true;
@@ -131,6 +132,8 @@ class McpGate {
     this.heldBytes = 0;
     this.clientListPages = 0;
     this.clientListBytes = 0;
+    this.clientToolNames = new Set();
+    this.expectedClientCursor = null;
     this.proxyListBytes = 0;
     this.reviewWarned = new Set();
 
@@ -165,6 +168,20 @@ class McpGate {
         !(typeof m.id === "number" && Number.isFinite(m.id)) && !(typeof m.id === "string" && m.id.length <= 128))) ||
         requests.length + this.callsInFlight.size + this.responsesInFlight.size + this.clientListIds.size + this.heldCalls.length > MAX_IN_FLIGHT) {
       throw new Error("MCP request/in-flight capacity exceeded");
+    }
+    const ids = new Set();
+    for (const request of requests) {
+      const id = request.id;
+      if (id === undefined) {
+        if (["initialize", "tools/list", "tools/call"].includes(request.method)) throw new Error("MCP request requires an id");
+        continue;
+      }
+      if ((typeof id === "string" && id.startsWith("pkgxray-proxy:")) || ids.has(id) ||
+          this.callsInFlight.has(id) || this.responsesInFlight.has(id) || this.clientListIds.has(id) ||
+          this.heldCalls.some(call => call.id === id) || id === this.clientInitId) {
+        throw new Error("MCP request id is reserved or already in flight");
+      }
+      ids.add(id);
     }
     // JSON-RPC batches were removed in protocol 2025-06-18 and no real host
     // sends them — but a batch would let a tools/call ride past the per-call
@@ -205,8 +222,14 @@ class McpGate {
 
     if (message.method === "tools/list") {
       if (this.clientListIds.size) throw new Error("Concurrent tools/list pagination is not supported");
-      if (!(message.params && message.params.cursor)) {
+      const cursor = message.params?.cursor;
+      if (cursor !== undefined && typeof cursor !== "string") throw new Error("Invalid tools/list pagination cursor");
+      if (cursor && cursor !== this.expectedClientCursor) throw new Error("Unverified tools/list pagination cursor");
+      if (!cursor) {
         this.clientListAccum = []; this.clientListPages = 0; this.clientListBytes = 0;
+        this.clientToolNames.clear();
+        this.expectedClientCursor = null;
+        this.stale = true;
       }
       this.clientListIds.add(message.id);
       this.send("server", message);
@@ -261,6 +284,20 @@ class McpGate {
   async _handleServerSingle(message) {
     if (!message || typeof message !== "object") return message;
 
+    // Request IDs are scoped to a direction. A server request that happens to
+    // share a client call ID cannot consume that call's result-screening slot.
+    if (typeof message.method === "string") {
+      if (message.method === "notifications/tools/list_changed") {
+        this.stale = true;
+        this._startRevalidation();
+      }
+      return message;
+    }
+    if (message.id !== undefined &&
+        (Object.hasOwn(message, "result") === Object.hasOwn(message, "error"))) {
+      throw new Error("Invalid MCP response: expected exactly one result or error");
+    }
+
     // Our own re-verification traffic — never forwarded.
     if (message.id !== undefined && this.proxyListIds.has(message.id)) {
       await this._onProxyListResponse(message);
@@ -268,6 +305,7 @@ class McpGate {
     }
 
     if (message.id !== undefined && message.id === this.clientInitId) {
+      this.clientInitId = undefined;
       const result = message.result || {};
       const serverInfo = result.serverInfo || {};
       this.serverInfo = {
@@ -335,6 +373,9 @@ class McpGate {
     const started = process.hrtime.bigint();
     const manifest = this._manifestFor(tools);
     const audit = this.audit(manifest);
+    if (!audit || !Object.hasOwn(VERDICT_RANK, audit.verdict) || !Array.isArray(audit.findings)) {
+      throw new Error("MCP manifest audit returned no recognized verdict");
+    }
     const nameByPath = new Map(manifestEntries(manifest).map((e) => [e.path, e.tool.name]));
 
     const status = new Map();
@@ -424,7 +465,14 @@ class McpGate {
   async _onClientListResponse(message) {
     const tools =
       message.result && Array.isArray(message.result.tools) ? message.result.tools : null;
-    if (!tools) return message;
+    if (!tools) {
+      this.verified = false;
+      this.stale = true;
+      if (message.error) return message;
+      throw new Error("Invalid tools/list response: expected tools array");
+    }
+    validateToolsPage(message.result, this.clientToolNames);
+    this.expectedClientCursor = message.result.nextCursor || null;
 
     this.clientListBytes += Buffer.byteLength(JSON.stringify(tools));
     this.clientListPages++;
@@ -468,6 +516,9 @@ class McpGate {
     const effective = worstOf(toolVerdict, this.serverVerdict);
     if (!entry) {
       return { allow: false, reason: "tool is not in the verified manifest" };
+    }
+    if (!Object.hasOwn(VERDICT_RANK, entry.verdict) || !Object.hasOwn(VERDICT_RANK, this.serverVerdict)) {
+      return { allow: false, reason: "manifest has no recognized verdict" };
     }
     if (effective === "block") {
       return { allow: false, reason: entry.reasons[0] || this.serverReasons[0] || "block verdict" };
@@ -622,6 +673,7 @@ class McpGate {
     this.revalidating = true;
     this.proxyListAccum = [];
     this.proxyListBytes = 0;
+    this.proxyToolNames = new Set();
     this.proxyPageCount = 0;
     this._sendProxyList();
     this.revalidateTimer = setTimeout(() => this._failRevalidation("timed out"), REVALIDATE_TIMEOUT_MS);
@@ -648,6 +700,8 @@ class McpGate {
       return;
     }
     const result = message.result || {};
+    try { validateToolsPage(result, this.proxyToolNames); }
+    catch (error) { this._failRevalidation(error.message); return; }
     this.proxyListBytes += Buffer.byteLength(JSON.stringify(result));
     if (this.proxyListBytes > MAX_MANIFEST_BYTES || this.proxyListAccum.length + (result.tools?.length || 0) > 10000) {
       this._failRevalidation("manifest capacity exceeded"); return;
@@ -793,7 +847,7 @@ function runMcpProxy(target, options = {}) {
     }
     warnings.forEach(log);
     const launch = prepareMcpSandbox(command, target.args || [], env, options);
-    if (launch.level) log(`OS sandbox: ${launch.level}; network denied; project read-only; private temporary HOME`);
+    if (launch.level) log(`OS sandbox: ${launch.level}; network ${options.sandboxNetwork === true ? "explicitly granted" : "denied"}; project read-only; private temporary HOME`);
     const child = spawn(launch.command, launch.args, {
       cwd: launch.cwd,
       env: launch.env,

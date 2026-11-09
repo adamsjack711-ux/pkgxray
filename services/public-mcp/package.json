@@ -1,0 +1,15 @@
+{
+  "name": "@pkgxray/public-mcp",
+  "version": "1.2.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "types": "wrangler types",
+    "dry-run": "wrangler deploy --dry-run --outdir dist/worker",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": { "wrangler": "4.159.0" }
+}

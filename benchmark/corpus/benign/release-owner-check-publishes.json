@@ -1,0 +1,12 @@
+{
+  "name": "release-owner-check-publishes",
+  "expect": "safe",
+  "note": "A manually invoked release script may confirm the current npm user owns the current package before publishing it. That does not enumerate all packages reachable by ambient credentials.",
+  "evidence": {
+    "packageName": "release-owner-check",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"release-owner-check\",\"version\":\"1.0.0\"}",
+      "scripts/release.sh": "npm_user=$(npm whoami)\nnpm owner ls | grep \"$npm_user\"\nnpm access ls-collaborators | grep \"$npm_user\"\nnpm publish"
+    }
+  }
+}

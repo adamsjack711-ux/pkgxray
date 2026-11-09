@@ -323,7 +323,11 @@ async function inspectMcpServer(target, options = {}) {
   const manifest = await enumerateMcpServer(target, {
     timeoutMs: options.timeoutMs,
     cwd: options.cwd,
-    extraEnv: options.extraEnv
+    extraEnv: options.extraEnv,
+    sandbox: options.sandbox,
+    sandboxRead: options.sandboxRead,
+    sandboxWrite: options.sandboxWrite,
+    sandboxNetwork: options.sandboxNetwork
   });
 
   const manifestAudit = options.audit === false ? null : auditManifest(manifest);

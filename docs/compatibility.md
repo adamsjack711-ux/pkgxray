@@ -41,7 +41,7 @@ Changes here are additive within a major version; removals wait for a major bump
 | `.pkgxray.json` config | the schema in [configuration.md](configuration.md); precedence order; "tighten freely, loosen loudly" invariants |
 | MCP server tools | `audit_agent_extension_supply_chain`, `guard_agent_extension_install`, `audit_lockfile_supply_chain`, `triage_lockfile_supply_chain` — names and input shapes |
 | Exit-code convention | `0` safe/allow · `2` block · `3` review, across every command |
-| `pkgxray mcp` (connect-time MCP adapter) | subcommands + `--pin` / `--recheck` / `--package` / `--force` / `--no-package-scan` flags; the package-scan-first ordering |
+| `pkgxray mcp` (connect-time MCP adapter) | subcommands + `--pin` / `--recheck` / `--package` / `--force` / `--no-package-scan` flags; the package-scan-first ordering; additive stdio-only `--sandbox` / `--sandbox-read` / `--sandbox-write` / `--sandbox-network` grants |
 | `pkgxray mcp-proxy` (per-call runtime gate) | the `pkgxray mcp-proxy -- <launcher>` invocation, `--policy strict\|balanced\|permissive`, `--pin` / `--recheck` / `--no-scan-results`; stdout stays protocol-clean |
 | `pkgxray-cache` server + `PKGXRAY_CACHE_URL` | routes `GET /github/repos/{owner}/{repo}`, `GET /github/tarball/{owner}/{repo}/{ref}`, `GET /healthz`; opt-in via the env var; explicitly **not** an auth boundary |
 
@@ -59,8 +59,9 @@ one surface that **runs** a package's install lifecycle. It is opt-in
 contract. It confirms malice behaviorally but **never clears** a package (a quiet
 run is "not caught here," not "safe"), so its output shape may still gain fields
 as hardening lands (TLS termination, loopback-only netns). Run it only on a
-disposable host; pass `--require-sandbox` to fail closed without OS-level
-isolation.
+disposable host. OS filesystem and network confinement is required by default;
+`--require-sandbox` remains accepted. The former env-only/shared-network fallback
+is intentionally removed as security hardening of this executes-code surface.
 
 ### 🔴 Experimental — may change or be removed without a major bump
 

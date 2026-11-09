@@ -1,0 +1,13 @@
+{
+  "name": "escaped-child-process",
+  "expect": "block",
+  "expectFinding": "concealed-runtime-execution",
+  "note": "hex escapes conceal child_process immediately before command execution",
+  "evidence": {
+    "packageName": "escaped-child-process",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"escaped-child-process\",\"version\":\"1.0.0\",\"main\":\"index.js\"}",
+      "index.js": "require('\\x63hild_process').exec(process.argv[2])"
+    }
+  }
+}

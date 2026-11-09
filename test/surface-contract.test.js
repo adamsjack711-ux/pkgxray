@@ -33,9 +33,33 @@ test("pkgxray mcp keeps its documented Stable flag surface", () => {
 test("pkgxray mcp-proxy keeps its documented Stable flag surface", () => {
   const u = usageText();
   assert.match(u, /pkgxray mcp-proxy\b/);
-  for (const flag of ["--policy strict|balanced|permissive", "--pin", "--no-recheck", "--no-scan-results"]) {
+  for (const flag of ["--policy strict|balanced|permissive", "--pin", "--no-recheck", "--no-scan-results", "--sandbox-network"]) {
     assert.ok(u.includes(flag), `mcp-proxy usage missing ${flag}`);
   }
+});
+
+test('MCP network grant requires confinement and preserves launcher arguments', () => {
+  const { parseArgs: parseCliArgs } = require('../bin/audit');
+  assert.throws(() => parseCliArgs(['mcp-proxy', '--sandbox-network', '--', 'node']), /require --sandbox/);
+  const parsed = parseCliArgs(['mcp-proxy', '--sandbox', '--sandbox-network', '--', 'node', 'server.js']);
+  assert.equal(parsed.sandboxNetwork, true);
+  assert.deepEqual(parsed.mcpTarget, { command: 'node', args: ['server.js'] });
+});
+
+test('connect-time MCP sandbox is additive, keeps explicit grants and refuses ignored isolation', () => {
+  const { parseArgs: parseCliArgs } = require('../bin/audit');
+  const parsed = parseCliArgs(['mcp', '--sandbox', '--sandbox-network', '--sandbox-read', '/public/input',
+    '--sandbox-read', '/runtime/node', '--sandbox-write', '/public/output', 'node', 'server.js', '--server-flag']);
+  assert.equal(parsed.sandbox, true);
+  assert.equal(parsed.sandboxNetwork, true);
+  assert.deepEqual(parsed.sandboxRead, ['/public/input', '/runtime/node']);
+  assert.deepEqual(parsed.sandboxWrite, ['/public/output']);
+  assert.deepEqual(parsed.mcpTarget, { command: 'node', args: ['server.js', '--server-flag'] });
+  for (const flag of ['--sandbox-network', '--sandbox-read', '--sandbox-write']) {
+    assert.throws(() => parseCliArgs(['mcp', flag, ...(flag === '--sandbox-network' ? [] : ['/input']), 'node']), /require --sandbox/);
+  }
+  assert.throws(() => parseCliArgs(['mcp', '--sandbox', 'https://fixture.invalid/mcp']), /stdio targets only/);
+  assert.throws(() => parseCliArgs(['mcp', '--sandbox', '--sandbox-read']), /requires a path/);
 });
 
 test("canary opt-in + hardening flags are documented", () => {

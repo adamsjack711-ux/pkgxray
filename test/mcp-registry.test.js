@@ -62,7 +62,7 @@ test("registry checklist states the launcher ships in the published release", ()
   assert.match(guide, /resets its data/i);
   assert.match(guide, /live lookup can come\s+back empty/i);
   assert.match(guide, /submit the entry again/i);
-  assert.match(guide, /Published `pkgxray@1\.0\.5` already carries `mcpName`/);
+  assert.ok(guide.includes(`Published \`pkgxray@${pkg.version}\` already carries \`mcpName\``));
   assert.match(guide, /mcp-publisher login github/);
   assert.match(guide, /mcp-publisher publish/);
 });
@@ -72,7 +72,11 @@ test("public setup keeps the README scan and MCP launcher examples current", () 
   assert.match(readme, /npx --yes pkgxray@\d+\.\d+\.\d+ guard /);
 
   const mcpGuide = readFileSync(resolve(ROOT, "docs", "mcp.md"), "utf8");
-  assert.match(mcpGuide, /pkgxray@1\.0\.5/);
+  assert.ok(mcpGuide.includes(`pkgxray@${pkg.version}`));
   assert.match(mcpGuide, /pkgxray-mcp/);
   assert.doesNotMatch(mcpGuide, /pkgxray@1\.0\.4[\s\S]{0,80}serve-mcp/);
+});
+
+test("registry advertises the deployed public Streamable HTTP endpoint", () => {
+  assert.deepEqual(server.remotes, [{ type: "streamable-http", url: "https://mcp.pkgxray.ca/mcp" }]);
 });

@@ -1,0 +1,12 @@
+{
+  "name": "web3-bundle-unrelated-executor",
+  "expect": "safe",
+  "note": "A web3 distribution may bundle transaction readers with unrelated code-generation helpers. File-level co-location is not an EtherHiding loader without raw calldata extraction.",
+  "evidence": {
+    "packageName": "web3-client",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"web3-client\",\"version\":\"1.0.0\"}",
+      "dist/client.min.js": "exports.tx=async p=>p.send('eth_getTransactionByHash',[hash]);exports.compile=s=>new Function('value',s);"
+    }
+  }
+}

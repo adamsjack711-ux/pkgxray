@@ -118,12 +118,20 @@ function guardOne(pkg, timeoutMs, scheme) {
     const child = spawn(process.execPath, [AUDIT, 'guard', `${scheme}:${pkg}`, '--format', 'json'], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
     });
     let out = '', err = '';
-    const killer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, timeoutMs);
+    let timedOut = false;
+    const killer = setTimeout(() => {
+      timedOut = true;
+      try {
+        if (process.platform === 'win32') child.kill('SIGKILL');
+        else process.kill(-child.pid, 'SIGKILL');
+      } catch {}
+    }, timeoutMs);
     child.stdout.on('data', (c) => { out += c; });
     child.stderr.on('data', (c) => { err += c; });
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(killer);
       const ms = Date.now() - started;
       let rec = { package: pkg, decision: 'error', grade: null, score: null, findings: [], ms, exit: code, error: null };
@@ -144,7 +152,9 @@ function guardOne(pkg, timeoutMs, scheme) {
         rec.score = r.score ?? null;
         rec.findings = (r.findings || []).map((f) => ({ severity: f.severity, category: f.category }));
       } catch {
-        rec.error = (err.trim().split('\n').pop() || `no-json (exit ${code})`).slice(0, 200);
+        rec.error = (timedOut
+          ? `timeout after ${timeoutMs}ms`
+          : err.trim().split('\n').pop() || `no-json (exit ${code}, signal ${signal || 'none'})`).slice(0, 200);
       }
       resolve(rec);
     });

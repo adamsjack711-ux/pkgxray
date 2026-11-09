@@ -9,6 +9,7 @@ const ROOT = resolve(__dirname, "..");
 const GUIDE_PATH = resolve(ROOT, "docs", "integrations", "coding-agents.md");
 const GUIDE = readFileSync(GUIDE_PATH, "utf8");
 const HOOKSHOT = readFileSync(resolve(ROOT, "examples", "hookshot", "README.md"), "utf8");
+const PACKAGE = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
 
 test("coding-agent guide covers every requested host and integration mode", () => {
   for (const heading of [
@@ -37,7 +38,7 @@ test("coding-agent guide covers every requested host and integration mode", () =
 
 test("agent examples pin pkgxray and distinguish guidance from enforcement", () => {
   assert.doesNotMatch(GUIDE, /pkgxray@latest/);
-  assert.match(GUIDE, /pkgxray@1\.0\.5/);
+  assert.ok(GUIDE.includes(`pkgxray@${PACKAGE.version}`));
   assert.match(GUIDE, /advisory unless the host has an execution hook/);
   assert.match(
     GUIDE,
@@ -59,7 +60,7 @@ test("integration guide relative links resolve", () => {
 
 test("Hookshot setup is pinned, removable, and version-accurate", () => {
   assert.match(HOOKSHOT, /73584ae0e4df38105be9f892130b4c66ea6ce04e/);
-  assert.match(HOOKSHOT, /npm install --global pkgxray@1\.0\.5/);
+  assert.ok(HOOKSHOT.includes(`npm install --global pkgxray@${PACKAGE.version}`));
   assert.match(HOOKSHOT, /npm uninstall --global pkgxray/);
   assert.match(HOOKSHOT, /## Troubleshooting/);
   assert.match(HOOKSHOT, /## Security assumptions/);

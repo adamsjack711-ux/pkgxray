@@ -1,0 +1,275 @@
+{
+  "capture": {
+    "recordedAt": "2026-11-08T16:04:48.582Z",
+    "command": "npx --yes pkgxray@1.2.1 guard npm:express@4.21.0 --format json",
+    "kind": "Recorded scan excerpt; not a live browser scan",
+    "originalReportSha256": "619fa3a6b9faddaed8f5c14a077dc061d4d475e38438ae07217311b76c3e713b",
+    "omittedFields": [
+      "resolved",
+      "sourceFiles",
+      "githubMetadata",
+      "timings",
+      "quarantinePath",
+      "stagedPath",
+      "promotedPath"
+    ],
+    "cacheNote": "GitHub metadata, provenance and comparison tarball inputs were cached."
+  },
+  "schemaVersion": 1,
+  "decision": "allow",
+  "reference": "npm:express@4.21.0",
+  "sourceCoverage": {
+    "complete": true,
+    "scannedFiles": 15,
+    "skippedFiles": 0,
+    "truncatedFiles": 0,
+    "inventoryFiles": 16,
+    "runtimeFiles": [
+      "index.js",
+      "lib/express.js",
+      "lib/application.js",
+      "lib/router/route.js",
+      "lib/router/index.js",
+      "lib/request.js",
+      "lib/response.js",
+      "lib/middleware/query.js",
+      "lib/middleware/init.js",
+      "lib/view.js",
+      "lib/utils.js",
+      "lib/router/layer.js"
+    ],
+    "reasons": [],
+    "installTimeFiles": [],
+    "behavioralScope": "npm-static-heuristics"
+  },
+  "assessment": {
+    "engine": {
+      "name": "pkgxray",
+      "version": "1.2.1",
+      "buildId": "98ed951ae31cfbf9711e3cf62abbb356926ac7a61bf9fd23608c2a12c3d04957"
+    },
+    "artifact": {
+      "name": "express",
+      "version": "4.21.0",
+      "origin": "npm",
+      "resolved": "https://registry.npmjs.org/express/-/express-4.21.0.tgz",
+      "integrity": "sha512-VqcNGcj/Id5ZT1LZ/cfihi3ttTn+NJmkli2eZADigjq29qTlWi/hAQ43t/VLPq8+UX06FCEx3ByOYet6ZFblng==",
+      "sha256": "b286ac08db99b23b0df74a453aff20839e8ab657650849c76ee04ddfb73e8fe0"
+    },
+    "effectivePolicy": "safe-only",
+    "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+    "checks": {
+      "source": "completed",
+      "vulnerabilities": "completed",
+      "directDependencies": "not-requested",
+      "provenance": "absent"
+    },
+    "rawVerdict": "safe",
+    "authorization": {
+      "mandatoryHoldReasons": [],
+      "behavioralCoverage": "completed",
+      "explicitOverride": false
+    },
+    "decision": "allow"
+  },
+  "configEffects": {
+    "muted": [],
+    "mutedCount": 0,
+    "allowlisted": null,
+    "ignoredAllow": null,
+    "notices": []
+  },
+  "npmVsGithubDiff": {
+    "compared": true,
+    "hasBuildScript": false,
+    "subdir": null,
+    "overlapRatio": 0.94,
+    "counts": {
+      "npmFiles": 16,
+      "ghFiles": 16,
+      "matched": 15,
+      "mismatched": 0,
+      "extraInNpm": 0,
+      "extraSource": 0,
+      "mismatchedSource": 0
+    },
+    "suspiciousExtras": [],
+    "suspiciousMismatches": [],
+    "githubRef": "4.21.0",
+    "tarballFromCache": true
+  },
+  "provenanceAttestation": {
+    "attested": false,
+    "reason": "no-attestation",
+    "checkedAt": "2026-11-08T15:12:01.049Z",
+    "all": [],
+    "verification": {
+      "status": "absent",
+      "required": false,
+      "reason": "no-attestation"
+    },
+    "fromCache": true
+  },
+  "vulnerabilityPrecheck": {
+    "enabled": true,
+    "database": "OSV",
+    "completed": true,
+    "error": null,
+    "vulnerabilityCount": 0,
+    "vulnerabilities": []
+  },
+  "report": {
+    "schemaVersion": 1,
+    "verdict": "safe",
+    "grade": "A+",
+    "score": 99,
+    "parameters": {
+      "installHooks": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.1,
+        "weightedScore": 10,
+        "findingCount": 0
+      },
+      "codeExecution": {
+        "score": 95,
+        "grade": "A",
+        "weight": 0.15,
+        "weightedScore": 14.25,
+        "findingCount": 1
+      },
+      "dataAccess": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.15,
+        "weightedScore": 15,
+        "findingCount": 0
+      },
+      "networkExposure": {
+        "score": 95,
+        "grade": "A",
+        "weight": 0.15,
+        "weightedScore": 14.25,
+        "findingCount": 1
+      },
+      "persistence": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.1,
+        "weightedScore": 10,
+        "findingCount": 0
+      },
+      "obfuscation": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.1,
+        "weightedScore": 10,
+        "findingCount": 0
+      },
+      "knownVulnerabilities": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.15,
+        "weightedScore": 15,
+        "findingCount": 0
+      },
+      "provenance": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.1,
+        "weightedScore": 10,
+        "findingCount": 0
+      },
+      "injectionResistance": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.1,
+        "weightedScore": 10,
+        "findingCount": 0
+      },
+      "evidenceCompleteness": {
+        "score": 100,
+        "grade": "A+",
+        "weight": 0.05,
+        "weightedScore": 5,
+        "findingCount": 0
+      }
+    },
+    "summary": "No high- or medium-risk indicators were found in the provided evidence.",
+    "packageName": "express",
+    "riskBands": [
+      {
+        "band": "dynamic-require",
+        "label": "dynamic-require",
+        "severity": "info",
+        "count": 1,
+        "examples": [
+          "lib/view.js"
+        ],
+        "rationale": "Loads a module by a computed (non-literal) name \u2014 can hide a network / exec sink from static analysis."
+      },
+      {
+        "band": "npm-vs-github-clean",
+        "label": "npm-vs-github-clean",
+        "severity": "info",
+        "count": 1,
+        "examples": [
+          "NPM_VS_GITHUB"
+        ],
+        "rationale": "npm tarball matches the linked GitHub repo at the published version."
+      }
+    ],
+    "findings": [
+      {
+        "severity": "info",
+        "category": "network-access",
+        "file": "lib/request.js",
+        "snippet": "/*! * express * Copyright(c) 2009-2013 TJ Holowaychuk * Copyright(c) 2013 Roman Shtylman * Copyright(c) 2014-2015 Douglas Christopher Wilson * MIT Licensed */ 'use strict'; /** ...",
+        "rationale": "Performs outbound network activity."
+      },
+      {
+        "severity": "info",
+        "category": "dynamic-require",
+        "file": "lib/view.js",
+        "snippet": "is.ext.slice(1) debug('require \"%s\"', mod) // default engine export var fn = require(mod).__express if (typeof fn !== 'function') { throw new Error('Module",
+        "rationale": "Loads a module by a computed (non-literal) name. Common in legitimate plugin loaders; recorded but not gating on its own (no bulk-env harvest or suspicious destination in the same file)."
+      },
+      {
+        "severity": "info",
+        "category": "npm-vs-github-clean",
+        "file": "NPM_VS_GITHUB",
+        "snippet": "15/16 files match GitHub @4.21.0",
+        "rationale": "npm tarball source files match the linked GitHub repo at the matching ref."
+      }
+    ],
+    "configEffects": {
+      "muted": [],
+      "mutedCount": 0,
+      "allowlisted": null,
+      "ignoredAllow": null,
+      "notices": []
+    }
+  },
+  "approval": {
+    "schemaVersion": 2,
+    "artifactSha256": "b286ac08db99b23b0df74a453aff20839e8ab657650849c76ee04ddfb73e8fe0",
+    "name": "express",
+    "version": "4.21.0",
+    "scannerBuildId": "98ed951ae31cfbf9711e3cf62abbb356926ac7a61bf9fd23608c2a12c3d04957",
+    "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+    "checks": {
+      "source": "completed",
+      "vulnerabilities": "completed",
+      "directDependencies": "not-requested",
+      "provenance": "absent"
+    },
+    "sourceComplete": true,
+    "authorization": {
+      "mandatoryHoldReasons": [],
+      "behavioralCoverage": "completed",
+      "explicitOverride": false
+    },
+    "decision": "allow",
+    "issuedAt": "2026-11-08T16:04:48.582Z"
+  }
+}

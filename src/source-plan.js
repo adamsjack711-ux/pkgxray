@@ -19,7 +19,7 @@ function createSourcePlan(inventory) {
     return false;
   };
 
-  function resolve(from, raw, install = false) {
+  function resolve(from, raw, install = false, mustExist = true) {
     if (typeof raw !== "string" || !raw || !withinBudget()) return;
     const target = path.normalize(path.join(path.dirname(from), raw.replace(/\\/g, "/")));
     if (raw.startsWith("/") || /^[A-Za-z]:/.test(raw) || target === ".." || target.startsWith("../")) {
@@ -33,21 +33,28 @@ function createSourcePlan(inventory) {
         if (!withinBudget()) break;
         if (re.test(file)) matches.push(file);
       }
-      if (!matches.length) gaps.add(`unresolved runtime target: ${target}`);
+      if (!matches.length && mustExist) gaps.add(`unresolved runtime target: ${target}`);
       for (const match of matches) { required.add(match); if (install) installTime.add(match); }
       return;
     }
     const found = EXTENSIONS.map(ext => path.normalize(target + ext)).find(x => inventory.has(x));
-    if (!found) { gaps.add(`unresolved runtime target: ${target}`); return; }
+    if (!found) {
+      if (mustExist) gaps.add(`unresolved runtime target: ${target}`);
+      return;
+    }
     required.add(found);
     if (install) installTime.add(found);
   }
 
-  function entries(value, localOnly = false) {
+  function entries(value, localOnly = false, condition = '') {
     if (typeof value === "string") {
-      if (!localOnly || value.startsWith(".")) resolve("package.json", value);
+      if (!/^(?:types|typings)$/i.test(condition) && (!localOnly || value.startsWith("."))) {
+        resolve("package.json", value);
+      }
+    } else if (Array.isArray(value)) {
+      for (const v of value) entries(v, localOnly, condition);
     } else if (value && typeof value === "object") {
-      for (const v of Object.values(value)) entries(v, localOnly);
+      for (const [key, v] of Object.entries(value)) entries(v, localOnly, key);
     }
   }
 
@@ -70,7 +77,14 @@ function createSourcePlan(inventory) {
         if (token.startsWith("-")) continue;
         const local = token.startsWith("./") || token.startsWith("../");
         const present = inventory.has(path.normalize(token));
-        if (interpreter || local || present) resolve("package.json", token, INSTALL_HOOKS.has(hook));
+        if (interpreter || local || present) {
+          const install = INSTALL_HOOKS.has(hook);
+          // Published tarballs routinely omit developer-only build/test files.
+          // If such a literal target is absent, there are no bytes for a
+          // consumer to execute. Existing targets are still collected and
+          // scanned; auto-install hooks remain mandatory and fail closed.
+          resolve("package.json", token, install, install);
+        }
         interpreter = false;
       }
     }

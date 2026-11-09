@@ -14,6 +14,16 @@ directions:
 
 ## The pkgxray MCP server
 
+The public hosted endpoint is `https://mcp.pkgxray.ca/mcp` (Streamable HTTP;
+no API key). Add it as a remote MCP server in your client. It offers bounded
+source-evidence analysis and npm metadata/OSV checks. It does not expose local
+files, complete artifact scans, installation approval, or VM execution. Source
+you submit is processed on Cloudflare; do not submit secrets. See the
+[hosted service guide](../services/public-mcp/README.md) for limits and privacy.
+
+For the full local MCP, use the configuration below. The official Registry
+descriptor advertises both the hosted URL and the local npm package.
+
 Use an exact npm version from any MCP-capable agent:
 
 ```json
@@ -24,7 +34,7 @@ Use an exact npm version from any MCP-capable agent:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.0.5",
+        "pkgxray@1.2.1",
         "pkgxray-mcp"
       ],
       "env": {
@@ -36,7 +46,7 @@ Use an exact npm version from any MCP-capable agent:
 ```
 
 If pkgxray is already installed, `"command": "pkgxray-mcp"` also works. The
-published `pkgxray@1.0.5` package also exposes `pkgxray mcp-server` — the same
+published `pkgxray@1.2.1` package also exposes `pkgxray mcp-server` — the same
 stdio server, launched as a subcommand — which is the entry point the MCP
 Registry entry uses.
 
@@ -102,7 +112,21 @@ pkgxray mcp --pin --package npm:some-mcp-server@1.4.2 npx some-mcp-server
 
 # Catch the rug-pull: diff the live manifest against the pin
 pkgxray mcp --recheck npx some-mcp-server
+
+# Confine enumeration of an already installed stdio server
+pkgxray mcp --sandbox /absolute/path/to/node ./server.js
 ```
+
+Connect-time stdio enumeration accepts the same `--sandbox-read PATH`,
+`--sandbox-write PATH` and `--sandbox-network` capabilities as the runtime
+proxy described below. Grants require `--sandbox`; missing OS confinement
+refuses launch. It uses a private temporary HOME, a read-only project and
+denied network access unless explicitly granted. Use a dedicated project
+directory and an installed launcher. These options apply to local processes;
+HTTP targets refuse them rather than ignoring requested isolation.
+
+Tool enumeration refuses malformed responses, duplicate tool names and
+unfinished pagination. A partial list cannot become an approved manifest.
 
 The manifest audit looks for:
 
@@ -154,6 +178,7 @@ installed server directly:
 ```sh
 pkgxray mcp-proxy --sandbox -- /absolute/path/to/node ./server.js
 pkgxray mcp-proxy --sandbox --sandbox-read /path/to/input --sandbox-write /path/to/output -- /absolute/path/to/node ./server.js
+pkgxray mcp-proxy --sandbox --sandbox-network -- /absolute/path/to/node ./network-server.js
 ```
 
 `--sandbox` is optional and fails closed if the backend cannot start. It denies
@@ -163,8 +188,12 @@ and are granted explicitly; root and whole-HOME grants are refused. macOS uses
 `sandbox-exec` and permits execution within the same inherited restrictions.
 Linux uses `/usr/bin/bwrap` with private namespaces and an isolated filesystem;
 subprocesses stay inside that namespace. Windows currently refuses this option.
-Use a direct installed launcher: `npx` installation and servers needing network
-access will fail under this restricted mode.
+Use a direct installed launcher. Network-dependent servers can explicitly add
+`--sandbox-network`, which grants the host network while preserving filesystem
+confinement. This is unrestricted network access, not a hostname allowlist;
+enforce narrower egress policy outside pkgxray when needed. Network and path
+grants require `--sandbox`. Dependency downloads still need explicit filesystem
+grants and may be incompatible with the read-only project directory.
 
 The macOS backend has passed real filesystem, symlink and network-denial tests.
 Linux startup remained blocked by nested namespace restrictions on the local
@@ -189,7 +218,10 @@ exploits, CPU exhaustion, or malicious content returned through MCP stdout.
 Policies mirror the hookshot gate: `block` denies everywhere; `review` denies
 under `--policy strict`, passes with a warning under `balanced` (default) and
 `permissive`. A denied call never reaches the server — the agent gets an
-`isError` result naming the reason.
+`isError` result naming the reason. The denial is call-scoped, not
+session-scoped: its structured content reports `session: active` and
+`continuationAllowed: true`, so hosts and agents can continue the workflow with
+approved tools instead of treating one blocked capability as a dead connection.
 
 Result screening includes resource-link descriptions, media annotations,
 embedded-resource metadata, structured content, errors, initialization

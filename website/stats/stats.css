@@ -1,110 +1,56 @@
-/* pkgxray calibration pages — builds on ../styles.css (:root tokens) */
-
-.section-eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--xray-dim);
-  margin: 0 0 0.75rem;
-}
+/* pkgxray calibration pages — builds on ../styles.css.
+   Shared primitives (.section-eyebrow, .stat-grid, .stat-card, .stats-links)
+   now live in ../styles.css; this file carries the stats-only pieces. */
 
 .stats-hero {
   border-top: none;
   background:
-    linear-gradient(180deg, rgba(110, 231, 160, 0.06), transparent 60%),
+    radial-gradient(ellipse 60% 70% at 12% 0%, rgba(110, 231, 160, 0.09), transparent 65%),
+    linear-gradient(180deg, rgba(110, 231, 160, 0.05), transparent 60%),
     var(--bg);
 }
 
 .stats-title {
   margin: 0 0 0.85rem;
-  font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+  font-size: var(--fs-h1);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   line-height: 1.15;
 }
 
-/* ——— stat cards ——— */
-
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin: 2.25rem 0 1.75rem;
-}
-
-.stat-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  padding: 1.4rem 1.3rem 1.25rem;
-  position: relative;
-  overflow: hidden;
-}
-
-.stat-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--xray);
-  opacity: 0.7;
-}
-
-.stat-value {
-  font-family: var(--font-mono);
-  font-size: clamp(1.9rem, 4vw, 2.5rem);
-  font-weight: 600;
-  line-height: 1;
-  color: var(--ok-warm);
-  letter-spacing: -0.02em;
-}
-
-.stat-label {
-  margin-top: 0.7rem;
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  letter-spacing: 0.02em;
-  color: var(--text);
-}
-
-.stat-sub {
-  margin-top: 0.3rem;
-  font-size: 0.82rem;
-  line-height: 1.4;
-  color: var(--muted);
+.stats-hero .stat-grid {
+  margin-top: 2.25rem;
 }
 
 /* ——— links + notes ——— */
 
-.stats-links {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  margin: 0 0 1.5rem;
-}
-
-.stats-links .dot-sep {
-  color: var(--line);
-  margin: 0 0.6rem;
-}
-
 .stats-note {
-  max-width: 62ch;
-  font-size: 0.92rem;
-  color: var(--muted);
-  border-left: 2px solid var(--line-soft);
-  padding-left: 1rem;
-  margin: 0;
+  max-width: 64ch;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--brass);
+  border-radius: 0 var(--r) var(--r) 0;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.stats-note strong {
+  color: var(--ok-warm);
+}
+
+.stats-note:empty {
+  display: none;
 }
 
 /* ——— corrections + history ——— */
 
 .corrections-none {
   font-family: var(--font-mono);
-  font-size: 0.9rem;
-  color: var(--muted);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
 }
 
 .corrections-log,
@@ -112,66 +58,105 @@
   list-style: none;
   padding: 0;
   margin: 0;
+  max-width: 88ch;
   font-family: var(--font-mono);
-  font-size: 0.92rem;
+  font-size: var(--fs-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .corrections-log li,
 .run-history li {
-  padding: 0.5rem 0;
+  padding: 0.7rem 1rem;
   border-bottom: 1px solid var(--line-soft);
+  color: var(--text-2);
+}
+
+.corrections-log li:last-child,
+.run-history li:last-child {
+  border-bottom: none;
+}
+
+.corrections-log strong {
+  color: var(--ok-warm);
+}
+
+.run-history + .fineprint {
+  margin-top: 1.25rem;
 }
 
 /* ——— prose (methodology) ——— */
 
+.prose {
+  max-width: 68ch;
+}
+
 .prose h2 {
-  margin: 2.2rem 0 0.6rem;
-  font-size: 1.15rem;
+  margin: 2.4rem 0 0.7rem;
+  font-size: 1.18rem;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  color: var(--ok-warm);
 }
 
 .prose h2.coherence {
-  color: var(--warn);
+  color: var(--amber);
 }
 
 .prose p {
-  margin: 0 0 0.9rem;
+  margin: 0 0 0.95rem;
+  color: var(--text-2);
+  font-size: var(--fs-md);
+  line-height: 1.7;
+}
+
+.prose strong {
   color: var(--text);
 }
 
 .prose ul {
-  margin: 0 0 1rem;
+  margin: 0 0 1.1rem;
   padding-left: 1.2rem;
-  color: var(--text);
+  color: var(--text-2);
+  font-size: var(--fs-md);
 }
 
 .prose li {
-  margin: 0.35rem 0;
+  margin: 0.4rem 0;
+  line-height: 1.65;
+}
+
+.prose li::marker {
+  color: var(--mint-dim);
 }
 
 .prose code {
   font-family: var(--font-mono);
   font-size: 0.88em;
-  background: var(--panel-2);
+  overflow-wrap: anywhere;
+  background: var(--surface-2);
   border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  padding: 0.05em 0.35em;
+  border-radius: 5px;
+  padding: 0.08em 0.38em;
+  color: var(--ok-warm);
 }
 
 .code-block {
   background: var(--bg-deep);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 0.9rem 1rem;
+  border-radius: var(--r);
+  padding: 0.95rem 1.05rem;
   overflow-x: auto;
-  margin: 0 0 1rem;
+  margin: 0 0 1.1rem;
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .code-block code {
   background: none;
   border: none;
   padding: 0;
-  font-size: 0.85rem;
-  color: var(--xray);
+  font-size: var(--fs-sm);
+  color: var(--mint);
 }

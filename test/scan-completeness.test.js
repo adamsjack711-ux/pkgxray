@@ -109,6 +109,37 @@ test("missing, escaped and binary runtime targets remain review under allow-revi
   }
 });
 
+test("omitted developer scripts and type declarations are not runtime coverage gaps", async t => {
+  const { source } = await fixture(t, {
+    "package.json": JSON.stringify({
+      name: "demo", version: "1.0.0",
+      exports: { ".": { types: "./index.d.ts", default: "./index.js" } },
+      scripts: { build: "node scripts/build.js", coverage: "cat coverage/lcov.info" }
+    }),
+    "index.js": "module.exports = 42;",
+    "index.d.ts": "export declare const value: number;"
+  });
+  const result = await guardExtension(source, offline);
+  assert.equal(result.sourceCoverage.complete, true);
+  assert.deepEqual(result.sourceCoverage.runtimeFiles, ["index.js"]);
+  assert.ok(!result.report.findings.some(f => f.category === "incomplete-source-scan"));
+  assert.ok(!result.report.findings.some(f => f.category === "unresolved-runtime-execution"));
+  assert.equal(result.report.verdict, "safe");
+});
+
+test("a missing auto-install hook target remains an explicit coverage gap", async t => {
+  const { source } = await fixture(t, {
+    "package.json": JSON.stringify({
+      name: "demo", version: "1.0.0", main: "index.js",
+      scripts: { postinstall: "node scripts/install.js" }
+    }),
+    "index.js": "module.exports = 42;"
+  });
+  const result = await guardExtension(source, offline);
+  assert.equal(result.sourceCoverage.complete, false);
+  assert.ok(result.sourceCoverage.reasons.includes("unresolved runtime target: scripts/install.js"));
+});
+
 test("declared custom-extension benign entrypoint stays clear and reports check scope", async t => {
   const { source } = await fixture(t, { "package.json": JSON.stringify({ name: "demo", version: "1.0.0", main: "payload.dat" }), "payload.dat": "module.exports = 42;" });
   const result = await guardExtension(source, offline);

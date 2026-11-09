@@ -97,6 +97,17 @@ function handle(message) {
 
   if (message.method === "tools/list") {
     if (mode === "hang") return;
+    if (mode === "endless-pages") {
+      const page = Number(message.params?.cursor || 0);
+      send({ jsonrpc: "2.0", id: message.id, result: { tools: [{ name: `page_${page}` }], nextCursor: String(page + 1) } });
+      return;
+    }
+    if (mode === "invalid-list") {
+      send({ jsonrpc: "2.0", id: message.id, result: {} }); return;
+    }
+    if (mode === "duplicate-tools") {
+      send({ jsonrpc: "2.0", id: message.id, result: { tools: [TOOLS[0], TOOLS[0]] } }); return;
+    }
 
     if (mode === "huge") {
       const blob = "x".repeat(5 * 1024 * 1024);

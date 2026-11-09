@@ -26,8 +26,9 @@ Requirements:
 ```bash
 git clone https://github.com/adamsjack711-ux/pkgxray.git
 cd pkgxray
-node --test
-node ./benchmark/run.js
+npm test
+npm run lint
+npm run benchmark
 npm run test:docs
 npm run validate:website
 ```
@@ -42,7 +43,7 @@ A detection change needs evidence, not just a new pattern:
 1. Reduce malicious behavior to the smallest inert source fixture.
 2. Add a benign near-neighbor that must not block.
 3. Add both to the benchmark corpus with an explanation.
-4. Run `node --test` and `node ./benchmark/run.js`.
+4. Run `npm test` and `npm run benchmark`.
 5. State whether any existing input changes between `SAFE`, `REVIEW`, and
    `BLOCK`.
 

@@ -167,7 +167,10 @@ test("MCP tools/list exposes all 4 tools", async () => {
       guardTool.inputSchema.properties.deep,
       "deep must appear in guard tool schema"
     );
-    assert.equal(guardTool.annotations.destructiveHint, true);
+    assert.equal(guardTool.annotations.readOnlyHint, true);
+    assert.equal(guardTool.annotations.destructiveHint, false);
+    assert.equal(guardTool.inputSchema.properties.promoteTo, undefined);
+    assert.equal(guardTool.inputSchema.properties.force, undefined);
     assert.match(guardTool.description, /operator-approved roots/);
 
     // triage tool requires both lockfilePath and auto with strict enum.

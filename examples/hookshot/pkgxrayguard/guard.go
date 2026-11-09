@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -21,11 +22,12 @@ const (
 
 // Result is the outcome of auditing one InstallSpec.
 type Result struct {
-	Spec    InstallSpec
-	Verdict Verdict
-	Summary string   // pkgxray's one-line verdict summary
-	Reasons []string // top high/medium findings, "[category] rationale"
-	Err     error    // set when pkgxray could not be run or parsed
+	Spec          InstallSpec
+	Verdict       Verdict
+	Summary       string   // pkgxray's one-line verdict summary
+	Reasons       []string // top high/medium findings, "[category] rationale"
+	Err           error    // set when pkgxray could not be run or parsed
+	MandatoryHold bool     // behavioral/provenance coverage did not authorize installation
 }
 
 // Guard runs the pkgxray CLI to triage packages.
@@ -41,20 +43,33 @@ type Guard struct {
 // hook consumes — the CLI contract it depends on:
 //
 //   - top-level `decision`: "allow" | "review" | "block"
-//   - process exit code 2=block, 3=review, 0=safe (the fallback when the JSON
-//     can't be parsed)
+//   - process exit code 2=block, 3=review (denial-only fallback when JSON
+//     can't be parsed; exit 0 alone cannot establish an approval)
 //   - `report.summary` and `report.findings[].{severity,category,rationale,file}`
 //     (`file` drives the location shown in a deny/ask message)
 //
 // This shape remains available in pkgxray 1.x. The hook degrades safely against
 // drift: a missing `file` just omits the path, and if `decision` is absent it
-// falls back to the exit code — so an older or erroring pkgxray fails toward
+// retains denial exit codes — so an older or erroring pkgxray fails toward
 // UNKNOWN (denied under strict/balanced), never a false allow. The hook does not
 // invoke pkgxray's `--version` command at runtime; the operator verifies the
 // pinned CLI during installation. See the README "Requirements" section.
 type guardJSON struct {
 	Decision string `json:"decision"` // allow | review | block
-	Report   struct {
+	Approval *struct {
+		SourceComplete bool `json:"sourceComplete"`
+		Checks         struct {
+			Source          string `json:"source"`
+			Vulnerabilities string `json:"vulnerabilities"`
+			Provenance      string `json:"provenance"`
+		} `json:"checks"`
+		Authorization struct {
+			MandatoryHoldReasons []string `json:"mandatoryHoldReasons"`
+			BehavioralCoverage   string   `json:"behavioralCoverage"`
+			ExplicitOverride     bool     `json:"explicitOverride"`
+		} `json:"authorization"`
+	} `json:"approval"`
+	Report struct {
 		Summary  string `json:"summary"`
 		Findings []struct {
 			Severity  string `json:"severity"`
@@ -66,8 +81,8 @@ type guardJSON struct {
 }
 
 // Check audits one package with `pkgxray guard <ref> --format json`. It derives
-// the verdict from the JSON decision, falling back to the process exit code
-// (2=block, 3=review, 0=safe) so a truncated/unparsable payload still fails in
+// the verdict from the JSON decision, retaining denial process exit codes
+// (2=block, 3=review) so a truncated/unparsable payload still fails in
 // the correct direction. Any execution error yields Verdict=Unknown with Err
 // set, leaving the fail-open/closed choice to the policy layer.
 func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
@@ -125,14 +140,59 @@ func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
 		res.Verdict = verdictFromDecision(parsed.Decision)
 		res.Summary = strings.TrimSpace(parsed.Report.Summary)
 		res.Reasons = topReasons(parsed)
+		res.MandatoryHold = mandatoryHold(parsed)
 	}
-	if res.Verdict == "" || res.Verdict == Unknown {
-		res.Verdict = verdictFromExit(exitCode)
-	}
+	res.Verdict = executionVerdict(res.Verdict, exitCode)
 	if res.Verdict == Unknown && res.Err == nil {
 		res.Err = errors.New("pkgxray produced no verdict")
 	}
 	return res
+}
+
+// An exit code can preserve a denial after broken JSON, but exit 0 alone is
+// not an approval. Contradictory output is never downgraded to SAFE.
+func executionVerdict(v Verdict, code int) Verdict {
+	if v == Block || code == 2 {
+		return Block
+	}
+	if code != 0 && code != 3 {
+		return Unknown
+	}
+	if v == Review || code == 3 {
+		return Review
+	}
+	if v == Safe && code == 0 {
+		return Safe
+	}
+	return Unknown
+}
+
+func mandatoryHold(p guardJSON) bool {
+	hold := false
+	for _, finding := range p.Report.Findings {
+		switch finding.Category {
+		case "incomplete-source-scan", "incomplete-dependency-scan", "unsupported-behavior", "flow-analysis-gap", "unresolved-runtime-execution", "unverified-provenance":
+			hold = true
+		}
+	}
+	if p.Approval == nil {
+		return hold || os.Getenv("PKGXRAY_REQUIRE_PROVENANCE") == "1"
+	}
+	a := p.Approval
+	if a.Checks.Provenance == "invalid" {
+		return true
+	}
+	if os.Getenv("PKGXRAY_REQUIRE_PROVENANCE") == "1" && a.Checks.Provenance != "verified" {
+		return true
+	}
+	if !a.SourceComplete || a.Checks.Source != "completed" || a.Checks.Vulnerabilities != "completed" {
+		return true
+	}
+	hold = hold || len(a.Authorization.MandatoryHoldReasons) != 0 || a.Authorization.BehavioralCoverage != "completed"
+	if hold && a.Authorization.ExplicitOverride && verdictFromDecision(p.Decision) == Safe {
+		return false
+	}
+	return hold
 }
 
 func verdictFromDecision(decision string) Verdict {

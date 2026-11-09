@@ -26,6 +26,7 @@ const http = require("node:http");
 const https = require("node:https");
 const net = require("node:net");
 const path = require("node:path");
+const { prepareMcpSandbox } = require("./mcp-sandbox");
 
 // Newest protocol revision this client knows; servers negotiate down in the
 // initialize response and we accept whatever they answer with — enumeration
@@ -236,6 +237,23 @@ function normalizeTool(tool) {
   };
 }
 
+// A partial or ambiguous list must never become an approved manifest. Retain
+// the set across pages so duplicate names cannot hide one tool's description.
+function validateToolsPage(result, names = new Set()) {
+  if (!result || !Array.isArray(result.tools)) throw rpcError("invalid tools/list response: expected tools array", "rpc");
+  if (result.nextCursor !== undefined && typeof result.nextCursor !== "string") {
+    throw rpcError("invalid tools/list pagination cursor", "rpc");
+  }
+  for (const tool of result.tools) {
+    if (!tool || typeof tool.name !== "string" || !tool.name || tool.name.length > 256 || names.has(tool.name)) {
+      throw rpcError("invalid or duplicate tool name in manifest", "rpc");
+    }
+    names.add(tool.name);
+    if (names.size > 10000) throw rpcError("manifest tool count exceeded limit", "transport");
+  }
+  return result.nextCursor || null;
+}
+
 function normalizeManifest({ transport, target, initializeResult, tools, diagnostics }) {
   const serverInfo =
     initializeResult && typeof initializeResult.serverInfo === "object"
@@ -279,9 +297,10 @@ async function enumerateStdio(command, args, options = {}) {
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const warnings = [];
 
-  const child = spawn(resolveCommand(command, warnings), args || [], {
-    cwd: options.cwd || process.cwd(),
-    env: scrubbedEnv(options.extraEnv),
+  const launch = prepareMcpSandbox(resolveCommand(command, warnings), args || [], scrubbedEnv(options.extraEnv), options);
+  const child = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    env: launch.env,
     stdio: ["pipe", "pipe", "pipe"],
     // Own process group so a server that spawns grandchildren can be killed
     // as a unit (POSIX). windowsHide keeps it from flashing a console.
@@ -478,16 +497,17 @@ async function enumerateStdio(command, args, options = {}) {
     notify(INITIALIZED_NOTIFICATION);
 
     const tools = [];
+    const names = new Set(), cursors = new Set();
     let cursor;
     for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
       const result = await request(toolsListRequest(nextId++, cursor));
-      if (result && Array.isArray(result.tools)) tools.push(...result.tools);
-      cursor = result && typeof result.nextCursor === "string" && result.nextCursor.length > 0
-        ? result.nextCursor
-        : null;
+      cursor = validateToolsPage(result, names);
+      tools.push(...result.tools);
       if (!cursor) break;
+      if (cursors.has(cursor)) throw rpcError("tools/list pagination cursor repeated", "rpc");
+      cursors.add(cursor);
       if (page === MAX_LIST_PAGES - 1) {
-        warnings.push(`tools/list pagination stopped after ${MAX_LIST_PAGES} pages`);
+        throw rpcError("manifest pagination limit exceeded", "transport");
       }
     }
 
@@ -517,6 +537,7 @@ async function enumerateStdio(command, args, options = {}) {
     // old code fire-and-forgot an unref'd SIGKILL timer, so on the timeout path
     // the process could exit before SIGKILL was delivered and leak the child.
     await killChildAndWait();
+    launch.cleanup();
   }
 }
 
@@ -671,6 +692,7 @@ async function enumerateHttp(url, options = {}) {
     protocolVersion = typeof initResult.protocolVersion === "string" ? initResult.protocolVersion : null;
     await httpRpc(url, INITIALIZED_NOTIFICATION, { sessionId, protocolVersion, timeoutMs: remaining() });
     const tools = [];
+    const names = new Set(), cursors = new Set();
     let cursor, bytes = 0;
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
       const { result } = await httpRpc(url, toolsListRequest(nextId++, cursor), {
@@ -678,10 +700,11 @@ async function enumerateHttp(url, options = {}) {
       });
       bytes += Buffer.byteLength(JSON.stringify(result || {}));
       if (bytes > MAX_OUTPUT_BYTES) throw rpcError("aggregate manifest exceeded output cap", "transport");
-      if (result && Array.isArray(result.tools)) tools.push(...result.tools);
-      if (tools.length > 10000) throw rpcError("manifest tool count exceeded limit", "transport");
-      cursor = typeof result?.nextCursor === "string" && result.nextCursor ? result.nextCursor : null;
+      cursor = validateToolsPage(result, names);
+      tools.push(...result.tools);
       if (!cursor) break;
+      if (cursors.has(cursor)) throw rpcError("tools/list pagination cursor repeated", "rpc");
+      cursors.add(cursor);
       if (page === MAX_LIST_PAGES - 1) throw rpcError("manifest pagination limit exceeded", "transport");
     }
     return normalizeManifest({ transport: "http", target: url, initializeResult: initResult, tools,
@@ -706,6 +729,9 @@ async function enumerateHttp(url, options = {}) {
 // Options: timeoutMs, cwd, extraEnv (explicit allowlist additions only).
 async function enumerateMcpServer(target, options = {}) {
   if (target && typeof target.url === "string") {
+    if (options.sandbox || options.sandboxRead || options.sandboxWrite || options.sandboxNetwork) {
+      throw new Error("MCP OS sandbox grants apply to stdio targets only; refusing to ignore requested isolation for HTTP");
+    }
     return enumerateHttp(target.url, options);
   }
   if (target && typeof target.command === "string") {
@@ -719,6 +745,7 @@ module.exports = {
   // Exported for tests and for the audit layer's evidence shaping.
   normalizeManifest,
   normalizeTool,
+  validateToolsPage,
   parseSseMessages,
   resolveCommand,
   scrubbedEnv,

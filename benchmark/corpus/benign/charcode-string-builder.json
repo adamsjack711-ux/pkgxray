@@ -1,0 +1,12 @@
+{
+  "name": "charcode-string-builder",
+  "expect": "safe",
+  "note": "building a static string from character codes without loading or executing it is benign",
+  "evidence": {
+    "packageName": "charcode-string-builder",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"charcode-string-builder\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/charcode-string-builder\"}",
+      "index.js": "module.exports = String.fromCharCode(99,104,105,108,100,95,112,114,111,99,101,115,115)"
+    }
+  }
+}

@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="docs/pkgxray-readme-hero.png" alt="pkg x-ray, written in static ASCII lettering over a dim character field" width="820">
-</p>
+<p align="center"><img src="docs/pkgxray-readme-hero.png" alt="pkg x-ray, written in static ASCII lettering over a dim character field" width="820"></p>
 
 <p align="center"><sub>PRE-INSTALL PACKAGE SECURITY</sub></p>
 
@@ -34,13 +32,16 @@ Findings:
 - **INFO - network-access** in `lib/request.js`: Performs outbound network activity.
 ```
 
-Source and vulnerability checks completed; direct dependencies were not requested.
-
-`SAFE` means no blocking finding within the checks that completed—not proof of harmlessness.
+Source and vulnerability checks completed; direct dependencies were not requested. `SAFE` means no blocking finding within the checks that completed—not proof of harmlessness.
 
 ## Limits
 
 Static analysis cannot see runtime-fetched payloads. Listing MCP tools can start a server; the proxy runs it, and a scan does not control an agent’s later install.
+
+## Public MCP
+
+Connect to `https://mcp.pkgxray.ca/mcp` using **Streamable HTTP**, with no API key or install. [Setup](docs/mcp.md#the-pkgxray-mcp-server) · [Source and limits](services/public-mcp/README.md).
+Checks supplied snippets and npm metadata/advisories on Cloudflare; no package execution, VM, complete archive scan, or installation approval. Do not submit secrets.
 
 ## Documentation
 

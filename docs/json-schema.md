@@ -109,7 +109,16 @@ Stage → vuln-check → audit a real package. Nests the full `audit` payload un
   "sourceFiles": { /* path -> content that was scanned */ },
   "githubMetadata": { /* repo signals, or null */ },
   "npmVsGithubDiff": { /* divergence result, or null */ },
-  "provenanceAttestation": { /* sigstore/SLSA result, or null */ },
+  "provenanceAttestation": {
+    "attested": true,           // a SLSA-shaped claim exists, not proof of authenticity
+    "verification": {
+      "status": "verified",    // verified | unverified | absent | invalid
+      "required": false,
+      "artifactBound": true,   // only true after signature + exact artifact checks
+      "cryptographicallyVerified": true,
+      "verifier": "sigstore@5.0.0"
+    }
+  },
   "vulnerabilityPrecheck": {
     "enabled": true,
     "database": "OSV",

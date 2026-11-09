@@ -90,7 +90,7 @@ func main() {
 		}
 		specs := pkgxrayguard.ParseInstalls(ctx.Command)
 		if len(specs) > 0 {
-			decision := decideInstalls(cfg, specs)
+			decision := hostExecutionDecision(ctx.Platform, decideInstalls(cfg, specs))
 			if !decision.Allow {
 				// A flagged launcher stays denied/asked as-is — never mix the
 				// verdict message with wrap instructions.
@@ -139,6 +139,15 @@ type config struct {
 	auditLockfiles bool
 	mcpWrap        bool // auto-rewrite `mcp add` launchers behind `pkgxray mcp-proxy`
 	guardWorkers   int  // max packages guarded concurrently per command
+}
+
+// Only hosts with an enforced approval prompt can receive ASK. Keep this
+// conversion at our boundary as well as in the reviewed Hookshot adapter.
+func hostExecutionDecision(platform hookshot.Platform, decision hookshot.ExecutionDecision) hookshot.ExecutionDecision {
+	if decision.Ask && platform != hookshot.PlatformClaude && platform != hookshot.PlatformCursor {
+		return hookshot.DenyExecution(decision.Reason)
+	}
+	return decision
 }
 
 // wrapCandidate applies the auto-wrap rewrite when it is enabled and the
@@ -428,7 +437,7 @@ func decideMcpConfigEdit(cfg config, filePath string, edits []pkgxrayguard.FileE
 			return hookshot.FileEditBlock("pkgxray flagged an MCP server added to " + base + ":" + evidenceLines(results))
 		}
 		if action == pkgxrayguard.Ask {
-			notes = append(notes, "pkgxray: review recommended for an MCP server added to "+base+":"+evidenceLines(results))
+			return hookshot.FileEditBlock("pkgxray requires review before using an MCP server added to " + base + ":" + evidenceLines(results))
 		}
 	}
 	// No gate-able spec does NOT mean no wrap: a local binary or script
@@ -455,7 +464,8 @@ func decideMcpConfigEdit(cfg config, filePath string, edits []pkgxrayguard.FileE
 
 // decideManifestSpecs guards the added deps and maps the worst decision onto a
 // file-edit outcome. A post-edit hook can't undo the write, so a Deny becomes
-// FileEditBlock (honored by Claude) and an Ask becomes added context.
+// FileEditBlock (honored by supporting hosts). File edits have no approval
+// prompt, so REVIEW must also remain a block rather than becoming context.
 func decideManifestSpecs(cfg config, filePath string, specs []pkgxrayguard.InstallSpec) hookshot.FileEditDecision {
 	action, results := gateAddedSpecs(cfg, specs)
 	base := filepath.Base(filePath)
@@ -463,7 +473,7 @@ func decideManifestSpecs(cfg config, filePath string, specs []pkgxrayguard.Insta
 	case pkgxrayguard.Deny:
 		return hookshot.FileEditBlock("pkgxray flagged a dependency added to " + base + ":" + evidenceLines(results))
 	case pkgxrayguard.Ask:
-		return hookshot.FileEditAddContext("pkgxray: review recommended for a dependency added to " + base + ":" + evidenceLines(results))
+		return hookshot.FileEditBlock("pkgxray requires review before using a dependency added to " + base + ":" + evidenceLines(results))
 	default:
 		return hookshot.FileEditOK()
 	}

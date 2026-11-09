@@ -1,9 +1,11 @@
 # MCP Registry
 
-Status: pkgxray's MCP metadata and runtime entry point ship in the released
-`pkgxray@1.0.5` (`mcpName` marker + the `mcp-server` launcher). The entry
-`io.github.adamsjack711-ux/pkgxray` is **currently listed** (v1.0.5,
-re-published 2026-07-29). The Registry is still in
+Status: `io.github.adamsjack711-ux/pkgxray` was published at **v1.2.1 on
+2026-11-09**, with both the existing `pkgxray@1.2.1` npm package and the hosted
+Streamable HTTP endpoint `https://mcp.pkgxray.ca/mcp`. The hosted endpoint
+provides bounded static source-evidence analysis and npm metadata/advisory
+checks; it does not expose the complete local toolset or VM execution.
+The Registry is still in
 **preview, and it resets its data from time to time**. A live lookup can come
 back empty, and then you have to **submit the entry again** with
 `mcp-publisher publish`. See "Manual Registry publication" below. Setup that is
@@ -13,13 +15,14 @@ local or uses `npx` does not depend on the Registry at all.
 
 - Registry name: `io.github.adamsjack711-ux/pkgxray`
 - npm package: `pkgxray`
-- transport: local stdio
+- transports: local stdio and hosted Streamable HTTP
+- hosted endpoint: `https://mcp.pkgxray.ca/mcp`
 - launch contract: `pkgxray mcp-server`
 - metadata: [`server.json`](../server.json)
 - npm ownership marker: `package.json#mcpName`
 
 `server.json`, `package.json`, and the npm artifact must all use the same exact
-release version. Published `pkgxray@1.0.5` already carries `mcpName` and the
+release version. Published `pkgxray@1.2.1` already carries `mcpName` and the
 `mcp-server` launcher, so the registry entry can be submitted from that release;
 keep the three versions in lockstep on every future bump.
 
@@ -97,6 +100,8 @@ Confirm:
 - the npm identifier and exact version are correct;
 - the repository ID is `1276320499`;
 - installation launches `pkgxray mcp-server`, not the audit CLI;
+- the remote endpoint is `https://mcp.pkgxray.ca/mcp` and its type is
+  `streamable-http`;
 - a fresh client can initialize, list all intended tools, and remove the server
   without leaving a global package installation.
 

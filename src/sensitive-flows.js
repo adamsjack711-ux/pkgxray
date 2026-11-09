@@ -158,9 +158,13 @@ function sensitiveFlowHints(source, options = {}) {
   const hints = analysis.status === 'parsed' ? analysis.hints : [...analysis.hints, ...lexicalFlowHints(source)];
   // Keep the gap ahead of bounded hints: an exhausted hint budget must never
   // hide the fact that executable syntax was left unmodeled.
-  const executableSyntax = !options.filePath || /\.(?:[cm]?js|jsx|[cm]?ts|tsx)$/i.test(options.filePath) || options.runtimeReferenced;
-  if (['budget', 'cycle', 'missing', 'unmodeled'].includes(analysis.status) ||
-      (analysis.status === 'unsupported' && executableSyntax)) {
+  // Explicit data and declaration formats remain non-executable even when a
+  // runtime module reads them (for example require('./package.json')). Export
+  // maps also commonly point at .d.ts files through a `types` condition.
+  const explicitData = /(?:\.d\.(?:ts|mts|cts)|\.(?:json|map|lock|css))$/i.test(options.filePath || '');
+  const scriptExtension = /\.(?:[cm]?js|jsx|[cm]?ts|tsx)$/i.test(options.filePath || '');
+  const executableSyntax = !options.filePath || (!explicitData && (scriptExtension || options.runtimeReferenced));
+  if (executableSyntax && ['budget', 'cycle', 'missing', 'unmodeled', 'unsupported'].includes(analysis.status)) {
     const gap = analysis.gaps?.find(g => g.relevant !== false);
     hints.unshift({ index: gap?.index || 0, kind: 'flow-analysis-gap', reason: gap?.reason || analysis.status, nodeType: gap?.nodeType });
   }

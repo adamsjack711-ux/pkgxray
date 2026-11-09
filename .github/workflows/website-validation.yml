@@ -28,5 +28,8 @@ jobs:
       - name: Validate static website
         run: npm run validate:website
 
+      - name: Check homepage interactions and calibration preservation
+        run: node --test website/check-home.mjs website/test/stats.test.mjs
+
       - name: Verify generated calibration files are current
         run: git diff --exit-code -- website/stats

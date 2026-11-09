@@ -61,6 +61,7 @@ function toolExposed(mcpToolName) {
 // by sending gigabytes of payload with no newline. 4 MiB is comfortably
 // larger than any realistic JSON-RPC frame.
 const MAX_BUFFER_BYTES = 4 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 let buffer = "";
 let bufferOverflowed = false;
 
@@ -91,10 +92,21 @@ function loadAllowedRoots() {
 const MCP_ALLOWED_ROOTS = loadAllowedRoots();
 
 function send(message) {
+  let encoded;
+  try {
+    encoded = JSON.stringify(message);
+  } catch {
+    encoded = JSON.stringify({ jsonrpc: "2.0", id: message && message.id,
+      error: { code: -32603, message: "Response could not be serialized" } });
+  }
+  if (Buffer.byteLength(encoded) > MAX_RESPONSE_BYTES) {
+    encoded = JSON.stringify({ jsonrpc: "2.0", id: message && message.id,
+      error: { code: -32603, message: "Response exceeded the safe output limit" } });
+  }
   if (process.stdout.writableLength > 8 * 1024 * 1024) {
     process.stdin.destroy(); process.exitCode = 1; return;
   }
-  process.stdout.write(`${JSON.stringify(message)}\n`);
+  process.stdout.write(`${encoded}\n`);
 }
 
 function textContent(text) {
@@ -170,11 +182,11 @@ function guardToolDefinition() {
     name: GUARD_TOOL_NAME,
     title: "Guard a package before installation",
     description:
-      "Fetch and stage one package reference (pin an exact version for reproducibility), then return a structured SAFE, REVIEW, or BLOCK report without running lifecycle scripts or package code. It performs network requests to npm, OSV, and optionally GitHub. promoteTo writes files only after policy allows; force may replace an existing destination. Local references and caller-supplied paths are confined to operator-approved roots.",
+      "Fetch and inspect one package reference (pin an exact version for reproducibility), then return a redacted SAFE, REVIEW, or BLOCK report without running lifecycle scripts, package code, or writing package files outside temporary quarantine. Local references are confined to operator-approved roots.",
     annotations: {
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: false,
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
       openWorldHint: true
     },
     inputSchema: {
@@ -190,19 +202,10 @@ function guardToolDefinition() {
           type: "string",
           description: "Optional staging root under an operator-approved filesystem root. Omit to use an internally selected OS temporary directory."
         },
-        promoteTo: {
-          type: "string",
-          description:
-            "Optional destination under an operator-approved root. Files are copied only when policy allows; force can replace an existing destination."
-        },
         policy: {
           type: "string",
           enum: ["safe-only", "allow-review"],
           default: "safe-only"
-        },
-        force: {
-          type: "boolean",
-          default: false
         },
         sourceScan: {
           type: "boolean",
@@ -443,6 +446,9 @@ function validateToolCall(toolName, args) {
   // Preserve the helpful diagnostics for formerly accepted authority knobs.
   if (args.artifact !== undefined) return "artifact is reserved for trusted acquisition callers";
   if (args.allowLocalReferences !== undefined) return "allowLocalReferences is not supported; only the server operator can grant filesystem roots";
+  if (args.promoteTo !== undefined || args.force !== undefined) {
+    return "promotion is not available over MCP; use the trusted local CLI after reviewing the result";
+  }
   for (const key of Object.keys(args)) {
     if (!Object.hasOwn(schema.properties, key)) return `unknown argument: ${key}`;
     const spec = schema.properties[key], value = args[key];
@@ -474,7 +480,7 @@ function validateToolCall(toolName, args) {
       }
       args.reference = `file:${resolved}`;
     }
-    for (const k of ["quarantineRoot", "promoteTo"]) {
+    for (const k of ["quarantineRoot"]) {
       if (args[k] !== undefined && (typeof args[k] !== "string" || args[k].includes("\0"))) {
         return `${k} must be a string without a NUL byte`;
       }
@@ -486,7 +492,7 @@ function validateToolCall(toolName, args) {
         args[k] = resolved;
       }
     }
-    for (const k of ["sourceScan", "vulnerabilityCheck", "githubMetadata", "githubDiff", "force", "deep"]) {
+    for (const k of ["sourceScan", "vulnerabilityCheck", "githubMetadata", "githubDiff", "deep"]) {
       if (args[k] !== undefined && typeof args[k] !== "boolean") {
         return `${k} must be a boolean`;
       }
@@ -623,7 +629,7 @@ function handleRequest(request) {
         // resolved a real sha256 — a pinned allowlist that can force `safe`.
         // applyConfig never changes a verdict silently; renderConfigEffects
         // surfaces every suppression in the response text below.
-        const adjusted = guardResult;
+        const adjusted = publicGuardResult(guardResult);
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(adjusted, null, 2)
@@ -831,6 +837,33 @@ function sourceFilesEvidence(sourceFiles) {
     return Object.keys(sourceFiles).map(() => ({}));
   }
   return [{}];
+}
+
+// The scanner needs raw package text internally, but an MCP caller does not.
+// Returning sourceFiles made local scans a file-read primitive (including
+// `.env` contents) and allowed a single response to grow to hundreds of MiB.
+function publicGuardResult(result) {
+  if (!result || typeof result !== "object") return result;
+  const { sourceFiles, quarantinePath, stagedPath, promotedPath, ...safe } = result;
+  safe.sourceEvidence = {
+    fileCount: sourceFiles && typeof sourceFiles === "object" ? Object.keys(sourceFiles).length : 0,
+    contentReturned: false
+  };
+  return redactSourceExcerpts(safe);
+}
+
+function redactSourceExcerpts(value) {
+  if (Array.isArray(value)) return value.map(redactSourceExcerpts);
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (["content", "source", "sourceText", "snippet", "excerpt"].includes(key) && typeof child === "string") {
+      out[key] = "<redacted>";
+    } else {
+      out[key] = redactSourceExcerpts(child);
+    }
+  }
+  return out;
 }
 
 function renderGuardMarkdown(result) {

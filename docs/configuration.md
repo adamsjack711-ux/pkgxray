@@ -21,6 +21,40 @@ an explicit artifact allowlist can override them. Python modules receive
 downgraded in compiled output. Keep `safe-only`, `failOn: review` and
 `scanErrorPolicy: fail-closed` when reviews must stop installation.
 
+### Provenance verification
+
+For npm artifacts, pkgxray attempts signature verification with the maintained
+`sigstore` SDK bundled beside its Node/npm runtime. It never resolves a verifier
+from the audited project's dependencies or installs one during a scan. If your
+runtime does not supply a supported SDK, an operator can set
+`PKGXRAY_SIGSTORE_MODULE` to an absolute path to a separately maintained
+`sigstore` installation (version 3 or newer, compatible with the running Node).
+That path is trusted executable code; it must not point inside an audited package.
+
+Verification checks the Sigstore certificate chain, certificate transparency,
+signature and signature transparency material using Sigstore's authenticated TUF
+trust root. It also requires the certificate's GitHub Actions issuer and exact
+workflow/ref identity to match the statement and declared repository, and binds
+the statement's npm package name/version and strong digests to the downloaded
+archive. The repository is read from the acquired archive's manifest, including
+proxy-held archives, rather than supplied by the attestation. This is a
+consistency check against package metadata, not an
+independent publisher allowlist. Verified origin never offsets malicious findings.
+
+`PKGXRAY_REQUIRE_PROVENANCE=1` makes authenticated, artifact-bound provenance a
+requirement. Missing provenance, an unavailable verifier, or failed trust-root
+access leaves the package on REVIEW; invalid provenance is BLOCK. These findings
+cannot be muted or cleared by `allow-review` or an artifact allowlist. Proxy and
+installer receipt checks also reject earlier approvals lacking verified provenance.
+The requirement applies to every guard reference, so local/GitHub-only references
+without npm provenance remain held in this mode. Unset it to use the ordinary
+static-scanning policy. The verifier receives no operator tokens or Node loader
+environment variables and has a bounded deadline and output budget.
+
+Attestation parsing remains available without the SDK. Its result is explicitly
+unverified and informational. Historical cached parse-only claims must be refreshed
+before they can establish verification; cached `verified` flags are never trusted.
+
 `.pkgxray.json` is distinct from `.pkgxray.lock`:
 
 | File | Author | Holds |
@@ -30,8 +64,9 @@ downgraded in compiled output. Keep `safe-only`, `failOn: review` and
 
 ## The governing rule: tighten freely, loosen loudly
 
-- **Zero config is fully safe.** An absent or empty file means maximum
-  strictness. You never *have* to configure anything.
+- **Zero config uses fail-closed static-scanning defaults.** This is not a
+  guarantee that a package is harmless. Requiring verified provenance and
+  sandboxing MCP execution are explicit additional controls.
 - You may make the policy **stricter** without limit.
 - You may **loosen** it (allow a package, mute a check) only explicitly, and
   every loosening is printed in the report — never silent.

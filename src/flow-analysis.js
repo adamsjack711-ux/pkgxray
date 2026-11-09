@@ -50,7 +50,7 @@ function joinValues(values, context, depth = 0) {
   // join produced malformed functions and TypeErrors on ordinary TS helpers.
   else if (present.some(v => v.node || v.target || v.kind === 'alternatives')) {
     const alternatives = [...new Set(present.flatMap(v => v.alternatives || [v]))];
-    Object.assign(out, { kind: 'alternatives', alternatives: alternatives.slice(0, 8), overflow: alternatives.length > 8 || present.some(v => v.overflow) });
+    Object.assign(out, { kind: 'alternatives', alternatives: alternatives.slice(0, 16), overflow: alternatives.length > 16 || present.some(v => v.overflow) });
     return out;
   }
   if (present.length && present.every(v => v.kind === present[0].kind)) out.kind = present[0].kind;
@@ -83,7 +83,13 @@ function property(object, key) {
   }
   if (object.kind === 'global' && ['process', 'Bun', 'fetch', 'WebSocket', 'Function', 'Proxy', 'Reflect', 'Map', 'Object', 'Array', 'setTimeout', 'setInterval'].includes(key)) return tagged(key);
   if (['process', 'Bun'].includes(object.kind) && key === 'env') return { bits: ENV, kind: 'env' };
-  if (object.props?.has(key)) return object.props.get(key);
+  if (object.props?.has(key)) {
+    const value = object.props.get(key);
+    // Preserve the receiver for ordinary method calls. Without it, a
+    // constructor could store a credential on `this` and a later method would
+    // be analyzed against a fresh empty object instead of that instance.
+    return value?.kind === 'function' ? { ...value, boundThis: object } : value;
+  }
   if (object.elements && /^\d+$/.test(String(key)) && Number(key) < object.elements.length) return object.elements[Number(key)] || clean();
   if (object.elements && ['at', 'pop', 'shift', 'push', 'unshift', 'slice', 'filter', 'map', 'forEach', 'find'].includes(key)) {
     return { bits: object.bits, kind: 'array-method', method: key, target: object };
@@ -149,6 +155,11 @@ function createFlowAnalysis(files) {
       // Acorn parses syntax only. No dynamic imports or source callbacks run.
       ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, allowHashBang: true });
     } catch { result.status = 'unsupported'; return result; }
+    // Keep default and named ESM exports in one namespace. A default value
+    // must not replace named exports (or inherit their properties).
+    if (ast.body.some(n => n.type.startsWith('Export'))) {
+      result.exports = { bits: 0, kind: 'module-namespace', props: new Map() };
+    }
     active.add(file);
     const seen = new Set();
     const callbacks = [];
@@ -186,7 +197,7 @@ function createFlowAnalysis(files) {
       }
       else if (pattern.type === 'ArrayPattern') pattern.elements.forEach((p, i) => bind(p, property(value, i), scope, declare));
     }
-    function invoke(fn, args, isolated = false) {
+    function invoke(fn, args, isolated = false, thisValue = null) {
       const signature = args.map(v => `${v.bits}:${v.kind || ''}`).join('|');
       const active = activeFunctions.get(fn.node) || new Set();
       // Revisit a recursive function when new taint arrives, but don't expand
@@ -197,7 +208,7 @@ function createFlowAnalysis(files) {
       const savedExports = result.exports;
       const local = new Scope(isolated ? fn.scope.clone(context) : fn.scope);
       if (isolated) result.exports = copyState(result.exports, context);
-      local.set('this', {bits:0,props:new Map()}, true);
+      local.set('this', thisValue || {bits:0,props:new Map()}, true);
       fn.node.params.forEach((p, i) => bind(p, args[i] || clean(), local));
       try { return fn.node.body.type === 'BlockStatement' ? stmt(fn.node.body, local) : expr(fn.node.body, local); }
       finally { active.delete(signature); if (isolated) result.exports = savedExports; }
@@ -212,21 +223,26 @@ function createFlowAnalysis(files) {
     }
     function callValue(node, callee, args) {
       tick();
-      const value = merge(...args);
+      // Calls generally need the union of taint bits, not a structural join of
+      // every argument object. Keeping this shallow prevents framework APIs
+      // such as setPrototypeOf(req, app.request) from recursively copying an
+      // application-sized graph before we even classify the callee.
+      const value = { bits: args.reduce((bits, arg) => bits | (arg?.bits || 0), 0) };
       if (callee.kind === 'alternatives') {
-        if (callee.overflow) gap('callable alternatives limit', node);
+        if (callee.overflow) gap('callable alternatives limit', node,
+          Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
         return merge(...callee.alternatives.map(fn => callValue(node, fn, args)));
       }
       if (callee.kind === 'require') return load(args[0]?.value);
       if (callee.kind === 'reflect-get') return property(args[0] || clean(), args[1]?.value);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
         const list = args[callee.kind === 'reflect-apply' ? 2 : 1];
-        if (!list?.elements) { gap(); return value; }
+        if (!list?.elements) { gap('unresolved reflected argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
         return callValue(node, args[0] || clean(), list.elements);
       }
       if (callee.kind === 'invoke-call') return callValue(node, callee.target, args.slice(1));
       if (callee.kind === 'invoke-apply') {
-        if (!args[1]?.elements) { gap(); return value; }
+        if (!args[1]?.elements) { gap('unresolved apply argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
         return callValue(node, callee.target, args[1].elements);
       }
       if (callee.kind === 'invoke-bind') return { bits: 0, kind: 'bound', target: callee.target, args: args.slice(1) };
@@ -254,6 +270,7 @@ function createFlowAnalysis(files) {
         return { ...merge(args[0] || clean(), ...elements), elements };
       }
       if (callee.kind === 'array-of') return { ...merge(...args), elements: args };
+      if (callee.kind === 'Array') return { bits: value.bits, elements: [] };
       if (callee.kind === 'array-from') {
         if (!args[0]?.elements) { gap(); return value; }
         return { ...args[0], elements: [...args[0].elements] };
@@ -291,8 +308,13 @@ function createFlowAnalysis(files) {
       }
       if (callee.kind === 'WebSocket') return tagged('websocket');
       if (callee.kind === 'vm' && value.bits & REMOTE) hint(node, 'remote-vm-code');
-      if (callee.kind === 'function') return invoke(callee, args);
-      if (callee.kind === 'class') return callee;
+      if (callee.kind === 'function') return invoke(callee, args, false, callee.boundThis);
+      if (callee.kind === 'class') {
+        const instance = { bits: callee.bits, kind: 'instance', props: new Map(callee.props || []) };
+        const constructor = callee.props?.get('constructor');
+        if (constructor?.kind === 'function') invoke(constructor, args, false, instance);
+        return instance;
+      }
       if (callee.kind === 'Proxy') {
         // Preserve the target's taint; arbitrary traps are not modeled.
         gap(); return args[0] || value;
@@ -305,8 +327,11 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'compiled-function') return clean();
       if (callee.kind === 'global-factory') return tagged('global');
       if (['setTimeout', 'setInterval'].includes(callee.kind) && typeof args[0]?.value === 'string') gap();
-      // Preserve fetched text through .text(), encoders and JSON.stringify.
-      return merge(value, { bits: callee.bits });
+      // Preserve taint through unknown calls without recursively joining their
+      // full object graphs. Nested properties already contribute to `bits` at
+      // construction time; copying them here caused benign callback/object
+      // frameworks to exhaust the state budget without adding flow evidence.
+      return { bits: value.bits | callee.bits };
     }
     function classValue(node, scope) {
       expr(node.superClass, scope);
@@ -321,7 +346,10 @@ function createFlowAnalysis(files) {
         const v = expr(member.value, local);
         value.props.set(key, v);
         value.bits |= v.bits;
-        if (member.kind === 'get' || member.kind === 'set' || member.kind === 'constructor') gap();
+        // Constructor bodies are inspected above and invoked with the real
+        // arguments/receiver when the class is instantiated. Accessors still
+        // need a property-read/write model before their effects can be cleared.
+        if (member.kind === 'get' || member.kind === 'set') gap();
       }
       return value;
     }
@@ -400,8 +428,9 @@ function createFlowAnalysis(files) {
             } else bind(node.left, v, scope, false);
             return v;
           }
-          case 'FunctionExpression': case 'ArrowFunctionExpression': {
-            const fn = { bits: 0, kind: 'function', node, scope };
+          case 'FunctionDeclaration': case 'FunctionExpression': case 'ArrowFunctionExpression': {
+            const fn = node.type === 'FunctionDeclaration' && node.id && scope.get(node.id.name) ||
+              { bits: 0, kind: 'function', node, scope };
             invoke(fn, [], true);
             return fn;
           }
@@ -442,8 +471,8 @@ function createFlowAnalysis(files) {
       // ambient process/fetch semantics merely because their declaration is later.
       for (const n of nodes) {
         if (n.type === 'VariableDeclaration') for (const d of n.declarations) bind(d.id, clean(), scope);
-        const fn = n.type === 'ExportNamedDeclaration' ? n.declaration : n;
-        if (fn?.type === 'FunctionDeclaration') scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
+        const fn = ['ExportNamedDeclaration', 'ExportDefaultDeclaration'].includes(n.type) ? n.declaration : n;
+        if (fn?.type === 'FunctionDeclaration' && fn.id) scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
       }
       // Only return-bearing statements contribute a function's result. A
       // prototype assignment is a side effect, not another possible return.
@@ -521,17 +550,43 @@ function createFlowAnalysis(files) {
           case 'CatchClause': { const local = new Scope(scope); bind(node.param, clean(), local); return stmt(node.body, local); }
           case 'ImportDeclaration': {
             const value = load(node.source.value);
-            for (const s of node.specifiers) scope.set(s.local.name, s.type === 'ImportSpecifier' ? property(value, s.imported.name) : value, true);
+            for (const s of node.specifiers) scope.set(s.local.name,
+              s.type === 'ImportSpecifier' ? property(value, s.imported.name ?? s.imported.value) :
+              s.type === 'ImportDefaultSpecifier' && value.kind === 'module-namespace' ? property(value, 'default') : value, true);
             break;
           }
-          case 'ExportDefaultDeclaration': result.exports = expr(node.declaration, scope); break;
+          case 'ExportDefaultDeclaration': {
+            const value = expr(node.declaration, scope);
+            if (node.declaration.type === 'ClassDeclaration' && node.declaration.id) scope.set(node.declaration.id.name, value, true);
+            result.exports.props.set('default', value);
+            result.exports.bits |= value.bits;
+            break;
+          }
           case 'ExportNamedDeclaration': {
             if (node.declaration) stmt(node.declaration, scope);
             const value = node.source ? load(node.source.value) : null;
             const props = result.exports.props || new Map();
-            for (const s of node.specifiers) props.set(s.exported.name, value ? property(value, s.local.name) : scope.get(s.local.name) || clean());
-            if (node.declaration?.type === 'VariableDeclaration') for (const d of node.declaration.declarations) if (d.id.name) props.set(d.id.name, scope.get(d.id.name));
-            result.exports = { bits: merge(...props.values()).bits, props };
+            let bits = result.exports.bits || 0;
+            for (const s of node.specifiers) {
+              const exported = value ? property(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean();
+              props.set(s.exported.name ?? s.exported.value, exported);
+              bits |= exported.bits || 0;
+            }
+            if (node.declaration?.type === 'VariableDeclaration') for (const d of node.declaration.declarations) if (d.id.name) {
+              const exported = scope.get(d.id.name) || clean();
+              props.set(d.id.name, exported);
+              bits |= exported.bits || 0;
+            }
+            if (['FunctionDeclaration', 'ClassDeclaration'].includes(node.declaration?.type)) {
+              const exported = scope.get(node.declaration.id.name) || clean();
+              props.set(node.declaration.id.name, exported);
+              bits |= exported.bits || 0;
+            }
+            // Do not structurally re-merge the complete namespace after every
+            // declaration. Generated barrels can contain thousands of exports;
+            // repeated whole-map joins are quadratic and previously exhausted a
+            // multi-gigabyte heap on Font Awesome's icon package.
+            result.exports = { bits, kind: 'module-namespace', props };
             break;
           }
           default: gap(); break;

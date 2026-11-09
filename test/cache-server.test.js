@@ -8,6 +8,7 @@ const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const zlib = require("node:zlib");
+const crypto = require("node:crypto");
 
 const { start } = require("../bin/pkgxray-cache");
 
@@ -51,6 +52,8 @@ function getJson(url, headers = {}) {
       response.on("data", (chunk) => {
         body += chunk;
       });
+      response.on("error", reject);
+      response.on("aborted", () => reject(new Error("response aborted")));
       response.on("end", () => {
         const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
         resolve({
@@ -71,6 +74,8 @@ function getBuffer(url, headers = {}) {
     const request = http.get(url, { headers }, (response) => {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
+      response.on("error", reject);
+      response.on("aborted", () => reject(new Error("response aborted")));
       response.on("end", () => {
         const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
         resolve({
@@ -109,6 +114,36 @@ test("healthz returns 200 with version", async (t) => {
   const parsed = JSON.parse(result.body);
   assert.equal(parsed.ok, true);
   assert.equal(typeof parsed.version, "string");
+});
+
+test("malformed percent-encoding returns 400 without crashing the cache", async (t) => {
+  const cacheDir = await makeTempDir("bad-encoding");
+  const { server, address } = await start({ allowPrivateUpstream: true, port: 0, host: "127.0.0.1",
+    cacheDir, upstreamGithubApi: "http://127.0.0.1:1", upstreamCodeload: "http://127.0.0.1:1" });
+  t.after(async () => { await new Promise(r => server.close(r)); await fsp.rm(cacheDir, { recursive: true, force: true }); });
+  const bad = await getJson(`http://127.0.0.1:${address.port}/github/repos/%E0%A4%A/repo`);
+  assert.equal(bad.statusCode, 400);
+  const health = await getJson(`http://127.0.0.1:${address.port}/healthz`);
+  assert.equal(health.statusCode, 200);
+});
+
+test("different Git refs that flatten alike never share a cache entry", async (t) => {
+  const payloads = {
+    "/example/example/tar.gz/a%2Fb": zlib.gzipSync(Buffer.from("slash-ref")),
+    "/example/example/tar.gz/a__b": zlib.gzipSync(Buffer.from("underscore-ref")),
+  };
+  const upstream = await startFakeUpstream(Object.fromEntries(Object.entries(payloads).map(([key, value]) =>
+    [key, (_req, res) => { res.writeHead(200, { "content-type": "application/gzip" }); res.end(value); }])));
+  const cacheDir = await makeTempDir("ref-collision");
+  const { server, address } = await start({ allowPrivateUpstream: true, port: 0, host: "127.0.0.1", cacheDir,
+    upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url });
+  t.after(async () => { await new Promise(r => server.close(r)); await upstream.close(); await fsp.rm(cacheDir, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${address.port}/github/tarball/example/example/`;
+  const slash = await getBuffer(`${base}a%2Fb`);
+  const underscore = await getBuffer(`${base}a__b`);
+  assert.notDeepEqual(slash.body, underscore.body);
+  assert.deepEqual(slash.body, payloads["/example/example/tar.gz/a%2Fb"]);
+  assert.deepEqual(underscore.body, payloads["/example/example/tar.gz/a__b"]);
 });
 
 test("repo route: MISS on first hit, HIT on second, single upstream call", async (t) => {
@@ -214,7 +249,8 @@ test("tarball route: streams bytes, HIT on second call, dedups concurrent reques
   assert.equal(upstream.counts.get("/example/example/tar.gz/v1.0.0"), 1, "cache hit should not re-call upstream");
 
   // The cached file lives at the documented path.
-  const cacheFile = path.join(cacheDir, "github", "tarballs", "example", "example", "v1.0.0.tgz");
+  const refHash = crypto.createHash("sha256").update("v1.0.0").digest("hex");
+  const cacheFile = path.join(cacheDir, "github", "tarballs", "example", "example", `${refHash}.tgz`);
   const stat = await fs.promises.stat(cacheFile);
   assert.equal(stat.size, payload.length);
 });
@@ -437,7 +473,8 @@ test("disk cap: over-cap tarball is proxied live (BYPASS) and not persisted (fin
   assert.equal(result.headers["x-pkgxray-cache"], "BYPASS");
   assert.deepEqual(result.body, payload);
   // The over-cap response must NOT have been written to disk.
-  const cacheFile = path.join(cacheDir, "github", "tarballs", "big", "repo", "v1.0.0.tgz");
+  const refHash = crypto.createHash("sha256").update("v1.0.0").digest("hex");
+  const cacheFile = path.join(cacheDir, "github", "tarballs", "big", "repo", `${refHash}.tgz`);
   await assert.rejects(() => fsp.stat(cacheFile));
 });
 
@@ -588,6 +625,124 @@ for (const bypass of [false, true]) {
     assert.equal(destination.counts.size, 0);
     await assert.rejects(fsp.stat(path.join(cacheDir, 'github/tarballs/owner/repo/main.tgz')));
   });
+}
+
+for (const warm of [false, true]) {
+  test(`tarball ${warm ? 'HIT' : 'MISS'} delivery cancels a client that stops reading`, { timeout: 5000 }, async t => {
+    const payload = Buffer.alloc(16 * 1024 * 1024);
+    const upstream = await startFakeUpstream({ __default: (_req, res) => res.end(payload) });
+    const cacheDir = await makeTempDir('delivery-deadline');
+    const { server, address } = await start({ allowPrivateUpstream: true, port: 0, host: '127.0.0.1', cacheDir,
+      upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url, upstreamTarballTimeoutMs: 300, maxCacheBytes: 0 });
+    t.after(async () => { await new Promise(r => server.close(r)); await upstream.close(); await fsp.rm(cacheDir, { recursive: true, force: true }); });
+    const url = `http://127.0.0.1:${address.port}/github/tarball/delivery/repo/main`;
+    if (warm) assert.equal((await getBuffer(url)).statusCode, 200);
+    let response, completion;
+    const request = http.get(url, { agent: false }, incoming => {
+      response = incoming;
+      assert.equal(response.headers['x-pkgxray-cache'], warm ? 'HIT' : 'MISS');
+      completion = new Promise((resolve, reject) => {
+        response.on('end', resolve); response.on('error', reject);
+        response.on('aborted', () => reject(new Error('response aborted')));
+      });
+      completion.catch(() => {});
+      response.pause();
+    });
+    t.after(() => { response?.destroy(); request.destroy(); });
+    await new Promise((resolve, reject) => { request.on('response', resolve); request.on('error', reject); });
+    await new Promise(resolve => setTimeout(resolve, 360));
+    response.resume();
+    await assert.rejects(completion, /aborted|reset|closed/i);
+    assert.equal((await getJson(`http://127.0.0.1:${address.port}/healthz`)).statusCode, 200);
+  });
+}
+
+test('a cached tarball file read error cannot crash the cache server', { timeout: 4000 }, async t => {
+  const cacheDir = await makeTempDir('delivery-read-error');
+  const refHash = crypto.createHash('sha256').update('main').digest('hex');
+  await fsp.mkdir(path.join(cacheDir, 'github/tarballs/delivery/repo', `${refHash}.tgz`), { recursive: true });
+  const { server, address } = await start({ allowPrivateUpstream: true, port: 0, host: '127.0.0.1', cacheDir,
+    upstreamGithubApi: 'http://127.0.0.1:1', upstreamCodeload: 'http://127.0.0.1:1' });
+  t.after(async () => { await new Promise(r => server.close(r)); await fsp.rm(cacheDir, { recursive: true, force: true }); });
+  await assert.rejects(getBuffer(`http://127.0.0.1:${address.port}/github/tarball/delivery/repo/main`), /aborted|reset|closed|hang up/i);
+  assert.equal((await getJson(`http://127.0.0.1:${address.port}/healthz`)).statusCode, 200);
+});
+
+for (const behavior of ['truncated', 'silent', 'drip', 'redirect']) {
+  test(`repo fetch terminates ${behavior} upstream responses without caching; subsequent retries work`, { timeout: 4000 }, async t => {
+    let healthy = false;
+    const upstream = await startFakeUpstream({
+      __default: (_req, res) => {
+        if (healthy) { res.end('{"full_name":"deadline/repo"}'); return; }
+        if (behavior === 'truncated') {
+          res.writeHead(200, { 'content-length': 100 });
+          res.write('{');
+          const timer = setTimeout(() => res.destroy(), 10);
+          res.on('close', () => clearTimeout(timer));
+        } else if (behavior === 'drip') {
+          res.writeHead(200); res.write('{');
+          const timer = setInterval(() => res.write(' '), 15);
+          res.on('close', () => clearInterval(timer));
+        } else if (behavior === 'redirect') {
+          const timer = setTimeout(() => {
+            res.writeHead(302, { location: '/next' }); res.end();
+          }, 65);
+          res.on('close', () => clearTimeout(timer));
+        }
+        // silent intentionally never sends headers or bytes.
+      }
+    });
+    const cacheDir = await makeTempDir('deadline');
+    const { server, address } = await start({ allowPrivateUpstream: true, port: 0, host: '127.0.0.1', cacheDir,
+      upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url, upstreamRepoTimeoutMs: 160 });
+    t.after(async () => { await new Promise(r => server.close(r)); await upstream.close(); await fsp.rm(cacheDir, { recursive: true, force: true }); });
+    const url = `http://127.0.0.1:${address.port}/github/repos/deadline/repo`;
+    const result = await getJson(url);
+    assert.equal(result.statusCode, 502);
+    assert.ok(result.elapsedMs < 1500, `request took ${result.elapsedMs} ms`);
+    if (behavior !== 'truncated') assert.match(result.body, /total deadline/);
+    await assert.rejects(fsp.stat(path.join(cacheDir, 'github/public-repos-v2/deadline/repo.json')));
+    healthy = true;
+    const retry = await getJson(url);
+    assert.equal(retry.statusCode, 200, retry.body);
+    assert.equal(retry.headers['x-pkgxray-cache'], 'MISS');
+  });
+}
+
+for (const bypass of [false, true]) {
+  for (const behavior of ['truncated', 'drip', 'redirect']) {
+    test(`tarball ${bypass ? 'live bypass' : 'disk cache'} terminates ${behavior} upstream without partial cache files`, { timeout: 4000 }, async t => {
+      const upstream = await startFakeUpstream({
+        __default: (_req, res) => {
+          if (behavior === 'redirect') {
+            const timer = setTimeout(() => { res.writeHead(302, { location: '/next' }); res.end(); }, 65);
+            res.on('close', () => clearTimeout(timer));
+          } else if (behavior === 'truncated') {
+            res.writeHead(200, { 'content-length': 100 }); res.write('partial');
+            const timer = setTimeout(() => res.destroy(), 10);
+            res.on('close', () => clearTimeout(timer));
+          } else {
+            res.writeHead(200); res.write('partial');
+            const timer = setInterval(() => res.write('x'), 15);
+            res.on('close', () => clearInterval(timer));
+          }
+        }
+      });
+      const cacheDir = await makeTempDir('tarball-deadline');
+      if (bypass) await fsp.writeFile(path.join(cacheDir, 'seed'), 'x');
+      const { server, address } = await start({ allowPrivateUpstream: true, port: 0, host: '127.0.0.1', cacheDir,
+        upstreamGithubApi: upstream.url, upstreamCodeload: upstream.url, upstreamTarballTimeoutMs: 160,
+        maxCacheBytes: bypass ? 1 : 0 });
+      t.after(async () => { await new Promise(r => server.close(r)); await upstream.close(); await fsp.rm(cacheDir, { recursive: true, force: true }); });
+      const started = Date.now();
+      const request = getBuffer(`http://127.0.0.1:${address.port}/github/tarball/deadline/repo/main`);
+      if (bypass && behavior !== 'redirect') await assert.rejects(request, /aborted|reset|closed/i);
+      else assert.equal((await request).statusCode, 502);
+      assert.ok(Date.now() - started < 1500);
+      const entries = await fsp.readdir(cacheDir, { recursive: true });
+      assert.ok(!entries.some(entry => entry.endsWith('.tgz') || entry.includes('.tmp-')), entries.join(', '));
+    });
+  }
 }
 
 test('same-origin relative redirects work; malformed redirects fail without crashing the cache', async (t) => {

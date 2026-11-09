@@ -1,5 +1,25 @@
 # Adversarial challenge results — 2026-09-11
 
+## Post-1.2.0 remediation — 2026-10-13
+
+The calibration corpus now contains 84 cases: 36 malicious, all BLOCK; and 48
+benign, with zero BLOCKs. Ten paired fixtures cover literal remote dynamic
+imports, split global evaluation, escaped and character-code `child_process`
+launchers, and Ethereum keystore reads. The existing remote-loader fixture now
+models an npm `preinstall` hook and is BLOCK instead of an acknowledged REVIEW.
+Two additional benign fixtures lock the top-1,000 retunes for bundled web3
+executors and current-package ownership checks in release scripts.
+Together with the unchanged 180-case challenge and 20-case former holdout, the
+internal regression corpus contains 284 cases. Browser and Node results match.
+
+The flow interpreter also stops recursively joining full object graphs at
+unknown-call boundaries. It preserves taint bits, so secret/remote flows remain
+visible, while clean framework callback structures no longer exhaust analysis
+budgets solely because their object shapes expand. This correction was verified
+against Express 4.21.0 and a regression that sends sensitive taint through an
+unknown call. As throughout this document, these inputs informed development;
+the result is not independent validation or a whole-registry accuracy claim.
+
 September 23 audit remediation: CI now uses `audit-results.json`, retaining
 `flow-results.json` unchanged as the prior snapshot. Eight additional benign
 runtime entries now receive REVIEW for unsupported syntax: both Python families'

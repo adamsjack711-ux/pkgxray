@@ -43,6 +43,9 @@ func ParsePolicy(s string) Policy {
 // such a spec — pkgxray errored (Unknown) or the spec is an unvettable VCS/URL
 // (Review) — never fail open. Ask at minimum, even under Permissive.
 func DecideResult(p Policy, r Result) Action {
+	if r.MandatoryHold {
+		return Deny
+	}
 	base := Decide(p, r.Verdict)
 	if r.Spec.Immediate && base == Allow && (r.Verdict == Unknown || r.Verdict == Review) {
 		return Ask
@@ -92,7 +95,9 @@ func Decide(p Policy, v Verdict) Action {
 			return Allow
 		}
 		return Deny
-	default: // Safe
+	case Safe:
 		return Allow
+	default:
+		return Deny
 	}
 }

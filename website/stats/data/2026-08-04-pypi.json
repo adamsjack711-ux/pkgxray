@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-08-04-pypi",
+  "runDate": "2026-08-04",
+  "ecosystem": "pypi",
+  "ecosystemLabel": "PyPI",
+  "pkgxray": {
+    "version": "1.0.6",
+    "build": "pypi-calibration",
+    "commit": "1067b74",
+    "node": "v26.0.0",
+    "command": "pkgxray guard pypi:<name>@<version> --format json",
+    "releaseStatus": "pre-release build, not published to npm (targets 1.1.0)",
+    "publicReleaseAtRunTime": "1.0.5",
+    "reproCommand": "git checkout 1067b74 && node scripts/validate-at-scale.js --ecosystem pypi --cohort pypi"
+  },
+  "headline": {
+    "packagesScanned": 1000,
+    "topThousandFalseBlocks": {
+      "count": 0,
+      "of": 1000,
+      "rate": 0.0
+    },
+    "knownMalwareCatchRate": {
+      "blocked": 5,
+      "of": 5,
+      "rate": 1.0,
+      "passedAsSafe": 0
+    }
+  },
+  "scope": {
+    "denominatorTotal": 1000,
+    "denominator": [
+      {
+        "name": "top-1000 PyPI download-ranked list",
+        "count": 1000,
+        "role": "the false-block denominator; committed list of the 1,000 most-downloaded PyPI project names",
+        "source": "https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/top-pypi-1000.txt"
+      }
+    ],
+    "separateSets": [
+      {
+        "name": "reconstructed PyPI known-malware corpus",
+        "count": 5,
+        "role": "catch-rate corpus — NOT part of the 1,000 denominator",
+        "source": "https://github.com/adamsjack711-ux/pkgxray/tree/main/benchmark/corpus/malicious"
+      }
+    ],
+    "reproNote": "The top-1000 PyPI list is committed as ranked project names (validation/top-pypi-1000.txt), regenerable from the hugovk/top-pypi-packages download ranking via scripts/build-pypi-list.js. Guard resolves each name to its latest sdist at run time, so the resolved version set is reproducible in method; project-name membership is byte-identical."
+  },
+  "methodologyUrl": "/stats/methodology",
+  "reproInputs": "https://github.com/adamsjack711-ux/pkgxray/blob/main/validation/top-pypi-1000.txt",
+  "corrections": {
+    "contact": "https://github.com/adamsjack711-ux/pkgxray/issues?q=is%3Aissue%20label%3Acalibration",
+    "policy": "Versioned runs are immutable. A corrected number is published as a new dated run; corrections are listed on the page, never silently edited.",
+    "log": []
+  },
+  "notes": "First PyPI-ecosystem calibration. The 1,000 most-downloaded PyPI projects, one static pass on the 1067b74 engine (a pre-release build targeting 1.1.0; the public npm release at run time was 1.0.5). Zero heuristic false blocks. Of the 4 blocks in the top-1000, 3 carry a known-CVE finding (OSV, by design) and 1 is a documented defensible true positive (fastmcp ships a live .claude/settings.json hooks config — an install-time-equivalent agent auto-exec surface). Catch rate is measured against a committed 5-sample reconstructed PyPI sdist-dropper corpus — a deliberately small denominator, reported as-is and not extrapolated to a population claim. 4 projects failed to resolve (yanked or renamed since the list snapshot) and are recorded as scan errors, never as blocks."
+}

@@ -27,6 +27,19 @@ test('ordinary detached worker and clean paired artifact remain SAFE', () => {
   assert.equal(auditEvidence({sourceFiles:{'package.json':pkg,'index.js':'exports.update = value => value;'}}).verdict,'safe');
 });
 
+test('types export conditions are declarations, not runtime entrypoints', () => {
+  const manifest = JSON.stringify({
+    name: 'fixture', version: '1.0.0',
+    exports: { '.': { types: './dist/index.d.ts', import: './dist/index.js' } }
+  });
+  const report = auditEvidence({ sourceFiles: {
+    'package.json': manifest,
+    'dist/index.d.ts': 'export interface Client { send(): void }',
+    'dist/index.js': 'export const value = 1;'
+  } });
+  assert.ok(!report.findings.some(f => f.category === 'flow-analysis-gap'));
+});
+
 test('file renames, dist/test paths and dormant exported methods retain the execution edge', () => {
   for (const target of ['dist/task.min.js','test/fixture.dat','payload']) {
     const source = `const {execFile}=require('child_process'); const path=require('path'); exports.update=function(value){ if(value === 100) { const child=execFile('node',[path.resolve(__dirname,'${target}')],{windowsHide:true}); child.unref(); } };`;

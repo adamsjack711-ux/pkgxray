@@ -8,7 +8,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
-const { installProject, validateLock, installEnvironment } = require("../src/install");
+const { installProject, validateLock, installEnvironment, resolveTrustedNpmCli } = require("../src/install");
 const { guardExtension } = require("../src/quarantine");
 const { DEFAULTS } = require("../src/config");
 const { parseArgs } = require("../bin/audit");
@@ -93,6 +93,28 @@ test("unbound, incomplete and modified approvals stop before npm or replacing no
     assert.equal(ran, false);
     assert.equal(await fs.readFile(path.join(f.project, "node_modules/old.txt"), "utf8"), "original");
   }
+});
+
+test("requiring provenance refuses an earlier complete approval before npm runs", async t => {
+  const previous = process.env.PKGXRAY_REQUIRE_PROVENANCE;
+  delete process.env.PKGXRAY_REQUIRE_PROVENANCE;
+  t.after(() => {
+    if (previous === undefined) delete process.env.PKGXRAY_REQUIRE_PROVENANCE;
+    else process.env.PKGXRAY_REQUIRE_PROVENANCE = previous;
+  });
+  const f = await fixture(t);
+  const oldScan = await f.guard('npm:demo@1.0.0', {
+    config: DEFAULTS, keepStaging: true, quarantineRoot: path.join(f.root, 'old-scan'),
+    sourceScan: true, vulnerabilityCheck: true, artifact: { integrity: f.lock.packages['node_modules/demo'].integrity }
+  });
+  assert.equal(oldScan.decision, 'allow');
+  assert.equal(oldScan.approval.checks.source, 'completed');
+  process.env.PKGXRAY_REQUIRE_PROVENANCE = '1';
+  let executed = false;
+  await assert.rejects(installProject(f.project, { config: DEFAULTS }, {
+    guard: async () => oldScan, run: async () => { executed = true; }
+  }), /lacks a complete ALLOW receipt/);
+  assert.equal(executed, false, 'an earlier permissive receipt never invokes npm');
 });
 
 test("post-install mutations and project lockfile changes prevent promotion", async t => {
@@ -219,4 +241,38 @@ test("project PATH shims and Node preloads cannot hijack npm installation", asyn
   });
   const result = await installProject(f.project, { config: DEFAULTS }, { guard: f.guard });
   assert.equal(result.installed, 2);
+});
+
+test("trusted npm discovery supports split Node/npm prefixes and skips PATH shims", async t => {
+  const f = await fixture(t);
+  const hostile = path.join(f.root, "hostile-bin");
+  const npmRoot = path.join(f.root, "trusted", "lib", "node_modules", "npm");
+  const npmBin = path.join(npmRoot, "bin");
+  const trustedPath = path.join(f.root, "trusted", "bin");
+  await fs.mkdir(hostile);
+  await fs.mkdir(npmBin, { recursive: true });
+  await fs.mkdir(trustedPath, { recursive: true });
+  await fs.writeFile(path.join(hostile, "npm"), "#!/bin/sh\nexit 91\n", { mode: 0o755 });
+  await fs.writeFile(path.join(npmRoot, "package.json"), JSON.stringify({ name: "npm", version: "99.0.0" }));
+  const cli = path.join(npmBin, "npm-cli.js");
+  await fs.writeFile(cli, "#!/usr/bin/env node\n", { mode: 0o755 });
+  await fs.symlink(cli, path.join(trustedPath, "npm"));
+  const resolved = await resolveTrustedNpmCli(f.project, {
+    execPath: path.join(f.root, "split-node", "node"),
+    env: { PATH: `${hostile}${path.delimiter}${trustedPath}` }
+  });
+  assert.equal(resolved, await fs.realpath(cli));
+});
+
+test("trusted npm discovery rejects a project-controlled npm package", async t => {
+  const f = await fixture(t);
+  const npmRoot = path.join(f.project, "tools", "node_modules", "npm");
+  await fs.mkdir(path.join(npmRoot, "bin"), { recursive: true });
+  await fs.writeFile(path.join(npmRoot, "package.json"), JSON.stringify({ name: "npm", version: "99.0.0" }));
+  const cli = path.join(npmRoot, "bin", "npm-cli.js");
+  await fs.writeFile(cli, "#!/usr/bin/env node\n", { mode: 0o755 });
+  await assert.rejects(resolveTrustedNpmCli(f.project, {
+    execPath: path.join(f.root, "split-node", "node"),
+    env: { PATH: "" }, explicit: cli
+  }), /Trusted npm CLI not found/);
 });

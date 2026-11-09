@@ -1,0 +1,12 @@
+{
+  "name": "wallet-path-documentation",
+  "expect": "safe",
+  "note": "documentation naming a wallet backup path is not a filesystem read",
+  "evidence": {
+    "packageName": "wallet-docs",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"wallet-docs\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/wallet-docs\"}",
+      "README.md": "Back up ~/.ethereum/keystore before migrating a wallet."
+    }
+  }
+}

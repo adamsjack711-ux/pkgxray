@@ -339,15 +339,21 @@ test("verifySubjectDigest binds an attestation to the downloaded tarball digest 
     builderId: "anything"
   });
   const parsed = parseAttestation(synthetic);
-  // Matching digest (the synthetic subject uses sha512:deadbeef).
+  // A complete SHA-512 digest; abbreviated strings cannot bind an artifact.
+  parsed.subjectDigests[0].digest.sha512 = "ab".repeat(64);
   assert.equal(
-    verifySubjectDigest(parsed, { algorithm: "sha512", value: "DEADBEEF" }),
+    verifySubjectDigest(parsed, { algorithm: "sha512", value: "AB".repeat(64) }),
     true,
     "case-insensitive digest match should bind"
   );
   // Wrong value → no binding (this is exactly how a tampered artifact would
   // fail to match an otherwise-parseable attestation).
   assert.equal(verifySubjectDigest(parsed, { algorithm: "sha512", value: "0000" }), false);
+  const encoded = Buffer.from("ab".repeat(64), "hex").toString("base64");
+  assert.equal(verifySubjectDigest(parsed, { algorithm: "sha512", value: encoded }), true);
+  const changedCase = encoded.replace(/[a-z]/, character => character.toUpperCase());
+  assert.notEqual(changedCase, encoded);
+  assert.equal(verifySubjectDigest(parsed, { algorithm: "sha512", value: changedCase }), false);
   // Wrong algorithm → no binding.
   assert.equal(verifySubjectDigest(parsed, { algorithm: "sha256", value: "deadbeef" }), false);
   // Missing digest → no binding.

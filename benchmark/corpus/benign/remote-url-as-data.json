@@ -1,0 +1,12 @@
+{
+  "name": "remote-url-as-data",
+  "expect": "safe",
+  "note": "a remote URL stored as configuration is not executable dynamic import",
+  "evidence": {
+    "packageName": "remote-url-data",
+    "sourceFiles": {
+      "package.json": "{\"name\":\"remote-url-data\",\"version\":\"1.0.0\",\"repository\":\"https://github.com/x/remote-url-data\"}",
+      "index.js": "module.exports = 'https://cdn.example.test/stage.js'"
+    }
+  }
+}

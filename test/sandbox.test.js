@@ -22,6 +22,23 @@ const {
   detectSandboxWrapper
 } = require("../src/sandbox");
 
+// Real code execution is intentionally unavailable on hosts without a usable
+// network boundary. Keep synthetic pipeline tests portable using their explicit
+// injected runners, and require the native backend in the dedicated CI job.
+function realExecutionTest(name, fn) {
+  test(name, async t => {
+    const info = detectSandboxWrapper(os.tmpdir());
+    const available = info.level === 'sandbox-exec' ||
+      (info.level === 'bwrap' && await require('../src/sandbox').detectNetnsConfinement(os.tmpdir()));
+    if (!available) {
+      if (process.env.PKGXRAY_REQUIRE_OS_SANDBOX_TESTS === '1') assert.fail('CI requires usable canary filesystem and network confinement');
+      t.skip('Required canary OS/network backend unavailable');
+      return;
+    }
+    await fn(t);
+  });
+}
+
 // Send a proxied plaintext HTTP request (absolute-URI form, as an HTTP_PROXY
 // client would) carrying `body` to the capture proxy on `port`.
 function proxiedHttpPost(port, targetUrl, body) {
@@ -205,7 +222,7 @@ test("#6 killProcessGroup signals the process group (negative pid), guarded for 
 // be captured, because the proxy is kept alive for the grace window. Uses the
 // REAL execWithTimeout runner (not an injected stand-in) so the detached
 // spawn + grace-window teardown are exercised end to end.
-test("#6 a post-settle delayed beacon is still captured during the egress grace window", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 a post-settle delayed beacon is still captured during the egress grace window", async () => {
   const pkgDir = await stagedPackage({
     // Backgrounded curl: the postinstall returns immediately (`echo done`) while
     // a grandchild beacons ~400ms later — after the runner promise settles.
@@ -270,7 +287,7 @@ try {
 // package that is benign at install but malicious on first require is caught —
 // the gap a lifecycle-only canary leaves open. Uses the real runInstallAndImport
 // (no injected runner), so this exercises the actual probe → node → proxy path.
-test("#6 import phase catches a payload that fires on require, not on install", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 import phase catches a payload that fires on require, not on install", async () => {
   const pkgDir = await stagedImportPayloadPackage();
   const result = await runCanarySandbox({
     stagedPath: pkgDir,
@@ -291,7 +308,7 @@ test("#6 import phase catches a payload that fires on require, not on install", 
 // Proves the SPECIFIC gap being closed: the same payload run through the
 // install phase ALONE (lifecycle scripts, no import) is NOT observed — there are
 // no install scripts to fire. This is the before/after that justifies the row.
-test("#6 lifecycle-only run does NOT observe the import-time payload (the gap import phase closes)", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 lifecycle-only run does NOT observe the import-time payload (the gap import phase closes)", async () => {
   const pkgDir = await stagedImportPayloadPackage();
   const result = await runCanarySandbox({
     stagedPath: pkgDir,
@@ -307,7 +324,7 @@ test("#6 lifecycle-only run does NOT observe the import-time payload (the gap im
 
 // A benign package that merely loads on import (no egress, no decoy read) stays
 // 'not-observed' — the import phase must not manufacture findings on its own.
-test("#6 import phase of a benign package yields no findings", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 import phase of a benign package yields no findings", async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-import-benign-"));
   await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "benign", version: "1.0.0", main: "index.js", scripts: {} }));
   await fsp.writeFile(path.join(dir, "index.js"), "module.exports = { add: (a, b) => a + b };\n");
@@ -320,7 +337,7 @@ test("#6 import phase of a benign package yields no findings", { skip: process.p
 
 // A staged package with no resolvable entry must not crash the import phase —
 // it records attempted:false and the run still completes.
-test("#6 import phase skips cleanly when the package has no resolvable entry", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 import phase skips cleanly when the package has no resolvable entry", async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-import-noentry-"));
   // No package.json main and no index.js → require.resolve fails inside the probe.
   await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "noentry", version: "1.0.0", scripts: {} }));
@@ -336,7 +353,7 @@ test("#6 import phase skips cleanly when the package has no resolvable entry", {
 // canary's import probe watches the global mutation happen.
 const { evaluateTripwires, extractRuntimeHooks } = require("../src/sandbox");
 
-test("#6 a package that monkeypatches global.fetch at import is caught as behavioral-runtime-hook (block)", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 a package that monkeypatches global.fetch at import is caught as behavioral-runtime-hook (block)", async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-clipper-"));
   await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "clipper", version: "1.0.0", main: "index.js" }));
   // The v6 fixture: wrap global.fetch so every later call can be tampered with.
@@ -384,7 +401,7 @@ test("#6 extractRuntimeHooks reads the verified runtimeHooks field, not stdout",
   assert.deepEqual(extractRuntimeHooks({}), []);
 });
 
-test("#6 a clipper that floods stdout and forges a stdout marker is still caught (file+nonce channel)", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 a clipper that floods stdout and forges a stdout marker is still caught (file+nonce channel)", async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-clipper-evade-"));
   await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "evader", version: "1.0.0", main: "index.js" }));
   // Print a fake empty marker AND flood stdout past execWithTimeout's 2KB cap to
@@ -403,7 +420,7 @@ test("#6 a clipper that floods stdout and forges a stdout marker is still caught
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("#6 a clipper that patches global.fetch in a microtask is still caught (post-import settle)", { skip: process.platform === "win32" }, async () => {
+realExecutionTest("#6 a clipper that patches global.fetch in a microtask is still caught (post-import settle)", async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-clipper-defer-"));
   await fsp.writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "deferred", version: "1.0.0", main: "index.js" }));
   // Defer the reassignment to a microtask scheduled AFTER import resolves — a
@@ -528,7 +545,7 @@ test("#6 macOS sandbox-exec profile confines network to loopback", { skip: proce
   assert.equal(info.netConfined, true);
   const argv = info.wrap(["sh", "-c", "true"]);
   const profile = argv[argv.indexOf("-p") + 1];
-  assert.match(profile, /\(deny network\*\)/);
+  assert.match(profile, /\(deny default\)/);
   assert.match(profile, /allow network-outbound \(remote ip "localhost:\*"\)/);
 });
 
@@ -579,6 +596,56 @@ test("#6 --require-sandbox fails closed when no OS sandbox wrapper is available"
       }),
     (e) => e.code === "SANDBOX_REQUIRED"
   );
+});
+
+test('#6 missing backend refuses default execution even when requireSandbox:false', async t => {
+  const dir = await stagedPackage({ install: 'echo MUST_NOT_EXECUTE' });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // Unsupported platform simulation occurs in a fresh Node process; it never
+  // launches a package command or starts the capture server.
+  const source = `Object.defineProperty(process,'platform',{value:'freebsd'});require(${JSON.stringify(require.resolve('../src/sandbox'))}).runCanarySandbox({stagedPath:${JSON.stringify(dir)},allowExecution:true,requireSandbox:false}).then(()=>{process.exitCode=1},e=>{console.log(e.code);process.exitCode=e.code==='SANDBOX_REQUIRED'?0:1})`;
+  const result = require('node:child_process').spawnSync(process.execPath, ['-e', source], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /SANDBOX_REQUIRED/);
+});
+
+test('#6 shared-network Linux backend cannot authorize real execution', async t => {
+  const dir = await stagedPackage({ install: 'echo MUST_NOT_EXECUTE' });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const source = `Object.defineProperty(process,'platform',{value:'linux'});const fs=require('fs'),exists=fs.existsSync;fs.existsSync=p=>p==='/usr/bin/bwrap'||exists(p);require(${JSON.stringify(require.resolve('../src/sandbox'))}).runCanarySandbox({stagedPath:${JSON.stringify(dir)},allowExecution:true,netnsConfinement:false,requireSandbox:false}).then(()=>{process.exitCode=1},e=>{console.log(e.code);process.exitCode=e.code==='SANDBOX_REQUIRED'?0:1})`;
+  const result = require('node:child_process').spawnSync(process.execPath, ['-e', source], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /SANDBOX_REQUIRED/);
+});
+
+realExecutionTest('#6 real canary confines private reads, symlink escapes, writes and unrelated loopback services', async t => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'pkgxray-canary-boundary-'));
+  const dir = path.join(root, 'package'); await fsp.mkdir(dir);
+  const privateFile = path.join(root, 'secret'); await fsp.writeFile(privateFile, 'synthetic-private');
+  await fsp.symlink(privateFile, path.join(dir, 'escape'));
+  let hits = 0;
+  const server = http.createServer((req, res) => { hits++; res.end('unexpected'); });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  t.after(() => { server.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  await fsp.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'inert-boundary-probe', main: 'index.js' }));
+  await fsp.writeFile(path.join(dir, 'index.js'), `
+    const fs=require('fs'),http=require('http');const result={};
+    function attempt(name,fn){try{fn();result[name]=true}catch{result[name]=false}}
+    attempt('privateRead',()=>fs.readFileSync(${JSON.stringify(privateFile)}));
+    attempt('symlinkEscape',()=>fs.readFileSync(__dirname+'/escape'));
+    attempt('outsideWrite',()=>fs.writeFileSync(${JSON.stringify(path.join(root, 'unexpected'))},'bad'));
+    attempt('decoyRead',()=>fs.readFileSync(process.env.HOME+'/.aws/credentials'));
+    attempt('scratchWrite',()=>fs.writeFileSync(process.env.TMPDIR+'/allowed','ok'));
+    const req=http.get('http://127.0.0.1:${server.address().port}',res=>{res.resume();result.otherLoopback=true;console.log(JSON.stringify(result))});
+    req.on('error',()=>{result.otherLoopback=false;console.log(JSON.stringify(result))});req.setTimeout(1000,()=>req.destroy());
+  `);
+  const result = await runCanarySandbox({ stagedPath: dir, allowExecution: true, timeoutMs: 5000, egressGraceMs: 0 });
+  assert.equal(result.isolationRequired, true);
+  assert.equal(result.netConfined, true);
+  const observed = JSON.parse(result.executed.importPhase.output.split('\n').find(line => line.startsWith('{')));
+  assert.deepEqual(observed, { privateRead: false, symlinkEscape: false, outsideWrite: false, decoyRead: true, scratchWrite: true, otherLoopback: false });
+  assert.equal(hits, 0);
+  assert.equal(fs.existsSync(path.join(root, 'unexpected')), false);
 });
 
 // --- netns confinement: forwarder + unix-socket proxy plumbing ---------------

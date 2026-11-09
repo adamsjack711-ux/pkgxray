@@ -4,7 +4,7 @@
 // authorization to ignore checks that could not establish behavioral coverage.
 const MANDATORY_CATEGORIES = Object.freeze([
   "incomplete-source-scan", "incomplete-dependency-scan", "unsupported-behavior",
-  "flow-analysis-gap", "unresolved-runtime-execution"
+  "flow-analysis-gap", "unresolved-runtime-execution", "unverified-provenance"
 ]);
 function authorizationFor(report, { sourceCoverage, dependencyAudit } = {}) {
   const reasons = new Set((report.findings || []).map(f => f.category)
@@ -17,13 +17,15 @@ function authorizationFor(report, { sourceCoverage, dependencyAudit } = {}) {
     explicitOverride: Boolean(report.configEffects?.allowlisted)
   };
 }
-function receiptAuthorizes(receipt, { allowReview = false } = {}) {
+function receiptAuthorizes(receipt, { allowReview = false, requireProvenance = process.env.PKGXRAY_REQUIRE_PROVENANCE === "1" } = {}) {
   const a = receipt?.authorization;
   if (receipt?.schemaVersion !== 2 || !a || !Array.isArray(a.mandatoryHoldReasons) ||
       a.mandatoryHoldReasons.some(r => typeof r !== "string" || !r) || typeof a.explicitOverride !== "boolean" ||
       !["completed", "partial"].includes(a.behavioralCoverage) ||
       receipt.sourceComplete !== true || receipt.checks?.source !== "completed" ||
       receipt.checks?.vulnerabilities !== "completed") return false;
+  if (receipt.checks?.provenance === "invalid") return false;
+  if (requireProvenance && receipt.checks?.provenance !== "verified") return false;
   if (receipt.decision !== "allow" && !(allowReview && receipt.decision === "review")) return false;
   if (a.mandatoryHoldReasons.length || a.behavioralCoverage !== "completed") {
     return a.explicitOverride && receipt.decision === "allow";

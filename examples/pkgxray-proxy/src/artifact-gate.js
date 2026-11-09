@@ -11,7 +11,7 @@ import approvalPolicy from '../../../src/approval-policy.js';
 
 // Hold the download in a private file. No upstream byte reaches the installer
 // until this snapshot has been scanned and bound to the resulting approval.
-export async function acquireArtifact(request, target, headers = {}) {
+export async function acquireArtifact(request, target, headers = {}, signal) {
   const dir = await mkdtemp(join(tmpdir(), 'pkgxray-proxy-artifact-'));
   const file = join(dir, 'package.tgz');
   try {
@@ -41,6 +41,12 @@ export async function acquireArtifact(request, target, headers = {}) {
       const timer = setTimeout(() => {
         response?.destroy(); req.destroy(); reject(new Error('Artifact download timed out'));
       }, 30000);
+      const abort = () => {
+        response?.destroy();
+        req.destroy(Object.assign(new Error('Artifact download cancelled'), { code: 'ABORT_ERR' }));
+      };
+      if (signal?.aborted) abort();
+      else signal?.addEventListener('abort', abort, { once: true });
       req.on('error', error => { clearTimeout(timer); reject(error); });
       req.end();
     });
@@ -48,9 +54,12 @@ export async function acquireArtifact(request, target, headers = {}) {
   } catch (error) { await rm(dir, { recursive: true, force: true }); throw error; }
 }
 
-export async function gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy }) {
-  const context = artifact.fingerprint({ scannerBuildId: artifact.BUILD_ID, upstream: config.upstream,
+export async function gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy, scanCoordinator }) {
+  const context = artifact.fingerprint({ cacheSchema: 2, scannerBuildId: artifact.BUILD_ID, upstream: config.upstream,
+    pkgxrayBin: config.pkgxrayBin, scanTimeoutMs: config.scanTimeoutMs, cacheUrl: config.cacheUrl,
     policy: sharedPolicy || policy.DEFAULTS, reviewPolicy: config.reviewPolicy,
+    requireProvenance: process.env.PKGXRAY_REQUIRE_PROVENANCE === '1',
+    sigstoreModule: process.env.PKGXRAY_SIGSTORE_MODULE || null,
     allowlist: config.allowlist, denylist: config.denylist });
   const expectedPolicy = artifact.fingerprint(sharedPolicy || policy.DEFAULTS);
   function bound(a, decision) {
@@ -59,33 +68,55 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
       a.sourceComplete === true && a.checks?.source === 'completed' && a.checks?.vulnerabilities === 'completed' &&
       ['allow', 'review'].includes(decision);
   }
+  const binding = { artifactSha256: snapshot.sha256, context };
+  const held = store.getHold(name, version);
+  const holdTtl = held?.decision === 'scan-error' ? config.scanErrorTtlMs : config.holdTtlMs;
+  // Holds are denial-only, including when reviewPolicy is permissive. Zero on
+  // the global verdict TTL still means every request must scan.
+  if (held?.binding?.artifactSha256 === snapshot.sha256 && held.binding.context === context &&
+      !store.isStale(held, Math.min(config.verdictTtlMs, holdTtl))) {
+    return { ...denied(held.decision, held.note, held.findings), source: 'cache', cached: true };
+  }
   const cached = store.get(name, version);
   const valid = entry => entry?.binding?.artifactSha256 === snapshot.sha256 && entry.binding.context === context &&
-    (entry.decision === 'block' || bound(entry.binding.approval, entry.decision));
+    bound(entry.binding.approval, entry.decision);
   if (valid(cached) && !store.isStale(cached, config.verdictTtlMs)) return map(cached.decision, cached.findings, 'cache', true);
   // Unbound legacy entries, changed bytes, policies and builds never authorize
   // a serve. Failed rechecks never fall back to a stale approval.
   let result;
   try {
-    result = await runGuard(config.pkgxrayBin, `${name}@${version}`, {
+    const scan = () => runGuard(config.pkgxrayBin, `${name}@${version}`, {
       timeoutMs: config.scanTimeoutMs, cacheUrl: config.cacheUrl, cwd: config.policyCwd,
       artifact: { archivePath: snapshot.file, integrity: `sha256-${Buffer.from(snapshot.sha256, 'hex').toString('base64')}` }
     });
-  } catch (error) { return denied('scan-error', error.message); }
+    const key = artifact.fingerprint({ name, version, artifactSha256: snapshot.sha256, context });
+    result = await (scanCoordinator ? scanCoordinator.run(key, scan) : scan());
+  } catch (error) {
+    // Queue pressure says nothing about this package; retry as soon as capacity
+    // returns. Actual scanner failures get a bounded denial-only backoff.
+    return error.code === 'PKGXRAY_SCAN_BUSY' ? denied('scan-error', error.message) : hold('scan-error', error.message);
+  }
   if (result.decision === 'block') {
-    store.set(name, version, 'block', result.findings, { artifactSha256: snapshot.sha256, context });
-    return denied('block', 'Scanner blocked this artifact', result.findings);
+    return hold('block', 'Scanner blocked this artifact', result.findings);
   }
   const a = result.approval;
   if (!bound(a, result.decision)) {
-    return denied('unbound', 'Scanner approval does not bind these bytes to the current build, policy and completed checks');
+    return hold('unbound', 'Scanner approval does not bind these bytes to the current build, policy and completed checks', result.findings);
   }
-  store.set(name, version, result.decision, result.findings, { artifactSha256: snapshot.sha256, context, approval: a });
+  if (result.decision === 'review' && config.reviewPolicy === 'block') {
+    return hold('review', 'Package requires review; no archive bytes were released. Resolve the findings and retry.', result.findings);
+  }
+  store.set(name, version, result.decision, result.findings, { ...binding, approval: a });
   return map(result.decision, result.findings, 'scan', false);
 
   function map(decision, findings, source, cached) {
     const serve = decision === 'allow' || (decision === 'review' && config.reviewPolicy !== 'block');
-    return { serve, status: serve ? 200 : 403, decision, findings: findings || [], source, cached };
+    return { serve, status: serve ? 200 : 403, decision, findings: findings || [], source, cached,
+      ...(!serve && decision === 'review' ? { note: 'Package requires review; no archive bytes were released. Resolve the findings and retry.' } : {}) };
   }
   function denied(decision, note, findings = []) { return { serve: false, status: 403, decision, note, findings, source: 'scan', cached: false }; }
+  function hold(decision, note, findings = []) {
+    store.setHold(name, version, decision, findings, note, binding);
+    return denied(decision, note, findings);
+  }
 }
