@@ -44,6 +44,10 @@ with registry verification, or let one engine erase another's block.
 
 ## Pull requests
 
+To regenerate the README animation, install Pillow in your own tooling environment
+and run `python3 scripts/render-cli-demo.py /path/to/trusted/pkgxray`. It captures
+real demo output and paces playback; Pillow is not a scanner dependency.
+
 Explain before/after behavior, coverage limits, and checks run. Keep unrelated
 work out. New vendored fixtures need licenses and provenance; do not silently
 refresh pinned `ms` or Acorn bytes.
