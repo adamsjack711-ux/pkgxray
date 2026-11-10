@@ -123,6 +123,7 @@ test('selected files remain inert and source symlinks remain unsupported', t => 
   assert.equal(fs.existsSync(marker), false);
   assert.ok(report.compose.findings.length);
   fs.unlinkSync(path.join(f.root, 'node_modules/demo-sender/index.js'));
+  if (process.platform === "win32") return; // file symlink creation requires elevated Windows privileges
   fs.symlinkSync(path.join(f.root, 'index.js'), path.join(f.root, 'node_modules/demo-sender/index.js'));
   const linked = analyzeWithPkgxray({ root: f.root, scannerRoot });
   assert.ok(linked.gaps.some(g => g.code === 'unsupported-symlink'));

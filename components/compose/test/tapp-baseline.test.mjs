@@ -38,6 +38,7 @@ test('ESM collection respects byte bounds, missing files, and symlinks', t => {
   assert.ok(!large.packages.some(p => p.files.some(f => f.file === 'src/server.mjs')));
   fs.unlinkSync(path.join(root, 'src/server.mjs'));
   assert.ok(analyzeProject({ root, entry: 'src/server.mjs' }).gaps.some(g => g.code === 'missing-source'));
+  if (process.platform === "win32") return; // file symlink creation requires elevated Windows privileges
   fs.symlinkSync(path.join(root, 'src/voice.mjs'), path.join(root, 'src/server.mjs'));
   assert.ok(analyzeProject({ root, entry: 'src/server.mjs' }).gaps.some(g => g.code === 'unsupported-symlink'));
 });

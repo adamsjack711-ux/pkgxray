@@ -2,26 +2,30 @@
 import { analyzeProject } from '../src/analyze.mjs';
 import { analyzeWithPkgxray, integrationExitCode, renderIntegration } from '../src/integration.mjs';
 
-const args = process.argv.slice(2);
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const bundledRoot = fileURLToPath(new URL('../../../', import.meta.url));
+export function main(args = process.argv.slice(2)) {
 if (args.length === 1 && ['--help', '-h'].includes(args[0])) {
-  console.log('Usage: compose-ray <source-root> [--entry relative/file.js] [--json] [--pkgxray trusted/scanner/path]\n\nReads package-lock.json and local sources without executing target code.\n--pkgxray runs the trusted scanner on the same selected file bytes.\nFlow-only exits: 0 no modeled flow, 1 review finding, 2 incomplete/invalid usage.\nCombined exits: 2 block/invalid usage, 3 review (including missing coverage).\nCombined reports never authorize installation.');
-  process.exit(0);
+  console.log('Usage: pkgxray compose <source-root> [--entry relative/file.js] [--json] [--flow-only]\n\nReads package-lock.json and local sources without executing target code.\nUses the bundled pkgxray scanner on the same selected bytes by default.\n--flow-only runs connection analysis without package checks.\nFlow-only exits: 0 no modeled flow, 1 review finding, 2 incomplete/invalid usage.\nCombined exits: 2 block/invalid usage, 3 review (including missing coverage).\nCombined reports never authorize installation.');
+  return 0;
 }
-let root, scannerRoot, entry = 'index.js', json = false;
+let root, scannerRoot = bundledRoot, entry = 'index.js', json = false, flowOnly = false;
 const seen = new Set();
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (arg === '--json' && !seen.has(arg)) { json = true; seen.add(arg); }
+  if (arg === '--flow-only' && !seen.has(arg)) { flowOnly = true; seen.add(arg); }
+  else if (arg === '--json' && !seen.has(arg)) { json = true; seen.add(arg); }
   else if (arg === '--entry' && !seen.has(arg) && args[i + 1] && !args[i + 1].startsWith('-')) { entry = args[++i]; seen.add(arg); }
   else if (arg === '--pkgxray' && !seen.has(arg) && args[i + 1] && !args[i + 1].startsWith('-')) { scannerRoot = args[++i]; seen.add(arg); }
   else if (!arg.startsWith('-') && !root) root = arg;
-  else { console.error('Invalid arguments. Run compose-ray --help.'); process.exit(2); }
+  else { console.error('Invalid arguments. Run pkgxray compose --help.'); return 2; }
 }
-if (!root) { console.error('Source root is required. Run compose-ray --help.'); process.exit(2); }
-if (scannerRoot) {
+if (!root) { console.error('Source root is required. Run pkgxray compose --help.'); return 2; }
+if (!flowOnly) {
   const report = analyzeWithPkgxray({ root, entry, scannerRoot });
   console.log(json ? JSON.stringify(report, null, 2) : renderIntegration(report));
-  process.exitCode = integrationExitCode(report);
+  return integrationExitCode(report);
 } else {
   const report = analyzeProject({ root, entry });
   if (json) console.log(JSON.stringify(report, null, 2));
@@ -37,5 +41,8 @@ if (scannerRoot) {
     for (const item of report.gaps) console.log(`\nINCOMPLETE ${safe(item.code)}: ${safe(item.message)}${item.file ? ` (${safe(item.file)})` : ''}`);
     console.log(`\n${report.scope}`);
   }
-  process.exitCode = report.verdict === 'incomplete' ? 2 : report.findings.length ? 1 : 0;
+  return report.verdict === 'incomplete' ? 2 : report.findings.length ? 1 : 0;
 }
+
+}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main();

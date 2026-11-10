@@ -194,3 +194,9 @@ populates `github/public-repos-v2`. Older `github/repos` metadata is no longer
 read because it may contain responses fetched using another client's token.
 Existing files are left on disk; operators can remove that old metadata directory
 after upgrading. Tarball storage is unchanged.
+
+## Experimental Compose analysis
+
+Set `PKGXRAY_COMPOSE=1` in the local MCP operator environment to expose
+`analyze_package_composition`; restrict input using `PKGXRAY_MCP_ALLOWED_ROOTS`.
+Its `.pkgxray.json` tool key is `compose`. See [Compose setup and limits](compose.md).

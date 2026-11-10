@@ -614,7 +614,7 @@ export function analyzeProject({ root, entry = 'index.js', limits: overrides = {
     load(entry, 0);
   } catch (error) { gap(error.code || 'input-error', error.message); }
   const coverage = gaps.length ? 'incomplete' : 'complete-for-supported-entry';
-  return { schemaVersion: 1, tool: 'package-compose-ray', entry, verdict: gaps.length ? 'incomplete' : findings.length ? 'review' : 'no-flow-found',
+  return { schemaVersion: 1, tool: 'pkgxray-compose', entry, verdict: gaps.length ? 'incomplete' : findings.length ? 'review' : 'no-flow-found',
     coverage, scope: 'Bounded CommonJS/ESM entry analysis; no safety or malware verdict. Uncalled exports, lifecycle scripts and other entrypoints are not analyzed for flows.',
     lockfileSha256: project?.lockfileSha256 || null, packages: project?.identities() || [], imports: edges,
     findings, gaps, stats: { modules: cache.size, sourceBytes: project?.totalBytes || 0, steps, astNodes, paths }, limits };

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Compose integration
+
+- Import the JavaScript Compose Ray engine, history, tests, examples and research into `components/compose`.
+- Add `pkgxray compose` and `pkgxray-compose`, using the bundled scanner by default.
+- Add opt-in local MCP `analyze_package_composition`, with approved filesystem roots, bounded worker execution and cancellation.
+- Preserve package blocks and explicit partial-coverage REVIEW results; no installation approvals are issued.
+- Include component runtime code in package archives/build identity and run its tests in the main CI matrix.
+
 ## Unreleased — approval and shared-scan consolidation
 
 Reconciles the existing hardening work with main at `8d73ac3`, including

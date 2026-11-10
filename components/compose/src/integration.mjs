@@ -57,11 +57,7 @@ function validateResult(result, expected) {
 export function analyzeWithPkgxray({ root, entry = 'index.js', scannerRoot, limits, timeoutMs = 30000 }) {
   if (typeof scannerRoot !== 'string' || !scannerRoot) throw new TypeError('An explicit trusted pkgxray path is required.');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw new TypeError('timeoutMs must be 1..30000.');
-  const compose = analyzeProject({ root, entry, limits });
-  const gaps = compose.gaps.map(gap => ({ engine: 'compose-ray', ...gap }));
-  let pkgxray = { engine: null, status: 'failed', packages: [] };
-  try {
-    const evidence = evidenceFor(root, compose);
+  return analyzeWithEngine({ root, entry, limits }, evidence => {
     const input = JSON.stringify(evidence);
     if (Buffer.byteLength(input) > 32 * 1024 * 1024) throw new Error('pkgxray input exceeded 32 MiB.');
     // No shell, network acquisition, target cwd, inherited NODE_OPTIONS, or
@@ -73,7 +69,19 @@ export function analyzeWithPkgxray({ root, entry = 'index.js', scannerRoot, limi
       timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024,
     });
     if (child.error || child.status !== 0) throw new Error(child.error?.message || child.stderr.trim() || 'pkgxray worker failed.');
-    const result = validateResult(JSON.parse(child.stdout), evidence);
+    return JSON.parse(child.stdout);
+  });
+}
+
+// Trusted in-process adapter for the bundled worker. Only scanner code supplies
+// scanEvidence; it is never accepted as an MCP or target-project option.
+export function analyzeWithEngine({ root, entry = 'index.js', limits }, scanEvidence) {
+  const compose = analyzeProject({ root, entry, limits });
+  const gaps = compose.gaps.map(gap => ({ engine: 'compose-ray', ...gap }));
+  let pkgxray = { engine: null, status: 'failed', packages: [] };
+  try {
+    const evidence = evidenceFor(root, compose);
+    const result = validateResult(scanEvidence(evidence), evidence);
     const failed = result.packages.filter(item => item.status !== 'completed');
     pkgxray = { ...result, status: failed.length ? 'partial' : 'completed' };
     for (const item of failed) gaps.push({ engine: 'pkgxray', code: 'package-scan-failed', packageId: item.id, message: item.error });
@@ -82,7 +90,7 @@ export function analyzeWithPkgxray({ root, entry = 'index.js', scannerRoot, limi
   }
   const blocking = pkgxray.packages.filter(item => item.report?.verdict === 'block').map(item => item.id);
   return {
-    schemaVersion: 1, tool: 'package-compose-ray', mode: 'pkgxray-composition',
+    schemaVersion: 1, tool: 'pkgxray-compose', mode: 'pkgxray-composition',
     decision: blocking.length ? 'block' : 'review', authorization: { installAllowed: false },
     summary: blocking.length ? 'pkgxray found blocking evidence; composition results cannot clear it.'
       : compose.findings.length ? 'Environment data reaches a network call. Review the route and whether the transfer is intended.'

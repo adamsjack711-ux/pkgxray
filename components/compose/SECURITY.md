@@ -5,7 +5,7 @@ finding is evidence to review; a missing finding is not proof of safety.
 
 ## Report a vulnerability
 
-Use [GitHub private vulnerability reporting](https://github.com/adamsjack711-ux/package-compose-ray/security/advisories/new)
+Use [GitHub private vulnerability reporting](https://github.com/adamsjack711-ux/pkgxray/security/advisories/new)
 for scanner execution, file access, evidence substitution, or approval-bypass
 issues. Include the commit, a minimal synthetic reproducer, expected behavior,
 and actual behavior. Do not attach real credentials or private source.

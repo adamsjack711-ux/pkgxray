@@ -1,5 +1,10 @@
 # pkgxray integration contract · v1
 
+Compose is now bundled in Package Xray. See the [current CLI/MCP setup](../../../docs/compose.md).
+The explicit trusted scanner override below remains for compatibility tests;
+normal CLI use automatically selects the bundled scanner. Root CI now tests
+against the same checkout, replacing the historical upstream pin.
+
 ## Run it
 
 ```sh
@@ -38,7 +43,7 @@ and limitations abbreviated here):
 ```json
 {
   "schemaVersion": 1,
-  "tool": "package-compose-ray",
+  "tool": "pkgxray-compose",
   "mode": "pkgxray-composition",
   "decision": "review",
   "authorization": { "installAllowed": false },

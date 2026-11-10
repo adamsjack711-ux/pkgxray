@@ -20,6 +20,9 @@ const AUDIT_TOOL_NAME = "audit_agent_extension_supply_chain";
 const GUARD_TOOL_NAME = "guard_agent_extension_install";
 const LOCKFILE_AUDIT_TOOL_NAME = "audit_lockfile_supply_chain";
 const LOCKFILE_TRIAGE_TOOL_NAME = "triage_lockfile_supply_chain";
+const COMPOSE_TOOL_NAME = "analyze_package_composition";
+const COMPOSE_ENABLED = process.env.PKGXRAY_COMPOSE === "1";
+let composeBusy = false;
 const VM_TOOL_NAME = "scan_npm_package_in_vm";
 // Read once from the trusted operator environment; callers cannot enable it.
 const VM_ENABLED = process.env.PKGXRAY_VM_TESTS === "1";
@@ -52,7 +55,8 @@ const CONFIG_TOOL_KEY = Object.freeze({
   [AUDIT_TOOL_NAME]: "audit",
   [LOCKFILE_AUDIT_TOOL_NAME]: "audit",
   [LOCKFILE_TRIAGE_TOOL_NAME]: "recheck",
-  [VM_TOOL_NAME]: "guard"
+  [VM_TOOL_NAME]: "guard",
+  [COMPOSE_TOOL_NAME]: "compose"
 });
 
 const { config: CONFIG, warnings: CONFIG_WARNINGS } = cfg.loadConfig({ cwd: process.cwd() });
@@ -63,6 +67,7 @@ const MCP_CONFIG = cfg.mcpConfig(CONFIG);
 
 // Whether an MCP tool is exposed under the effective config.
 function toolExposed(mcpToolName) {
+  if (mcpToolName === COMPOSE_TOOL_NAME && !COMPOSE_ENABLED) return false;
   if (mcpToolName === VM_TOOL_NAME && !VM_ENABLED) return false;
   const key = CONFIG_TOOL_KEY[mcpToolName];
   if (!key) return true; // unmapped tools are never hidden by config
@@ -354,6 +359,19 @@ function lockfileTriageToolDefinition() {
   };
 }
 
+function composeToolDefinition() {
+  return {
+    name: COMPOSE_TOOL_NAME, title: "Trace data between local packages",
+    description: "Experimental static composition analysis of a stable local npm source snapshot plus bundled pkgxray evidence checks. Requires package-lock.json v2/v3 and matching source files. Reads only under operator-approved roots; never executes target code, downloads packages, or authorizes installation. Incomplete coverage remains REVIEW; package BLOCK findings are preserved.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: { type: "object", additionalProperties: false, required: ["projectPath"], properties: {
+      projectPath: { type: "string", description: "Local source directory under an operator-approved root" },
+      entry: { type: "string", description: "Relative JavaScript entrypoint", default: "index.js" },
+      outputFormat: { type: "string", enum: ["markdown", "json"], default: "markdown" }
+    } }
+  };
+}
+
 function vmToolDefinition() {
   return {
     name: VM_TOOL_NAME, title: "Observe an npm package in a disposable VM",
@@ -374,7 +392,7 @@ function listTools() {
     auditToolDefinition(),
     guardToolDefinition(),
     lockfileAuditToolDefinition(),
-    lockfileTriageToolDefinition(), vmToolDefinition()
+    lockfileTriageToolDefinition(), vmToolDefinition(), composeToolDefinition()
   ].filter((t) => toolExposed(t.name));
 }
 
@@ -382,13 +400,13 @@ const TOOL_NAMES = new Set([
   AUDIT_TOOL_NAME,
   GUARD_TOOL_NAME,
   LOCKFILE_AUDIT_TOOL_NAME,
-  LOCKFILE_TRIAGE_TOOL_NAME, VM_TOOL_NAME
+  LOCKFILE_TRIAGE_TOOL_NAME, VM_TOOL_NAME, COMPOSE_TOOL_NAME
 ]);
 
 // Acquisition's parser is the authority for classification AND path semantics.
 // In particular, do not separately decode URLs or maintain a prefix allowlist.
 const TOOL_SCHEMAS = new Map([
-  auditToolDefinition(), guardToolDefinition(), lockfileAuditToolDefinition(), lockfileTriageToolDefinition(), vmToolDefinition()
+  auditToolDefinition(), guardToolDefinition(), lockfileAuditToolDefinition(), lockfileTriageToolDefinition(), vmToolDefinition(), composeToolDefinition()
 ].map(tool => [tool.name, tool.inputSchema]));
 
 function toolOptions(toolName, args) {
@@ -485,7 +503,14 @@ function validateToolCall(toolName, args) {
     }
     if (spec.enum && !spec.enum.includes(value)) return `${key} must be ${spec.enum.map(v => `'${v}'`).join(" or ")}`;
   }
-  if (toolName === VM_TOOL_NAME) {
+  if (toolName === COMPOSE_TOOL_NAME) {
+    if (typeof args.projectPath !== "string" || !args.projectPath || args.projectPath.length > 4096 || args.projectPath.includes("\0")) return "projectPath must be a non-empty local path";
+    const resolved = resolveOperatorPath(args.projectPath);
+    if (!resolved) return "projectPath is unreadable or outside the operator-approved filesystem roots";
+    if (!fs.statSync(resolved).isDirectory()) return "projectPath must be a directory";
+    if (args.entry !== undefined && (!args.entry || args.entry.length > 4096 || args.entry.includes("\0") || args.entry.includes("\\") || path.posix.isAbsolute(args.entry) || /^[A-Za-z]:/.test(args.entry) || args.entry.split("/").includes(".."))) return "entry must be a relative path within the project";
+    args.projectPath = resolved;
+  } else if (toolName === VM_TOOL_NAME) {
     try { exactVmReference(args.reference); } catch { return "VM scans require npm:name@exact-version"; }
   } else if (toolName === GUARD_TOOL_NAME) {
     if (args.artifact !== undefined) return "artifact is reserved for trusted acquisition callers";
@@ -632,6 +657,20 @@ async function handleRequest(request, signal) {
     const validationError = validateToolCall(name, args);
     if (validationError) {
       return invalidParams(id, validationError);
+    }
+
+    if (name === COMPOSE_TOOL_NAME) {
+      if (composeBusy) return invalidParams(id, "Composition scanner is busy; retry after the current scan");
+      composeBusy = true;
+      try {
+        // Recheck authorization after admission; target paths never select code.
+        if (resolveOperatorPath(args.projectPath) !== args.projectPath) return invalidParams(id, "Source root changed; retry");
+        const output = await require("../src/compose-scan").scanComposition(args.projectPath, { entry: args.entry, signal });
+        signal?.throwIfAborted();
+        const report = output.report || output;
+        const text = args.outputFormat === "json" ? JSON.stringify(report) : output.text || JSON.stringify(report);
+        return { jsonrpc: "2.0", id, result: { content: textContent(text), structuredContent: report } };
+      } finally { composeBusy = false; }
     }
 
     if (name === VM_TOOL_NAME) {

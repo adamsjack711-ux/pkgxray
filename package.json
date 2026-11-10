@@ -9,7 +9,8 @@
   "bin": {
     "pkgxray": "./bin/audit.js",
     "pkgxray-mcp": "./bin/mcp-server.js",
-    "pkgxray-cache": "./bin/pkgxray-cache.js"
+    "pkgxray-cache": "./bin/pkgxray-cache.js",
+    "pkgxray-compose": "./bin/compose.js"
   },
   "files": [
     "bin/",
@@ -22,7 +23,11 @@
     "services/local-vm/build.cjs",
     "server.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "components/compose/src/",
+    "components/compose/bin/",
+    "components/compose/package.json",
+    "components/compose/LICENSE"
   ],
   "scripts": {
     "build:browser": "node ./scripts/build-browser-extension.js",
@@ -43,7 +48,9 @@
     "benchmark:adversarial": "node ./benchmark/adversarial/run.js",
     "benchmark:holdout": "node ./benchmark/adversarial/run.js --holdout",
     "benchmark:team": "node ./benchmark/team-latency.js",
-    "benchmark:mcp-load": "node ./benchmark/mcp-load.js"
+    "benchmark:mcp-load": "node ./benchmark/mcp-load.js",
+    "test:compose": "node scripts/run-tests.js --compose",
+    "demo:compose": "node components/compose/examples/together.mjs ."
   },
   "repository": {
     "type": "git",

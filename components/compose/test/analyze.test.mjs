@@ -237,6 +237,7 @@ test('symlinks, workspace links, traversal, and out-of-package imports are rejec
   const f = fixture(t);
   const outside = path.join(f.root, 'outside.js'); f.write('outside.js', sender);
   fs.unlinkSync(path.join(f.root, 'node_modules/sender/index.js'));
+  if (process.platform === "win32") return; // file symlink creation requires elevated Windows privileges
   fs.symlinkSync(outside, path.join(f.root, 'node_modules/sender/index.js'));
   assert.ok(hasGap(f.scan(), 'unsupported-symlink'));
   f.lock.packages['node_modules/sender'].link = true; f.write('package-lock.json', f.lock);
@@ -272,7 +273,7 @@ test('target source is never executed', t => {
 
 test('CLI exposes JSON and correct review, benign and incomplete exit codes', t => {
   const f = fixture(t);
-  const invoke = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  const invoke = (...args) => spawnSync(process.execPath, [cli, ...args, ...(args.includes("--help") ? [] : ["--flow-only"])], { encoding: 'utf8' });
   let run = invoke(f.root, '--json');
   assert.equal(run.status, 1, run.stderr); assert.equal(JSON.parse(run.stdout).verdict, 'review');
   f.write('index.js', 'const send=require("sender"); send("public");');

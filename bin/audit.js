@@ -54,6 +54,7 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "",
       "Advanced:",
+      "  pkgxray compose <source-root> [--entry index.js] [--json]                # experimental cross-package dataflow + bundled package checks",
       "  pkgxray vm-setup                       # experimental: build trusted VM assets locally; requires Docker and QEMU",
       "  pkgxray vm-scan npm:<name>@<exact-version> --yes-run-untrusted-code [--vm-profile developer|ci] [--format json]",
       "                     # disposable hardware-accelerated VM; no network device or host mounts; never installation approval.",
@@ -356,6 +357,10 @@ function readInput(file) {
 }
 
 async function main() {
+  if (process.argv[2] === "compose") {
+    await require("./compose").main(process.argv.slice(3));
+    return;
+  }
   // `pkgxray mcp-server` runs THIS package as a stdio MCP server — the same
   // server the `pkgxray-mcp` bin exposes — so MCP hosts can launch it with
   // `npx -y pkgxray mcp-server` (the registry entry) without a separate

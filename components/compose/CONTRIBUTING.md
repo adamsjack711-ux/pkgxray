@@ -5,26 +5,17 @@ Help us make each supported claim precise and each limit visible.
 
 ## Local setup
 
-Use Node.js 22 or 24. No package install is required.
+From the Package Xray repository root, use Node.js 18+; no package install is required.
 
 ```sh
+npm run test:compose
+npm run demo:compose
 npm test
-npm run demo
-npm run demo:strings
-npm run demo:real
-npm run demo:esm
 ```
 
-For the real pkgxray integration, use a trusted checkout:
-
-```sh
-PKGXRAY_CHECKOUT=/path/to/pkgxray node --test test/integration.test.mjs
-npm run demo:integration -- /path/to/pkgxray
-```
-
-The default suite uses labeled protocol stubs for failure cases and skips the
-real-engine test without `PKGXRAY_CHECKOUT`. CI also runs against the public
-commit pinned in the integration contract.
+The root test runner always exercises the real bundled engine. Protocol stubs
+remain labeled and are used only to exercise adapter failure behavior. Main CI
+runs the full test suite across Package Xray's supported Node and OS matrix.
 
 ## Useful changes
 
