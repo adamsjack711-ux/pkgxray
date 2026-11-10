@@ -41,7 +41,9 @@
     "cache": "node ./bin/pkgxray-cache.js",
     "verify:netns": "node ./scripts/verify-netns-confinement.js",
     "benchmark:adversarial": "node ./benchmark/adversarial/run.js",
-    "benchmark:holdout": "node ./benchmark/adversarial/run.js --holdout"
+    "benchmark:holdout": "node ./benchmark/adversarial/run.js --holdout",
+    "benchmark:team": "node ./benchmark/team-latency.js",
+    "benchmark:mcp-load": "node ./benchmark/mcp-load.js"
   },
   "repository": {
     "type": "git",

@@ -284,6 +284,30 @@ test("rejects path-traversal in owner/repo segments", async (t) => {
   assert.equal(traversed.statusCode, 404);
 });
 
+test("malformed percent-encoding is rejected without killing the cache server", async (t) => {
+  const cacheDir = await makeTempDir("bad-percent");
+  const { server, address } = await start({
+    allowPrivateUpstream: true,
+    port: 0,
+    host: "127.0.0.1",
+    cacheDir,
+    upstreamGithubApi: "http://127.0.0.1:1",
+    upstreamCodeload: "http://127.0.0.1:1"
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const malformed = await getJson(
+    `http://127.0.0.1:${address.port}/github/repos/%ZZ/repo`
+  );
+  assert.equal(malformed.statusCode, 400);
+
+  const healthy = await getJson(`http://127.0.0.1:${address.port}/healthz`);
+  assert.equal(healthy.statusCode, 200);
+});
+
 test("rejects cross-origin redirects before contacting their destination", async (t) => {
   // A configured upstream redirects to another local service. Even an
   // explicit private-upstream opt-in must not authorize that second origin.
@@ -444,6 +468,38 @@ test("uncapped upstream JSON body is refused with a size ceiling (finding 3b)", 
   await assert.rejects(() => fsp.stat(cacheFile));
 });
 
+test("slow-drip upstream bodies cannot evade the total request deadline", async (t) => {
+  const upstream = await startFakeUpstream({
+    "/repos/slow/drip": (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      const interval = setInterval(() => res.write(" "), 10);
+      res.once("close", () => clearInterval(interval));
+    }
+  });
+  const cacheDir = await makeTempDir("slow-drip");
+  const { server, address } = await start({
+    allowPrivateUpstream: true,
+    port: 0,
+    host: "127.0.0.1",
+    cacheDir,
+    upstreamGithubApi: upstream.url,
+    upstreamCodeload: upstream.url,
+    upstreamRepoTimeoutMs: 75
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const started = Date.now();
+  const result = await getJson(`http://127.0.0.1:${address.port}/github/repos/slow/drip`);
+  assert.equal(result.statusCode, 502);
+  assert.match(result.body, /timed out|total deadline exceeded/i);
+  assert.ok(Date.now() - started < 1000, "slow-drip request must be bounded by a total deadline");
+  assert.equal((await getJson(`http://127.0.0.1:${address.port}/healthz`)).statusCode, 200);
+});
+
 test("disk cap: over-cap tarball is proxied live (BYPASS) and not persisted (finding 3c)", async (t) => {
   const payload = zlib.gzipSync(Buffer.from("over-cap payload\n".repeat(32)));
   const upstream = await startFakeUpstream({
@@ -476,6 +532,98 @@ test("disk cap: over-cap tarball is proxied live (BYPASS) and not persisted (fin
   const refHash = crypto.createHash("sha256").update("v1.0.0").digest("hex");
   const cacheFile = path.join(cacheDir, "github", "tarballs", "big", "repo", `${refHash}.tgz`);
   await assert.rejects(() => fsp.stat(cacheFile));
+});
+
+test("disk cap cannot be overshot by an artifact larger than remaining capacity", async (t) => {
+  const payload = zlib.gzipSync(Buffer.from("larger than the deliberately tiny cache cap"));
+  const upstream = await startFakeUpstream({
+    "/cap/repo/tar.gz/v1": (_req, res) => {
+      res.writeHead(200, { "content-type": "application/gzip", "content-length": payload.length });
+      res.end(payload);
+    }
+  });
+  const cacheDir = await makeTempDir("diskcap-overshoot");
+  const { server, address } = await start({
+    allowPrivateUpstream: true,
+    port: 0,
+    host: "127.0.0.1",
+    cacheDir,
+    upstreamGithubApi: upstream.url,
+    upstreamCodeload: upstream.url,
+    maxCacheBytes: 8
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const result = await getBuffer(`http://127.0.0.1:${address.port}/github/tarball/cap/repo/v1`);
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers["x-pkgxray-cache"], "BYPASS");
+  assert.deepEqual(result.body, payload);
+  await assert.rejects(() => fsp.stat(path.join(cacheDir, "github", "tarballs", "cap", "repo", "v1.tgz")));
+  assert.ok(await (async () => {
+    const entries = await fsp.readdir(path.join(cacheDir, "github", "tarballs", "cap", "repo")).catch(() => []);
+    return entries.every((name) => !name.includes(".tmp-"));
+  })(), "quota rejection must clean partial files");
+});
+
+test("concurrent distinct tarballs reserve capacity instead of racing past the disk cap", async (t) => {
+  const payload = Buffer.from("12345678");
+  const upstream = await startFakeUpstream({
+    "/race/repo/tar.gz/a": (_req, res) => setTimeout(() => res.end(payload), 20),
+    "/race/repo/tar.gz/b": (_req, res) => setTimeout(() => res.end(payload), 20)
+  });
+  const cacheDir = await makeTempDir("diskcap-race");
+  const { server, address } = await start({
+    allowPrivateUpstream: true,
+    port: 0,
+    host: "127.0.0.1",
+    cacheDir,
+    upstreamGithubApi: upstream.url,
+    upstreamCodeload: upstream.url,
+    maxCacheBytes: 12
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const base = `http://127.0.0.1:${address.port}/github/tarball/race/repo/`;
+  const results = await Promise.all([getBuffer(base + "a"), getBuffer(base + "b")]);
+  assert.deepEqual(results.map((result) => result.headers["x-pkgxray-cache"]).sort(), ["BYPASS", "MISS"]);
+  assert.ok(results.every((result) => result.body.equals(payload)));
+  const files = await fsp.readdir(path.join(cacheDir, "github", "tarballs", "race", "repo"));
+  const sizes = await Promise.all(files.map((name) => fsp.stat(path.join(cacheDir, "github", "tarballs", "race", "repo", name))));
+  assert.ok(sizes.reduce((sum, stat) => sum + stat.size, 0) <= 12);
+});
+
+test("repo metadata also obeys the total disk cap", async (t) => {
+  const upstream = await startFakeUpstream({
+    "/repos/cap/metadata": (_req, res) => res.end(JSON.stringify({ full_name: "cap/metadata", padding: "x".repeat(64) }))
+  });
+  const cacheDir = await makeTempDir("metadata-cap");
+  const { server, address } = await start({
+    allowPrivateUpstream: true,
+    port: 0,
+    host: "127.0.0.1",
+    cacheDir,
+    upstreamGithubApi: upstream.url,
+    upstreamCodeload: upstream.url,
+    maxCacheBytes: 8
+  });
+  t.after(async () => {
+    await new Promise((r) => server.close(() => r()));
+    await upstream.close();
+    await fsp.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  const result = await getJson(`http://127.0.0.1:${address.port}/github/repos/cap/metadata`);
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers["x-pkgxray-cache"], "BYPASS");
+  await assert.rejects(() => fsp.stat(path.join(cacheDir, "github", "public-repos-v2", "cap", "metadata.json")));
 });
 
 test("parseArgs accepts --max-cache-bytes and rejects a negative value", () => {

@@ -486,3 +486,20 @@ test("auditLockfile loads .pkgxray.lock from sibling when none passed in", async
   assert.equal(alpha.triaged, true);
   assert.equal(result.summary.blocked, 1);
 });
+
+test('cancellation during decision-file preparation preserves the previous file and removes the temporary file', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-triage-cancel-'));
+  const lock = path.join(dir, '.pkgxray.lock');
+  const before = '{"schemaVersion":1,"decisions":[]}\n';
+  await fs.writeFile(lock, before);
+  const controller = new AbortController();
+  const originalWrite = fs.writeFile;
+  fs.writeFile = async (...args) => { await originalWrite(...args); controller.abort(); };
+  try {
+    await assert.rejects(saveDecisions(lock, new Map([['demo@1.0.0', {
+      name: 'demo', version: '1.0.0', decision: 'allow', decided_at: new Date().toISOString()
+    }]]), { signal: controller.signal }), { name: 'AbortError' });
+    assert.equal(await fs.readFile(lock, 'utf8'), before);
+    assert.deepEqual(await fs.readdir(dir), ['.pkgxray.lock']);
+  } finally { fs.writeFile = originalWrite; await fs.rm(dir, { recursive: true, force: true }); }
+});

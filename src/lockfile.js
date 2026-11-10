@@ -540,7 +540,8 @@ const https = require("node:https");
 // second + third chunks reuse the first chunk's TLS session.
 const OSV_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
 
-function batchOsvQuery(deps, ecosystem = "npm") {
+function batchOsvQuery(deps, ecosystem = "npm", { signal } = {}) {
+  signal?.throwIfAborted();
   // Unresolved specs (workspace/catalog/url/git/alias-without-pin) carry a raw
   // spec in `version` that OSV cannot resolve — querying them would come back
   // empty and read "safe". Skip them here; the audit surfaces them separately.
@@ -558,13 +559,13 @@ function batchOsvQuery(deps, ecosystem = "npm") {
   for (let i = 0; i < queries.length; i += 1000) {
     chunks.push(queries.slice(i, i + 1000));
   }
-  return Promise.all(chunks.map(postBatch)).then((results) => results.flat());
+  return Promise.all(chunks.map(queries => postBatch(queries, signal))).then((results) => results.flat());
 }
 
-async function postBatch(queries) {
+async function postBatch(queries, signal) {
   const body = JSON.stringify({ queries });
   const parsed = await require("./http-client").requestJson("https://api.osv.dev/v1/querybatch", {
-    body, agent: OSV_AGENT,
+    body, agent: OSV_AGENT, signal,
     headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "user-agent": USER_AGENT }
   });
   if (!Array.isArray(parsed.results) || parsed.results.length !== queries.length ||
@@ -581,7 +582,9 @@ async function postBatch(queries) {
 const DEEP_CONCURRENCY = 4;
 
 async function auditLockfile(filePath, options = {}) {
+  options.signal?.throwIfAborted();
   const { format, deps } = await parseLockfile(filePath);
+  options.signal?.throwIfAborted();
   const ecosystem = formatEcosystem(format);
   const start = Date.now();
   const queries = Array.from(deps.values());
@@ -593,8 +596,9 @@ async function auditLockfile(filePath, options = {}) {
     // the vuln/triage decision logic without hitting the network.
     osvResults = options.osvResults;
   } else if (options.vulnerabilityCheck !== false) {
-    osvResults = await batchOsvQuery(deps, ecosystem.osv);
+    osvResults = await batchOsvQuery(deps, ecosystem.osv, { signal: options.signal });
   }
+  options.signal?.throwIfAborted();
   const osvMs = Date.now() - start;
 
   // Triage decisions can be passed in explicitly or implicitly loaded from
@@ -681,6 +685,7 @@ async function auditLockfile(filePath, options = {}) {
       ? results
       : results.filter((r) => r.decision === "block");
     await runDeep(targets, options, ecosystem.scheme);
+    options.signal?.throwIfAborted();
     deepMs = Date.now() - deepStart;
   }
 
@@ -719,6 +724,7 @@ async function runDeep(results, options, scheme = "npm") {
   const { guardExtension } = require("./quarantine");
   const { mapPool } = require("./pool");
   await mapPool(results, Math.min(DEEP_CONCURRENCY, results.length), async (r) => {
+    options.signal?.throwIfAborted();
     try {
       const identities = r.artifacts || [];
       if (scheme === "npm" && (identities.length !== 1 || !identities[0].resolved || !identities[0].integrity)) {
@@ -730,7 +736,8 @@ async function runDeep(results, options, scheme = "npm") {
         githubMetadata: options.githubMetadata !== false,
         githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
         quarantineRoot: options.quarantineRoot,
-        typosquat: options.typosquat
+        typosquat: options.typosquat,
+        signal: options.signal
       });
       r.deep = {
         verdict: result.report.verdict,
@@ -746,6 +753,7 @@ async function runDeep(results, options, scheme = "npm") {
         r.decision = "review";
       }
     } catch (error) {
+      options.signal?.throwIfAborted();
       r.deep = { error: error.message };
       if (r.decision !== "block") r.decision = "review";
     }

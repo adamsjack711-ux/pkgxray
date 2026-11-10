@@ -177,30 +177,29 @@ test("failOn changes the exit code for the same verdict", async () => {
   }
 });
 
-test("config warnings are printed loudly to stderr (loosening is never silent)", async () => {
-  // policy "allow-review" is a loosening → the loader emits a warning.
+test("legacy policy warning explains that REVIEW remains pending", async () => {
+  // The legacy setting emits migration guidance.
   const dir = await tempProject({ policy: "allow-review" });
   try {
     const evidence = evidenceWithInstallHook();
     const res = runAudit(dir, ["--format", "json"], JSON.stringify(evidence));
     assert.match(res.stderr, /^pkgxray: /m, "warnings are prefixed and go to stderr");
     assert.match(res.stderr, /allow-review/);
-    // allow-review promotes review-grade to "allow" → exit 0 (today's behavior).
-    assert.equal(res.status, 0);
+    // A policy setting cannot supply a developer decision.
+    assert.equal(res.status, 3);
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
 });
 
 test("--policy CLI flag overrides the config file policy", async () => {
-  // File says safe-only; the flag loosens to allow-review, which must win and
-  // warn. The review-grade package is then promoted → exit 0.
+  // The CLI flag takes precedence but cannot authorize a pending REVIEW.
   const dir = await tempProject({ policy: "safe-only" });
   try {
     const evidence = evidenceWithInstallHook();
     const res = runAudit(dir, ["--policy", "allow-review", "--format", "json"], JSON.stringify(evidence));
     assert.match(res.stderr, /allow-review/, "CLI --policy override is applied and warns");
-    assert.equal(res.status, 0, "allow-review promotes review → exit 0");
+    assert.equal(res.status, 3, "allow-review leaves REVIEW pending");
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
