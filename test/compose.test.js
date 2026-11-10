@@ -8,9 +8,17 @@ const { spawn, spawnSync } = require("node:child_process");
 const { scanComposition } = require("../src/compose-scan");
 const repo = path.resolve(__dirname, "..");
 const tool = "analyze_package_composition";
+const serverCleanup = new WeakMap();
 async function fixture(t, kind = "sensitive") {
   const { createScenario } = await import("../components/compose/examples/support/scenario.mjs");
-  const f = createScenario(kind); t.after(f.cleanup); return f;
+  const f = createScenario(kind);
+  t.after(async () => {
+    // Windows holds a child's cwd open until the process exits. Stop servers
+    // before deleting their source snapshots, even when an assertion fails.
+    for (const close of serverCleanup.get(t) || []) await close();
+    f.cleanup();
+  });
+  return f;
 }
 function server(t, cwd, enabled = "1") {
   const child = spawn(process.execPath, [path.join(repo, "bin/mcp-server.js")], {
@@ -26,7 +34,10 @@ function server(t, cwd, enabled = "1") {
       pending.get(value.id)?.(value); pending.delete(value.id);
     }
   });
-  t.after(() => { child.stdin.end(); child.kill(); });
+  const closed = new Promise(resolve => child.once("close", resolve));
+  const cleanup = serverCleanup.get(t) || [];
+  cleanup.push(async () => { child.stdin.end(); child.kill(); await closed; });
+  serverCleanup.set(t, cleanup);
   const call = (method, params) => new Promise((resolve, reject) => {
     const key = ++id;
     const timer = setTimeout(() => { pending.delete(key); reject(new Error("MCP timeout")); }, 10000);

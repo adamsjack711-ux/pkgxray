@@ -119,8 +119,12 @@ test('real worker timeout and last-caller cancellation release all capacity', as
 test('changed caller policy is applied per MCP request without approving cached evidence', async t => {
   const fs = require('node:fs/promises'), path = require('node:path'), os = require('node:os');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(),'pkgxray-mcp-policy-'));
-  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
-  const client = start('static', { cwd: dir }); t.after(()=>client.close()); await client.init();
+  let client;
+  t.after(async () => {
+    try { await client?.close(); }
+    finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  client = start('static', { cwd: dir }); await client.init();
   const initial = await call(client, evidence()); assert.ok(initial.result);
   await fs.writeFile(path.join(dir,'.pkgxray.json'), JSON.stringify({ mcp: { tools: ['guard'] } }));
   const denied = await call(client, evidence()); assert.ok(denied.error);
@@ -132,11 +136,15 @@ test('changed caller policy is applied per MCP request without approving cached 
 test('100 guard requests through MCP share static analysis but never share staging or promotion', async t => {
   const fs = require('node:fs/promises'), path = require('node:path'), os = require('node:os');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(),'pkgxray-mcp-guard-load-'));
-  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+  let client;
+  t.after(async () => {
+    try { await client?.close(); }
+    finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
   const source = path.join(dir,'package'); await fs.mkdir(source);
   await fs.writeFile(path.join(source,'package.json'), JSON.stringify({ name: 'inert-guard', version: '1.0.0', scripts: { postinstall: 'node setup.js' } }));
   await fs.writeFile(path.join(source,'setup.js'), 'exports.value = 1;');
-  const client = start('static', { cwd: dir }); t.after(()=>client.close()); await client.init();
+  client = start('static', { cwd: dir }); await client.init();
   const requests = Array.from({length:100}, () => client.request('tools/call', { name: 'guard_agent_extension_install', arguments: {
     reference: source, sourceScan: true, vulnerabilityCheck: false, githubMetadata: false, githubDiff: false, outputFormat: 'json'
   } }));
