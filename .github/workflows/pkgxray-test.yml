@@ -11,6 +11,9 @@ on:
       - "src/**"
       - "bin/**"
       - "test/**"
+      - "services/local-vm/**"
+      - "services/resolver-worker/container/**"
+      - "services/resolver-worker/test/**"
       - "scripts/**"
       - ".gitattributes"
       - "examples/pkgxray-proxy/**"
@@ -22,6 +25,9 @@ on:
       - "src/**"
       - "bin/**"
       - "test/**"
+      - "services/local-vm/**"
+      - "services/resolver-worker/container/**"
+      - "services/resolver-worker/test/**"
       - "scripts/**"
       - ".gitattributes"
       - "examples/pkgxray-proxy/**"
@@ -72,6 +78,10 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Verify VM host boundaries and guest evidence analysis
+        if: matrix.node == '22'
+        run: npm run test:vm:unit
 
   # Cross-platform coverage. The Node matrix above is thorough but Linux-only,
   # which leaves real claims unexercised:

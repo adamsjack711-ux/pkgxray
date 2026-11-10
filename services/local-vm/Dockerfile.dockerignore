@@ -1,0 +1,9 @@
+**
+!services/
+!services/local-vm/
+!services/local-vm/vm-init
+!services/local-vm/guest.mjs
+!services/resolver-worker/
+!services/resolver-worker/container/
+!services/resolver-worker/container/runner.mjs
+!services/resolver-worker/container/vm-probes.mjs

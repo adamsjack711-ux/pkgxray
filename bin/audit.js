@@ -11,6 +11,7 @@ const { inspectMcpServer } = require("../src/mcp-audit");
 const { pinMcpManifest, recheckMcpManifest } = require("../src/mcp-pin");
 const { runMcpProxy } = require("../src/mcp-proxy");
 const { runCanarySandbox } = require("../src/sandbox");
+const { scanInVm, exactVmReference } = require("../src/vm-scan");
 const cfg = require("../src/config");
 const { version: PACKAGE_VERSION } = require("../package.json");
 
@@ -56,9 +57,12 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "",
       "Advanced:",
+      "  pkgxray vm-setup                       # experimental: build trusted VM assets locally; requires Docker and QEMU",
+      "  pkgxray vm-scan npm:<name>@<exact-version> --yes-run-untrusted-code [--vm-profile developer|ci] [--format json]",
+      "                     # disposable hardware-accelerated VM; no network device or host mounts; never installation approval.",
       "  pkgxray canary <ref> --yes-run-untrusted-code [--timeout ms] [--keep-sandbox] [--require-sandbox] [--tls-mitm] [--no-import-phase]",
-      "                     # OPT-IN: EXECUTES untrusted package code (install + import) inside the sandbox — the one path that",
-      "                     # runs the package. Decoy-credential HOME behind a capture proxy that never forwards egress; confirms",
+      "                     # OPT-IN: EXECUTES untrusted package code (install + import) inside the sandbox.",
+      "                     # Decoy-credential HOME behind a capture proxy that never forwards egress; confirms",
       "                     # exfil behaviorally (cannot clear a pkg). Requires --yes-run-untrusted-code (or PKGXRAY_ALLOW_EXECUTION=1).",
       "                     # OS filesystem and network confinement is required; --require-sandbox remains accepted.",
       "                     # --tls-mitm: terminate HTTPS with an ephemeral per-host CA (node:crypto, no openssl) to scan decrypted",
@@ -105,6 +109,14 @@ function parseArgs(argv) {
     argv = argv.slice(1);
   } else if (argv[0] === "guard") {
     options.command = "guard";
+    options.reference = argv[1];
+    argv = argv.slice(2);
+  } else if (argv[0] === "vm-setup") {
+    if (argv.length !== 1) throw new Error("vm-setup takes no arguments");
+    options.command = "vm-setup";
+    argv = [];
+  } else if (argv[0] === "vm-scan") {
+    options.command = "vm-scan";
     options.reference = argv[1];
     argv = argv.slice(2);
   } else if (argv[0] === "canary") {
@@ -267,6 +279,9 @@ function parseArgs(argv) {
       options.scanDependencies = true;
     } else if (arg === "--yes-run-untrusted-code") {
       options.allowExecution = true;
+    } else if (arg === "--vm-profile") {
+      if (options.command !== "vm-scan" || !["developer", "ci"].includes(argv[i + 1])) throw new Error("--vm-profile requires vm-scan and developer or ci");
+      options.vmProfile = argv[++i];
     } else if (arg === "--keep-sandbox") {
       options.keepSandbox = true;
     } else if (arg === "--require-sandbox") {
@@ -321,6 +336,12 @@ function parseArgs(argv) {
   if (!["json", "markdown"].includes(options.format)) {
     throw new Error("--format must be json or markdown");
   }
+  if (options.command === "vm-scan") {
+    exactVmReference(options.reference);
+    if (options.keepSandbox || options.tlsMitm || options.promoteTo || options.importPhase === false || options.policy || options.force) {
+      throw new Error("vm-scan uses a fixed disposable scenario and cannot promote packages or accept policy overrides");
+    }
+  }
   return options;
 }
 
@@ -359,6 +380,22 @@ async function main() {
   }
   if (options.help) {
     printUsage();
+    return;
+  }
+  if (options.command === "vm-setup") {
+    await require("../services/local-vm/build.cjs").buildVm();
+    return;
+  }
+  if (options.command === "vm-scan") {
+    const result = await scanInVm(options.reference, {
+      ...options, profile: options.vmProfile,
+      allowExecution: options.allowExecution === true || process.env.PKGXRAY_ALLOW_EXECUTION === "1"
+    });
+    if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    else process.stdout.write(`VM scan: ${result.verdict.toUpperCase()}\n${result.summary}\n` +
+      `${result.behavioral.findings.map(f => `${f.severity}: ${f.category}${f.target ? ` — ${sanitizeForTerminal(f.target)}` : ""}`).join("\n")}\n` +
+      `Timing: ${JSON.stringify(result.behavioral.timings)}\n`);
+    process.exitCode = result.verdict === "block" ? 2 : 3;
     return;
   }
 

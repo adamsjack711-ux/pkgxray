@@ -9,11 +9,16 @@ const { guardExtension, parseReference } = require("../src/quarantine");
 const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("../src/lockfile");
 const { triageLockfile } = require("../src/triage");
 const cfg = require("../src/config");
+const { scanInVm, exactVmReference } = require("../src/vm-scan");
 
 const AUDIT_TOOL_NAME = "audit_agent_extension_supply_chain";
 const GUARD_TOOL_NAME = "guard_agent_extension_install";
 const LOCKFILE_AUDIT_TOOL_NAME = "audit_lockfile_supply_chain";
 const LOCKFILE_TRIAGE_TOOL_NAME = "triage_lockfile_supply_chain";
+const VM_TOOL_NAME = "scan_npm_package_in_vm";
+// Read once from the trusted operator environment; callers cannot enable it.
+const VM_ENABLED = process.env.PKGXRAY_VM_TESTS === "1";
+let vmBusy = false;
 
 // Always the published package version — a hardcoded string here drifted to
 // 0.12.0 while the package shipped 0.17.0, so hosts (and pkgxray's own
@@ -41,7 +46,8 @@ const CONFIG_TOOL_KEY = Object.freeze({
   [GUARD_TOOL_NAME]: "guard",
   [AUDIT_TOOL_NAME]: "audit",
   [LOCKFILE_AUDIT_TOOL_NAME]: "audit",
-  [LOCKFILE_TRIAGE_TOOL_NAME]: "recheck"
+  [LOCKFILE_TRIAGE_TOOL_NAME]: "recheck",
+  [VM_TOOL_NAME]: "guard"
 });
 
 const { config: CONFIG, warnings: CONFIG_WARNINGS } = cfg.loadConfig({ cwd: process.cwd() });
@@ -52,6 +58,7 @@ const MCP_CONFIG = cfg.mcpConfig(CONFIG);
 
 // Whether an MCP tool is exposed under the effective config.
 function toolExposed(mcpToolName) {
+  if (mcpToolName === VM_TOOL_NAME && !VM_ENABLED) return false;
   const key = CONFIG_TOOL_KEY[mcpToolName];
   if (!key) return true; // unmapped tools are never hidden by config
   return cfg.mcpToolAllowed(CONFIG, key);
@@ -340,6 +347,18 @@ function lockfileTriageToolDefinition() {
   };
 }
 
+function vmToolDefinition() {
+  return {
+    name: VM_TOOL_NAME, title: "Observe an npm package in a disposable VM",
+    description: "EXECUTES one exact public npm version's lifecycle scripts and root import in a new local hardware-accelerated VM. No network adapter or host mounts. Observes synthetic credential access, DNS attempts and honeypot changes. Requires operator setup and opt-in. Never approves installation; a quiet run does not prove safety. No dependency download or arbitrary commands.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    inputSchema: { type: "object", additionalProperties: false, required: ["reference"], properties: {
+      reference: { type: "string", description: "npm:name@exact-version only" },
+      profile: { type: "string", enum: ["developer", "ci"], default: "developer" }
+    } }
+  };
+}
+
 function listTools() {
   // Only advertise tools the config permits. A config with
   // `mcp.tools: ["audit","recheck"]` drops guard from the listing entirely, so
@@ -348,7 +367,7 @@ function listTools() {
     auditToolDefinition(),
     guardToolDefinition(),
     lockfileAuditToolDefinition(),
-    lockfileTriageToolDefinition()
+    lockfileTriageToolDefinition(), vmToolDefinition()
   ].filter((t) => toolExposed(t.name));
 }
 
@@ -356,13 +375,13 @@ const TOOL_NAMES = new Set([
   AUDIT_TOOL_NAME,
   GUARD_TOOL_NAME,
   LOCKFILE_AUDIT_TOOL_NAME,
-  LOCKFILE_TRIAGE_TOOL_NAME
+  LOCKFILE_TRIAGE_TOOL_NAME, VM_TOOL_NAME
 ]);
 
 // Acquisition's parser is the authority for classification AND path semantics.
 // In particular, do not separately decode URLs or maintain a prefix allowlist.
 const TOOL_SCHEMAS = new Map([
-  auditToolDefinition(), guardToolDefinition(), lockfileAuditToolDefinition(), lockfileTriageToolDefinition()
+  auditToolDefinition(), guardToolDefinition(), lockfileAuditToolDefinition(), lockfileTriageToolDefinition(), vmToolDefinition()
 ].map(tool => [tool.name, tool.inputSchema]));
 
 function toolOptions(toolName, args) {
@@ -459,7 +478,9 @@ function validateToolCall(toolName, args) {
     }
     if (spec.enum && !spec.enum.includes(value)) return `${key} must be ${spec.enum.map(v => `'${v}'`).join(" or ")}`;
   }
-  if (toolName === GUARD_TOOL_NAME) {
+  if (toolName === VM_TOOL_NAME) {
+    try { exactVmReference(args.reference); } catch { return "VM scans require npm:name@exact-version"; }
+  } else if (toolName === GUARD_TOOL_NAME) {
     if (args.artifact !== undefined) return "artifact is reserved for trusted acquisition callers";
     if (typeof args.reference !== "string" || args.reference.length === 0) {
       return "reference must be a non-empty string";
@@ -602,6 +623,15 @@ function handleRequest(request) {
     const validationError = validateToolCall(name, args);
     if (validationError) {
       return invalidParams(id, validationError);
+    }
+
+    if (name === VM_TOOL_NAME) {
+      if (vmBusy) return invalidParams(id, "VM runner is busy; retry after the current scan completes");
+      vmBusy = true;
+      return scanInVm(args.reference, { profile: args.profile, config: CONFIG, allowExecution: true })
+        .then(report => ({ jsonrpc: "2.0", id, result: {
+          content: textContent(JSON.stringify(report)), structuredContent: report
+        } })).finally(() => { vmBusy = false; });
     }
 
     if (name === GUARD_TOOL_NAME) {

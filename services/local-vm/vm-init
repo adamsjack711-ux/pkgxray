@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+export PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+mountpoint -q /proc || mount -t proc proc /proc
+mountpoint -q /sys || mount -t sysfs sysfs /sys
+mountpoint -q /dev || mount -t devtmpfs devtmpfs /dev
+mount -t tmpfs -o nosuid,nodev,size=384m,mode=0755 tmpfs /work
+mount -t tmpfs -o nosuid,nodev,noexec,size=32m,mode=0700 tmpfs /home/pkgxray
+mount -t tmpfs -o nosuid,nodev,noexec,size=16m,mode=1777 tmpfs /tmp
+mount -t tmpfs -o nosuid,nodev,noexec,size=16m,mode=0755 tmpfs /run
+mkdir -p /dev/pts
+mount -t devpts -o nosuid,noexec devpts /dev/pts
+# No external interface exists. Loopback permits local decoy services only.
+ip link set lo up
+timeout --signal=TERM --kill-after=2s 65s node /opt/pkgxray/guest.mjs || true
+sync
+echo o > /proc/sysrq-trigger
+# sysrq schedules poweroff asynchronously; PID 1 must not exit beforehand.
+while :; do sleep 1; done
