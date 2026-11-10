@@ -6,7 +6,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "..");
-const roots = ["bin", "src", "scripts", "test", "benchmark", "website", "examples/pkgxray-proxy"];
+const roots = ["bin", "src", "scripts", "test", "benchmark", "website", "examples/pkgxray-proxy", "components/compose"];
 
 function filesUnder(relative) {
   const root = path.join(ROOT, relative);

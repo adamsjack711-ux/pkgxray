@@ -29,7 +29,8 @@ async function fixture(t, { scripts = false, bins = false } = {}) {
     await fs.writeFile(path.join(dir, "index.js"), "module.exports = 42;\n");
     if (scripts) await fs.writeFile(path.join(dir, "install.js"), "require('fs').writeFileSync('SCRIPT-RAN', 'bad');\n");
     const archive = path.join(root, `${name}.tgz`);
-    execFileSync("tar", ["-czf", archive, "-C", root, name]);
+    // macOS resource forks must not add unsigned AppleDouble files to fixtures.
+    execFileSync("tar", ["-czf", archive, "-C", root, name], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
     const bytes = await fs.readFile(archive);
     const integrity = `sha512-${crypto.createHash("sha512").update(bytes).digest("base64")}`;
     archives.set(name, archive);
@@ -73,7 +74,14 @@ test("lifecycle scripts and hostile npm configuration cannot override the instal
   process.env.npm_config_ignore_scripts = "false";
   t.after(() => { if (old === undefined) delete process.env.npm_config_ignore_scripts; else process.env.npm_config_ignore_scripts = old; });
   const config = { ...DEFAULTS, policy: "allow-review" };
-  const result = await installProject(f.project, { config }, { guard: f.guard });
+  await assert.rejects(installProject(f.project, { config }, { guard: f.guard }), /refused/);
+  const reviewDecisions = new (require('../src/review').ReviewDecisions)();
+  for (const name of ['demo', 'transitive']) {
+    const scan = await f.guard(`npm:${name}@1.0.0`, { config, reviewAction: 'install', reviewDecisions, reviewScope: 'developer', artifact: { integrity: f.lock.packages[`node_modules/${name}`].integrity } });
+    assert.equal(scan.review.state, 'pending');
+    reviewDecisions.choose('developer', scan.review.id, 'Proceed');
+  }
+  const result = await installProject(f.project, { config, reviewDecisions, reviewScope: 'developer' }, { guard: f.guard });
   assert.equal(result.installed, 2);
   for (const name of ["demo", "transitive"]) await assert.rejects(fs.stat(path.join(f.project, `node_modules/${name}/SCRIPT-RAN`)), { code: "ENOENT" });
   assert.equal(installEnvironment("/private/home").npm_config_ignore_scripts, undefined);
@@ -275,4 +283,70 @@ test("trusted npm discovery rejects a project-controlled npm package", async t =
     execPath: path.join(f.root, "split-node", "node"),
     env: { PATH: "" }, explicit: cli
   }), /Trusted npm CLI not found/);
+});
+
+test('review promotion requires a bound choice and remembers it only for that developer', async t => {
+  const f = await fixture(t, { scripts: true });
+  const { ReviewDecisions, LocalReviewDecisions } = require('../src/review');
+  const decisionFile = path.join(f.root, 'private', 'reviews.json');
+  let reviewDecisions = new LocalReviewDecisions(decisionFile);
+  const promoteTo = path.join(f.root, 'promoted');
+  const opts = { config: DEFAULTS, reviewScope: 'alice',
+    artifact: { integrity: f.lock.packages['node_modules/demo'].integrity }, promoteTo };
+  const pending = await f.guard('npm:demo@1.0.0', { ...opts, reviewDecisions });
+  assert.equal(pending.allowed, false);
+  assert.equal(pending.promotedPath, null);
+  await assert.rejects(fs.stat(promoteTo), { code: 'ENOENT' });
+  const approved = await f.guard('npm:demo@1.0.0', { ...opts, reviewDecisions,
+    reviewId: pending.review.id, reviewChoice: 'Proceed' });
+  assert.equal(approved.outcome, 'SAFE');
+  assert.equal(approved.approval.decision, 'review', 'shared receipt must remain unapproved');
+  assert.equal(approved.promotedPath, promoteTo);
+  reviewDecisions = new LocalReviewDecisions(decisionFile);
+  const repeated = await f.guard('npm:demo@1.0.0', { ...opts, force: true, reviewDecisions });
+  assert.equal(repeated.review.requiresDecision, false);
+  const bob = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, reviewScope: 'bob', reviewDecisions });
+  assert.equal(bob.review.state, 'pending');
+  const newPolicy = { ...DEFAULTS, policy: 'allow-review' };
+  await assert.rejects(f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, config: newPolicy,
+    reviewDecisions, reviewId: pending.review.id, reviewChoice: 'Proceed' }), /changed/);
+  const changed = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, config: newPolicy, reviewDecisions });
+  assert.equal(changed.review.state, 'pending');
+  assert.notEqual(changed.review.id, pending.review.id);
+  const freshSession = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, reviewDecisions: new ReviewDecisions() });
+  assert.equal(freshSession.allowed, false);
+});
+
+test('Decline and changed archive bytes never promote a previously reviewed artifact', async t => {
+  const f = await fixture(t, { scripts: true });
+  const reviews = new (require('../src/review').ReviewDecisions)();
+  const target = path.join(f.root,'declined-promotion');
+  const options = { config: DEFAULTS, promoteTo: target, reviewScope: 'A', reviewDecisions: reviews,
+    artifact: { integrity: f.lock.packages['node_modules/demo'].integrity } };
+  const pending = await f.guard('npm:demo@1.0.0', options);
+  const declined = await f.guard('npm:demo@1.0.0', { ...options, reviewId: pending.review.id, reviewChoice: 'Decline' });
+  assert.equal(declined.allowed, false); assert.equal(declined.outcome, 'UNSAFE');
+  await assert.rejects(fs.stat(target), { code: 'ENOENT' });
+  reviews.choose('A', pending.review.id, 'Proceed');
+  await fs.appendFile(path.join(f.root,'demo/index.js'), '\nexports.changed = true;\n');
+  execFileSync('tar', ['-czf', f.archives.get('demo'), '-C', f.root, 'demo'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  const bytes = await fs.readFile(f.archives.get('demo'));
+  options.artifact.integrity = `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}`;
+  const changed = await f.guard('npm:demo@1.0.0', options);
+  assert.equal(changed.allowed, false); assert.notEqual(changed.review.id, pending.review.id);
+  await assert.rejects(fs.stat(target), { code: 'ENOENT' });
+});
+
+test('cancellation during promotion preparation preserves the existing destination and removes temporary copies', async t => {
+  const f = await fixture(t);
+  const target = path.join(f.root,'existing'); await fs.mkdir(target);
+  await fs.writeFile(path.join(target,'original'),'keep');
+  const controller = new AbortController(); let validations = 0;
+  await assert.rejects(f.guard('npm:demo@1.0.0', { config: DEFAULTS,
+    artifact: { integrity: f.lock.packages['node_modules/demo'].integrity },
+    promoteTo: target, force: true, signal: controller.signal,
+    validatePolicy() { if (++validations === 2) controller.abort(); }
+  }), { name: 'AbortError' });
+  assert.equal(await fs.readFile(path.join(target,'original'),'utf8'),'keep');
+  assert.ok(!(await fs.readdir(f.root)).some(name => name.startsWith('.pkgxray-promotion-')));
 });

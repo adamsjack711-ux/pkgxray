@@ -96,6 +96,11 @@ test('fresh and restarted mandatory holds never become discretionary reviews', a
   await writeFile(file, 'benign fixture');
   const snapshot = { file, sha256: crypto.createHash('sha256').update('benign fixture').digest('hex') };
   for (const reviewPolicy of ['warn', 'allow', 'block']) {
+    const config = loadConfig({ reviewPolicy, verdictStorePath: join(dir, `${reviewPolicy}.json`) }, {});
+    const store = new VerdictStore(config.verdictStorePath);
+    const valid = withReceipt(async () => ({ decision: 'review', findings: [] }));
+    const check = runGuard => gateArtifact({ config, store, name: 'demo', version: '1.0.0', snapshot, runGuard });
+    assert.equal((await check(valid)).serve, false, 'ordinary review requires a caller decision under every policy');
     for (const category of MANDATORY_CATEGORIES) {
       const config = loadConfig({ reviewPolicy, verdictStorePath: join(dir, `${reviewPolicy}-${category}.json`) }, {});
       let store = new VerdictStore(config.verdictStorePath);

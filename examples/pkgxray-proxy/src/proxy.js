@@ -7,9 +7,10 @@
 import http from 'node:http';
 import https from 'node:https';
 import crypto from 'node:crypto';
+import reviews from '../../../src/review.js';
 import { createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
-import { acquireArtifact, gateArtifact } from './artifact-gate.js';
+import { acquireArtifact, gateArtifact, assertArtifactCurrent } from './artifact-gate.js';
 import { createScanCoordinator } from './scan-coordinator.js';
 
 import { parsePath, canonicalTarballPath } from './path-parser.js';
@@ -64,7 +65,8 @@ const HEADER_SOURCE = 'x-pkgxray-source'; // allowlist | denylist | cache | scan
 // forward these across either side of the proxy's transport boundary.
 function endToEndHeaders(headers) {
   const excluded = new Set(['connection', 'keep-alive', 'proxy-authenticate',
-    'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
+    'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade',
+    'x-pkgxray-session']);
   for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() === 'connection') {
       for (const token of String(value).split(',')) excluded.add(token.trim().toLowerCase());
@@ -269,7 +271,7 @@ export async function adminRecheck({ config, store, runGuard = defaultRunGuard, 
       continue;
     }
     if (result.decision !== e.decision) {
-      store.set(e.name, e.version, result.decision, result.findings);
+      store.recordRecheck(e.name, e.version, result.decision, result.findings);
       logSafe(log, {
         event: 'verdict-transition',
         name: e.name, version: e.version,
@@ -278,8 +280,8 @@ export async function adminRecheck({ config, store, runGuard = defaultRunGuard, 
       });
       changed.push({ name: e.name, version: e.version, from: e.decision, to: result.decision });
     } else {
-      // Same verdict — refresh ts so it's fresh again and won't re-scan on TTL.
-      store.set(e.name, e.version, result.decision, result.findings);
+      // Refresh artifact evidence; changed findings also revoke review choices.
+      store.recordRecheck(e.name, e.version, result.decision, result.findings);
       unchanged += 1;
     }
   }
@@ -299,12 +301,7 @@ function fromDecision(config, decision, findings, source, cached, note, configEf
   if (decision === 'allow') return plan(true, 200, 'allow', source, findings, cached, note, configEffects);
   if (decision === 'block') return plan(false, 403, 'block', source, findings, cached, note, configEffects);
   if (decision === 'review') {
-    // reviewPolicy is the proxy's own server-level knob for review-grade
-    // verdicts; it still applies after the shared policy has had its say.
-    if (config.reviewPolicy === 'block') return plan(false, 403, 'review', source, findings, cached, note || 'reviewPolicy=block', configEffects);
-    // warn or allow both serve; warn just annotates.
-    const rpNote = config.reviewPolicy === 'warn' ? 'reviewPolicy=warn (served with warning)' : 'reviewPolicy=allow';
-    return plan(true, 200, 'review', source, findings, cached, note || rpNote, configEffects);
+    return plan(false, 409, 'review', source, findings, cached, note || 'Pending: choose Proceed or Decline for this artifact in your session', configEffects);
   }
   // Shouldn't happen (store only holds cacheable decisions), but fail safe.
   return plan(false, 403, 'block', source, findings, cached, note || `unknown decision: ${decision}`, configEffects);
@@ -428,6 +425,23 @@ export function createServer(config, store, deps = {}) {
     ? deps.sharedPolicy
     : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
 
+  const decisions = new reviews.ReviewDecisions();
+  const sessions = new Map();
+  function session(req, res) {
+    const token = req.headers['x-pkgxray-session'];
+    if (typeof token === 'string' && sessions.has(token) && Date.now() - sessions.get(token) <= 86400000) return token;
+    const fresh = crypto.randomBytes(32).toString('hex');
+    sessions.set(fresh, Date.now());
+    // Bound memory and lifetime; expiry deliberately requires another review.
+    for (const [key, created] of sessions) {
+      if (Date.now() - created > 86400000 || sessions.size > 10000) {
+        sessions.delete(key); decisions.scopes.delete(key);
+      }
+    }
+    res.setHeader('x-pkgxray-session', fresh);
+    return fresh;
+  }
+
   const server = http.createServer((req, res) => {
     handle(req, res).catch((err) => {
       log({ event: 'error', message: err && err.message, path: req.url });
@@ -454,6 +468,43 @@ export function createServer(config, store, deps = {}) {
     const opaque = pathname.match(/^\/-\/pkgxray\/artifact\/([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/);
     if (opaque) return handleOpaqueArtifact(req, res, opaque[1], opaque[2]);
 
+    if (pathname === '/-/pkgxray/review') {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'method_not_allowed' });
+      const scope = req.headers['x-pkgxray-session'];
+      if (!sessions.has(scope) || Date.now() - sessions.get(scope) > 86400000) return sendJson(res, 401, { error: 'review_session_required' });
+      try {
+        const body = await new Promise((resolve, reject) => {
+          const chunks = []; let bytes = 0, settled = false;
+          const finish = (error) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            req.removeListener('data', data); req.removeListener('end', end);
+            req.removeListener('aborted', aborted);
+            // Keep the error guard for a late socket error after timeout/abort.
+            if (error) { req.pause(); reject(error); }
+            else resolve(Buffer.concat(chunks).toString('utf8'));
+          };
+          const data = chunk => {
+            bytes += chunk.length;
+            if (bytes > 4096) finish(Object.assign(new Error('Review body exceeds 4096 bytes'), { status: 413 }));
+            else chunks.push(chunk);
+          };
+          const end = () => finish();
+          const aborted = () => finish(new Error('Review request aborted'));
+          const failed = error => finish(error);
+          const timer = setTimeout(() => finish(Object.assign(new Error('Review request deadline exceeded'), { status: 408 })), transportTimeoutMs);
+          timer.unref();
+          req.on('data', data); req.once('end', end); req.once('aborted', aborted); req.once('error', failed);
+        });
+        const { reviewId, choice } = JSON.parse(body);
+        decisions.choose(scope, reviewId, choice);
+        return sendJson(res, 200, { reviewId, choice });
+      } catch (error) {
+        if (!req.complete) res.shouldKeepAlive = false;
+        return sendJson(res, error.status || 400, { error: 'invalid_review', message: error.message });
+      }
+    }
     const parsed = parsePath(req.url);
 
     if (parsed.kind === 'tarball') {
@@ -662,7 +713,7 @@ export function createServer(config, store, deps = {}) {
     catch (error) { return sendJson(res, 502, { error: 'artifact_download_failed', message: error.message }); }
     try {
       const currentPolicy = deps.sharedPolicy !== undefined ? sharedPolicy : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
-      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy: currentPolicy, scanCoordinator });
+      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy: currentPolicy, scanCoordinator, scope: session(req, res), decisions, signal: abortController.signal });
 
       log({
         event: 'decision',
@@ -677,12 +728,14 @@ export function createServer(config, store, deps = {}) {
       });
 
       if (!decision.serve) {
-        res.setHeader(HEADER_VERDICT, decision.decision);
+        res.setHeader(HEADER_VERDICT, decision.outcome || 'PENDING');
         res.setHeader(HEADER_SOURCE, decision.source);
         return sendJson(res, decision.status, {
           error: 'blocked_by_pkgxray',
           package: `${name}@${version}`,
           decision: decision.decision,
+          outcome: decision.outcome,
+          review: decision.review,
           source: decision.source,
           findings: decision.findings,
           ...(decision.note ? { note: decision.note } : {}),
@@ -690,8 +743,17 @@ export function createServer(config, store, deps = {}) {
         });
       }
 
+      // Recheck at the delivery commit point after awaiting the gate and logging.
+      try {
+        abortController.signal.throwIfAborted();
+        assertArtifactCurrent(store, name, version, decision.recheckRevision);
+      }
+      catch (error) {
+        res.setHeader(HEADER_VERDICT, 'UNSAFE');
+        return sendJson(res, 503, { error: error.code || 'scan-error', outcome: 'UNSAFE', message: error.message });
+      }
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': snapshot.size,
-        [HEADER_VERDICT]: decision.decision, [HEADER_SOURCE]: decision.source, 'x-pkgxray-sha256': snapshot.sha256 });
+        [HEADER_VERDICT]: decision.outcome, [HEADER_SOURCE]: decision.source, 'x-pkgxray-sha256': snapshot.sha256 });
       // Approval completes before delivery starts, but a stalled downloader
       // must not keep the private snapshot and file descriptor indefinitely.
       const deliveryAbort = new AbortController();
@@ -738,6 +800,7 @@ export function createServer(config, store, deps = {}) {
       req.on('error', fail);
       res.on('close', disconnected);
       const headers = endToEndHeaders(req.headers);
+      delete headers['x-pkgxray-session'];
       delete headers.host; // let the upstream client set the correct Host
       delete headers['accept-encoding']; // avoid decompression surprises; stream as-is is fine
 

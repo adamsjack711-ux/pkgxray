@@ -100,34 +100,34 @@ test('allowlist supports name@version pinning', async () => {
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=block returns 403', async () => {
+test('review + reviewPolicy=block remains pending', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'block' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [{ reason: 'obfuscated' }] });
     const d = await gate({ config, store, name: 'sketchy', version: '1.0.0', runGuard });
     assert.equal(d.serve, false);
-    assert.equal(d.status, 403);
+    assert.equal(d.status, 409);
     assert.equal(store.get('sketchy', '1.0.0').decision, 'review'); // still cached
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=warn serves 200 with a note', async () => {
+test('review + reviewPolicy=warn remains pending with a note', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'warn' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [] });
     const d = await gate({ config, store, name: 'sketchy', version: '1.0.0', runGuard });
-    assert.equal(d.serve, true);
+    assert.equal(d.serve, false);
     assert.equal(d.decision, 'review');
-    assert.match(d.note, /warn/);
+    assert.match(d.note, /Pending/);
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=allow serves 200', async () => {
+test('review + reviewPolicy=allow remains pending', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'allow' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [] });
     const d = await gate({ config, store, name: 'sketchy', version: '1.0.0', runGuard });
-    assert.equal(d.serve, true);
+    assert.equal(d.serve, false);
   } finally { cleanup(); }
 });
 

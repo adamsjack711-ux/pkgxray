@@ -1,0 +1,42 @@
+{
+  "name": "pkgxray-compose",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Check the packages. Trace the connections. Cross-package dataflow analysis alongside pkgxray.",
+  "license": "MIT",
+  "author": "Jack Adams-Lovell",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adamsjack711-ux/pkgxray.git",
+    "directory": "components/compose"
+  },
+  "bugs": {
+    "url": "https://github.com/adamsjack711-ux/pkgxray/issues"
+  },
+  "homepage": "https://github.com/adamsjack711-ux/pkgxray/blob/main/docs/compose.md",
+  "keywords": [
+    "pkgxray",
+    "supply-chain-security",
+    "static-analysis",
+    "dataflow",
+    "npm",
+    "security"
+  ],
+  "type": "module",
+  "bin": {
+    "pkgxray-compose": "./bin/compose-ray.mjs"
+  },
+  "scripts": {
+    "probe": "node research/pkgxray-boundary-probe.mjs",
+    "test": "node --test test/*.test.mjs",
+    "demo": "node examples/demo.mjs",
+    "demo:real": "node examples/real-package-demo.mjs",
+    "demo:strings": "node examples/string-flow-demo.mjs",
+    "demo:integration": "node examples/together.mjs",
+    "demo:esm": "node examples/esm-demo.mjs",
+    "baseline:tapp": "node research/tapp-baseline.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

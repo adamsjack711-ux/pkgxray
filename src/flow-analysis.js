@@ -81,8 +81,13 @@ function property(object, key) {
     object.props ||= new Map();
     if (!object.props.has(key)) object.props.set(key, {bits:0,props:new Map()});
   }
-  if (object.kind === 'global' && ['process', 'Bun', 'fetch', 'WebSocket', 'Function', 'Proxy', 'Reflect', 'Map', 'Object', 'Array', 'setTimeout', 'setInterval'].includes(key)) return tagged(key);
+  if (object.kind === 'global' && ['process', 'Bun', 'fetch', 'WebSocket', 'Function', 'Proxy', 'Reflect', 'Map', 'Object', 'Array', 'Promise', 'setTimeout', 'setInterval', 'setImmediate'].includes(key)) return tagged(key);
   if (['process', 'Bun'].includes(object.kind) && key === 'env') return { bits: ENV, kind: 'env' };
+  if (object.kind === 'process' && key === 'getBuiltinModule') return tagged('builtin-loader');
+  if (object.kind === 'process' && key === 'mainModule') return tagged('module');
+  if (object.kind === 'process' && key === 'nextTick') return tagged('setImmediate');
+  if (object.kind === 'module' && key === 'require') return tagged('require');
+  if (object.kind === 'module' && key === 'createRequire') return tagged('require-factory');
   if (object.props?.has(key)) {
     const value = object.props.get(key);
     // Preserve the receiver for ordinary method calls. Without it, a
@@ -91,20 +96,42 @@ function property(object, key) {
     return value?.kind === 'function' ? { ...value, boundThis: object } : value;
   }
   if (object.elements && /^\d+$/.test(String(key)) && Number(key) < object.elements.length) return object.elements[Number(key)] || clean();
-  if (object.elements && ['at', 'pop', 'shift', 'push', 'unshift', 'slice', 'filter', 'map', 'forEach', 'find'].includes(key)) {
+  if (object.elements && ['at', 'pop', 'shift', 'push', 'unshift', 'slice', 'filter', 'map', 'forEach', 'find', 'join', 'reverse'].includes(key)) {
     return { bits: object.bits, kind: 'array-method', method: key, target: object };
+  }
+  if (typeof object.value === 'string' && key === 'concat') {
+    return { bits: object.bits, kind: 'string-concat', target: object };
+  }
+  if (typeof object.value === 'string' && ['toLowerCase', 'toUpperCase'].includes(key)) {
+    return { bits: object.bits, kind: 'string-method', method: key, target: object };
   }
   if (object.kind === 'env') return key === undefined || secretKey(String(key)) ? { bits: SECRET } : clean();
   if (object.kind === 'map' && ['get', 'set'].includes(key)) return { bits: object.bits, kind: `map-${key}`, target: object };
   if (object.kind === 'Object' && ['values', 'entries'].includes(key)) return tagged(`object-${key}`);
   if (object.kind === 'Array' && ['of', 'from'].includes(key)) return tagged(`array-${key}`);
-  if (object.bits & REMOTE && ['then', 'catch', 'finally'].includes(key)) return { bits: object.bits, kind: 'promise-chain', target: object };
+  if ((object.kind === 'promise-chain' || object.bits) && ['then', 'catch', 'finally'].includes(key)) return { bits: object.bits, kind: 'promise-chain', target: object.target || object };
   // `value.constructor.constructor` reaches the Function constructor without
   // spelling Function or eval. Preserve that intrinsic chain for remote-code
   // flow checks while leaving ordinary single `.constructor` reads inert.
   if (key === 'constructor' && ['intrinsic-constructor', 'function', 'array-method', 'map-get', 'map-set', 'fetch', 'sink', 'request', 'shell'].includes(object.kind)) return tagged('Function');
   if (key === 'constructor') return tagged('intrinsic-constructor');
   if (object.kind === 'https' && ['request', 'get'].includes(key)) return tagged('request');
+  // Explicitly identified network modules only. A method named `post` on an
+  // arbitrary local object is not enough evidence to call it an outbound sink.
+  if (['axios', 'got', 'ky', 'superagent'].includes(object.kind) &&
+      ['get', 'post', 'put', 'patch', 'delete', 'head', 'request', 'stream', 'send'].includes(key)) return tagged('outbound-call');
+  if (object.kind === 'undici' && ['fetch', 'request', 'stream', 'pipeline'].includes(key)) return tagged('outbound-call');
+  if (object.kind === 'undici' && ['Pool', 'Client', 'Agent'].includes(key)) return tagged('outbound-client-constructor');
+  if (object.kind === 'outbound-client' && ['fetch', 'request', 'stream', 'pipeline'].includes(key)) return tagged('outbound-call');
+  if (object.kind === 'outbound-request' && ['send', 'write', 'end', 'set', 'auth', 'query'].includes(key)) return tagged('sink');
+  if (object.kind === 'http2' && key === 'connect') return tagged('http2-connect');
+  if (object.kind === 'http2-client' && key === 'request') return tagged('request');
+  if (object.kind === 'dgram' && key === 'createSocket') return tagged('socket-create');
+  if (object.kind === 'ws' && ['WebSocket', 'default'].includes(key)) return tagged('WebSocket');
+  if (object.kind === 'Promise' && ['resolve', 'reject', 'all', 'allSettled', 'race', 'any'].includes(key)) return tagged('promise-static');
+  if (object.kind === 'events' && key === 'EventEmitter') return tagged('event-emitter-constructor');
+  if (object.kind === 'event-emitter' && ['on', 'once', 'addListener'].includes(key)) return { bits: 0, kind: 'event-on', target: object };
+  if (object.kind === 'event-emitter' && key === 'emit') return { bits: 0, kind: 'event-emit', target: object };
   if (object.kind === 'dns' && ['resolve', 'resolve4', 'resolveTxt', 'lookup'].includes(key)) return tagged('sink');
   if (object.kind === 'child_process' && ['exec', 'execSync', 'execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork'].includes(key)) return tagged('shell');
   if (['net', 'tls'].includes(object.kind) && ['connect', 'createConnection', 'Socket', 'TLSSocket'].includes(key)) return tagged('socket-create');
@@ -234,6 +261,8 @@ function createFlowAnalysis(files) {
         return merge(...callee.alternatives.map(fn => callValue(node, fn, args)));
       }
       if (callee.kind === 'require') return load(args[0]?.value);
+      if (callee.kind === 'builtin-loader') return load(args[0]?.value);
+      if (callee.kind === 'require-factory') return tagged('require');
       if (callee.kind === 'reflect-get') return property(args[0] || clean(), args[1]?.value);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
         const list = args[callee.kind === 'reflect-apply' ? 2 : 1];
@@ -247,6 +276,26 @@ function createFlowAnalysis(files) {
       }
       if (callee.kind === 'invoke-bind') return { bits: 0, kind: 'bound', target: callee.target, args: args.slice(1) };
       if (callee.kind === 'bound') return callValue(node, callee.target, [...callee.args, ...args]);
+      if (callee.kind === 'string-concat') {
+        const parts = [callee.target, ...args];
+        const combined = merge(...parts);
+        if (parts.every(part => typeof part.value === 'string')) {
+          return { ...combined, value: parts.map(part => part.value).join('') };
+        }
+        return combined;
+      }
+      if (callee.kind === 'string-method') {
+        const combined = merge(callee.target, ...args);
+        if (args.length === 0) {
+          return {
+            ...combined,
+            value: callee.method === 'toLowerCase'
+              ? callee.target.value.toLowerCase()
+              : callee.target.value.toUpperCase()
+          };
+        }
+        return combined;
+      }
       if (callee.kind === 'map-get') return callee.target.props?.get(args[0]?.value) || clean();
       if (callee.kind === 'map-set') {
         if (args[0]?.value === undefined) { gap(); return callee.target; }
@@ -277,6 +326,18 @@ function createFlowAnalysis(files) {
       }
       if (callee.kind === 'array-method') {
         const elements = callee.target.elements;
+        if (callee.method === 'reverse') {
+          elements.reverse();
+          return callee.target;
+        }
+        if (callee.method === 'join') {
+          const separator = args.length === 0 ? ',' : args[0]?.value;
+          if ((typeof separator === 'string' || separator === undefined) &&
+              elements.every(element => Object.hasOwn(element, 'value'))) {
+            return { ...merge(callee.target, ...args), value: elements.map(element => element.value).join(separator) };
+          }
+          return merge(callee.target, ...args);
+        }
         if (callee.method === 'at') {
           const index = Number(args[0]?.value || 0);
           return elements[index < 0 ? elements.length + index : index] || clean();
@@ -299,14 +360,47 @@ function createFlowAnalysis(files) {
         if (!callback) return callee.target;
         return merge(callee.target, invoke(callback, [callee.target]));
       }
-      if (['fetch', 'request', 'sink', 'shell', 'socket-create'].includes(callee.kind) && value.bits & (SECRET | ENV)) hint(node, 'credential-export');
+      if (callee.kind === 'promise-resolve') {
+        callee.target.bits |= value.bits;
+        return clean();
+      }
+      if (callee.kind === 'event-on') {
+        if (args[0]?.value === undefined || args[1]?.kind !== 'function') { gap(); return callee.target; }
+        callee.target.listeners ||= new Map();
+        callee.target.listeners.set(args[0].value, args[1]);
+        return callee.target;
+      }
+      if (callee.kind === 'event-emit') {
+        const listener = callee.target.listeners?.get(args[0]?.value);
+        if (listener) invoke(listener, args.slice(1));
+        else if (args[0]?.value === undefined) gap();
+        return clean();
+      }
+      if (['fetch', 'request', 'sink', 'shell', 'socket-create', 'outbound-call', 'outbound-client-constructor', 'http2-connect', 'WebSocket', 'ws', 'node-fetch', 'axios', 'got', 'ky', 'superagent'].includes(callee.kind) && value.bits & (SECRET | ENV)) hint(node, 'credential-export');
       if (callee.kind === 'fetch') return { bits: REMOTE };
+      if (callee.kind === 'outbound-call') return { bits: REMOTE, kind: 'outbound-request' };
+      if (callee.kind === 'outbound-client-constructor') return tagged('outbound-client');
+      if (['node-fetch', 'axios', 'got', 'ky', 'superagent'].includes(callee.kind)) return { bits: REMOTE };
       if (callee.kind === 'request') return tagged('request-stream');
+      if (callee.kind === 'http2-connect') return tagged('http2-client');
       if (callee.kind === 'socket-create') {
         for (const arg of args) if (arg.kind === 'function') callbacks.push(arg);
         return tagged('socket');
       }
       if (callee.kind === 'WebSocket') return tagged('websocket');
+      if (callee.kind === 'ws') return tagged('websocket');
+      if (callee.kind === 'promise-static') return { ...value, kind: 'promise-chain', target: value };
+      if (callee.kind === 'Promise') {
+        const promise = { bits: 0, kind: 'promise-chain' };
+        promise.target = promise;
+        const executor = args.find(arg => arg.kind === 'function');
+        if (executor) invoke(executor, [
+          { bits: 0, kind: 'promise-resolve', target: promise },
+          { bits: 0, kind: 'promise-resolve', target: promise }
+        ]);
+        return promise;
+      }
+      if (['events', 'event-emitter-constructor'].includes(callee.kind)) return { bits: 0, kind: 'event-emitter', listeners: new Map() };
       if (callee.kind === 'vm' && value.bits & REMOTE) hint(node, 'remote-vm-code');
       if (callee.kind === 'function') return invoke(callee, args, false, callee.boundThis);
       if (callee.kind === 'class') {
@@ -326,7 +420,18 @@ function createFlowAnalysis(files) {
       }
       if (callee.kind === 'compiled-function') return clean();
       if (callee.kind === 'global-factory') return tagged('global');
-      if (['setTimeout', 'setInterval'].includes(callee.kind) && typeof args[0]?.value === 'string') gap();
+      if (['setTimeout', 'setInterval', 'setImmediate'].includes(callee.kind)) {
+        if (typeof args[0]?.value === 'string') gap();
+        else if (args[0]?.kind === 'function') invoke(args[0], args.slice(callee.kind === 'setImmediate' ? 1 : 2));
+        return clean();
+      }
+      // An unknown higher-order API can pass a secret into a callback whose
+      // body contains an outbound sink. Pretending the callback receives a
+      // clean value creates a generic library-wrapper bypass. Keep the verdict
+      // honest until that API's callback contract is modeled explicitly.
+      if (value.bits & (SECRET | ENV) && args.some(arg => arg.kind === 'function')) {
+        gap('unmodeled sensitive callback handoff', node);
+      }
       // Preserve taint through unknown calls without recursively joining their
       // full object graphs. Nested properties already contribute to `bits` at
       // construction time; copying them here caused benign callback/object
@@ -371,13 +476,28 @@ function createFlowAnalysis(files) {
       try {
         switch (node.type) {
           case 'Literal': return literal(node.value);
-          case 'Identifier': return scope.get(node.name) || tagged(({ process: 'process', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Map: 'Map', Object: 'Object', Array: 'Array', setTimeout: 'setTimeout', setInterval: 'setInterval', globalThis: 'global', global: 'global' })[node.name]);
+          case 'Identifier': return scope.get(node.name) || tagged(({ process: 'process', module: 'module', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Map: 'Map', Object: 'Object', Array: 'Array', Promise: 'Promise', setTimeout: 'setTimeout', setInterval: 'setInterval', setImmediate: 'setImmediate', globalThis: 'global', global: 'global' })[node.name]);
           case 'ThisExpression': return scope.get('this') || clean();
           case 'MetaProperty': return clean();
           case 'ClassExpression': case 'ClassDeclaration': return classValue(node, scope);
-          case 'TemplateLiteral': return merge(...node.expressions.map(n => expr(n, scope)));
+          case 'TemplateLiteral': {
+            const values = node.expressions.map(n => expr(n, scope));
+            const combined = merge(...values);
+            if (values.every(value => Object.hasOwn(value, 'value'))) {
+              let text = node.quasis[0]?.value?.cooked ?? '';
+              for (let i = 0; i < values.length; i += 1) {
+                text += String(values[i].value) + (node.quasis[i + 1]?.value?.cooked ?? '');
+              }
+              return { ...combined, value: text };
+            }
+            return combined;
+          }
           case 'TaggedTemplateExpression': expr(node.tag, scope); return expr(node.quasi, scope);
-          case 'ChainExpression': case 'AwaitExpression': case 'YieldExpression': return expr(node.expression || node.argument, scope);
+          case 'ChainExpression': case 'YieldExpression': return expr(node.expression || node.argument, scope);
+          case 'AwaitExpression': {
+            const awaited = expr(node.argument, scope);
+            return awaited.kind === 'promise-chain' && awaited.target ? awaited.target : awaited;
+          }
           case 'MemberExpression': return property(expr(node.object, scope), node.computed ? expr(node.property, scope).value : node.property.name);
           case 'ObjectExpression': {
             const props = new Map(); let bits = 0, env = false;
@@ -437,7 +557,12 @@ function createFlowAnalysis(files) {
           case 'ImportExpression': {
             const value = expr(node.source, scope);
             if (value.bits & REMOTE) hint(node, 'remote-code-import');
-            return clean();
+            if (typeof value.value === 'string') {
+              const loaded = load(value.value);
+              return { bits: loaded.bits, kind: 'promise-chain', target: loaded };
+            }
+            if (!(value.bits & REMOTE)) gap('dynamic module load', node);
+            return { bits: value.bits, kind: 'promise-chain', target: value };
           }
           case 'CallExpression': case 'NewExpression': {
             const callee = expr(node.callee, scope), args = node.arguments.map(n => expr(n, scope));

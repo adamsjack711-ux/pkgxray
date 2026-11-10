@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased — Compose integration
+
+- Import the JavaScript Compose Ray engine, history, tests, examples and research into `components/compose`.
+- Add `pkgxray compose` and `pkgxray-compose`, using the bundled scanner by default.
+- Add opt-in local MCP `analyze_package_composition`, with approved filesystem roots, bounded worker execution and cancellation.
+- Preserve package blocks and explicit partial-coverage REVIEW results; no installation approvals are issued.
+- Include component runtime code in package archives/build identity and run its tests in the main CI matrix.
+
+## Unreleased — approval and shared-scan consolidation
+
+Reconciles the existing hardening work with main at `8d73ac3`, including
+the opt-in VM runner, read-only MCP guard and mandatory coverage/provenance holds.
+
+- Keep REVIEW pending until an explicit caller-scoped Proceed or Decline,
+  bound to artifact bytes, policy, scanner build and requested action. Share
+  immutable static analysis through bounded queues without sharing approvals.
+- Revoke stale proxy delivery approvals after changed administrator rechecks,
+  reject stale scanner builds, and prevent in-flight scans from restoring old
+  cache entries. Preserve the same developer's choice for unchanged reviews.
+- Propagate MCP cancellation through lockfile audits and triage, check it at
+  the decision-file commit point, and escape terminal controls in the local
+  folder-report example. Add regression coverage for all four audit findings.
+- Reject malformed route encodings at the cache HTTP boundary instead of letting
+  an async listener rejection terminate the process. Bound cache upstream JSON
+  and tarball transfers with total deadlines, including slow-drip and aborted
+  responses.
+- Enforce the cache disk ceiling with per-directory byte reservations. Oversized
+  artifacts, concurrent distinct tarballs, and repository metadata now bypass
+  persistence instead of racing or writing past the configured quota.
+- Close credential-export detection bypasses using dynamic imports and
+  constant-computed module or method names built with template literals,
+  string transforms, array joins, and array reversal.
+- Close SAFE credential-export gaps across common HTTP clients, HTTP/2, UDP,
+  WebSockets, Promise/timer/EventEmitter handoffs, and alternate built-in module
+  loaders. The added flow rules require an identified runtime/module and retain
+  paired benign controls to limit review noise.
+- Retain an acquired archive until shared scan work finishes, including when
+  its original caller disconnects. Release queued/rejected scan resources.
+- Keep proxy session tokens out of metadata and passthrough requests; bound
+  review request bodies by bytes and total elapsed time.
+- Preserve VM operator opt-in on direct MCP calls and cancellation checks at
+  the final proxy delivery boundary.
+
+Compatibility: pending artifact reviews now return HTTP 409 and a session-bound
+review ID. Artifact verdict headers use SAFE/UNSAFE/PENDING; JSON retains the
+underlying scan decision. A bare npm client cannot approve a pending review.
+See [the review contract](docs/review-contract.md) before adopting this change.
+
 ## 1.2.1 (2026-10-13) — detector accuracy and scale hardening
 
 - Block literal remote dynamic imports, concealed global-eval and encoded

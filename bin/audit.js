@@ -15,14 +15,10 @@ const { scanInVm, exactVmReference } = require("../src/vm-scan");
 const cfg = require("../src/config");
 const { version: PACKAGE_VERSION } = require("../package.json");
 
-// Map a config-adjusted verdict (safe|review|block, from applyConfig, which has
-// already applied mutes + the pinned allowlist) through the same policy
-// promotion the guard uses for its decision: under `allow-review` a review-grade
-// package is promoted to `allow`. Keeps the guard/file exit code driven by
-// exitCodeForVerdict while preserving today's --policy behavior.
+// Preserve REVIEW as a pending decision regardless of legacy policy settings.
 function promoteVerdict(verdict, policy) {
   if (verdict === "block") return "block";
-  if (verdict === "review") return policy === "allow-review" ? "allow" : "review";
+  if (verdict === "review") return "review";
   return verdict; // safe / allow pass through
 }
 
@@ -49,6 +45,7 @@ function printUsage() {
       "  pkgxray recheck <lockfile> [--verbose] [--no-write]                      # re-evaluate pinned deps; diff verdict vs. stored baseline",
       "                     [--no-version-drift] [--fail-on-available-updates]     #   + pre-vet newer versions (informational unless --fail-on-...)",
       "",
+      "  REVIEW: inspect evidence, then --review-id <id> --review-choice Proceed|Decline.",
       "  Exit codes: 0 safe/allow · 2 block · 3 review.",
       "",
       "Evidence in / out (no acquisition, just render a verdict):",
@@ -57,6 +54,7 @@ function printUsage() {
       "  pkgxray --file evidence.json --format markdown",
       "",
       "Advanced:",
+      "  pkgxray compose <source-root> [--entry index.js] [--json]                # experimental cross-package dataflow + bundled package checks",
       "  pkgxray vm-setup                       # experimental: build trusted VM assets locally; requires Docker and QEMU",
       "  pkgxray vm-scan npm:<name>@<exact-version> --yes-run-untrusted-code [--vm-profile developer|ci] [--format json]",
       "                     # disposable hardware-accelerated VM; no network device or host mounts; never installation approval.",
@@ -267,6 +265,12 @@ function parseArgs(argv) {
       options.quarantineRoot = argv[++i];
     } else if (arg === "--promote-to") {
       options.promoteTo = argv[++i];
+    } else if (arg === "--review-for-install") {
+      options.reviewAction = "install";
+    } else if (arg === "--review-id") {
+      options.reviewId = argv[++i];
+    } else if (arg === "--review-choice") {
+      options.reviewChoice = argv[++i];
     } else if (arg === "--policy") {
       options.policy = argv[++i];
     } else if (arg === "--force") {
@@ -353,6 +357,10 @@ function readInput(file) {
 }
 
 async function main() {
+  if (process.argv[2] === "compose") {
+    await require("./compose").main(process.argv.slice(3));
+    return;
+  }
   // `pkgxray mcp-server` runs THIS package as a stdio MCP server — the same
   // server the `pkgxray-mcp` bin exposes — so MCP hosts can launch it with
   // `npx -y pkgxray mcp-server` (the registry entry) without a separate
@@ -425,7 +433,7 @@ async function main() {
 
   if (options.command === "install") {
     let result;
-    try { result = await require("../src/install").installProject(options.project); }
+    try { result = await require("../src/install").installProject(options.project, { reviewScope: 'local-user', reviewDecisions: new (require('../src/review').LocalReviewDecisions)(require('node:path').join(require('node:os').homedir(), '.local', 'state', 'pkgxray', 'reviews.json')) }); }
     catch (error) { result = { decision: "review", installed: false, error: error.message }; }
     if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     else if (result.error) process.stderr.write(`Installation refused: ${result.error}\n`);
@@ -447,7 +455,9 @@ async function main() {
         ...options,
         config,
         scanErrorPolicy: config.scanErrorPolicy,
-        keepStaging: !options.artifact
+        keepStaging: !options.artifact,
+        reviewScope: 'local-user',
+        reviewDecisions: new (require('../src/review').LocalReviewDecisions)(require('node:path').join(require('node:os').homedir(), '.local', 'state', 'pkgxray', 'reviews.json'))
       });
     } catch (error) {
       // A guard that crashes / times out must not exit to an unclear state.
@@ -478,7 +488,7 @@ async function main() {
     }
 
     const adjusted = result.report;
-    const finalVerdict = result.decision;
+    const finalVerdict = result.allowed ? 'allow' : result.outcome === 'UNSAFE' ? 'block' : result.decision;
 
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify(options.receiptOnly ? { ...result, sourceFiles: undefined } : result, null, 2)}\n`);
@@ -835,12 +845,17 @@ function renderCanaryMarkdown(staged, behavioral) {
 
 function renderGuardMarkdown(result) {
   const lines = [
-    `Decision: **${result.decision.toUpperCase()}**`,
+    `Outcome: **${result.outcome || (result.decision === "review" ? "Pending decision" : result.decision === "allow" ? "SAFE" : "UNSAFE")}**`,
     `Reference: \`${sanitizeForTerminal(result.reference)}\``,
     `Quarantine: \`${sanitizeForTerminal(result.quarantinePath)}\``,
     ""
   ];
 
+  if (result.review) {
+    lines.push(result.review.choice ? `REVIEW: ${result.review.choice} remembered for this developer.` : result.review.eligible
+      ? `REVIEW: inspect the evidence below, then choose Proceed or Decline. Review ID: ${result.review.id}. Use --review-id <id> --review-choice Proceed (or Decline).`
+      : 'REVIEW: required checks are incomplete; resolve them before use or promotion.', '');
+  }
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,

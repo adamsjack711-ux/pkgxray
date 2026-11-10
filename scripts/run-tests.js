@@ -10,16 +10,19 @@ const root = path.resolve(__dirname, "..");
 function discover(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const file = path.join(directory, entry.name);
-    return entry.isDirectory() ? discover(file) : entry.isFile() && entry.name.endsWith(".test.js") ? [file] : [];
+    return entry.isDirectory() ? discover(file) : entry.isFile() && /\.test\.(?:js|mjs)$/.test(entry.name) ? [file] : [];
   });
 }
-const files = ["test", "examples/pkgxray-proxy/test"].flatMap(dir => discover(path.join(root, dir))).sort();
+const composeOnly = process.argv.includes("--compose");
+const directories = composeOnly ? ["components/compose/test"] : ["test", "examples/pkgxray-proxy/test", "components/compose/test"];
+const files = directories.flatMap(dir => discover(path.join(root, dir))).sort();
+if (composeOnly) files.push(path.join(root, "test/compose.test.js"));
 if (!files.length) throw new Error("No tests discovered");
-const result = spawnSync(process.execPath, ["--test", ...process.argv.slice(2), ...files], {
+const result = spawnSync(process.execPath, ["--test", ...process.argv.slice(2).filter(arg => arg !== "--compose"), ...files], {
   // The suite intentionally exercises real process/network timeout paths. Keep
   // a global ceiling below CI's five-minute job limit while leaving headroom
   // for the full cross-platform matrix and per-test 60-second bounds.
-  cwd: root, stdio: "inherit", timeout: 240000
+  cwd: root, env: { ...process.env, PKGXRAY_CHECKOUT: root }, stdio: "inherit", timeout: 240000
 });
 if (result.error) process.stderr.write(`Test runner failed: ${result.error.message}\n`);
 process.exitCode = result.status === null ? 1 : result.status;

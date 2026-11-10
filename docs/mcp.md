@@ -249,3 +249,9 @@ notifications and opaque media still require controls in the consuming host.
 - [compatibility.md](compatibility.md) — which MCP surfaces are Stable vs. Experimental
 - [design/mcp-adapter-prompt.md](design/mcp-adapter-prompt.md) — the connect-time trust-layer specification
 - [design/mcp-adapter-triage.md](design/mcp-adapter-triage.md) — implementation verified against that spec
+
+## Experimental Compose analysis
+
+Set `PKGXRAY_COMPOSE=1` in the local MCP operator environment to expose
+`analyze_package_composition`; restrict input using `PKGXRAY_MCP_ALLOWED_ROOTS`.
+Its `.pkgxray.json` tool key is `compose`. See [Compose setup and limits](compose.md).

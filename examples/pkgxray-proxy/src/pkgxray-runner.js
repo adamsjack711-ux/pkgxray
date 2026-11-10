@@ -39,6 +39,7 @@ export function runGuard(bin, ref, opts = {}) {
   if (opts.artifact) args.push('--archive', opts.artifact.archivePath, '--integrity', opts.artifact.integrity, '--receipt-only');
 
   return new Promise((resolve, reject) => {
+    if (opts.signal?.aborted) { reject(new ScanError('Scan cancelled')); return; }
     const childEnv = { ...env };
     if (cacheUrl) childEnv.PKGXRAY_CACHE_URL = cacheUrl;
 
@@ -55,6 +56,9 @@ export function runGuard(bin, ref, opts = {}) {
     let stderr = '';
     let settled = false;
     let timedOut = false;
+    let cancelled = false;
+    const abort = () => { cancelled = true; killTree(); };
+    opts.signal?.addEventListener('abort', abort, { once: true });
 
     const killTree = () => {
       try {
@@ -64,6 +68,7 @@ export function runGuard(bin, ref, opts = {}) {
         try { child.kill('SIGKILL'); } catch { /* already gone */ }
       }
     };
+    if (opts.signal?.aborted) abort();
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -75,6 +80,7 @@ export function runGuard(bin, ref, opts = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', abort);
       fn(arg);
     };
 
@@ -92,6 +98,7 @@ export function runGuard(bin, ref, opts = {}) {
     });
 
     child.on('close', (code, signal) => {
+      if (cancelled) { finish(reject, new ScanError('Scan cancelled')); return; }
       if (timedOut) {
         finish(reject, new ScanError(`pkgxray scan timed out after ${timeoutMs}ms`, {
           ref, timeout: true, stderr: stderr.slice(0, 2000),

@@ -45,4 +45,4 @@ Checks supplied snippets and npm metadata/advisories on Cloudflare; no package e
 
 ## Documentation
 
-[Docs index](docs/README.md) · [Reference](docs/reference.md) · [Threat model](docs/threat-model.md) · [BLOCK example](docs/reference.md#synthetic-block-example) · [Security](SECURITY.md) · [Website](https://pkgxray.ca)
+[Compose (experimental, checkout only)](docs/compose.md) · [Docs index](docs/README.md) · [Reference](docs/reference.md) · [Threat model](docs/threat-model.md) · [BLOCK example](docs/reference.md#synthetic-block-example) · [Security](SECURITY.md) · [Website](https://pkgxray.ca)

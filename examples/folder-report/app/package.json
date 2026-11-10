@@ -1,0 +1,1 @@
+{"name":"folder-report-local","version":"0.1.0","private":true,"description":"Read-only directory inventory with bounded traversal and no symlink following","main":"index.js","bin":{"folder-report":"index.js"},"license":"UNLICENSED"}

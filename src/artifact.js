@@ -51,6 +51,12 @@ function computeBuildId(root) {
   // Include nested runtime code, vendored parsers, data and every entrypoint.
   // Never traverse node_modules or generated workspace/test output.
   walk("src"); walk("bin");
+  // Compose ships in the same distribution: its parser and worker behavior
+  // must invalidate approvals/cache identities just like core scanner code.
+  if (fs.existsSync(path.join(root, "components/compose"))) {
+    walk("components/compose/src"); walk("components/compose/bin");
+    files.push("components/compose/package.json", "components/compose/LICENSE");
+  }
   const build = crypto.createHash("sha256");
   for (const file of files.sort()) {
     const bytes = fs.readFileSync(path.join(root, file));
