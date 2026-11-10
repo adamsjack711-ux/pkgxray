@@ -36,7 +36,11 @@ function server(t, cwd, enabled = "1") {
   });
   const closed = new Promise(resolve => child.once("close", resolve));
   const cleanup = serverCleanup.get(t) || [];
-  cleanup.push(async () => { child.stdin.end(); child.kill(); await closed; });
+  cleanup.push(async () => {
+    const fallback = setTimeout(() => child.kill("SIGKILL"), 2000);
+    try { child.stdin.end(); child.kill(); await closed; }
+    finally { clearTimeout(fallback); }
+  });
   serverCleanup.set(t, cleanup);
   const call = (method, params) => new Promise((resolve, reject) => {
     const key = ++id;

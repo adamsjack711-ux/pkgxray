@@ -34,7 +34,15 @@ function start(mode = 'static', options = {}) {
     notify(method, params) { child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n'); },
     stats() { return new Promise(resolve => { const id = ++next; metrics.set(id, resolve); child.send({ type: 'stats', id }); }); },
     async init() { await request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'local-load-harness', version: '1' } }); return request('tools/list'); },
-    async close() { if (child.exitCode !== null) return; const exited = new Promise(resolve => child.once('exit', resolve)); child.send({ type: 'stop' }); await exited; }
+    async close() {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = new Promise(resolve => child.once('exit', resolve));
+      const fallback = setTimeout(() => child.kill('SIGKILL'), 2000);
+      try {
+        if (child.connected) child.send({ type: 'stop' }); else child.kill();
+        await exited;
+      } finally { clearTimeout(fallback); }
+    }
   };
 }
 function evidence(index = 0) {
