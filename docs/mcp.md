@@ -1,5 +1,10 @@
 # MCP security
 
+The active flow below describes the unpublished breaking 2.0 candidate. The
+1.3 work is a separate held PR. Candidate gates return binary decisions without
+Proceed/Decline prompts; hosted and published releases have their own deployed
+contracts. See [compatibility](compatibility.md) before migrating.
+
 An AI agent pulls untrusted things in two ways — packages it installs, and
 Model Context Protocol (MCP) servers it connects to. pkgxray covers both
 directions:
@@ -55,7 +60,7 @@ Registry entry uses.
 
 | Tool | Inputs | Output and security consequence |
 |---|---|---|
-| `guard_agent_extension_install` | exact package reference; optional policy/promotion | downloads and stages a real package, queries npm/OSV/GitHub, and returns cited `SAFE`/`REVIEW`/`BLOCK`; optional promotion writes files |
+| `guard_agent_extension_install` | exact package reference; optional policy | downloads and stages a real package, queries npm/OSV/GitHub, and returns `SAFE`/`UNSAFE` with reasons; read-only MCP rejects promotion |
 | `audit_agent_extension_supply_chain` | caller-supplied source and metadata | pure static structured verdict; no local file read, network, install, or execution |
 | `audit_lockfile_supply_chain` | manifest path under an approved root | reads the manifest, queries OSV, and returns one verdict per resolved package |
 | `triage_lockfile_supply_chain` | manifest path plus bulk `allow` or `block` | writes a sibling `.pkgxray.lock`; `allow` suppresses selected findings in later audits |
@@ -64,11 +69,20 @@ The server honors the same `.pkgxray.json` policy file as the CLI — including
 the `mcp` block (`tools`, `packageScanFirst`, `timeoutMs`); see
 [configuration.md](configuration.md).
 
+Eligible transient required-check failures retry once within the original
+shared deadline against the same immutable evidence. Guard retries OSV for the
+same pinned identity; supplied-evidence analysis retries only narrowly eligible
+worker failures. Disabled/malformed checks, heuristic findings and permission
+gaps do not retry. Persistent uncertainty blocks automatically. Explicitly
+invoked triage still writes operator policy; it is not a per-event approval
+prompt or a bypass for mandatory missing checks.
+
 ### Filesystem boundary
 
-MCP tool arguments cannot grant themselves access to the filesystem. Four kinds
-of path have to resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`: local package
-references, lockfiles, promotion targets, and quarantine roots the caller picks.
+MCP tool arguments cannot grant themselves access to the filesystem. Caller-selected
+paths have to resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`: local package
+references, lockfiles and quarantine roots the caller picks. MCP guard rejects
+promotion targets rather than granting write authority.
 Separate multiple roots with the platform's path delimiter, `:` on macOS and
 Linux, `;` on Windows. Symlinks that escape a root are rejected.
 
@@ -80,12 +94,14 @@ still use pkgxray's own OS quarantine.
 
 The server rejects unknown tool arguments at runtime. Internal test/provider
 options are not part of the MCP API. Guard staging is removed after each call;
-returned staging paths are null, and an authorized promotion occurs before
-cleanup. The server caps frames at 4 MiB and bounds queued/running requests to
-32 tasks, 8 MiB retained input and four concurrent operations.
+returned staging paths are null. Review arguments and session choices are
+rejected; there is no remembered Proceed authorization. The server caps frames
+at 4 MiB; static analysis and guard preparation use separate bounded queues.
+See [the automatic contract](review-contract.md#high-traffic-mcp-safeguards) for
+current request, input and worker limits.
 
 Live proxy pin checks retain initialized capabilities and instructions. A change
-to either holds all tool calls under strict/balanced policy until reapproval.
+to either holds all tool calls under every policy until the trusted pin is updated.
 Unreadable/corrupt pins, an unavailable explicitly selected pin, or a lost
 previously established baseline also hold calls. An intentionally unpinned
 default session remains distinct from a failed pin check. Proxy queues, held
@@ -130,6 +146,8 @@ HTTP targets refuse them rather than ignoring requested isolation.
 
 Tool enumeration refuses malformed responses, duplicate tool names and
 unfinished pagination. A partial list cannot become an approved manifest.
+A blocked package scan halts connection; `--force` is rejected and cannot bypass
+that result. Uncertainty is a block with reasons, not a confirmed-malware label.
 
 The manifest audit looks for:
 
@@ -221,8 +239,8 @@ payloads are also retained. A later outbound frame containing a remembered value
 one URL-encoding layer (including mixed-case escapes), or its standard
 Base64/Base64url representation is denied
 before forwarding. Held tool calls are rechecked after manifest verification.
-The guard applies even when injection-result scanning is disabled or the runtime
-policy is permissive; it never grants an approval. A rejected request gets a
+The guard applies alongside mandatory injection-result screening under every
+runtime policy; it never grants an approval. A rejected request gets a
 JSON-RPC error. An uninspectable raw frame, or a credential-bearing notification
 or response without a request to reject, closes the session.
 
@@ -256,9 +274,8 @@ exploits, CPU exhaustion, or malicious content returned through MCP stdout.
 | every response to a client request | doc-typed injection scan of model-visible text, capped at 512 KiB | ~0.06 ms for 2 KB |
 | after `--pin` | fresh manifest diffed against pinned fingerprints; **drifted tools denied** until re-approved | one lock-file read |
 
-Policies mirror the hookshot gate: `block` denies everywhere; `review` denies
-under `--policy strict`, passes with a warning under `balanced` (default) and
-`permissive`. A denied call never reaches the server — the agent gets an
+`strict`, `balanced` (default) and `permissive` all deny blocking findings,
+manifest uncertainty, failed pin verification and pin drift. A denied call never reaches the server — the agent gets an
 `isError` result naming the reason. The denial is call-scoped, not
 session-scoped: its structured content reports `session: active` and
 `continuationAllowed: true`, so hosts and agents can continue the workflow with
@@ -270,8 +287,8 @@ instructions and responses to resource, prompt and completion requests. Textual
 resource blobs and SVG images are base64-decoded before inspection. It shares a
 512 KiB text budget and 10,000-node traversal budget across each response. Opaque
 image, audio and binary bodies are not interpreted.
-Strict policy withholds REVIEW results too; balanced withholds BLOCK results;
-permissive only logs findings. `--no-scan-results` explicitly disables screening.
+Every policy withholds uncertain or blocked results. `--no-scan-results` is
+removed and rejected; result screening cannot be disabled.
 
 Manifest pinning verifies descriptions and schemas, not executable behavior.
 Changes without a notification are not automatically re-enumerated, and identical
