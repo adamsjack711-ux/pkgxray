@@ -7745,11 +7745,29 @@ pure["./passive-url-evidence"] = (() => { const module = {exports:{}}; const exp
 
 const acorn = require('./vendor/acorn/acorn');
 
-// Narrow syntax proof, not a general dataflow or host-integrity claim. Assume
-// standard console only when this file contains no other reference, alias,
+// Narrow source-pattern classification under standard, unmodified builtins;
+// never a whole-package safety or host-integrity proof. Admit console only in
+// an explicitly complete, isolated supplied artifact
+// (one unique root manifest and one JavaScript source), with no other reference, alias,
 // rebinding or reflective/dynamic-code access that can invalidate that model.
 // Unknown syntax/uses fail closed. Never execute inspected source.
-function onlyPassiveDiagnosticUrls(source, domains) {
+function onlyPassiveDiagnosticUrls(source, domains, context) {
+  const files = context?.sourceFiles;
+  const coverage = context?.sourceCoverage;
+  const target = context?.filePath;
+  // Per-file syntax cannot rule out mutations in a neighboring module. Missing
+  // inventory/coverage is uncertainty, not an assertion that no neighbor exists.
+  if (!Array.isArray(files) || files.length !== 2 || target === "package.json" ||
+      typeof target !== "string" || !/\.(?:js|cjs|mjs)$/.test(target) ||
+      files.filter(file => file.path === "package.json").length !== 1 ||
+      files.filter(file => file.path === target && file.content === source).length !== 1 ||
+      coverage?.complete !== true || coverage.scannedFiles !== files.length || coverage.inventoryFiles !== files.length ||
+      coverage.skippedFiles !== 0 || coverage.truncatedFiles !== 0 ||
+      !Array.isArray(coverage.reasons) || coverage.reasons.length !== 0 ||
+      !Array.isArray(coverage.runtimeFiles) || !coverage.runtimeFiles.includes(target) ||
+      coverage.runtimeFiles.some(file => file !== target && file !== "package.json") ||
+      (coverage.installTimeFiles !== undefined && (!Array.isArray(coverage.installTimeFiles) ||
+        coverage.installTimeFiles.some(file => file !== target && file !== "package.json")))) return false;
   if (typeof source !== 'string' || source.length > 1024 * 1024) return false;
   const tokens = [];
   let ast;
@@ -7769,6 +7787,9 @@ function onlyPassiveDiagnosticUrls(source, domains) {
     const { node, parent } = pending.pop();
     parents.set(node, parent);
     if (node.type === 'WithStatement' || node.type === 'ThisExpression' || node.type === 'TaggedTemplateExpression') return false;
+    // Computed properties can recover Function/console through escaped or
+    // assembled names. This narrow exception does not resolve reflection.
+    if (node.type === 'MemberExpression' && node.computed) return false;
     if (node.type === 'Identifier' && (forbidden.has(node.name) || ['constructor', '__proto__'].includes(node.name))) return false;
     if (node.type === 'Identifier' && node.name === 'require' &&
         (parent?.type !== 'CallExpression' || parent.callee !== node)) return false;
@@ -7861,6 +7882,64 @@ function member(node, property) {
     identifier(node.property, property);
 }
 
+// Shell command exactness does not establish interpreter identity. Supplied
+// node shims or ambiguous manifest metadata invalidate this exception. External
+// PATH, shell configuration and NODE_OPTIONS/preloads remain trusted host inputs;
+// this static proof never certifies an arbitrary execution environment.
+function interpreterUnshadowed(files) {
+  if (files.length > 20000) return false;
+  const manifests = new Set();
+  let manifestNodes = 0, manifestBytes = 0;
+  const nodeName = name => typeof name === "string" && /^(?:node)(?:\.(?:exe|cmd|bat|com))?$/i.test(name.split(/[\\/]/).at(-1));
+  for (const file of files) {
+    if (typeof file.path !== "string") return false;
+    const normalized = file.path.replace(/\\/g, "/").toLowerCase();
+    if (/(?:^|\/)\.bin\/node(?:\.(?:exe|cmd|bat|com))?$/.test(normalized)) return false;
+    if (!/(?:^|\/)package\.json$/.test(normalized)) continue;
+    if (manifests.has(normalized) || typeof file.content !== "string" || file.content.length > MAX_SOURCE_LENGTH) return false;
+    manifests.add(normalized);
+    manifestBytes += file.content.length;
+    if (manifestBytes > 64 * 1024) return false;
+    let manifest, ast;
+    try {
+      manifest = JSON.parse(file.content);
+      ast = acorn.parse("(" + file.content + ")", { ecmaVersion: "latest" });
+    } catch { return false; }
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return false;
+    // JSON.parse discards duplicate properties. Do not let a later benign bin
+    // value hide an earlier shadow declaration from a different consumer.
+    const pending = [ast];
+    while (pending.length) {
+      const node = pending.pop();
+      if (++manifestNodes > MAX_NODES) return false;
+      if (node.type === "ObjectExpression") {
+        const names = new Set();
+        for (const property of node.properties) {
+          const key = property.key?.value;
+          if (typeof key !== "string" || names.has(key)) return false;
+          names.add(key);
+        }
+      }
+      for (const value of Object.values(node)) {
+        for (const child of Array.isArray(value) ? value : [value]) {
+          if (child && typeof child === "object" && typeof child.type === "string") pending.push(child);
+        }
+      }
+    }
+    if (manifest.directories && Object.hasOwn(manifest.directories, "bin")) return false;
+    if (!Object.hasOwn(manifest, "bin")) continue;
+    if (typeof manifest.bin === "string") {
+      if (typeof manifest.name !== "string" || !manifest.name || nodeName(manifest.name) || !manifest.bin) return false;
+    } else {
+      if (!manifest.bin || typeof manifest.bin !== "object" || Array.isArray(manifest.bin)) return false;
+      for (const [name, target] of Object.entries(manifest.bin)) {
+        if (!name || /[\\/]/.test(name) || nodeName(name) || typeof target !== "string" || !target) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function proveLiteralLifecycle(command, manifestPath, evidence) {
   if (typeof command !== "string" || command.length > 520 ||
       !/^node \.\/[A-Za-z0-9_/-][A-Za-z0-9_./-]*\.(?:js|cjs|mjs)$/.test(command) ||
@@ -7870,7 +7949,7 @@ function proveLiteralLifecycle(command, manifestPath, evidence) {
   const directory = manifestPath.slice(0, -"package.json".length);
   const scriptPath = directory + relative;
   const files = evidence?.sourceFiles;
-  if (!Array.isArray(files)) return null;
+  if (!Array.isArray(files) || !interpreterUnshadowed(files)) return null;
   const matches = files.filter(file => file.path === scriptPath);
   if (matches.length !== 1 || files.filter(file => file.path === manifestPath).length !== 1) return null;
   const source = matches[0].content;
@@ -7946,6 +8025,8 @@ function proveLiteralLifecycle(command, manifestPath, evidence) {
   return {
     kind: "literal-node-lifecycle-v1",
     command,
+    assumptions: ["The host resolves node to the trusted Node.js interpreter.",
+      "External PATH, shell configuration and NODE_OPTIONS/preloads do not alter the analyzed behavior."],
     script: { file: scriptPath, source },
     operations: [...operations].sort(),
     environmentChecks: [...environmentChecks].sort()
@@ -9680,7 +9761,7 @@ function auditFiles(files, findings, evidence) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectAgentConfigAccess(file, content, lower, findings, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence.sourceCoverage);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence);
     inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged);
     if (!suppressObfuscationHeuristics) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
@@ -11234,7 +11315,7 @@ const READ_DATA_BLOB_REGEX =
 const READ_OPAQUE_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
-function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, sourceCoverage) {
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
   // (`require("ht"+"tps")`, a domain spelled in fragments) count too.
   const nlower = normChanged ? normalized.toLowerCase() : lower;
@@ -11351,11 +11432,14 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // shortener alone is not proof of exfil. Placed after the HIGH loader/env
   // branches above so a genuine stage-2 loader still BLOCKS first.
   // Suppress only this coincidence when every original and normalized URL
-  // occurrence is proven to be a direct passive diagnostic argument.
+  // occurrence is classified as a direct diagnostic argument in the bounded,
+  // complete supplied-source context. This assumes standard host builtins.
+  const passiveContext = { sourceFiles: evidence.sourceFiles, sourceCoverage: evidence.sourceCoverage, filePath: file.path };
   const passiveShorteners = hasCapability && shortener && !hasExec && !hasDynamicEval && !hasLiteralEval &&
-    sourceCoverage?.complete !== false && !(sourceCoverage?.truncatedFiles > 0) &&
-    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS) &&
-    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS));
+    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS, passiveContext) &&
+    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS, {
+      ...passiveContext, sourceFiles: evidence.sourceFiles.map(source => source.path === file.path ? { ...source, content: normalized } : source)
+    }));
   if (hasCapability && shortener && !passiveShorteners) {
     findings.push({
       severity: "medium",
