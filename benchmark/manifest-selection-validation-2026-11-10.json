@@ -1,0 +1,44 @@
+{
+  "measuredAt": "2026-11-11T05:46:00.105Z",
+  "scannerBuildId": "2dfb44f2760a260fc78bfc6b81dd13528dc5e2676b69c909eaea5af071d115fb",
+  "baselineCommit": "7db6e54a34cbf5dbb537d65a427e94951c3a75a7",
+  "change": "Prefer the root package.json regardless of supplied source ordering, require an exact manifest basename, and preserve malformed-root uncertainty.",
+  "beforeFix": {
+    "regressionTests": 4,
+    "failed": 4
+  },
+  "afterFix": {
+    "focused": 139,
+    "total": 1240,
+    "passed": 1235,
+    "skipped": 5,
+    "failed": 0
+  },
+  "automaticFlow": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "mcp": {
+    "regressionCases": 1,
+    "smokeChecks": 7,
+    "transport": "real stdio",
+    "fixtureExecution": false,
+    "realNetwork": false
+  },
+  "limitations": [
+    "Authored fixtures; no production accuracy claim.",
+    "Original 84-case corpus inputs and counts remain unchanged.",
+    "Selection among multiple nested manifests when no root exists retains the existing first-match fallback.",
+    "Exact-commit CI is tracked separately on PR #110."
+  ]
+}

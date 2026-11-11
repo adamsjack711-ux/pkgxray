@@ -145,6 +145,9 @@ autonomously, so its defaults start stricter.
 ```
 
 - `tools` — which tools the server exposes (`null`/omitted = all).
+  Experimental evidence reading uses shortkey `investigate`, also requires
+  `guard`, and remains unavailable unless the operator sets
+  `PKGXRAY_AGENT_INVESTIGATION=1` in the server environment.
 - `packageScanFirst` — scan a server's package before connecting. On by default;
   disabling it warns loudly.
 - `policy`, `timeoutMs` — as above, scoped to the MCP surface.

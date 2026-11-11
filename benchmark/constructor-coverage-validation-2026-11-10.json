@@ -1,0 +1,46 @@
+{
+  "measuredAt": "2026-11-11T06:13:00.399Z",
+  "scannerBuildId": "2feb34bfc3a4536b3afbbecccf8b0459f8612c01db6198f37987de66f8c8251d",
+  "baselineCommit": "39233ad5e9d4854e7c66ece4e801861a70620be6",
+  "change": "Expose unmodeled class constructor replacement returns as mandatory flow-analysis gaps; preserve existing accessor gaps.",
+  "beforeFix": {
+    "tests": 10,
+    "passed": 9,
+    "failed": 1
+  },
+  "afterFix": {
+    "focused": 34,
+    "total": 1256,
+    "passed": 1251,
+    "skipped": 5,
+    "failed": 0
+  },
+  "independentReview": "Constructor-return handling reviewed; RegExp Literal.value:null portability case fixed and covered by /x/v source regression.",
+  "automaticFlow": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "liveControls": {
+    "total": 4,
+    "allowed": 3,
+    "blocked": 1,
+    "allArtifactHashesMatched": true
+  },
+  "limitations": [
+    "General accessor semantics remain unsupported; yocto-queue is still blocked with a flow-analysis gap.",
+    "No getter exemption or LLM override was introduced.",
+    "Constructor replacement returns are held rather than fully modeled; some benign constructors can remain inconclusive.",
+    "Third-party static corpus has seven uncertain malicious samples and one extraction-limit error, retained in its separate record.",
+    "CI for this exact commit is tracked separately on PR #110."
+  ]
+}

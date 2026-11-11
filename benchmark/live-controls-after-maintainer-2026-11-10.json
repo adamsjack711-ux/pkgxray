@@ -1,0 +1,111 @@
+{
+  "measuredAt": "2026-11-11T05:51:27.111Z",
+  "scannerBuildId": "f502ac1114d3720951bee7b40beddf2904fd13d009c5fda33327d95b66ef4e8d",
+  "transport": "real stdio MCP",
+  "realNetwork": true,
+  "packageExecution": false,
+  "selection": "Same existing four SHA-256-pinned benign controls; no replacements.",
+  "limitations": [
+    "Small project-selected sample, not production accuracy or throughput data.",
+    "Current live npm/OSV/GitHub observations are time-specific."
+  ],
+  "cases": [
+    {
+      "packageName": "escape-string-regexp",
+      "version": "5.0.0",
+      "expectedSha256": "c8b662afe8aa2b852ecc27d766e584a502f8351fbbd890611f2509bf083d28e6",
+      "artifactSha256": "c8b662afe8aa2b852ecc27d766e584a502f8351fbbd890611f2509bf083d28e6",
+      "artifactMatched": true,
+      "decision": "allow",
+      "allowed": true,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "reasonCodes": [],
+      "categories": [],
+      "contextCategories": [
+        "lonely-maintainer",
+        "npm-vs-github-clean"
+      ],
+      "elapsedMs": 482
+    },
+    {
+      "packageName": "is-number",
+      "version": "7.0.0",
+      "expectedSha256": "7b75c1057198cf97696909a9bee176c9c5e9bcb5b03bf3ecef2f484defadd51e",
+      "artifactSha256": "7b75c1057198cf97696909a9bee176c9c5e9bcb5b03bf3ecef2f484defadd51e",
+      "artifactMatched": true,
+      "decision": "allow",
+      "allowed": true,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "reasonCodes": [],
+      "categories": [],
+      "contextCategories": [
+        "github-stale",
+        "npm-vs-github-clean"
+      ],
+      "elapsedMs": 720
+    },
+    {
+      "packageName": "picocolors",
+      "version": "1.1.1",
+      "expectedSha256": "d3aedb2807967b7eb37fd11b03b7e3701e725af79c650d0812ff7213f8f882d9",
+      "artifactSha256": "d3aedb2807967b7eb37fd11b03b7e3701e725af79c650d0812ff7213f8f882d9",
+      "artifactMatched": true,
+      "decision": "allow",
+      "allowed": true,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "reasonCodes": [],
+      "categories": [],
+      "contextCategories": [
+        "lonely-maintainer",
+        "npm-vs-github-clean"
+      ],
+      "elapsedMs": 334
+    },
+    {
+      "packageName": "yocto-queue",
+      "version": "1.2.1",
+      "expectedSha256": "2b3bd9bfcd6ca5e17556846221a11e15b43c81f76cb6bce3059405fed9753055",
+      "artifactSha256": "2b3bd9bfcd6ca5e17556846221a11e15b43c81f76cb6bce3059405fed9753055",
+      "artifactMatched": true,
+      "decision": "block",
+      "allowed": false,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "reasonCodes": [
+        "flow-analysis-gap",
+        "uncertain-findings"
+      ],
+      "categories": [
+        "flow-analysis-gap"
+      ],
+      "contextCategories": [
+        "lonely-maintainer",
+        "npm-vs-github-clean"
+      ],
+      "elapsedMs": 373
+    }
+  ]
+}

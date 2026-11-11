@@ -2,7 +2,7 @@
 
 const path = require("node:path").posix;
 const { analyzeExecutionFile } = require('./execution-graph');
-const INSTALL_HOOKS = new Set(["preinstall", "install", "postinstall", "prepare", "prepack"]);
+const INSTALL_HOOKS = new Set(["preinstall", "install", "postinstall", "prepare", "prepack", "prepublish", "preprepare", "postprepare", "postpack"]);
 const EXTENSIONS = ["", ".js", ".cjs", ".mjs", ".json", ".ts", ".node", "/index.js", "/index.cjs", "/index.mjs"];
 
 // A conservative plan over the actual artifact inventory. This follows literal
@@ -46,22 +46,25 @@ function createSourcePlan(inventory) {
     if (install) installTime.add(found);
   }
 
-  function entries(value, localOnly = false, condition = '') {
+  function entries(value, localOnly = false, conditional = false, typeOnly = false) {
+    if (typeOnly) return;
     if (typeof value === "string") {
-      if (!/^(?:types|typings)$/i.test(condition) && (!localOnly || value.startsWith("."))) {
+      if (!localOnly || value.startsWith(".")) {
         resolve("package.json", value);
       }
     } else if (Array.isArray(value)) {
-      for (const v of value) entries(v, localOnly, condition);
+      for (const v of value) entries(v, localOnly, conditional, typeOnly);
     } else if (value && typeof value === "object") {
-      for (const [key, v] of Object.entries(value)) entries(v, localOnly, key);
+      for (const [key, v] of Object.entries(value)) entries(v, localOnly, conditional,
+        conditional && /^(?:types|typings)$/i.test(key));
     }
   }
 
   function manifest(pkg) {
-    for (const key of ["main", "module", "bin", "exports"]) entries(pkg[key]);
+    for (const key of ["main", "module", "bin"]) entries(pkg[key]);
+    entries(pkg.exports, false, true);
     // Conditional import and browser maps may name external dependencies.
-    entries(pkg.imports, true);
+    entries(pkg.imports, true, true);
     entries(pkg.browser, typeof pkg.browser === "object");
     if (!pkg.main && !pkg.exports && inventory.has("index.js")) required.add("index.js");
     for (const [hook, command] of Object.entries(pkg.scripts || {})) {
@@ -92,12 +95,14 @@ function createSourcePlan(inventory) {
 
   function imports(from, text) {
     if (!required.has(from)) return;
-    const re = /(?:\brequire\s*\(|\bimport\s*\(|\b(?:import|export)\b[^;'"\n]*?\bfrom\b|\bimport\s*)(['"])(\.[^'"\r\n]*)\1/g;
-    for (const match of text.matchAll(re)) resolve(from, match[2], installTime.has(from));
+    // Only syntax nodes can create imports: documentation strings, comments,
+    // regex literals and package JSON examples are not executable references.
+    // Unsupported syntax and partial analysis remain explicit graph gaps.
+    const facts = analyzeExecutionFile(from, text);
+    for (const specifier of facts.imports) resolve(from, specifier, installTime.has(from));
     // Subprocess targets are executable even with .dat/.txt or no extension.
     // Syntax facts also handle aliases and path.join(__dirname, ...); no target
     // source is executed to discover these paths.
-    const facts = analyzeExecutionFile(from, text);
     for (const edge of facts.edges) {
       if (edge.target !== null) resolve('package.json', edge.target, installTime.has(from));
       else gaps.add(`unresolved runtime execution in ${from}: ${edge.reason}`);

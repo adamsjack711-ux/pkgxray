@@ -1,7 +1,7 @@
 {
   "name": "postinstall-script-present",
-  "expect": "review",
-  "note": "a lone postinstall script is legitimately review, not block",
+  "expect": "safe",
+  "note": "The complete supplied node ./scripts/rebuild.js script only logs a literal message; bounded AST proof clears this hook without trusting the package name.",
   "evidence": {
     "packageName": "native-dep",
     "sourceFiles": {

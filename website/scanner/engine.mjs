@@ -6425,6 +6425,11 @@ const acorn = require("./vendor/acorn/acorn");
 // Bounded abstract interpretation. These values describe source; they never
 // execute it. REVIEW means a modeled sensitive value reaches an outbound sink.
 const SECRET = 1, REMOTE = 2, ENV = 4;
+// This key cannot collide with an inspected program binding. Private names
+// resolve to lexical Symbols, never public strings such as "value" or "#value".
+const PRIVATE_NAMES = Symbol("private names");
+const INSTANCE_BRAND = Symbol("instance brand");
+const GETTER_STATE = Symbol("getter-bearing instance");
 const clean = () => ({ bits: 0 });
 const tagged = kind => ({ bits: 0, kind });
 const literal = value => ({ bits: 0, value });
@@ -6462,13 +6467,21 @@ function joinValues(values, context, depth = 0) {
   stateTick(context, depth);
   const [out, seen] = joinMemo(present, context, () => ({ bits: present.reduce((n, v) => n | v.bits, 0) }));
   if (seen) return out;
-  if (present.length && present.every(v => v.kind === 'function' && v.node === present[0].node)) {
-    out.kind = 'function'; out.node = present[0].node;
+  if (present.length && present.every(v => v.kind === 'function' && v.node === present[0].node && v.sourceFile === present[0].sourceFile)) {
+    out.kind = 'function'; out.node = present[0].node; out.sourceFile = present[0].sourceFile;
     out.scope = joinStates(null, present.map(v => v.scope), context, depth + 1);
   }
   // A callable is more than its kind: dropping node/scope/target at a branch
   // join produced malformed functions and TypeErrors on ordinary TS helpers.
-  else if (present.some(v => v.node || v.target || v.kind === 'alternatives')) {
+  else if (present.length && present.every(v => ['require', 'module', 'exports'].includes(v.kind) &&
+    v.kind === present[0].kind && v.sourceFile === present[0].sourceFile)) {
+    out.kind = present[0].kind; out.sourceFile = present[0].sourceFile;
+  }
+  else if (present.length && present.every(v => v.kind === 'private-field-getter' &&
+    v.fieldKey === present[0].fieldKey && v.brand === present[0].brand)) {
+    out.kind = 'private-field-getter'; out.fieldKey = present[0].fieldKey; out.brand = present[0].brand;
+  }
+  else if (present.some(v => v.node || v.target || ['private-field-getter', 'alternatives'].includes(v.kind) || ['require', 'module', 'exports'].includes(v.kind))) {
     const alternatives = [...new Set(present.flatMap(v => v.alternatives || [v]))];
     Object.assign(out, { kind: 'alternatives', alternatives: alternatives.slice(0, 16), overflow: alternatives.length > 16 || present.some(v => v.overflow) });
     return out;
@@ -6506,7 +6519,9 @@ function property(object, key) {
   if (object.kind === 'process' && key === 'getBuiltinModule') return tagged('builtin-loader');
   if (object.kind === 'process' && key === 'mainModule') return tagged('module');
   if (object.kind === 'process' && key === 'nextTick') return tagged('setImmediate');
-  if (object.kind === 'module' && key === 'require') return tagged('require');
+  if (object.kind === 'module' && key === 'require') return { ...tagged('require'), sourceFile: object.sourceFile };
+  if (object.kind === 'private-data-shape' && object.pointers.includes(key) && !object.props.has(key)) return object;
+  if (object.kind === 'Symbol' && key === 'iterator') return literal(Symbol.iterator);
   if (object.kind === 'module' && key === 'createRequire') return tagged('require-factory');
   if (object.props?.has(key)) {
     const value = object.props.get(key);
@@ -6533,7 +6548,7 @@ function property(object, key) {
   // `value.constructor.constructor` reaches the Function constructor without
   // spelling Function or eval. Preserve that intrinsic chain for remote-code
   // flow checks while leaving ordinary single `.constructor` reads inert.
-  if (key === 'constructor' && ['intrinsic-constructor', 'function', 'array-method', 'map-get', 'map-set', 'fetch', 'sink', 'request', 'shell'].includes(object.kind)) return tagged('Function');
+  if (key === 'constructor' && ['intrinsic-constructor', 'class', 'function', 'array-method', 'map-get', 'map-set', 'fetch', 'sink', 'request', 'shell'].includes(object.kind)) return tagged('Function');
   if (key === 'constructor') return tagged('intrinsic-constructor');
   if (object.kind === 'https' && ['request', 'get'].includes(key)) return tagged('request');
   // Explicitly identified network modules only. A method named `post` on an
@@ -6613,18 +6628,25 @@ function createFlowAnalysis(files) {
     const activeFunctions = new Map();
     let depth = 0;
     let currentNode = ast;
+    // Imported function bodies execute abstractly in this evaluator, but their
+    // relative imports belong to the module that defined them, not the caller.
+    let lexicalFile = file;
+    let inspectingGetterState = null;
     const tick = () => { if (++work > 500000 || depth > 160) throw new Error('flow budget'); };
     const hint = (node, kind) => {
       const key = `${node.start}:${kind}`;
       if (!seen.has(key) && result.hints.length < 8) { seen.add(key); result.hints.push({ index: node.start, kind }); }
     };
-    function load(raw) {
-      if (typeof raw !== 'string') return clean();
+    function load(raw, origin = lexicalFile, specifierBits = 0) {
+      if (typeof raw !== 'string') {
+        gap('unresolved module specifier'); return { bits: specifierBits };
+      }
       if (!raw.startsWith('.')) {
         const name = raw.replace(/^node:/, '');
         return tagged(name === 'http' ? 'https' : name);
       }
-      const target = normalizeFile(file.slice(0, file.lastIndexOf('/') + 1) + raw);
+      if (typeof origin !== 'string') { gap('unresolved relative module loader origin'); return clean(); }
+      const target = normalizeFile(origin.slice(0, origin.lastIndexOf('/') + 1) + raw);
       if (!target) return clean();
       const resolved = ['', '.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'].map(ext => target + ext).find(name => sources.has(name));
       if (!resolved) { result.status = 'missing'; return clean(); }
@@ -6636,13 +6658,16 @@ function createFlowAnalysis(files) {
     function bind(pattern, value, scope, declare = true) {
       if (!pattern) return;
       tick();
-      if (pattern.type === 'Identifier') scope.set(pattern.name, value, declare);
+      if (pattern.type === 'Identifier') {
+        if (!declare && inspectingGetterState && (value.bits & (SECRET | ENV | REMOTE))) gap('unresolved dormant cross-method getter state');
+        scope.set(pattern.name, value, declare);
+      }
       else if (pattern.type === 'AssignmentPattern') bind(pattern.left, merge(value, expr(pattern.right, scope)), scope, declare);
       else if (pattern.type === 'ObjectPattern') for (const p of pattern.properties) {
         if (p.type === 'RestElement') bind(p.argument, value, scope, declare);
-        else bind(p.value, property(value, p.computed ? expr(p.key, scope).value : p.key.name ?? p.key.value), scope, declare);
+        else bind(p.value, readProperty(value, p.computed ? expr(p.key, scope).value : p.key.name ?? p.key.value), scope, declare);
       }
-      else if (pattern.type === 'ArrayPattern') pattern.elements.forEach((p, i) => bind(p, property(value, i), scope, declare));
+      else if (pattern.type === 'ArrayPattern') pattern.elements.forEach((p, i) => bind(p, readProperty(value, i), scope, declare));
     }
     function invoke(fn, args, isolated = false, thisValue = null) {
       const signature = args.map(v => `${v.bits}:${v.kind || ''}`).join('|');
@@ -6653,12 +6678,23 @@ function createFlowAnalysis(files) {
       active.add(signature); activeFunctions.set(fn.node, active);
       const context = stateContext();
       const savedExports = result.exports;
-      const local = new Scope(isolated ? fn.scope.clone(context) : fn.scope);
+      const closure = isolated ? fn.scope.clone(context) : fn.scope;
+      const local = new Scope(closure);
       if (isolated) result.exports = copyState(result.exports, context);
-      local.set('this', thisValue || {bits:0,props:new Map()}, true);
-      fn.node.params.forEach((p, i) => bind(p, args[i] || clean(), local));
-      try { return fn.node.body.type === 'BlockStatement' ? stmt(fn.node.body, local) : expr(fn.node.body, local); }
-      finally { active.delete(signature); if (isolated) result.exports = savedExports; }
+      // Callback paths invoke functions directly too. Resolve lexical this at
+      // this shared boundary, including the cloned closure during speculation.
+      const receiver = fn.node.type === 'ArrowFunctionExpression' ? closure.get('this') : isolated ? copyState(thisValue, context) : thisValue;
+      local.set('this', receiver || {bits:0,props:new Map()}, true);
+      const callerFile = lexicalFile;
+      try {
+        lexicalFile = fn.sourceFile;
+        fn.node.params.forEach((p, i) => bind(p, args[i] || clean(), local));
+        return fn.node.body.type === 'BlockStatement' ? stmt(fn.node.body, local) : expr(fn.node.body, local);
+      } finally {
+        lexicalFile = callerFile;
+        active.delete(signature);
+        if (isolated) result.exports = savedExports;
+      }
     }
     function gap(reason = 'unmodeled executable semantics', node = currentNode, relevant = true) {
       if (relevant && result.status === 'parsed') result.status = 'unmodeled';
@@ -6668,7 +6704,122 @@ function createFlowAnalysis(files) {
         result.gaps.length = Math.min(result.gaps.length, 8);
       }
     }
-    function callValue(node, callee, args) {
+    function checkExportRead(value) {
+      if (!['exports', 'alternatives'].includes(value.kind)) return value;
+      const pending = [value], visited = new Set();
+      while (pending.length) {
+        tick();
+        const current = pending.pop();
+        if (visited.has(current)) continue;
+        visited.add(current);
+        if (current.kind === 'exports' && current.sourceFile !== file) gap('foreign module export read is not modeled');
+        if (current.kind === 'alternatives') pending.push(...current.alternatives);
+      }
+      return value;
+    }
+    function hasGetter(value) {
+      const pending = [value], seen = new Set();
+      while (pending.length) {
+        tick();
+        const current = pending.pop();
+        if (!current || seen.has(current)) continue;
+        seen.add(current);
+        if (current.kind === 'private-field-getter' || current.getterBearing ||
+            current.props?.get(GETTER_STATE)?.value === true || current.getterFields?.length) return true;
+        if (current.alternatives) pending.push(...current.alternatives);
+        if (current.props) pending.push(...current.props.values());
+        if (current.elements) pending.push(...current.elements);
+      }
+      return false;
+    }
+    function getterValue(value, receiver) {
+      tick();
+      if (value.kind === 'alternatives') {
+        if (value.overflow) gap('getter descriptor alternatives limit');
+        return merge(...value.alternatives.map(item => getterValue(item, receiver)));
+      }
+      if (value.kind !== 'private-field-getter') return value;
+      if (receiver?.kind === 'alternatives') {
+        if (receiver.overflow) gap('getter receiver alternatives limit');
+        return merge(...receiver.alternatives.map(item => getterValue(value, item)));
+      }
+      if (typeof value.fieldKey !== 'symbol' || typeof value.brand !== 'symbol' ||
+          receiver?.kind !== 'instance' || receiver.props?.get(INSTANCE_BRAND)?.value !== value.brand ||
+          !receiver.props.has(value.fieldKey)) {
+        gap('unresolved private getter receiver or brand'); return clean();
+      }
+      const field = receiver.props.get(value.fieldKey);
+      if (!field || field.kind || field.props || field.elements || (field.value !== null && typeof field.value === 'object')) {
+        gap('private getter field is not a modeled primitive'); return { bits: field?.bits || 0 };
+      }
+      return field;
+    }
+    function writeProperty(object, key, value, node, privateAccess = false, weak = false) {
+      tick();
+      if (object.kind === 'alternatives') {
+        if (object.overflow) gap('assignment receiver alternatives limit', node);
+        const certified = inspectingGetterState && object.alternatives.some(item => item.kind === 'private-data-shape');
+        for (const alternative of object.alternatives) {
+          // This path throws before the data write; the certified object path
+          // still models every possible successful write and its taint.
+          if (certified && Object.hasOwn(alternative, 'value') && alternative.value == null && !alternative.kind && !alternative.props) continue;
+          writeProperty(alternative, key, value, node, privateAccess, true);
+        }
+        return;
+      }
+      if (hasGetter(object.props?.get(key)) || (hasGetter(object) && (key === undefined || key === '__proto__'))) {
+        gap('getter-backed property writes are not supported', node); return;
+      }
+      if (privateAccess && !object.props?.has(key)) {
+        gap('unresolved private field assignment receiver', node); return;
+      }
+      if (inspectingGetterState && ((value.bits & (SECRET | ENV | REMOTE)) ||
+          (inspectingGetterState.has(key) && (value.kind || value.props || value.elements)))) {
+        gap('unresolved dormant cross-method getter state', node);
+      }
+      if (!object.props) { gap('unresolved object assignment', node, Boolean(inspectingGetterState || value.bits || value.kind)); return; }
+      object.props.set(key, weak ? merge(object.props.get(key) || clean(), value) : value);
+      object.bits |= value.bits;
+      if (object.elements && /^\d+$/.test(String(key))) {
+        if (Number(key) > 4096) gap('array index limit', node);
+        else object.elements[Number(key)] = value;
+      }
+    }
+    function readProperty(object, key, receiver = object, privateAccess = false) {
+      tick();
+      if (object.kind === 'alternatives') {
+        if (object.overflow) gap('property receiver alternatives limit');
+        return merge(...object.alternatives.map(value => readProperty(value, key, receiver === object ? value : receiver, privateAccess)));
+      }
+      if ((key === undefined && hasGetter(object)) || (key === 'prototype' && object.getterFields?.length)) gap('unresolved getter reflection');
+      if (privateAccess && !object.props?.has(key)) { gap('unresolved private field read receiver'); return clean(); }
+      if ((object.kind === 'module' && key === 'exports') || object.kind === 'exports') {
+        if (object.sourceFile !== file) {
+          gap('foreign module export read is not modeled');
+          return clean();
+        }
+        // Preserve opaque ownership through captured aliases. This is not a
+        // model of the export object's live contents or cross-module mutation.
+        if (object.kind === 'module') return { ...tagged('exports'), sourceFile: object.sourceFile };
+      }
+      return checkExportRead(getterValue(property(object, key), receiver));
+    }
+    function readsReceiver(fn) {
+      const pending = [fn.node.body, ...fn.node.params];
+      while (pending.length) {
+        tick();
+        const node = pending.pop();
+        if (node.type === 'ThisExpression') return true;
+        // Nested ordinary functions establish their own receiver; nested
+        // arrows and class heritage/computed keys can still capture this one.
+        if (['FunctionExpression', 'FunctionDeclaration'].includes(node.type)) continue;
+        for (const value of Object.values(node)) for (const child of Array.isArray(value) ? value : [value]) {
+          if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
+        }
+      }
+      return false;
+    }
+    function callValue(node, callee, args, explicitThis) {
       tick();
       // Calls generally need the union of taint bits, not a structural join of
       // every argument object. Keeping this shallow prevents framework APIs
@@ -6677,25 +6828,37 @@ function createFlowAnalysis(files) {
       const value = { bits: args.reduce((bits, arg) => bits | (arg?.bits || 0), 0) };
       if (callee.kind === 'alternatives') {
         if (callee.overflow) gap('callable alternatives limit', node,
-          Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
-        return merge(...callee.alternatives.map(fn => callValue(node, fn, args)));
+          callee.alternatives.some(item => item.kind === 'class') || Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
+        return merge(...callee.alternatives.map(fn => callValue(node, fn, args, explicitThis)));
       }
-      if (callee.kind === 'require') return load(args[0]?.value);
-      if (callee.kind === 'builtin-loader') return load(args[0]?.value);
+      if (inspectingGetterState && (value.bits & (SECRET | ENV | REMOTE))) gap('unresolved dormant cross-method getter state', node);
+      if (['object-values', 'object-entries'].includes(callee.kind) && args.some(hasGetter)) gap('getter-bearing object enumeration is not modeled', node);
+      if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null, args[0]?.bits || 0);
+      if (callee.kind === 'builtin-loader') return load(args[0]?.value, null, args[0]?.bits || 0);
       if (callee.kind === 'require-factory') return tagged('require');
-      if (callee.kind === 'reflect-get') return property(args[0] || clean(), args[1]?.value);
+      if (callee.kind === 'reflect-get') return readProperty(args[0] || clean(), args[1]?.value, args.length > 2 ? args[2] : undefined);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
         const list = args[callee.kind === 'reflect-apply' ? 2 : 1];
-        if (!list?.elements) { gap('unresolved reflected argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
-        return callValue(node, args[0] || clean(), list.elements);
+        if (!list?.elements) { gap('unresolved reflected argument list', node,
+          Boolean(value.bits & (SECRET | ENV | REMOTE)) || ['function', 'bound', 'class'].includes(args[0]?.kind)); return value; }
+        if (callee.kind === 'reflect-construct' && args[0]?.kind === 'bound') gap('bound constructor receiver semantics are not modeled', node);
+        return callee.kind === 'reflect-apply'
+          ? callValue(node, args[0] || clean(), list.elements, args[1] || clean())
+          : callValue(node, args[0] || clean(), list.elements);
       }
-      if (callee.kind === 'invoke-call') return callValue(node, callee.target, args.slice(1));
+      if (callee.kind === 'invoke-call') return callValue(node, callee.target, args.slice(1), args[0] || clean());
       if (callee.kind === 'invoke-apply') {
-        if (!args[1]?.elements) { gap('unresolved apply argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
-        return callValue(node, callee.target, args[1].elements);
+        if (!args[1]?.elements) { gap('unresolved apply argument list', node,
+          Boolean(value.bits & (SECRET | ENV | REMOTE)) || ['function', 'bound', 'class'].includes(callee.target?.kind)); return value; }
+        return callValue(node, callee.target, args[1].elements, args[0] || clean());
       }
-      if (callee.kind === 'invoke-bind') return { bits: 0, kind: 'bound', target: callee.target, args: args.slice(1) };
-      if (callee.kind === 'bound') return callValue(node, callee.target, [...callee.args, ...args]);
+      if (callee.kind === 'invoke-bind') return { bits: 0, kind: 'bound', target: callee.target, receiver: args[0] || clean(), args: args.slice(1) };
+      // The first bound receiver survives later .call/.apply/.bind operations.
+      // Arrows ignore this receiver at the eventual function invocation.
+      if (callee.kind === 'bound') {
+        if (node.type === 'NewExpression') gap('bound constructor receiver semantics are not modeled', node);
+        return callValue(node, callee.target, [...callee.args, ...args], callee.receiver || clean());
+      }
       if (callee.kind === 'string-concat') {
         const parts = [callee.target, ...args];
         const combined = merge(...parts);
@@ -6769,30 +6932,37 @@ function createFlowAnalysis(files) {
           callee.target.bits |= value.bits;
           return literal(elements.length);
         }
-        const callback = args.find(arg => arg.kind === 'function');
-        if (callback) invoke(callback, [merge(...elements)]);
+        const callback = ['function', 'bound'].includes(args[0]?.kind) ? args[0] : null;
+        const returned = callback ? callValue(node, callback, [merge(...elements), clean(), callee.target], args[1] || clean()) : clean();
+        if (callee.method === 'map') {
+          if (!callback) gap('unresolved array map callback', node);
+          // One conservative abstract invocation represents every element;
+          // retain its returned taint instead of returning the input array.
+          const mapped = elements.map(() => returned);
+          return { ...merge(...mapped), elements: mapped };
+        }
         if (callee.method === 'find') return merge(...elements);
         if (callee.method === 'forEach') return clean();
         return { ...callee.target, elements: [...elements] };
       }
       if (callee.kind === 'promise-chain') {
-        const callback = args.find(arg => arg.kind === 'function');
+        const callback = args.find(arg => ['function', 'bound'].includes(arg.kind));
         if (!callback) return callee.target;
-        return merge(callee.target, invoke(callback, [callee.target]));
+        return merge(callee.target, callValue(node, callback, [callee.target], clean()));
       }
       if (callee.kind === 'promise-resolve') {
         callee.target.bits |= value.bits;
         return clean();
       }
       if (callee.kind === 'event-on') {
-        if (args[0]?.value === undefined || args[1]?.kind !== 'function') { gap(); return callee.target; }
+        if (args[0]?.value === undefined || !['function', 'bound'].includes(args[1]?.kind)) { gap(); return callee.target; }
         callee.target.listeners ||= new Map();
         callee.target.listeners.set(args[0].value, args[1]);
         return callee.target;
       }
       if (callee.kind === 'event-emit') {
         const listener = callee.target.listeners?.get(args[0]?.value);
-        if (listener) invoke(listener, args.slice(1));
+        if (listener) callValue(node, listener, args.slice(1), callee.target);
         else if (args[0]?.value === undefined) gap();
         return clean();
       }
@@ -6804,7 +6974,7 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'request') return tagged('request-stream');
       if (callee.kind === 'http2-connect') return tagged('http2-client');
       if (callee.kind === 'socket-create') {
-        for (const arg of args) if (arg.kind === 'function') callbacks.push(arg);
+        for (const arg of args) if (['function', 'bound'].includes(arg.kind)) callbacks.push(arg);
         return tagged('socket');
       }
       if (callee.kind === 'WebSocket') return tagged('websocket');
@@ -6813,22 +6983,25 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'Promise') {
         const promise = { bits: 0, kind: 'promise-chain' };
         promise.target = promise;
-        const executor = args.find(arg => arg.kind === 'function');
-        if (executor) invoke(executor, [
+        const executor = args.find(arg => ['function', 'bound'].includes(arg.kind));
+        if (executor) callValue(node, executor, [
           { bits: 0, kind: 'promise-resolve', target: promise },
           { bits: 0, kind: 'promise-resolve', target: promise }
-        ]);
+        ], clean());
         return promise;
       }
       if (['events', 'event-emitter-constructor'].includes(callee.kind)) return { bits: 0, kind: 'event-emitter', listeners: new Map() };
       if (callee.kind === 'vm' && value.bits & REMOTE) hint(node, 'remote-vm-code');
-      if (callee.kind === 'function') return invoke(callee, args, false, callee.boundThis);
-      if (callee.kind === 'class') {
-        const instance = { bits: callee.bits, kind: 'instance', props: new Map(callee.props || []) };
-        const constructor = callee.props?.get('constructor');
-        if (constructor?.kind === 'function') invoke(constructor, args, false, instance);
-        return instance;
+      if (callee.kind === 'function') {
+        const arrow = callee.node.type === 'ArrowFunctionExpression';
+        const receiver = explicitThis === undefined ? callee.boundThis : explicitThis;
+        if (!arrow && explicitThis !== undefined &&
+            (!receiver || (!receiver.props && !receiver.kind && (!Object.hasOwn(receiver, 'value') || receiver.value === null))) && readsReceiver(callee)) {
+          gap('unresolved explicit call receiver', node);
+        }
+        return invoke(callee, args, false, receiver);
       }
+      if (callee.kind === 'class') return instantiateClass(callee, args);
       if (callee.kind === 'Proxy') {
         // Preserve the target's taint; arbitrary traps are not modeled.
         gap(); return args[0] || value;
@@ -6842,7 +7015,7 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'global-factory') return tagged('global');
       if (['setTimeout', 'setInterval', 'setImmediate'].includes(callee.kind)) {
         if (typeof args[0]?.value === 'string') gap();
-        else if (args[0]?.kind === 'function') invoke(args[0], args.slice(callee.kind === 'setImmediate' ? 1 : 2));
+        else if (['function', 'bound'].includes(args[0]?.kind)) callValue(node, args[0], args.slice(callee.kind === 'setImmediate' ? 1 : 2), clean());
         return clean();
       }
       // An unknown higher-order API can pass a secret into a callback whose
@@ -6856,26 +7029,295 @@ function createFlowAnalysis(files) {
       // full object graphs. Nested properties already contribute to `bits` at
       // construction time; copying them here caused benign callback/object
       // frameworks to exhaust the state budget without adding flow evidence.
+      if (args.some(hasGetter)) gap('unmodeled operation on getter-bearing object', node);
       return { bits: value.bits | callee.bits };
+    }
+    function constructorMayReplaceInstance(body) {
+      const pending = [body];
+      while (pending.length) {
+        tick();
+        const node = pending.pop();
+        // Returns inside nested functions/classes do not return from this
+        // constructor. Keep this traversal under the normal flow work budget.
+        if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+          'ClassDeclaration', 'ClassExpression'].includes(node.type)) continue;
+        if (node.type === 'ReturnStatement' && node.argument) {
+          const argument = node.argument;
+          // Acorn can represent a valid regex as value:null on a host whose
+          // RegExp engine lacks that syntax; it still returns an object.
+          const primitive = argument.type === 'Literal' && !argument.regex &&
+            (argument.value === null || typeof argument.value !== 'object');
+          if (argument.type !== 'ThisExpression' && !primitive) return true;
+        }
+        for (const value of Object.values(node)) {
+          for (const child of Array.isArray(value) ? value : [value]) {
+            if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
+          }
+        }
+      }
+      return false;
+    }
+    function memberKey(node, scope) {
+      if (node.property?.type === 'PrivateIdentifier' || node.key?.type === 'PrivateIdentifier') {
+        const name = (node.property || node.key).name;
+        const key = scope.get(PRIVATE_NAMES)?.props?.get(name)?.value;
+        if (typeof key !== 'symbol') throw new Error('unresolved lexical private field');
+        return key;
+      }
+      const key = node.property || node.key;
+      return node.computed ? expr(key, scope).value : key.name ?? key.value;
+    }
+    function instantiateClass(callee, args, runConstructor = true) {
+      const instance = { bits: 0, kind: 'instance', props: new Map(callee.instanceProps || []) };
+      instance.props.set(INSTANCE_BRAND, literal(callee.brand));
+      if (callee.getterFields?.length) instance.props.set(GETTER_STATE, literal(true));
+      const local = new Scope(callee.scope);
+      local.set('this', instance, true);
+      const previousFile = lexicalFile;
+      try {
+        lexicalFile = callee.sourceFile;
+        for (const field of callee.fields || []) {
+          tick();
+          const value = field.node ? expr(field.node, local) : literal(undefined);
+          instance.props.set(field.key, value);
+          instance.bits |= value.bits;
+        }
+        if (runConstructor && callee.constructorFn) invoke(callee.constructorFn, args, false, instance);
+      } finally { lexicalFile = previousFile; }
+      return instance;
+    }
+    function dormantPrivateShapes(node, scope, names) {
+      // A shape describes only a possible non-throwing dormant receiver. It is
+      // never installed on an actual instance or inferred from a package name.
+      if (lexicalFile !== file) return new Map();
+      const parents = new Map(), all = [], pending = [[ast, null]];
+      while (pending.length) {
+        tick();
+        const [item, parent] = pending.pop();
+        parents.set(item, parent); all.push(item);
+        for (const child of Object.values(item).flatMap(value => Array.isArray(value) ? value : [value])) {
+          if (child && typeof child === 'object' && typeof child.type === 'string') pending.push([child, item]);
+        }
+      }
+      const within = item => {
+        while (item) { tick(); if (item === node) return true; item = parents.get(item); }
+        return false;
+      };
+      const body = all.filter(within);
+      // Nested lexical environments require a more general alias analysis.
+      if (body.some(item => item !== node && (['ClassDeclaration', 'ClassExpression', 'ArrowFunctionExpression', 'FunctionDeclaration'].includes(item.type) ||
+          (item.type === 'FunctionExpression' && parents.get(item)?.type !== 'MethodDefinition')))) return new Map();
+      const fresh = body.filter(item => item.type === 'NewExpression');
+      if (!fresh.length || fresh.some(item => item.callee.type !== 'Identifier')) return new Map();
+      const name = fresh[0].callee.name, data = scope.get(name);
+      if (fresh.some(item => item.callee.name !== name) || data?.kind !== 'class' || data.sourceFile !== file ||
+          data.node.type !== 'ClassDeclaration' || data.node.superClass) return new Map();
+      const fields = new Set(), payload = new Set();
+      const primitive = item => !item || (item.type === 'Literal' && !item.regex && (item.value === null || typeof item.value !== 'object'));
+      if (fresh.some(item => item.arguments.some(argument => argument.type !== 'Identifier' && !primitive(argument)))) return new Map();
+      for (const member of data.node.body.body) {
+        tick();
+        if (member.type === 'PropertyDefinition' && !member.static && !member.computed && member.key.type === 'Identifier' &&
+            !['constructor', '__proto__'].includes(member.key.name) && primitive(member.value)) {
+          fields.add(member.key.name);
+          if (member.value) payload.add(member.key.name);
+        } else if (member.type !== 'MethodDefinition' || member.kind !== 'constructor') return new Map();
+      }
+      const ctor = data.node.body.body.find(member => member.kind === 'constructor')?.value;
+      if (ctor) {
+        if (ctor.params.some(param => param.type !== 'Identifier')) return new Map();
+        const params = new Set(ctor.params.map(param => param.name));
+        for (const statement of ctor.body.body) {
+          const assignment = statement.type === 'ExpressionStatement' && statement.expression;
+          const left = assignment?.left, right = assignment?.right;
+          if (assignment?.type !== 'AssignmentExpression' || assignment.operator !== '=' || left?.type !== 'MemberExpression' ||
+              left.computed || left.object.type !== 'ThisExpression' || !fields.has(left.property.name) ||
+              !(primitive(right) || (right.type === 'Identifier' && params.has(right.name)))) return new Map();
+          payload.add(left.property.name);
+        }
+      }
+      // The constructor binding itself must not escape or be replaced. This
+      // also rejects every prototype/descriptor mutation, including aliases.
+      for (const item of all) if (item.type === 'Identifier' && item.name === name) {
+        tick(); const parent = parents.get(item);
+        if (parent === data.node && parent.id === item) continue;
+        if (parent?.type === 'NewExpression' && parent.callee === item && fresh.includes(parent)) continue;
+        return new Map();
+      }
+      const pointers = new Set([...fields].filter(key => !payload.has(key)));
+      const privateFields = new Set(), aliases = new Set();
+      const declared = new Set(body.filter(item => item.type === 'VariableDeclarator' && item.id.type === 'Identifier').map(item => item.id.name));
+      if (declared.has('undefined') || body.some(item =>
+        (item.type === 'FunctionExpression' && item.params.some(param => param.type !== 'Identifier' || param.name === 'undefined')) ||
+        (item.type === 'VariableDeclarator' && item.id.type !== 'Identifier') ||
+        (item.type === 'CatchClause' && item.param && (item.param.type !== 'Identifier' || item.param.name === 'undefined')))) return new Map();
+      const privateName = item => item?.type === 'MemberExpression' && !item.computed && item.object.type === 'ThisExpression' &&
+        item.property.type === 'PrivateIdentifier' ? item.property.name : null;
+      const isLink = item => {
+        if (!item) return false;
+        tick();
+        if (fresh.includes(item)) return true;
+        if (item.type === 'Identifier') return aliases.has(item.name);
+        if (privateFields.has(privateName(item))) return true;
+        return item.type === 'MemberExpression' && !item.computed && item.property.type === 'Identifier' &&
+          pointers.has(item.property.name) && isLink(item.object);
+      };
+      let changed = true, passes = 0;
+      while (changed) {
+        if (++passes > 16) return new Map();
+        changed = false;
+        for (const item of body) {
+          tick();
+          const left = item.type === 'VariableDeclarator' ? item.id : item.type === 'AssignmentExpression' && item.operator === '=' ? item.left : null;
+          const right = item.type === 'VariableDeclarator' ? item.init : item.right;
+          if (!left || !isLink(right)) continue;
+          const field = privateName(left);
+          if (field && !privateFields.has(field)) { privateFields.add(field); changed = true; }
+          else if (left.type === 'Identifier' && declared.has(left.name) && !aliases.has(left.name)) { aliases.add(left.name); changed = true; }
+        }
+      }
+      if (!privateFields.size) return new Map();
+      const isUndefined = item => !item || (item.type === 'Identifier' && item.name === 'undefined' && !scope.get('undefined'));
+      for (const item of all) if (!within(item) && item.type === 'Identifier' && aliases.has(item.name)) return new Map();
+      const identifierKey = (item, parent) => parent?.type === 'MemberExpression' && parent.property === item && !parent.computed;
+      for (const item of body) {
+        tick(); const parent = parents.get(item);
+        if (item.type === 'PrivateIdentifier' && privateFields.has(item.name) && privateName(parent) !== item.name && !(parent?.type === 'PropertyDefinition' && parent.key === item && !parent.static)) return new Map();
+        if (item.type === 'PropertyDefinition' && item.key.type === 'PrivateIdentifier' && privateFields.has(item.key.name) && !isUndefined(item.value)) return new Map();
+        if (item.type === 'Identifier' && aliases.has(item.name) && identifierKey(item, parent)) continue;
+        const assignment = item.type === 'VariableDeclarator' || item.type === 'AssignmentExpression';
+        if (assignment) {
+          const left = item.id || item.left, right = item.init || item.right;
+          const target = privateFields.has(privateName(left)) || (left.type === 'Identifier' && aliases.has(left.name)) ||
+            (left.type === 'MemberExpression' && isLink(left.object) && pointers.has(left.property.name));
+          if (target && ((item.operator && item.operator !== '=') || (!isLink(right) && !isUndefined(right)))) return new Map();
+        }
+        if (item.type === 'MemberExpression' && isLink(item.object) && parent?.type === 'UnaryExpression' && parent.operator === 'delete') return new Map();
+        if (!isLink(item)) continue;
+        if (parent?.type === 'MemberExpression' && parent.object === item && !parent.computed && fields.has(parent.property.name)) continue;
+        if (parent?.type === 'VariableDeclarator' && parent.init === item && parent.id.type === 'Identifier' && aliases.has(parent.id.name)) continue;
+        if (parent?.type === 'AssignmentExpression' && parent.right === item) {
+          const left = parent.left;
+          if (privateFields.has(privateName(left)) || (left.type === 'Identifier' && aliases.has(left.name)) ||
+              (left.type === 'MemberExpression' && !left.computed && isLink(left.object) && pointers.has(left.property.name))) continue;
+        }
+        if (parent?.type === 'VariableDeclarator' && parent.id === item && isLink(parent.init)) continue;
+        if (parent?.type === 'AssignmentExpression' && parent.left === item && parent.operator === '=' && (isLink(parent.right) || isUndefined(parent.right))) continue;
+        if (['IfStatement', 'WhileStatement', 'DoWhileStatement'].includes(parent?.type) && parent.test === item) continue;
+        if (parent?.type === 'UnaryExpression' && parent.operator === '!') continue;
+        return new Map();
+      }
+      const shape = { bits: 0, kind: 'private-data-shape', node: data.node, pointers: [...pointers], props: new Map() };
+      for (const key of fields) if (!pointers.has(key)) shape.props.set(key, clean());
+      return new Map([...privateFields].map(key => [names.get(key)?.value, shape]).filter(([key]) => typeof key === 'symbol'));
     }
     function classValue(node, scope) {
       expr(node.superClass, scope);
-      if (node.superClass) gap(); // inheritance and constructor effects need review
-      const value = { bits: 0, kind: 'class', props: new Map() };
+      if (node.superClass) gap();
+      const value = { bits: 0, kind: 'class', node, sourceFile: lexicalFile,
+        brand: Symbol('class brand'), props: new Map(), instanceProps: new Map(), fields: [], getterFields: [] };
       const local = new Scope(scope);
+      value.scope = local;
+      const names = new Map(scope.get(PRIVATE_NAMES)?.props || []);
+      const ownNames = new Set();
+      for (const member of node.body.body) {
+        if (member.key?.type === 'PrivateIdentifier' && !ownNames.has(member.key.name)) {
+          ownNames.add(member.key.name);
+          names.set(member.key.name, literal(Symbol(member.key.name)));
+        }
+      }
+      local.set(PRIVATE_NAMES, { bits: 0, props: names }, true);
       if (node.id) local.set(node.id.name, value, true);
       local.set('this', value, true);
+      const privateFields = new Set(node.body.body.filter(member => member.type === 'PropertyDefinition' &&
+        !member.static && member.key.type === 'PrivateIdentifier').map(member => member.key.name));
+      const inspected = [];
+      const ordinaryFields = [];
+      // Register every method before inspecting constructors or method bodies.
       for (const member of node.body.body) {
-        if (member.type === 'StaticBlock') { statements(member.body, local); continue; }
-        const key = member.computed ? expr(member.key, local).value : member.key.name ?? member.key.value;
-        const v = expr(member.value, local);
-        value.props.set(key, v);
-        value.bits |= v.bits;
-        // Constructor bodies are inspected above and invoked with the real
-        // arguments/receiver when the class is instantiated. Accessors still
-        // need a property-read/write model before their effects can be cleared.
-        if (member.kind === 'get' || member.kind === 'set') gap();
+        if (member.type === 'StaticBlock') continue;
+        const key = memberKey(member, local);
+        if (key === undefined) gap('unresolved computed class member', member);
+        if (member.type === 'PropertyDefinition') {
+          ordinaryFields.push({ member, key });
+          if (!member.static) value.fields.push({ key, node: member.value });
+          continue;
+        }
+        const fn = { bits: 0, kind: 'function', node: member.value, scope: local, sourceFile: lexicalFile };
+        if (member.kind === 'constructor') {
+          value.constructorFn = fn;
+          if (constructorMayReplaceInstance(member.value.body)) gap('class constructor may return a replacement object', member.value.body);
+          continue;
+        }
+        const returned = member.value.body.body;
+        const expression = returned.length === 1 && returned[0].type === 'ReturnStatement' ? returned[0].argument : null;
+        const supported = member.kind === 'get' && !member.static && !member.computed &&
+          expression?.type === 'MemberExpression' && !expression.computed && !expression.optional &&
+          expression.object.type === 'ThisExpression' && expression.property.type === 'PrivateIdentifier' &&
+          privateFields.has(expression.property.name);
+        if (supported) {
+          const fieldKey = names.get(expression.property.name).value;
+          const descriptor = { bits: 0, kind: 'private-field-getter', fieldKey, brand: value.brand };
+          value.instanceProps.set(key, descriptor);
+          value.getterFields.push(fieldKey);
+        } else {
+          (member.static ? value.props : value.instanceProps).set(key, fn);
+          inspected.push({ fn, static: member.static });
+          if (member.kind === 'get' || member.kind === 'set') gap('unsupported accessor semantics', member);
+        }
       }
+      const prototype = { bits: 0, kind: 'class-prototype', node, props: value.instanceProps,
+        getterBearing: value.getterFields.length > 0 };
+      value.props.set('prototype', prototype);
+      if (!value.instanceProps.has('constructor')) value.instanceProps.set('constructor', value);
+      for (const { member, key } of ordinaryFields) {
+        if (value.instanceProps.get(key)?.kind === 'private-field-getter') gap('own field and getter name overlap', member);
+        if (!member.static && member.value) {
+          const pending = [member.value];
+          while (pending.length) {
+            tick();
+            const initializer = pending.pop();
+            if (['ArrowFunctionExpression', 'CallExpression', 'NewExpression', 'TaggedTemplateExpression'].includes(initializer.type)) {
+              gap('instance field initializer closure/call semantics are not supported', member); break;
+            }
+            for (const child of Object.values(initializer).flatMap(item => Array.isArray(item) ? item : [item])) {
+              if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
+            }
+          }
+        }
+      }
+      for (const member of node.body.body) {
+        if (member.type === 'StaticBlock') statements(member.body, local);
+        else if (member.type === 'PropertyDefinition' && member.static) {
+          const v = expr(member.value, local); value.props.set(memberKey(member, local), v); value.bits |= v.bits;
+        }
+      }
+      // Inspect dormant bodies against an isolated receiver. Sensitive writes
+      // cannot be cleared on the assumption that separately inspected methods
+      // never run in sequence; complete inter-method state summaries are deferred.
+      const savedExports = result.exports;
+      const context = stateContext();
+      const isolated = copyState(value, context);
+      let specimen;
+      try {
+        result.exports = copyState(result.exports, context);
+        specimen = instantiateClass(isolated, [], false);
+        const previousInspection = inspectingGetterState;
+        inspectingGetterState = value.getterFields.length ? new Set(value.getterFields) : null;
+        try { if (isolated.constructorFn) invoke(isolated.constructorFn, [], false, specimen); }
+        finally { inspectingGetterState = previousInspection; }
+        if (value.getterFields.length) {
+          for (const [key, shape] of dormantPrivateShapes(node, scope, names)) {
+            specimen.props.set(key, merge(specimen.props.get(key) || clean(), shape));
+          }
+        }
+        for (const method of inspected) {
+          const previous = inspectingGetterState;
+          inspectingGetterState = value.getterFields.length ? new Set(value.getterFields) : null;
+          try { invoke(method.fn, [], true, method.static ? value : specimen); }
+          finally { inspectingGetterState = previous; }
+        }
+      } finally { result.exports = savedExports; }
       return value;
     }
     function mayWrite(node) {
@@ -6896,7 +7338,17 @@ function createFlowAnalysis(files) {
       try {
         switch (node.type) {
           case 'Literal': return literal(node.value);
-          case 'Identifier': return scope.get(node.name) || tagged(({ process: 'process', module: 'module', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Map: 'Map', Object: 'Object', Array: 'Array', Promise: 'Promise', setTimeout: 'setTimeout', setInterval: 'setInterval', setImmediate: 'setImmediate', globalThis: 'global', global: 'global' })[node.name]);
+          case 'Identifier': {
+            const binding = scope.get(node.name);
+            if (binding) return checkExportRead(binding);
+            if (node.name === 'exports' && lexicalFile !== file) {
+              gap('foreign module export read is not modeled', node);
+              return clean();
+            }
+            if (node.name === 'undefined') return literal(undefined);
+            return (['require', 'module', 'exports'].includes(node.name)
+            ? { ...tagged(node.name), sourceFile: lexicalFile } : tagged(({ process: 'process', module: 'module', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Symbol: 'Symbol', Map: 'Map', Object: 'Object', Array: 'Array', Promise: 'Promise', setTimeout: 'setTimeout', setInterval: 'setInterval', setImmediate: 'setImmediate', globalThis: 'global', global: 'global' })[node.name]));
+          }
           case 'ThisExpression': return scope.get('this') || clean();
           case 'MetaProperty': return clean();
           case 'ClassExpression': case 'ClassDeclaration': return classValue(node, scope);
@@ -6918,18 +7370,38 @@ function createFlowAnalysis(files) {
             const awaited = expr(node.argument, scope);
             return awaited.kind === 'promise-chain' && awaited.target ? awaited.target : awaited;
           }
-          case 'MemberExpression': return property(expr(node.object, scope), node.computed ? expr(node.property, scope).value : node.property.name);
+          case 'MemberExpression': {
+            const object = expr(node.object, scope);
+            const key = memberKey(node, scope);
+            return readProperty(object, key, object, node.property.type === 'PrivateIdentifier');
+          }
           case 'ObjectExpression': {
             const props = new Map(); let bits = 0, env = false;
             for (const p of node.properties) {
-              if (p.type === 'SpreadElement') { const v = expr(p.argument, scope); bits |= v.bits; env ||= v.kind === 'env'; for (const [k, x] of v.props || []) props.set(k, x); }
+              if (p.type === 'SpreadElement') { const v = expr(p.argument, scope); if (hasGetter(v)) gap('getter-bearing object spread is not modeled', p); bits |= v.bits; env ||= v.kind === 'env'; for (const [k, x] of v.props || []) props.set(k, x); }
               else { if (p.kind === 'get' || p.kind === 'set') gap(); const v = expr(p.value, scope); props.set(p.computed ? expr(p.key, scope).value : p.key.name ?? p.key.value, v); bits |= v.bits; }
             }
             return { bits, props, kind: env ? 'env' : undefined };
           }
           case 'ArrayExpression': { const elements = node.elements.map(n => expr(n, scope)); return { ...merge(...elements), elements }; }
           case 'SpreadElement': return expr(node.argument, scope);
-          case 'UnaryExpression': case 'UpdateExpression': return expr(node.argument, scope);
+          case 'UnaryExpression': {
+            if (node.operator === 'delete' && node.argument.type === 'MemberExpression') {
+              const object = expr(node.argument.object, scope);
+              memberKey(node.argument, scope); // Computed delete keys still execute their expressions.
+              if (hasGetter(object)) gap('deletion on getter-bearing instances is not modeled', node);
+              return literal(true);
+            }
+            return expr(node.argument, scope);
+          }
+          case 'UpdateExpression': {
+            const previous = expr(node.argument, scope);
+            const next = typeof previous.value === 'number' ? { ...previous, value: previous.value + (node.operator === '++' ? 1 : -1) } : { bits: previous.bits };
+            if (previous.kind || previous.props || previous.elements) gap('unresolved update coercion', node);
+            if (node.argument.type === 'MemberExpression') writeProperty(expr(node.argument.object, scope), memberKey(node.argument, scope), next, node, node.argument.property.type === 'PrivateIdentifier');
+            else bind(node.argument, next, scope, false);
+            return node.prefix ? next : previous;
+          }
           case 'LogicalExpression': {
             const left = expr(node.left, scope);
             if (!mayWrite(node.right)) return merge(left, expr(node.right, scope));
@@ -6946,31 +7418,28 @@ function createFlowAnalysis(files) {
           case 'AssignmentExpression': {
             const v = node.operator === '=' ? expr(node.right, scope) : merge(expr(node.left, scope), expr(node.right, scope));
             if (node.left.type === 'MemberExpression') {
-              const key = node.left.computed ? expr(node.left.property, scope).value : node.left.property.name;
+              const key = memberKey(node.left, scope);
               const obj = node.left.object;
-              if (obj.type === 'Identifier' && obj.name === 'module' && key === 'exports' && !scope.get('module')) result.exports = v;
+              if (obj.type === 'Identifier' && obj.name === 'module' && key === 'exports' && !scope.get('module')) {
+                if (lexicalFile !== file) gap('foreign module export mutation is not modeled', node);
+                else result.exports = v;
+              }
               else if ((obj.type === 'Identifier' && obj.name === 'exports' && !scope.get('exports')) ||
                 (obj.type === 'MemberExpression' && obj.object.name === 'module' && obj.property.name === 'exports' && !scope.get('module'))) {
-                result.exports.props ||= new Map(); result.exports.props.set(key, v); result.exports.bits |= v.bits;
-              } else if (obj.type === 'Identifier') {
-                const old = scope.get(obj.name) || clean();
-                old.props ||= new Map(); old.props.set(key, v); old.bits |= v.bits;
-                if (old.elements && /^\d+$/.test(String(key))) {
-                  if (Number(key) > 4096) gap('array index limit', node);
-                  else old.elements[Number(key)] = v;
-                }
-                scope.set(obj.name, old);
+                if (lexicalFile !== file) gap('foreign module export mutation is not modeled', node);
+                else { result.exports.props ||= new Map(); result.exports.props.set(key, v); result.exports.bits |= v.bits; }
               } else {
                 const target = expr(obj, scope);
-                if (target.props) { target.props.set(key, v); target.bits |= v.bits; }
-                else gap('unresolved object assignment', node, Boolean(v.bits || v.kind));
+                if (!target.props && obj.type === 'Identifier') target.props = new Map();
+                writeProperty(target, key, v, node, node.left.property.type === 'PrivateIdentifier');
+                if (obj.type === 'Identifier') scope.set(obj.name, target);
               }
             } else bind(node.left, v, scope, false);
             return v;
           }
           case 'FunctionDeclaration': case 'FunctionExpression': case 'ArrowFunctionExpression': {
             const fn = node.type === 'FunctionDeclaration' && node.id && scope.get(node.id.name) ||
-              { bits: 0, kind: 'function', node, scope };
+              { bits: 0, kind: 'function', node, scope, sourceFile: lexicalFile };
             invoke(fn, [], true);
             return fn;
           }
@@ -7017,7 +7486,7 @@ function createFlowAnalysis(files) {
       for (const n of nodes) {
         if (n.type === 'VariableDeclaration') for (const d of n.declarations) bind(d.id, clean(), scope);
         const fn = ['ExportNamedDeclaration', 'ExportDefaultDeclaration'].includes(n.type) ? n.declaration : n;
-        if (fn?.type === 'FunctionDeclaration' && fn.id) scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
+        if (fn?.type === 'FunctionDeclaration' && fn.id) scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope, sourceFile: lexicalFile }, true);
       }
       // Only return-bearing statements contribute a function's result. A
       // prototype assignment is a side effect, not another possible return.
@@ -7096,8 +7565,8 @@ function createFlowAnalysis(files) {
           case 'ImportDeclaration': {
             const value = load(node.source.value);
             for (const s of node.specifiers) scope.set(s.local.name,
-              s.type === 'ImportSpecifier' ? property(value, s.imported.name ?? s.imported.value) :
-              s.type === 'ImportDefaultSpecifier' && value.kind === 'module-namespace' ? property(value, 'default') : value, true);
+              s.type === 'ImportSpecifier' ? readProperty(value, s.imported.name ?? s.imported.value) :
+              s.type === 'ImportDefaultSpecifier' && value.kind === 'module-namespace' ? readProperty(value, 'default') : value, true);
             break;
           }
           case 'ExportDefaultDeclaration': {
@@ -7113,7 +7582,7 @@ function createFlowAnalysis(files) {
             const props = result.exports.props || new Map();
             let bits = result.exports.bits || 0;
             for (const s of node.specifiers) {
-              const exported = value ? property(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean();
+              const exported = value ? readProperty(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean();
               props.set(s.exported.name ?? s.exported.value, exported);
               bits |= exported.bits || 0;
             }
@@ -7142,7 +7611,7 @@ function createFlowAnalysis(files) {
     }
     try {
       stmt(ast, new Scope());
-      for (let i = 0; i < callbacks.length; i++) { tick(); invoke(callbacks[i], []); }
+      for (let i = 0; i < callbacks.length; i++) { tick(); callValue(currentNode, callbacks[i], [], clean()); }
     }
     catch (error) {
       result.status = 'budget';
@@ -7345,7 +7814,7 @@ const acorn = require('./vendor/acorn/acorn');
 // process.cwd() is deliberately unknown, not assumed to be the package root.
 const ROOT = '/<artifact>/';
 const UNKNOWN = Object.freeze({});
-const MODULES = new Set(['child_process', 'path', 'process']);
+const MODULES = new Set(['child_process', 'path', 'process', 'vm']);
 const EXTENSIONS = ['', '.js', '.cjs', '.mjs', '.json', '/index.js', '/index.cjs', '/index.mjs'];
 const value = (literal, artifact = false) => ({ literal, artifact });
 const tag = kind => ({ kind });
@@ -7382,22 +7851,121 @@ function analyzeExecutionFile(file, source) {
   }
   let ast;
   try { ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, allowHashBang: true }); }
-  catch { result.status = 'unsupported'; return result; }
+  catch {
+    // JSON data can be a package export or a required file. Its strings never
+    // create executable imports. Do not apply this exception to a budget stop.
+    try { JSON.parse(source); return result; } catch { /* not JSON data */ }
+    result.status = 'unsupported'; diagnostic(null, 'unsupported runtime syntax'); return result;
+  }
   const dirname = ROOT + (file.includes('/') ? file.slice(0, file.lastIndexOf('/') + 1) : '');
   let work = 0, depth = 0;
   const features = { stringTables: 0, rotations: 0, computedAccesses: 0, dynamicLoads: 0, flattenedSwitches: 0 };
+  // Syntax values are immutable after construction (writes never mutate their
+  // props/items). Cache capability summaries so joins do not repeatedly walk
+  // large inert containers and consume the existing graph work budget.
+  const evaluatorCache = new WeakMap();
+  function hasEvaluator(input) {
+    if (!input) return false;
+    if (evaluatorCache.has(input)) return evaluatorCache.get(input);
+    if (!input.props && !input.items) return ['dynamic-code', 'dynamic-code-bind', 'global-factory'].includes(input.kind);
+    const pending = [input], seen = new Set();
+    while (pending.length) {
+      if (++work > 200000) throw new Error('execution graph work/depth limit');
+      const v = pending.pop();
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      if (['dynamic-code', 'dynamic-code-bind', 'global-factory'].includes(v.kind)) { evaluatorCache.set(input, true); return true; }
+      if (v.props) pending.push(...v.props.values());
+      if (v.items) pending.push(...v.items);
+    }
+    evaluatorCache.set(input, false);
+    return false;
+  }
+  // A deliberately small syntax proof for literal development wrappers.
+  // No recursive interpretation, calls, imports, member reads, coercion, or
+  // parameter source is accepted. Everything outside this grammar keeps a gap.
+  function inertLiteral(node, kind) {
+    if (node?.type !== 'Literal' || typeof node.value !== 'string' || node.value.length > 4096) return null;
+    let parsed;
+    try { parsed = acorn.parse(node.value, { ecmaVersion: 'latest', allowReturnOutsideFunction: true }); }
+    catch { return null; }
+    if (kind === 'Function') return parsed.body.length === 1 && parsed.body[0].type === 'ReturnStatement' &&
+      parsed.body[0].argument?.type === 'ThisExpression' ? tag('global-factory') : null;
+    if (kind === 'vm-arithmetic') {
+      if (parsed.body.length !== 1 || parsed.body[0].type !== 'ExpressionStatement') return null;
+      const pending = [parsed.body[0].expression];
+      let nodes = 0;
+      while (pending.length) {
+        if (++work > 200000) throw new Error('execution graph work/depth limit');
+        if (++nodes > 64) return null;
+        const expression = pending.pop();
+        if (expression.type === 'Literal' && typeof expression.value === 'number' && Number.isFinite(expression.value)) continue;
+        if (expression.type === 'UnaryExpression' && ['+', '-'].includes(expression.operator)) pending.push(expression.argument);
+        else if (expression.type === 'BinaryExpression' && ['+', '-', '*', '/', '%', '**'].includes(expression.operator)) pending.push(expression.left, expression.right);
+        else return null;
+      }
+      return UNKNOWN;
+    }
+    if (kind !== 'eval' || parsed.body.length > 32) return null;
+    const locals = new Set();
+    const primitive = n => n?.type === 'Literal' && (n.value === null || ['string', 'number', 'boolean'].includes(typeof n.value)) && !n.regex;
+    const scalar = n => primitive(n) || n?.type === 'Identifier' && locals.has(n.name);
+    for (const statement of parsed.body) {
+      if (++work > 200000) throw new Error('execution graph work/depth limit');
+      if (statement.type === 'EmptyStatement') continue;
+      if (statement.type === 'VariableDeclaration') {
+        for (const declaration of statement.declarations) {
+          if (declaration.id.type !== 'Identifier' || !primitive(declaration.init)) return null;
+          locals.add(declaration.id.name);
+        }
+        continue;
+      }
+      const expression = statement.type === 'ExpressionStatement' && statement.expression;
+      if (primitive(expression)) continue;
+      const lhs = expression?.left;
+      if (expression?.type !== 'AssignmentExpression' || expression.operator !== '=' ||
+          lhs.type !== 'MemberExpression' || lhs.computed || lhs.object.type !== 'Identifier' ||
+          lhs.object.name !== 'module' || lhs.property.name !== 'exports' || !scalar(expression.right)) return null;
+    }
+    return UNKNOWN;
+  }
   function key(node) { return node?.type === 'Identifier' ? node.name : node?.type === 'Literal' ? node.value : undefined; }
   function bind(node, v, scope) {
     if (!node) return;
     if (node.type === 'Identifier') scope.set(node.name, v, true);
-    else if (node.type === 'AssignmentPattern') { bind(node.left, UNKNOWN, scope); walk(node.right, scope); }
+    else if (node.type === 'AssignmentPattern') {
+      const fallback = walk(node.right, scope);
+      bind(node.left, hasEvaluator(fallback) ? fallback : UNKNOWN, scope);
+    }
     else if (node.type === 'ObjectPattern') for (const p of node.properties) {
+      if (p.type === 'RestElement' && hasEvaluator(v)) diagnostic(p, 'dynamic code execution alias escapes runtime graph');
       bind(p.value || p.argument, p.type === 'RestElement' ? UNKNOWN : property(v, p.computed ? walk(p.key, scope).literal : key(p.key)), scope);
     }
-    else if (node.type === 'ArrayPattern') node.elements.forEach((p, i) => bind(p, v.items?.[i] || UNKNOWN, scope));
+    else if (node.type === 'ArrayPattern') {
+      if (node.elements.some(p => p?.type === 'RestElement') && hasEvaluator(v)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+      node.elements.forEach((p, i) => bind(p, v.items?.[i] || UNKNOWN, scope));
+    }
     else if (node.type === 'RestElement') bind(node.argument, UNKNOWN, scope);
   }
   function property(v, k) {
+    // An unresolved computed global property can name an evaluator. Retain
+    // that possibility rather than treating an unknown function as inert.
+    if (v.kind === 'global' && (k === undefined || ['eval', 'Function'].includes(k))) return tag('dynamic-code');
+    if (['function', 'dynamic-code', 'global-factory'].includes(v.kind) && k === 'constructor') return tag('dynamic-code');
+    if (k === 'constructor') {
+      if (v.props?.has(k)) return v.props.get(k);
+      // Plain values inherit their type constructor; its constructor is
+      // Function. An unresolved receiver may already be a function (for
+      // example [].filter), so retain evaluator capability conservatively.
+      return v.props || v.items || Object.hasOwn(v, 'literal') ? tag('function') : tag('dynamic-code');
+    }
+    if (v.kind === 'vm' && ['Script', 'SourceTextModule', 'compileFunction', 'runInContext', 'runInNewContext', 'runInThisContext'].includes(k)) {
+      return { kind: 'dynamic-code', evaluator: ['runInContext', 'runInNewContext', 'runInThisContext'].includes(k) ? 'vm-arithmetic' : null };
+    }
+    // call/apply shift the code argument, so they must not inherit a direct
+    // evaluator's literal-source exception.
+    if (['dynamic-code', 'global-factory'].includes(v.kind) && ['call', 'apply'].includes(k)) return tag(v.kind);
+    if (['dynamic-code', 'global-factory'].includes(v.kind) && k === 'bind') return tag('dynamic-code-bind');
     if (v.kind === 'child_process' && ['spawn', 'spawnSync', 'execFile', 'execFileSync', 'fork'].includes(k)) return { kind: 'subprocess', method: k };
     if (v.kind === 'path' && ['join', 'resolve'].includes(k)) return { kind: 'path-call', method: k };
     if (v.kind === 'path' && k === 'posix') return v;
@@ -7413,7 +7981,11 @@ function analyzeExecutionFile(file, source) {
     for (; dest; dest = dest.parent, a = a.parent, b = b.parent) {
       for (const name of new Set([...a.bindings.keys(), ...b.bindings.keys()])) {
         const x = a.get(name) || UNKNOWN, y = b.get(name) || UNKNOWN;
-        dest.bindings.set(name, x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN);
+        if (x === y) { dest.bindings.set(name, x); continue; }
+        const evaluator = hasEvaluator(x) || hasEvaluator(y);
+        if (evaluator) diagnostic(null, 'dynamic code execution alias escapes runtime graph');
+        dest.bindings.set(name, evaluator ? tag('dynamic-code') :
+          x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN);
       }
     }
   }
@@ -7421,7 +7993,7 @@ function analyzeExecutionFile(file, source) {
     // Lexical declarations shadow globals even before initialization.
     for (const n of nodes) {
       if (n.type === 'VariableDeclaration') for (const d of n.declarations) bind(d.id, UNKNOWN, scope);
-      if (['FunctionDeclaration', 'ClassDeclaration'].includes(n.type) && n.id) scope.set(n.id.name, UNKNOWN, true);
+      if (['FunctionDeclaration', 'ClassDeclaration'].includes(n.type) && n.id) scope.set(n.id.name, tag('function'), true);
       if (n.type === 'ImportDeclaration') for (const s of n.specifiers) scope.set(s.local.name, UNKNOWN, true);
     }
     for (const n of nodes) walk(n, scope, loops);
@@ -7435,11 +8007,14 @@ function analyzeExecutionFile(file, source) {
     if (!fork && list?.length === 1 && ['--version', '-v', '--help', '-h'].includes(list[0]?.literal)) return UNKNOWN;
     let target = fork ? args[0] : null;
     if (!fork && list) {
-      // Inline eval is handled by the existing detector; do not call its text
-      // a filename. Unknown flags/arguments remain an unresolved edge.
+      // Inline eval is executable text, not a filename. Its nested runtime
+      // imports are not modeled; retain an explicit coverage gap.
       for (const arg of list) {
         if (target) break;
-        if (isString(arg) && ['-e', '--eval', '-p', '--print'].includes(arg.literal)) return UNKNOWN;
+        if (isString(arg) && ['-e', '--eval', '-p', '--print'].includes(arg.literal)) {
+          diagnostic(node, 'dynamic code execution in inline Node source is not modeled in runtime graph');
+          return UNKNOWN;
+        }
         if (!target && isString(arg) && /^--(?:no-warnings|enable-source-maps)$/.test(arg.literal)) continue;
         if (!target) target = isString(arg) && !arg.literal.startsWith('-') ? arg : UNKNOWN;
       }
@@ -7467,15 +8042,29 @@ function analyzeExecutionFile(file, source) {
     try {
       switch (node.type) {
         case 'Literal': return value(node.value);
-        case 'Identifier': return scope.get(node.name) || ({ require: tag('require'), process: tag('process'), __dirname: value(dirname, true), __filename: value(ROOT + file, true) }[node.name]) || UNKNOWN;
+        case 'Identifier': return scope.get(node.name) || ({ require: tag('require'), process: tag('process'),
+          eval: tag('dynamic-code'), Function: tag('dynamic-code'), globalThis: tag('global'), global: tag('global'), window: tag('global'),
+          __dirname: value(dirname, true), __filename: value(ROOT + file, true) }[node.name]) || UNKNOWN;
         case 'Program': return sequence(node.body, scope, loops);
         case 'BlockStatement': return sequence(node.body, new Scope(scope), loops);
+        case 'SequenceExpression': {
+          let last = UNKNOWN;
+          for (const expression of node.expressions) last = walk(expression, scope, loops);
+          return last;
+        }
+        case 'ReturnStatement': {
+          const returned = walk(node.argument, scope, loops);
+          if (hasEvaluator(returned)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          return returned;
+        }
         case 'VariableDeclaration': for (const d of node.declarations) bind(d.id, walk(d.init, scope, loops), scope); return UNKNOWN;
         case 'FunctionDeclaration': case 'FunctionExpression': case 'ArrowFunctionExpression': {
           const local = new Scope(scope.clone());
-          if (node.id) local.set(node.id.name, UNKNOWN, true);
+          if (node.id) local.set(node.id.name, tag('function'), true);
           for (const p of node.params) bind(p, UNKNOWN, local);
-          walk(node.body, local, 0); return UNKNOWN;
+          const returned = walk(node.body, local, 0);
+          if (node.type === 'ArrowFunctionExpression' && node.expression && hasEvaluator(returned)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          return tag('function');
         }
         case 'ImportDeclaration': {
           const raw = node.source.value, mod = moduleValue(raw);
@@ -7497,16 +8086,31 @@ function analyzeExecutionFile(file, source) {
           return node.operator === '+' && isString(a) && isString(b) ? value(a.literal + b.literal, a.artifact) : UNKNOWN;
         }
         case 'LogicalExpression': case 'ConditionalExpression': {
-          walk(node.test || node.left, scope, loops);
+          const left = walk(node.test || node.left, scope, loops);
           const a = scope.clone(), b = scope.clone();
-          const x = node.consequent ? walk(node.consequent, a, loops) : UNKNOWN;
+          const x = node.consequent ? walk(node.consequent, a, loops) : left;
           const y = walk(node.alternate || node.right, b, loops);
-          joinScopes(scope, a, b); return x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN;
+          joinScopes(scope, a, b);
+          // Evaluator functions are truthy. Reading their name through an AND
+          // expression returns the right operand, not the capability itself.
+          if (node.type === 'LogicalExpression' && ['dynamic-code', 'dynamic-code-bind', 'global-factory'].includes(left.kind)) {
+            return node.operator === '&&' ? y : left;
+          }
+          if (hasEvaluator(x) || hasEvaluator(y)) {
+            diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+            return tag('dynamic-code');
+          }
+          return x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN;
         }
         case 'IfStatement': {
           walk(node.test, scope, loops);
           const a = scope.clone(), b = scope.clone();
           walk(node.consequent, a, loops); walk(node.alternate, b, loops); joinScopes(scope, a, b); return UNKNOWN;
+        }
+        case 'SpreadElement': {
+          const spread = walk(node.argument, scope, loops);
+          if (hasEvaluator(spread)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          return UNKNOWN;
         }
         case 'ArrayExpression': {
           if (node.elements.length >= 8 && node.elements.every(n => n?.type === 'Literal' && typeof n.value === 'string')) features.stringTables++;
@@ -7528,8 +8132,11 @@ function analyzeExecutionFile(file, source) {
         }
         case 'AssignmentExpression': {
           const v = walk(node.right, scope, loops);
-          if (node.left.type === 'Identifier') scope.set(node.left.name, node.operator === '=' ? v : UNKNOWN);
-          else walk(node.left, scope, loops);
+          if (node.left.type === 'Identifier') scope.set(node.left.name, node.operator === '=' || hasEvaluator(v) ? v : UNKNOWN);
+          else {
+            if (hasEvaluator(v)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+            walk(node.left, scope, loops);
+          }
           return v;
         }
         case 'CallExpression': case 'NewExpression': {
@@ -7539,10 +8146,31 @@ function analyzeExecutionFile(file, source) {
               inner.callee.type === 'MemberExpression' && key(inner.callee.property) === 'shift' &&
               c.object.type === 'Identifier' && inner.callee.object.type === 'Identifier' && c.object.name === inner.callee.object.name) features.rotations++;
           const fn = walk(c, scope, loops), args = node.arguments.map(n => walk(n, scope, loops));
-          if (fn.kind === 'require') {
-            if (!isString(args[0])) features.dynamicLoads++;
+          if (args.some(hasEvaluator)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          // Literal source passed to an evaluator is not ordinary example
+          // text. Its imports depend on evaluation scope, which this bounded
+          // graph does not model. Keep a coverage gap instead of silently
+          // losing the nested executable source when ignoring string literals.
+          const evaluatorSyntax = c.type === 'Identifier' && ['eval', 'Function'].includes(c.name);
+          if (fn.kind === 'global-factory') return tag('global');
+          if (fn.kind === 'dynamic-code' || fn.kind === 'dynamic-code-bind' || evaluatorSyntax) {
+            const inert = evaluatorSyntax && fn.kind === 'dynamic-code' && node.arguments.length === 1
+              ? inertLiteral(node.arguments[0], c.name)
+              : fn.evaluator === 'vm-arithmetic' ? inertLiteral(node.arguments[0], fn.evaluator) : null;
+            if (inert) return inert;
+            diagnostic(node, 'dynamic code execution is not modeled in runtime graph');
+            return fn.kind === 'dynamic-code-bind' ? tag('dynamic-code') : UNKNOWN;
+          }
+          // Preserve literal require-shaped calls even when receiver/binding
+          // inference is ambiguous (for example a branch reassigns require).
+          // This remains conservative for locally defined require methods;
+          // unlike a text search it cannot match examples inside literals.
+          const requireSyntax = (c.type === 'Identifier' && c.name === 'require') ||
+            (c.type === 'MemberExpression' && !c.computed && key(c.property) === 'require');
+          if (fn.kind === 'require' || requireSyntax) {
+            if (!isString(args[0])) { features.dynamicLoads++; diagnostic(node, 'computed module specifier'); }
             if (args[0]?.literal?.startsWith?.('.')) result.imports.push(args[0].literal);
-            return moduleValue(args[0]?.literal);
+            if (fn.kind === 'require') return moduleValue(args[0]?.literal);
           }
           if (fn.kind === 'path-call' && args.length && args.every(isString)) {
             const parts = args.map(v => v.literal);
@@ -7558,7 +8186,7 @@ function analyzeExecutionFile(file, source) {
         case 'ImportExpression': {
           const v = walk(node.source, scope, loops);
           if (isString(v) && v.literal.startsWith('.')) result.imports.push(v.literal);
-          else if (!isString(v)) features.dynamicLoads++;
+          else if (!isString(v)) { features.dynamicLoads++; diagnostic(node, 'computed module specifier'); }
           return UNKNOWN;
         }
         default: {
@@ -7569,7 +8197,7 @@ function analyzeExecutionFile(file, source) {
             if (Array.isArray(child)) { for (const n of child) if (n?.type) walk(n, scope, loops + Number(looping)); }
             else if (child?.type) walk(child, scope, loops + Number(looping));
           }
-          return UNKNOWN;
+          return ['ClassDeclaration', 'ClassExpression'].includes(node.type) ? tag('function') : UNKNOWN;
         }
       }
     } finally { depth--; }
@@ -7743,6 +8371,306 @@ function inspectRuntimeLoaders({ file, code, normalized, normChanged, isInstallT
 module.exports = { inspectRuntimeLoaders };
 
 return module.exports; })();
+pure["./passive-url-evidence"] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];
+"use strict";
+
+const acorn = require('./vendor/acorn/acorn');
+
+// Narrow source-pattern classification under standard, unmodified builtins;
+// never a whole-package safety or host-integrity proof. Admit console only in
+// an explicitly complete, isolated supplied artifact
+// (one unique root manifest and one JavaScript source), with no other reference, alias,
+// rebinding or reflective/dynamic-code access that can invalidate that model.
+// Unknown syntax/uses fail closed. Never execute inspected source.
+function onlyPassiveDiagnosticUrls(source, domains, context) {
+  const files = context?.sourceFiles;
+  const coverage = context?.sourceCoverage;
+  const target = context?.filePath;
+  // Per-file syntax cannot rule out mutations in a neighboring module. Missing
+  // inventory/coverage is uncertainty, not an assertion that no neighbor exists.
+  if (!Array.isArray(files) || files.length !== 2 || target === "package.json" ||
+      typeof target !== "string" || !/\.(?:js|cjs|mjs)$/.test(target) ||
+      files.filter(file => file.path === "package.json").length !== 1 ||
+      files.filter(file => file.path === target && file.content === source).length !== 1 ||
+      coverage?.complete !== true || coverage.scannedFiles !== files.length || coverage.inventoryFiles !== files.length ||
+      coverage.skippedFiles !== 0 || coverage.truncatedFiles !== 0 ||
+      !Array.isArray(coverage.reasons) || coverage.reasons.length !== 0 ||
+      !Array.isArray(coverage.runtimeFiles) || !coverage.runtimeFiles.includes(target) ||
+      coverage.runtimeFiles.some(file => file !== target && file !== "package.json") ||
+      (coverage.installTimeFiles !== undefined && (!Array.isArray(coverage.installTimeFiles) ||
+        coverage.installTimeFiles.some(file => file !== target && file !== "package.json")))) return false;
+  if (typeof source !== 'string' || source.length > 1024 * 1024) return false;
+  const tokens = [];
+  let ast;
+  try {
+    ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module',
+      allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true,
+      allowHashBang: true, onToken: tokens });
+  } catch { return false; }
+  const contains = text => domains.some(domain => String(text).toLowerCase().includes(domain));
+  const parents = new Map(), literals = [];
+  const pending = [{ node: ast, parent: null }];
+  let visited = 0;
+  const diagnostics = new Set(['error', 'warn', 'log']);
+  const forbidden = new Set(['eval', 'Function', 'globalThis', 'global', 'window', 'self', 'Reflect', 'process']);
+  while (pending.length) {
+    if (++visited > 100000) return false;
+    const { node, parent } = pending.pop();
+    parents.set(node, parent);
+    if (node.type === 'WithStatement' || node.type === 'ThisExpression' || node.type === 'TaggedTemplateExpression') return false;
+    // Computed properties can recover Function/console through escaped or
+    // assembled names. This narrow exception does not resolve reflection.
+    if (node.type === 'MemberExpression' && node.computed) return false;
+    if (node.type === 'Identifier' && (forbidden.has(node.name) || ['constructor', '__proto__'].includes(node.name))) return false;
+    if (node.type === 'Identifier' && node.name === 'require' &&
+        (parent?.type !== 'CallExpression' || parent.callee !== node)) return false;
+    if (node.type === 'Identifier' && node.name === 'console') {
+      // Even unrelated scopes that shadow console disable the exception. This
+      // intentionally avoids optimistic name resolution across closures/hoisting.
+      if (parent?.type !== 'MemberExpression' || parent.object !== node || parent.computed || parent.optional ||
+          !diagnostics.has(parent.property.name)) return false;
+    }
+    if (node.type === 'MemberExpression' && node.object?.name === 'console') {
+      if (parent?.type !== 'CallExpression' || parent.callee !== node || parent.optional) return false;
+    }
+    if (node.type === 'Literal' && node.value === 'console' && parent?.type === 'MemberExpression') return false;
+    if (node.type === 'CallExpression' && node.callee?.name === 'require') {
+      // Loading arbitrary modules can replace global console through hidden
+      // code. This first slice only admits the fixture's standard HTTP imports.
+      if (node.arguments.length !== 1 || !['http', 'https', 'node:http', 'node:https'].includes(node.arguments[0]?.value)) return false;
+    }
+    if (node.type === 'ImportExpression' || node.type === 'ImportDeclaration') return false;
+    if (node.type === 'Literal' && typeof node.value === 'string') literals.push(node);
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object') {
+        if (Array.isArray(value)) {
+          for (const child of value) if (child?.type) pending.push({ node: child, parent: node });
+        } else if (value.type) pending.push({ node: value, parent: node });
+      }
+    }
+  }
+  let proofWork = 0;
+  const simple = node => {
+    const work = [node];
+    while (work.length) {
+      if (++proofWork > 100000) return false;
+      const part = work.pop();
+      if (part.type === 'Literal' || part.type === 'Identifier') continue;
+      if (part.type !== 'BinaryExpression' || part.operator !== '+') return false;
+      work.push(part.left, part.right);
+    }
+    return true;
+  };
+  const approved = new Set();
+  for (const literal of literals) {
+    if (!contains(literal.value) && !contains(source.slice(literal.start, literal.end))) continue;
+    let argument = literal, parent = parents.get(argument);
+    while (parent?.type === 'BinaryExpression' && parent.operator === '+') {
+      if (++proofWork > 100000) return false;
+      argument = parent; parent = parents.get(argument);
+    }
+    if (!simple(argument) || parent?.type !== 'CallExpression' || parent.optional ||
+        !parent.arguments.includes(argument) || parent.callee?.type !== 'MemberExpression' ||
+        parent.callee.computed || parent.callee.optional || parent.callee.object?.name !== 'console' ||
+        !diagnostics.has(parent.callee.property?.name) || parents.get(parent)?.type !== 'ExpressionStatement') return false;
+    approved.add(`${literal.start}:${literal.end}`);
+  }
+  let occurrences = 0;
+  for (const token of tokens) {
+    if (!contains(source.slice(token.start, token.end)) && !(typeof token.value === 'string' && contains(token.value))) continue;
+    occurrences++;
+    if (!approved.has(`${token.start}:${token.end}`)) return false;
+  }
+  return occurrences > 0;
+}
+module.exports = { onlyPassiveDiagnosticUrls };
+
+return module.exports; })();
+pure["./lifecycle-evidence"] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];
+"use strict";
+
+const acorn = require("./vendor/acorn/acorn");
+
+// A syntax proof over supplied evidence, never a package execution or a trust
+// decision about its name. Unknown syntax fails closed, including unreachable
+// statements and alternate branches. The collector remains authoritative for
+// regular files and completeness; omitted/symlinked/truncated files cannot be
+// recovered or inferred here. Direct evidence callers supply the complete text.
+const MAX_SOURCE_LENGTH = 16 * 1024;
+const MAX_NODES = 1024;
+const MAX_DEPTH = 32;
+const ENV_KEYS = new Set(["CI", "SKIP_DOWNLOAD"]);
+const BOOLEAN_STRINGS = new Set(["", "0", "1", "false", "true"]);
+const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+
+function canonicalPath(file) {
+  return typeof file === "string" && file.length <= 512 &&
+    file.split("/").every(part => SEGMENT.test(part) && part !== "node_modules");
+}
+function identifier(node, name) { return node?.type === "Identifier" && node.name === name; }
+function member(node, property) {
+  return node?.type === "MemberExpression" && node.computed === false && !node.optional &&
+    identifier(node.property, property);
+}
+
+// Shell command exactness does not establish interpreter identity. Supplied
+// node shims or ambiguous manifest metadata invalidate this exception. External
+// PATH, shell configuration and NODE_OPTIONS/preloads remain trusted host inputs;
+// this static proof never certifies an arbitrary execution environment.
+function interpreterUnshadowed(files) {
+  if (files.length > 20000) return false;
+  const manifests = new Set();
+  let manifestNodes = 0, manifestBytes = 0;
+  const nodeName = name => typeof name === "string" && /^(?:node)(?:\.(?:exe|cmd|bat|com))?$/i.test(name.split(/[\\/]/).at(-1));
+  for (const file of files) {
+    if (typeof file.path !== "string") return false;
+    const normalized = file.path.replace(/\\/g, "/").toLowerCase();
+    if (/(?:^|\/)\.bin\/node(?:\.(?:exe|cmd|bat|com))?$/.test(normalized)) return false;
+    if (!/(?:^|\/)package\.json$/.test(normalized)) continue;
+    if (manifests.has(normalized) || typeof file.content !== "string" || file.content.length > MAX_SOURCE_LENGTH) return false;
+    manifests.add(normalized);
+    manifestBytes += file.content.length;
+    if (manifestBytes > 64 * 1024) return false;
+    let manifest, ast;
+    try {
+      manifest = JSON.parse(file.content);
+      ast = acorn.parse("(" + file.content + ")", { ecmaVersion: "latest" });
+    } catch { return false; }
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return false;
+    // JSON.parse discards duplicate properties. Do not let a later benign bin
+    // value hide an earlier shadow declaration from a different consumer.
+    const pending = [ast];
+    while (pending.length) {
+      const node = pending.pop();
+      if (++manifestNodes > MAX_NODES) return false;
+      if (node.type === "ObjectExpression") {
+        const names = new Set();
+        for (const property of node.properties) {
+          const key = property.key?.value;
+          if (typeof key !== "string" || names.has(key)) return false;
+          names.add(key);
+        }
+      }
+      for (const value of Object.values(node)) {
+        for (const child of Array.isArray(value) ? value : [value]) {
+          if (child && typeof child === "object" && typeof child.type === "string") pending.push(child);
+        }
+      }
+    }
+    if (manifest.directories && Object.hasOwn(manifest.directories, "bin")) return false;
+    if (!Object.hasOwn(manifest, "bin")) continue;
+    if (typeof manifest.bin === "string") {
+      if (typeof manifest.name !== "string" || !manifest.name || nodeName(manifest.name) || !manifest.bin) return false;
+    } else {
+      if (!manifest.bin || typeof manifest.bin !== "object" || Array.isArray(manifest.bin)) return false;
+      for (const [name, target] of Object.entries(manifest.bin)) {
+        if (!name || /[\\/]/.test(name) || nodeName(name) || typeof target !== "string" || !target) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function proveLiteralLifecycle(command, manifestPath, evidence) {
+  if (typeof command !== "string" || command.length > 520 ||
+      !canonicalPath(manifestPath) || manifestPath.split("/").at(-1) !== "package.json") return null;
+  const match = /^node (\.\/)?([A-Za-z0-9_/-][A-Za-z0-9_./-]*\.(?:js|cjs|mjs))$/.exec(command);
+  // Both forms resolve the supplied file relative to the manifest. A bare
+  // leading dash is a Node option; a trailing newline is shell syntax, even
+  // though JavaScript's $ anchor also matches before a final line terminator.
+  if (!match || match[0] !== command || (!match[1] && match[2].startsWith("-"))) return null;
+  const relative = match[2];
+  if (!canonicalPath(relative)) return null;
+  const directory = manifestPath.slice(0, -"package.json".length);
+  const scriptPath = directory + relative;
+  const files = evidence?.sourceFiles;
+  if (!Array.isArray(files) || !interpreterUnshadowed(files)) return null;
+  const matches = files.filter(file => file.path === scriptPath);
+  if (matches.length !== 1 || files.filter(file => file.path === manifestPath).length !== 1) return null;
+  const source = matches[0].content;
+  const coverage = evidence.sourceCoverage;
+  if (coverage && (coverage.complete !== true || coverage.truncatedFiles > 0 || coverage.skippedFiles > 0 ||
+      coverage.reasons?.length || (Array.isArray(coverage.runtimeFiles) && !coverage.runtimeFiles.includes(scriptPath)))) return null;
+  if (typeof source !== "string" || !source.trim() || source.length > MAX_SOURCE_LENGTH || source.includes("\0")) return null;
+
+  let ast;
+  try { ast = acorn.parse(source, { ecmaVersion: "latest", sourceType: "script", allowHashBang: true }); }
+  catch { return null; }
+  // Traverse every AST child before interpreting the deliberately smaller
+  // grammar. Bound nesting and total nodes even for unsupported syntax.
+  let nodes = 0;
+  const pending = [{ node: ast, depth: 0 }];
+  while (pending.length) {
+    const { node, depth } = pending.pop();
+    if (++nodes > MAX_NODES || depth > MAX_DEPTH) return null;
+    for (const value of Object.values(node)) {
+      for (const child of Array.isArray(value) ? value : [value]) {
+        if (child && typeof child === "object" && typeof child.type === "string") pending.push({ node: child, depth: depth + 1 });
+      }
+    }
+  }
+  const operations = new Set();
+  const environmentChecks = new Set();
+  const envRead = node => {
+    if (!member(node, node?.property?.name) || !ENV_KEYS.has(node.property.name) ||
+        !member(node.object, "env") || !identifier(node.object.object, "process")) return false;
+    environmentChecks.add(node.property.name);
+    return true;
+  };
+  function condition(node) {
+    if (!node) return false;
+    if (envRead(node)) return true;
+    if (node.type === "UnaryExpression" && node.operator === "!" && node.prefix) return condition(node.argument);
+    if (node.type === "LogicalExpression" && ["&&", "||"].includes(node.operator)) {
+      return condition(node.left) && condition(node.right);
+    }
+    if (node.type === "BinaryExpression" && ["===", "!=="].includes(node.operator)) {
+      const literal = node.right;
+      return envRead(node.left) && literal.type === "Literal" &&
+        (typeof literal.value === "boolean" || (typeof literal.value === "string" && BOOLEAN_STRINGS.has(literal.value)));
+    }
+    return false;
+  }
+  function call(node) {
+    if (node?.type !== "CallExpression" || node.optional) return false;
+    if (member(node.callee, "log") && identifier(node.callee.object, "console") &&
+        node.arguments.length >= 1 && node.arguments.length <= 4 &&
+        node.arguments.every(arg => arg.type === "Literal" && typeof arg.value === "string" &&
+          !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(arg.value))) {
+      operations.add("console.log(literal strings)");
+      return true;
+    }
+    if (member(node.callee, "exit") && identifier(node.callee.object, "process") &&
+        node.arguments.length === 1 && node.arguments[0].type === "Literal" && node.arguments[0].value === 0) {
+      operations.add("process.exit(0)");
+      return true;
+    }
+    return false;
+  }
+  function statement(node) {
+    if (!node) return false;
+    if (node.type === "Program" || node.type === "BlockStatement") return node.body.every(child => statement(child));
+    if (node.type === "EmptyStatement") return true;
+    if (node.type === "ExpressionStatement") return call(node.expression);
+    if (node.type === "IfStatement") return condition(node.test) && statement(node.consequent) &&
+      (!node.alternate || statement(node.alternate));
+    return false;
+  }
+  if (!statement(ast)) return null;
+  return {
+    kind: "literal-node-lifecycle-v1",
+    command,
+    assumptions: ["The host resolves node to the trusted Node.js interpreter.",
+      "External PATH, shell configuration and NODE_OPTIONS/preloads do not alter the analyzed behavior."],
+    script: { file: scriptPath, source },
+    operations: [...operations].sort(),
+    environmentChecks: [...environmentChecks].sort()
+  };
+}
+
+module.exports = { proveLiteralLifecycle };
+
+return module.exports; })();
 const { sensitiveFlowHints } = pure['./sensitive-flows'];
 const { createFlowAnalysis } = pure['./flow-analysis'];
 const { createExecutionGraph } = pure['./execution-graph'];
@@ -7771,6 +8699,8 @@ function compareProvenanceToRepository(primary, declaredRepository) {
 }
 const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = pure['./credential-targets'];
 const { inspectRuntimeLoaders } = pure['./runtime-loaders'];
+const { onlyPassiveDiagnosticUrls } = pure['./passive-url-evidence'];
+const { proveLiteralLifecycle } = pure['./lifecycle-evidence'];
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -8606,7 +9536,7 @@ const BAND_DEFINITIONS = [
   { band: "github-young", label: "github-young", categories: ["github-young"], rationale: "Linked repository was created within the last 30 days — common slopsquat shape." },
   { band: "github-lonely", label: "github-lonely", categories: ["github-lonely"], rationale: "0 stars + 0 forks + low watcher count on a young repo. Low community signal." },
   { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." },
-  { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
+  { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "One publishing maintainer is account-concentration context, not evidence of malicious package behavior." },
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
   { band: "self-scan-verified", label: "self-scan-verified", categories: ["self-scan-verified"], rationale: "The scanned package is pkgxray itself, provenance-verified against its canonical repo; signature-database findings report as review instead of block." },
@@ -8645,7 +9575,7 @@ function computeRiskBands(findings) {
 function auditMetadata(evidence, findings) {
   const packageJson = findPackageJson(evidence.sourceFiles);
   if (packageJson) {
-    inspectPackageJson(packageJson.path, packageJson.json, findings);
+    inspectPackageJson(packageJson.path, packageJson.json, findings, evidence);
   } else {
     // No package.json — but a Python package's manifest is setup.py /
     // pyproject.toml. When one is present the evidence is NOT incomplete: it IS
@@ -8806,12 +9736,9 @@ function daysAgo(iso) {
   return Math.floor(ms / 86400000);
 }
 
-// Lonely-maintainer detection. A package with exactly ONE npm maintainer is
-// a single point of failure: if that person's account is compromised, the
-// attacker can publish anything (event-stream, ua-parser-js, ESLint config-
-// conventional, etc. were all single-maintainer at the time of attack). Only
-// flagged when the package looks established enough to be a real target.
-// Reuses already-fetched data — adds zero latency.
+// Keep publishing-account concentration visible without treating a maintainer
+// count as evidence of compromise. Source, vulnerability, provenance and
+// required-coverage findings decide independently. Reuses fetched metadata.
 function inspectMaintainerSurface(evidence, findings) {
   const ghMeta = evidence.githubMetadata;
   const npmMeta = evidence.npmMetadata;
@@ -8833,12 +9760,12 @@ function inspectMaintainerSurface(evidence, findings) {
     : String(onlyMaintainer);
 
   findings.push({
-    severity: "medium",
+    severity: "info",
     category: "lonely-maintainer",
     file: "NPM_METADATA",
     snippet: `Single npm maintainer: ${name}${stars !== null ? ` · ${stars} stars` : ""}${ageDays !== null ? ` · ${ageDays}d old` : ""}`,
     rationale:
-      "Established package with exactly one publishing maintainer — single point of failure. If that account is compromised, the attacker can publish any code. (event-stream, ua-parser-js, conventional-changelog-conventionalcommits, etc. were all single-maintainer at the time of their attacks.)"
+      "This established package has one publishing maintainer, concentrating account access. That is contextual metadata, not evidence that this artifact is compromised or executes malicious behavior. It does not independently block installation or clear any other finding or required check."
   });
 }
 
@@ -9015,23 +9942,21 @@ function inspectMetadataObject(label, metadata, findings) {
 }
 
 function findPackageJson(files) {
-  for (const file of files) {
-    if (file.path.endsWith("package.json")) {
-      try {
-        return { path: file.path, json: JSON.parse(file.content) };
-      } catch (error) {
-        return {
-          path: file.path,
-          json: null,
-          parseError: error
-        };
-      }
-    }
+  const manifestPath = file => String(file.path).replace(/\\/g, "/").replace(/^\.\//, "");
+  // Artifact source order must not let a dependency or filename lookalike
+  // replace the root manifest. A malformed root remains authoritative evidence
+  // of a metadata gap; do not fall back to a valid nested manifest in that case.
+  const file = files.find(file => manifestPath(file) === "package.json") ||
+    files.find(file => manifestPath(file).endsWith("/package.json"));
+  if (!file) return null;
+  try {
+    return { path: file.path, json: JSON.parse(file.content) };
+  } catch (error) {
+    return { path: file.path, json: null, parseError: error };
   }
-  return null;
 }
 
-function inspectPackageJson(path, json, findings) {
+function inspectPackageJson(path, json, findings, evidence) {
   if (!json) {
     findings.push({
       severity: "medium",
@@ -9044,15 +9969,18 @@ function inspectPackageJson(path, json, findings) {
   }
 
   const scripts = json.scripts || {};
-  for (const hook of ["preinstall", "install", "postinstall", "prepack", "prepare"]) {
+  for (const hook of AUTO_RUN_INSTALL_HOOKS) {
     if (scripts[hook]) {
+      const lifecycleProof = proveLiteralLifecycle(scripts[hook], path, evidence);
       findings.push({
-        severity: "medium",
+        severity: lifecycleProof ? "info" : "medium",
         category: "install-hook",
         file: path,
         snippet: `"${hook}": "${scripts[hook]}"`,
-        rationale:
-          "Install-time scripts run automatically with the installing user's privileges and require manual review."
+        rationale: lifecycleProof
+          ? "The exact supplied lifecycle script is fully parsed and limited to literal messages, fixed CI/SKIP_DOWNLOAD conditions, and exit(0). This proof does not clear other findings."
+          : "Install-time scripts run automatically with the installing user's privileges; this command or its complete script is outside the bounded benign proof.",
+        ...(lifecycleProof ? { lifecycleProof } : {})
       });
       // An install hook that publishes INLINE never reaches the file-level
       // self-publish check, because the command lives in package.json and
@@ -9332,7 +10260,8 @@ function auditFiles(files, findings, evidence) {
   let {
     all: runtimePaths,
     lifecycle: lifecyclePaths,
-    installTime: installTimePaths
+    installTime: installTimePaths,
+    gaps: seedGaps
   } = collectLifecycleReferencedPaths(files);
 
   for (const file of (evidence.sourceCoverage && evidence.sourceCoverage.runtimeFiles) || []) runtimePaths.add(normalizeRelPath(file));
@@ -9345,7 +10274,7 @@ function auditFiles(files, findings, evidence) {
   runtimePaths = executionGraph.runtime;
   lifecyclePaths = executionGraph.lifecycle;
   installTimePaths = executionGraph.installTime;
-  for (const gap of executionGraph.gaps) {
+  for (const gap of [...seedGaps, ...executionGraph.gaps]) {
     findings.push({ severity: 'medium', category: 'unresolved-runtime-execution', file: gap.file,
       snippet: clipAround(files.find(f => f.path === gap.file)?.content || '', gap.index),
       rationale: `Runtime execution coverage is incomplete: ${gap.reason}.` });
@@ -9463,7 +10392,7 @@ function auditFiles(files, findings, evidence) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectAgentConfigAccess(file, content, lower, findings, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence);
     inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged);
     if (!suppressObfuscationHeuristics) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
@@ -9622,21 +10551,31 @@ const REQUIRE_GRAPH_MAX_DEPTH = 2;
 const REQUIRE_GRAPH_MAX_VISITS = 400;
 
 // Resolve a relative specifier (`./util`, `../lib/x.js`) referenced FROM a given
-// source path against the known file set, returning the normalized path of the
-// matching file, or null. Mirrors Node's extension/index resolution loosely —
-// this is a static reachability check, not the real resolver.
-function resolveRelativeSpec(fromPath, spec, fileIndex) {
+// source path without clamping parent traversal to the artifact root. Absolute
+// paths and traversal beyond that root are unresolved, not local file aliases.
+function relativeArtifactPath(fromPath, spec) {
+  if (typeof spec !== "string" || /^(?:[\\/]|[A-Za-z]:)/.test(spec)) return null;
   const norm = normalizeRelPath(fromPath);
   // Directory of the referencing file: drop the final path segment. A bare
   // filename (`index.js`) or the "./" root sentinel resolves against the root.
   const slash = norm.lastIndexOf("/");
   const segments = slash === -1 ? [] : norm.slice(0, slash).split("/");
-  for (const part of spec.split("/")) {
+  for (const part of spec.replace(/\\/g, "/").split("/")) {
     if (part === "" || part === ".") continue;
-    if (part === "..") segments.pop();
+    if (part === "..") {
+      if (!segments.length) return null;
+      segments.pop();
+    }
     else segments.push(part);
   }
-  const joined = segments.join("/");
+  return segments.join("/");
+}
+
+// Match the artifact-local target against supplied files. This is a bounded
+// static reachability check, not the actual Node module resolver.
+function resolveRelativeSpec(fromPath, spec, fileIndex) {
+  const joined = relativeArtifactPath(fromPath, spec);
+  if (joined === null) return null;
   for (const ext of REQUIRE_RESOLVE_EXTENSIONS) {
     const candidate = normalizeRelPath(joined + ext);
     if (fileIndex.has(candidate)) return candidate;
@@ -9683,6 +10622,7 @@ function collectLifecycleReferencedPaths(files) {
   const lifecycleSeeds = [];
   const installSeeds = [];
   const entrySeeds = [];
+  const gaps = [];
   const pkg = findPackageJson(files);
   if (pkg && pkg.json) {
     if (pkg.json.scripts && typeof pkg.json.scripts === "object") {
@@ -9691,9 +10631,13 @@ function collectLifecycleReferencedPaths(files) {
         let m;
         SCRIPT_PATH_TOKEN_REGEX.lastIndex = 0;
         while ((m = SCRIPT_PATH_TOKEN_REGEX.exec(command)) !== null) {
-          const seed = normalizeRelPath(m[1]);
-          const resolved = resolveRelativeSpec("./", seed, fileIndex);
           const install = AUTO_RUN_INSTALL_HOOKS.has(hook);
+          const seed = relativeArtifactPath(pkg.path, m[1]);
+          if (seed === null) {
+            if (install) gaps.push({ file: pkg.path, index: 0, reason: `script target escapes or is outside the artifact: ${m[1]}` });
+            continue;
+          }
+          const resolved = resolveRelativeSpec(pkg.path, m[1], fileIndex);
           // Manual build/test scripts often point at files deliberately omitted
           // from the published tarball. An absent file cannot execute there;
           // retain missing targets only for npm's automatic install hooks.
@@ -9707,9 +10651,14 @@ function collectLifecycleReferencedPaths(files) {
     collectEntryStrings(pkg.json.module, entryStrings);
     collectEntryStrings(pkg.json.bin, entryStrings);
     collectEntryStrings(pkg.json.exports, entryStrings);
-    if (!pkg.json.main && !pkg.json.exports && fileIndex.has('index.js')) entrySeeds.push('index.js');
+    const defaultEntry = relativeArtifactPath(pkg.path, 'index.js');
+    if (!pkg.json.main && !pkg.json.exports && fileIndex.has(defaultEntry)) entrySeeds.push(defaultEntry);
     for (const raw of entryStrings) {
-      const resolved = resolveRelativeSpec("./", raw.replace(/^\.?\//, "./"), fileIndex);
+      if (relativeArtifactPath(pkg.path, raw) === null) {
+        gaps.push({ file: pkg.path, index: 0, reason: `entry target escapes or is outside the artifact: ${raw}` });
+        continue;
+      }
+      const resolved = resolveRelativeSpec(pkg.path, raw, fileIndex);
       if (resolved) entrySeeds.push(resolved);
     }
   }
@@ -9745,17 +10694,21 @@ function collectLifecycleReferencedPaths(files) {
   const lifecycle = walk(lifecycleSeeds);
   const installTime = walk(installSeeds);
   const all = walk([...lifecycleSeeds, ...entrySeeds]);
-  return { all, lifecycle, installTime };
+  return { all, lifecycle, installTime, gaps };
 }
 
-// The package.json hooks npm executes on its own during `npm install`. Kept in
-// sync with the hook list inspectPackageJson reports as install-hook findings.
+// Lifecycle commands relevant to installation and package preparation. Keep
+// source-plan.js in sync so every reported hook is collected as runtime code.
 const AUTO_RUN_INSTALL_HOOKS = new Set([
   "preinstall",
   "install",
   "postinstall",
   "prepack",
-  "prepare"
+  "prepare",
+  "prepublish",
+  "preprepare",
+  "postprepare",
+  "postpack"
 ]);
 
 // --- Install-time / auto-execution surfaces (#1) ---------------------------
@@ -11013,7 +11966,7 @@ const READ_DATA_BLOB_REGEX =
 const READ_OPAQUE_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
-function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
   // (`require("ht"+"tps")`, a domain spelled in fragments) count too.
   const nlower = normChanged ? normalized.toLowerCase() : lower;
@@ -11129,7 +12082,16 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // legitimate doc/error links, so this is reviewed rather than blocked — a
   // shortener alone is not proof of exfil. Placed after the HIGH loader/env
   // branches above so a genuine stage-2 loader still BLOCKS first.
-  if (hasCapability && shortener) {
+  // Suppress only this coincidence when every original and normalized URL
+  // occurrence is classified as a direct diagnostic argument in the bounded,
+  // complete supplied-source context. This assumes standard host builtins.
+  const passiveContext = { sourceFiles: evidence.sourceFiles, sourceCoverage: evidence.sourceCoverage, filePath: file.path };
+  const passiveShorteners = hasCapability && shortener && !hasExec && !hasDynamicEval && !hasLiteralEval &&
+    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS, passiveContext) &&
+    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS, {
+      ...passiveContext, sourceFiles: evidence.sourceFiles.map(source => source.path === file.path ? { ...source, content: normalized } : source)
+    }));
+  if (hasCapability && shortener && !passiveShorteners) {
     findings.push({
       severity: "medium",
       category: "network-exfil-or-loader",

@@ -23,7 +23,8 @@ async function fixture(t, { scripts = false, missing = false, identity = true } 
     ...(scripts ? { scripts: { postinstall: "node install.js" } } : {}) };
   await fs.writeFile(path.join(source, "package.json"), JSON.stringify(manifest));
   await fs.writeFile(path.join(source, "index.js"), "module.exports = 42;\n");
-  if (scripts) await fs.writeFile(path.join(source, "install.js"), "console.log('do not execute');\n");
+  // Dynamic arguments deliberately stay outside the literal lifecycle proof.
+  if (scripts) await fs.writeFile(path.join(source, "install.js"), "console.log('do not execute', process.platform);\n");
   const original = transport.requestJson;
   t.after(() => { transport.requestJson = original; });
   const requests = [];

@@ -27,13 +27,13 @@ const extracted = INLINED.map((name) => {
 
 // Inline pure CommonJS modules in isolated scopes; the vendored parser keeps
 // its original MIT notice and exposes only its exports to the flow engine.
-const pureModules = ['vendor/acorn/acorn', 'shell-flows', 'flow-analysis', 'sensitive-flows', 'execution-graph', 'credential-targets', 'runtime-loaders'];
+const pureModules = ['vendor/acorn/acorn', 'shell-flows', 'flow-analysis', 'sensitive-flows', 'execution-graph', 'credential-targets', 'runtime-loaders', 'passive-url-evidence', 'lifecycle-evidence'];
 const vendorLicense = fs.readFileSync(path.join(root, 'src/vendor/acorn/LICENSE'), 'utf8');
 const pureBundle = '/* Bundled Acorn 8.18.0 — MIT license\n' + vendorLicense + '\n*/\n' + pureModules.map(name => {
   const text = fs.readFileSync(path.join(root, 'src', name + '.js'), 'utf8');
   return `pure[${JSON.stringify('./' + name)}] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];\n${text}\nreturn module.exports; })();`;
 }).join('\n');
-const supportedImports = new Set(['./sensitive-flows', './flow-analysis', './execution-graph', './credential-targets', './runtime-loaders', './attestation']);
+const supportedImports = new Set(['./sensitive-flows', './flow-analysis', './execution-graph', './credential-targets', './runtime-loaders', './passive-url-evidence', './lifecycle-evidence', './attestation']);
 for (const match of source.matchAll(/^const .* = require\("([^"\n]+)"\);$/gm)) {
   if (!supportedImports.has(match[1])) throw new Error(`Unbundled auditor dependency: ${match[1]}`);
 }
@@ -49,6 +49,10 @@ const withoutExports = source
     () => "const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = pure['./credential-targets'];\n")
   .replace(/^const \{ inspectRuntimeLoaders \} = require\("\.\/runtime-loaders"\);\n/gm,
     () => "const { inspectRuntimeLoaders } = pure['./runtime-loaders'];\n")
+  .replace(/^const \{ onlyPassiveDiagnosticUrls \} = require\("\.\/passive-url-evidence"\);\n/gm,
+    () => "const { onlyPassiveDiagnosticUrls } = pure['./passive-url-evidence'];\n")
+  .replace(/^const \{ proveLiteralLifecycle \} = require\("\.\/lifecycle-evidence"\);\n/gm,
+    () => "const { proveLiteralLifecycle } = pure['./lifecycle-evidence'];\n")
   .replace(
     /^const \{ compareProvenanceToRepository \} = require\("\.\/attestation"\);\n/m,
     () => `// Inlined from src/attestation.js (pure, browser-safe):\n${extracted.join("\n\n")}\n`

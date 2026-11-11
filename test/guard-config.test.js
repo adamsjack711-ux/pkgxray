@@ -19,8 +19,9 @@ const { spawnSync } = require("node:child_process");
 
 const AUDIT_BIN = path.join(__dirname, "..", "bin", "audit.js");
 
-// A package whose only real signal is an install hook (medium → verdict
-// "review"). Muting `install-hook` drops it and the package folds to "safe".
+// The dynamic diagnostic argument is outside the literal-script grammar, so
+// the install hook remains uncertain. These tests exercise config handling of
+// that uncertainty; literal-only logging is covered by lifecycle-evidence.test.
 function evidenceWithInstallHook() {
   return {
     packageName: "demo-pkg",
@@ -37,7 +38,7 @@ function evidenceWithInstallHook() {
         repository: "https://github.com/example/demo-pkg",
         scripts: { postinstall: "node setup.js" }
       }),
-      'setup.js': 'console.log("setup complete");'
+      'setup.js': 'console.log("setup target", process.platform);'
     }
   };
 }

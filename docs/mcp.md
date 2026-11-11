@@ -77,6 +77,31 @@ gaps do not retry. Persistent uncertainty blocks automatically. Explicitly
 invoked triage still writes operator policy; it is not a per-event approval
 prompt or a bypass for mandatory missing checks.
 
+### Experimental coding-agent investigation
+
+The unpublished candidate can expose `read_package_evidence` when the local
+server starts with `PKGXRAY_AGENT_INVESTIGATION=1`. This is an operator setting;
+tool arguments cannot enable it. If `mcp.tools` restricts tools, both `guard`
+and `investigate` must be allowed. It is off by default and absent from the
+hosted service. No model provider, API key, or background model call is added.
+
+A blocked guard scan can return an opaque evidence handle for bounded excerpts
+from its in-memory artifact snapshot. The reader cannot open an arbitrary
+filesystem path. Handles expire, have read and storage limits, and stop working
+when their scanner or policy binding changes. Excerpts are untrusted package
+data, potentially containing instructions intended to mislead the coding agent.
+Credential redaction is best effort; enabling this option allows package source
+to enter the coding agent's context under that host's data handling policy.
+
+This tool helps explain a block and investigate an alternative. It cannot
+approve installation or suppress a finding. The coding agent's explanation is
+not a new safety receipt. See the [bounded investigation workflow](integrations/coding-agents.md#experimental-investigation-workflow).
+
+When separately enabled by the operator, `scan_npm_package_in_vm` accepts an
+optional `expectedSha256`. Supply the original scan's digest for a follow-up:
+if acquisition returns different bytes, the scan stops before VM execution.
+A quiet VM run never clears a static block or approves installation.
+
 ### Filesystem boundary
 
 MCP tool arguments cannot grant themselves access to the filesystem. Caller-selected

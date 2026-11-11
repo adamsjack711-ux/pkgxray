@@ -27,7 +27,7 @@ test("blocks environment exfiltration patterns", () => {
   assert.ok(report.findings.some((finding) => finding.category === "network-exfil-or-loader"));
 });
 
-test("sends install hooks to manual review without high evidence", () => {
+test("retains raw uncertainty for install scripts outside the literal proof", () => {
   const report = auditEvidence({
     sourceFiles: {
       "package.json": JSON.stringify({
@@ -36,7 +36,7 @@ test("sends install hooks to manual review without high evidence", () => {
           postinstall: "node setup.js"
         }
       }),
-      "setup.js": "console.log('setup')"
+      "setup.js": "console.log('setup', process.platform)"
     }
   });
 
@@ -776,11 +776,10 @@ test("F2: dynamic require + bulk-env harvest blocks", () => {
   );
 });
 
-// FP guard for F2: a BARE plugin loader (dynamic require, no bulk-env, no
-// suspicious destination) is INFO — recorded, but it does not gate the verdict.
-// This is the babel/express case: legit plugin and view-engine loaders must not
-// be pushed to review just for loading a module by computed name.
-test("F2: bare dynamic require (plugin loader) is INFO, not gating", () => {
+// A bare plugin loader is not positive malware evidence. An unknown module
+// identity still leaves behavioral coverage unresolved: treating it as clean
+// also cleared a rotated-table credential-upload reduction.
+test("F2: bare dynamic require is informational but its unknown target remains unresolved", () => {
   const report = auditEvidence({
     packageName: "plugin-loader",
     sourceFiles: {
@@ -791,12 +790,15 @@ test("F2: bare dynamic require (plugin loader) is INFO, not gating", () => {
       "index.js": "function load(name){ return require(name); }\nmodule.exports = load;"
     }
   });
-  assert.equal(report.verdict, "safe");
+  assert.equal(report.verdict, "review");
+  assert.ok(report.findings.some(f => f.category === "flow-analysis-gap"));
   assert.ok(
     report.findings.some((f) => f.category === "dynamic-require" && f.severity === "info"),
     "the bare dynamic require should be recorded as INFO"
   );
-  assert.ok(!report.findings.some((f) => f.severity === "high" || f.severity === "medium"));
+  assert.ok(!report.findings.some(f => f.severity === "high"));
+  assert.ok(report.findings.filter(f => f.severity === "medium").every(f =>
+    ["flow-analysis-gap", "unresolved-runtime-execution"].includes(f.category)));
 });
 
 // Corroboration: a dynamic require in the same file as a suspicious destination

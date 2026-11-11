@@ -1,0 +1,91 @@
+{
+  "measuredAt": "2026-11-11T14:57:43.929Z",
+  "scannerBuildId": "6ef8d992d9e1790b67edbe16cf8fa73384a04e24343ce7067509e52b238c5a7a",
+  "scope": "Exact primitive private getters plus bounded closed private data shapes for isolated dormant methods.",
+  "acceptance": {
+    "sameFourPinnedArtifacts": true,
+    "sameEffectivePolicy": true,
+    "requiredSourceAndVulnerabilityChecksComplete": true,
+    "noExplicitOverrides": true,
+    "measurementValid": true,
+    "allControlsAllowed": true,
+    "counts": {
+      "allow": 4,
+      "block": 0,
+      "error": 0
+    }
+  },
+  "regressionCycle": "Failing getter controls and private identity prerequisite; descriptor and instance modeling; independent adversarial reviews and repaired regressions; conservative closed-shape proof; focused/full/corpus/MCP validation of exact committed source.",
+  "focused": {
+    "total": 61,
+    "passed": 61
+  },
+  "adversarialGroups": 35,
+  "fullSuite": {
+    "total": 1364,
+    "passed": 1359,
+    "skipped": 5,
+    "failed": 0
+  },
+  "initialFullRun": {
+    "total": 1364,
+    "passed": 1358,
+    "skipped": 5,
+    "failed": 1,
+    "failure": "tarball HIT delivery cancels a client that stops reading: cache warm-up returned 502 instead of 200 with a 300ms deadline during concurrent external-corpus validation",
+    "followup": "The unchanged focused test passed, then the unchanged full suite passed after the external scan completed; no timeout or assertion was weakened."
+  },
+  "lint": "passed including rebuilt browser and website parity",
+  "authoredAutomaticTotals": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "holdout": {
+    "total": 20,
+    "review": 10,
+    "clear": 10,
+    "block": 0,
+    "miss": 0,
+    "falseBlock": 0
+  },
+  "upgrade": {
+    "total": 12,
+    "passed": 12
+  },
+  "mcpChecks": 7,
+  "externalStatic": {
+    "sameCohortAndArtifactHashes": true,
+    "counts": {
+      "malicious": {
+        "safe": 0,
+        "review": 8,
+        "block": 0,
+        "errors": 0
+      },
+      "benign": {
+        "safe": 4,
+        "review": 0,
+        "block": 0,
+        "errors": 0
+      }
+    },
+    "positiveMalwareDetectionEstablished": false
+  },
+  "limitations": [
+    "Four selected benign controls are not a production accuracy estimate.",
+    "All eight external malicious samples remain raw uncertainty, not confirmed malicious-behavior detections.",
+    "Unsupported class/getter/alias/reflective behaviors continue to hold. Actual instance state is not replaced with dormant proof data.",
+    "Static timing is a tiny single-input local measurement excluding network, MCP and agent latency.",
+    "No target package code executed; no release, hosted deployment or local MCP activation."
+  ]
+}

@@ -6,6 +6,8 @@ const { createExecutionGraph } = require("./execution-graph");
 const { compareProvenanceToRepository } = require("./attestation");
 const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = require("./credential-targets");
 const { inspectRuntimeLoaders } = require("./runtime-loaders");
+const { onlyPassiveDiagnosticUrls } = require("./passive-url-evidence");
+const { proveLiteralLifecycle } = require("./lifecycle-evidence");
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -841,7 +843,7 @@ const BAND_DEFINITIONS = [
   { band: "github-young", label: "github-young", categories: ["github-young"], rationale: "Linked repository was created within the last 30 days — common slopsquat shape." },
   { band: "github-lonely", label: "github-lonely", categories: ["github-lonely"], rationale: "0 stars + 0 forks + low watcher count on a young repo. Low community signal." },
   { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." },
-  { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
+  { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "One publishing maintainer is account-concentration context, not evidence of malicious package behavior." },
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
   { band: "self-scan-verified", label: "self-scan-verified", categories: ["self-scan-verified"], rationale: "The scanned package is pkgxray itself, provenance-verified against its canonical repo; signature-database findings report as review instead of block." },
@@ -880,7 +882,7 @@ function computeRiskBands(findings) {
 function auditMetadata(evidence, findings) {
   const packageJson = findPackageJson(evidence.sourceFiles);
   if (packageJson) {
-    inspectPackageJson(packageJson.path, packageJson.json, findings);
+    inspectPackageJson(packageJson.path, packageJson.json, findings, evidence);
   } else {
     // No package.json — but a Python package's manifest is setup.py /
     // pyproject.toml. When one is present the evidence is NOT incomplete: it IS
@@ -1041,12 +1043,9 @@ function daysAgo(iso) {
   return Math.floor(ms / 86400000);
 }
 
-// Lonely-maintainer detection. A package with exactly ONE npm maintainer is
-// a single point of failure: if that person's account is compromised, the
-// attacker can publish anything (event-stream, ua-parser-js, ESLint config-
-// conventional, etc. were all single-maintainer at the time of attack). Only
-// flagged when the package looks established enough to be a real target.
-// Reuses already-fetched data — adds zero latency.
+// Keep publishing-account concentration visible without treating a maintainer
+// count as evidence of compromise. Source, vulnerability, provenance and
+// required-coverage findings decide independently. Reuses fetched metadata.
 function inspectMaintainerSurface(evidence, findings) {
   const ghMeta = evidence.githubMetadata;
   const npmMeta = evidence.npmMetadata;
@@ -1068,12 +1067,12 @@ function inspectMaintainerSurface(evidence, findings) {
     : String(onlyMaintainer);
 
   findings.push({
-    severity: "medium",
+    severity: "info",
     category: "lonely-maintainer",
     file: "NPM_METADATA",
     snippet: `Single npm maintainer: ${name}${stars !== null ? ` · ${stars} stars` : ""}${ageDays !== null ? ` · ${ageDays}d old` : ""}`,
     rationale:
-      "Established package with exactly one publishing maintainer — single point of failure. If that account is compromised, the attacker can publish any code. (event-stream, ua-parser-js, conventional-changelog-conventionalcommits, etc. were all single-maintainer at the time of their attacks.)"
+      "This established package has one publishing maintainer, concentrating account access. That is contextual metadata, not evidence that this artifact is compromised or executes malicious behavior. It does not independently block installation or clear any other finding or required check."
   });
 }
 
@@ -1250,23 +1249,21 @@ function inspectMetadataObject(label, metadata, findings) {
 }
 
 function findPackageJson(files) {
-  for (const file of files) {
-    if (file.path.endsWith("package.json")) {
-      try {
-        return { path: file.path, json: JSON.parse(file.content) };
-      } catch (error) {
-        return {
-          path: file.path,
-          json: null,
-          parseError: error
-        };
-      }
-    }
+  const manifestPath = file => String(file.path).replace(/\\/g, "/").replace(/^\.\//, "");
+  // Artifact source order must not let a dependency or filename lookalike
+  // replace the root manifest. A malformed root remains authoritative evidence
+  // of a metadata gap; do not fall back to a valid nested manifest in that case.
+  const file = files.find(file => manifestPath(file) === "package.json") ||
+    files.find(file => manifestPath(file).endsWith("/package.json"));
+  if (!file) return null;
+  try {
+    return { path: file.path, json: JSON.parse(file.content) };
+  } catch (error) {
+    return { path: file.path, json: null, parseError: error };
   }
-  return null;
 }
 
-function inspectPackageJson(path, json, findings) {
+function inspectPackageJson(path, json, findings, evidence) {
   if (!json) {
     findings.push({
       severity: "medium",
@@ -1279,15 +1276,18 @@ function inspectPackageJson(path, json, findings) {
   }
 
   const scripts = json.scripts || {};
-  for (const hook of ["preinstall", "install", "postinstall", "prepack", "prepare"]) {
+  for (const hook of AUTO_RUN_INSTALL_HOOKS) {
     if (scripts[hook]) {
+      const lifecycleProof = proveLiteralLifecycle(scripts[hook], path, evidence);
       findings.push({
-        severity: "medium",
+        severity: lifecycleProof ? "info" : "medium",
         category: "install-hook",
         file: path,
         snippet: `"${hook}": "${scripts[hook]}"`,
-        rationale:
-          "Install-time scripts run automatically with the installing user's privileges and require manual review."
+        rationale: lifecycleProof
+          ? "The exact supplied lifecycle script is fully parsed and limited to literal messages, fixed CI/SKIP_DOWNLOAD conditions, and exit(0). This proof does not clear other findings."
+          : "Install-time scripts run automatically with the installing user's privileges; this command or its complete script is outside the bounded benign proof.",
+        ...(lifecycleProof ? { lifecycleProof } : {})
       });
       // An install hook that publishes INLINE never reaches the file-level
       // self-publish check, because the command lives in package.json and
@@ -1567,7 +1567,8 @@ function auditFiles(files, findings, evidence) {
   let {
     all: runtimePaths,
     lifecycle: lifecyclePaths,
-    installTime: installTimePaths
+    installTime: installTimePaths,
+    gaps: seedGaps
   } = collectLifecycleReferencedPaths(files);
 
   for (const file of (evidence.sourceCoverage && evidence.sourceCoverage.runtimeFiles) || []) runtimePaths.add(normalizeRelPath(file));
@@ -1580,7 +1581,7 @@ function auditFiles(files, findings, evidence) {
   runtimePaths = executionGraph.runtime;
   lifecyclePaths = executionGraph.lifecycle;
   installTimePaths = executionGraph.installTime;
-  for (const gap of executionGraph.gaps) {
+  for (const gap of [...seedGaps, ...executionGraph.gaps]) {
     findings.push({ severity: 'medium', category: 'unresolved-runtime-execution', file: gap.file,
       snippet: clipAround(files.find(f => f.path === gap.file)?.content || '', gap.index),
       rationale: `Runtime execution coverage is incomplete: ${gap.reason}.` });
@@ -1698,7 +1699,7 @@ function auditFiles(files, findings, evidence) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectAgentConfigAccess(file, content, lower, findings, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence);
     inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged);
     if (!suppressObfuscationHeuristics) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
@@ -1857,21 +1858,31 @@ const REQUIRE_GRAPH_MAX_DEPTH = 2;
 const REQUIRE_GRAPH_MAX_VISITS = 400;
 
 // Resolve a relative specifier (`./util`, `../lib/x.js`) referenced FROM a given
-// source path against the known file set, returning the normalized path of the
-// matching file, or null. Mirrors Node's extension/index resolution loosely —
-// this is a static reachability check, not the real resolver.
-function resolveRelativeSpec(fromPath, spec, fileIndex) {
+// source path without clamping parent traversal to the artifact root. Absolute
+// paths and traversal beyond that root are unresolved, not local file aliases.
+function relativeArtifactPath(fromPath, spec) {
+  if (typeof spec !== "string" || /^(?:[\\/]|[A-Za-z]:)/.test(spec)) return null;
   const norm = normalizeRelPath(fromPath);
   // Directory of the referencing file: drop the final path segment. A bare
   // filename (`index.js`) or the "./" root sentinel resolves against the root.
   const slash = norm.lastIndexOf("/");
   const segments = slash === -1 ? [] : norm.slice(0, slash).split("/");
-  for (const part of spec.split("/")) {
+  for (const part of spec.replace(/\\/g, "/").split("/")) {
     if (part === "" || part === ".") continue;
-    if (part === "..") segments.pop();
+    if (part === "..") {
+      if (!segments.length) return null;
+      segments.pop();
+    }
     else segments.push(part);
   }
-  const joined = segments.join("/");
+  return segments.join("/");
+}
+
+// Match the artifact-local target against supplied files. This is a bounded
+// static reachability check, not the actual Node module resolver.
+function resolveRelativeSpec(fromPath, spec, fileIndex) {
+  const joined = relativeArtifactPath(fromPath, spec);
+  if (joined === null) return null;
   for (const ext of REQUIRE_RESOLVE_EXTENSIONS) {
     const candidate = normalizeRelPath(joined + ext);
     if (fileIndex.has(candidate)) return candidate;
@@ -1918,6 +1929,7 @@ function collectLifecycleReferencedPaths(files) {
   const lifecycleSeeds = [];
   const installSeeds = [];
   const entrySeeds = [];
+  const gaps = [];
   const pkg = findPackageJson(files);
   if (pkg && pkg.json) {
     if (pkg.json.scripts && typeof pkg.json.scripts === "object") {
@@ -1926,9 +1938,13 @@ function collectLifecycleReferencedPaths(files) {
         let m;
         SCRIPT_PATH_TOKEN_REGEX.lastIndex = 0;
         while ((m = SCRIPT_PATH_TOKEN_REGEX.exec(command)) !== null) {
-          const seed = normalizeRelPath(m[1]);
-          const resolved = resolveRelativeSpec("./", seed, fileIndex);
           const install = AUTO_RUN_INSTALL_HOOKS.has(hook);
+          const seed = relativeArtifactPath(pkg.path, m[1]);
+          if (seed === null) {
+            if (install) gaps.push({ file: pkg.path, index: 0, reason: `script target escapes or is outside the artifact: ${m[1]}` });
+            continue;
+          }
+          const resolved = resolveRelativeSpec(pkg.path, m[1], fileIndex);
           // Manual build/test scripts often point at files deliberately omitted
           // from the published tarball. An absent file cannot execute there;
           // retain missing targets only for npm's automatic install hooks.
@@ -1942,9 +1958,14 @@ function collectLifecycleReferencedPaths(files) {
     collectEntryStrings(pkg.json.module, entryStrings);
     collectEntryStrings(pkg.json.bin, entryStrings);
     collectEntryStrings(pkg.json.exports, entryStrings);
-    if (!pkg.json.main && !pkg.json.exports && fileIndex.has('index.js')) entrySeeds.push('index.js');
+    const defaultEntry = relativeArtifactPath(pkg.path, 'index.js');
+    if (!pkg.json.main && !pkg.json.exports && fileIndex.has(defaultEntry)) entrySeeds.push(defaultEntry);
     for (const raw of entryStrings) {
-      const resolved = resolveRelativeSpec("./", raw.replace(/^\.?\//, "./"), fileIndex);
+      if (relativeArtifactPath(pkg.path, raw) === null) {
+        gaps.push({ file: pkg.path, index: 0, reason: `entry target escapes or is outside the artifact: ${raw}` });
+        continue;
+      }
+      const resolved = resolveRelativeSpec(pkg.path, raw, fileIndex);
       if (resolved) entrySeeds.push(resolved);
     }
   }
@@ -1980,17 +2001,21 @@ function collectLifecycleReferencedPaths(files) {
   const lifecycle = walk(lifecycleSeeds);
   const installTime = walk(installSeeds);
   const all = walk([...lifecycleSeeds, ...entrySeeds]);
-  return { all, lifecycle, installTime };
+  return { all, lifecycle, installTime, gaps };
 }
 
-// The package.json hooks npm executes on its own during `npm install`. Kept in
-// sync with the hook list inspectPackageJson reports as install-hook findings.
+// Lifecycle commands relevant to installation and package preparation. Keep
+// source-plan.js in sync so every reported hook is collected as runtime code.
 const AUTO_RUN_INSTALL_HOOKS = new Set([
   "preinstall",
   "install",
   "postinstall",
   "prepack",
-  "prepare"
+  "prepare",
+  "prepublish",
+  "preprepare",
+  "postprepare",
+  "postpack"
 ]);
 
 // --- Install-time / auto-execution surfaces (#1) ---------------------------
@@ -3248,7 +3273,7 @@ const READ_DATA_BLOB_REGEX =
 const READ_OPAQUE_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
-function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
   // (`require("ht"+"tps")`, a domain spelled in fragments) count too.
   const nlower = normChanged ? normalized.toLowerCase() : lower;
@@ -3364,7 +3389,16 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // legitimate doc/error links, so this is reviewed rather than blocked — a
   // shortener alone is not proof of exfil. Placed after the HIGH loader/env
   // branches above so a genuine stage-2 loader still BLOCKS first.
-  if (hasCapability && shortener) {
+  // Suppress only this coincidence when every original and normalized URL
+  // occurrence is classified as a direct diagnostic argument in the bounded,
+  // complete supplied-source context. This assumes standard host builtins.
+  const passiveContext = { sourceFiles: evidence.sourceFiles, sourceCoverage: evidence.sourceCoverage, filePath: file.path };
+  const passiveShorteners = hasCapability && shortener && !hasExec && !hasDynamicEval && !hasLiteralEval &&
+    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS, passiveContext) &&
+    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS, {
+      ...passiveContext, sourceFiles: evidence.sourceFiles.map(source => source.path === file.path ? { ...source, content: normalized } : source)
+    }));
+  if (hasCapability && shortener && !passiveShorteners) {
     findings.push({
       severity: "medium",
       category: "network-exfil-or-loader",

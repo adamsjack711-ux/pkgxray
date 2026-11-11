@@ -1,0 +1,43 @@
+{
+  "measuredAt": "2026-11-11T05:52:58.618Z",
+  "scannerBuildId": "f502ac1114d3720951bee7b40beddf2904fd13d009c5fda33327d95b66ef4e8d",
+  "baselineCommit": "eae7dcf",
+  "change": "Keep one-maintainer metadata visible as information instead of independently blocking a fully checked artifact.",
+  "beforeFix": {
+    "tests": 5,
+    "passed": 3,
+    "failed": 2,
+    "liveControlsAllowed": 1,
+    "totalLiveControls": 4
+  },
+  "afterFix": {
+    "focused": 140,
+    "total": 1245,
+    "passed": 1240,
+    "skipped": 5,
+    "failed": 0,
+    "liveControlsAllowed": 3,
+    "totalLiveControls": 4
+  },
+  "automaticFlow": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "limitations": [
+    "Four fixed benign controls do not establish production accuracy.",
+    "The same artifact SHA-256 values matched before and after; live metadata and vulnerability observations remain time-specific.",
+    "yocto-queue remains blocked for a flow-analysis gap; no bypass was added.",
+    "The third-party static corpus still contains seven uncertain malicious results and one extraction-limit error.",
+    "Exact-commit CI is tracked separately on PR #110."
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "measuredAt": "2026-11-11T05:41:13.678Z",
+  "scannerBuildId": "d213c3b22d7cef8f8cbe339a95d95ebbe845823964b15a8e6dcda5e3f549893d",
+  "baselineCommit": "354a5c2bc06db3426d1a53a7f7827a6269605c9d",
+  "change": "Resolve runtime hooks and entrypoints relative to the selected manifest, retaining missing-target and artifact-boundary holds.",
+  "beforeFix": {
+    "regressionTests": 5,
+    "failed": 5
+  },
+  "afterFix": {
+    "focused": 49,
+    "total": 1236,
+    "passed": 1231,
+    "skipped": 5,
+    "failed": 0
+  },
+  "automaticFlow": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "mcp": {
+    "nestedPathCases": 3,
+    "smokeChecks": 7,
+    "transport": "real stdio",
+    "fixtureExecution": false,
+    "realNetwork": false
+  },
+  "limitations": [
+    "Authored fixtures; no production error-rate claim.",
+    "Original 84-case corpus inputs and counts are unchanged.",
+    "This fixes resolution for the selected manifest; it does not add general workspace enumeration.",
+    "CI for the exact commit is tracked separately on PR #110."
+  ]
+}

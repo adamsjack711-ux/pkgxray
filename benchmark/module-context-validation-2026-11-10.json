@@ -1,0 +1,54 @@
+{
+  "measuredAt": "2026-11-11T06:46:05.381Z",
+  "scannerBuildId": "a5d0762c21d8ee78e719e2b188df6ec846b9dff337a73cf4b6e43119ead8dd17",
+  "scope": "Defining-module loader/function identity and conservative foreign export-object boundaries; no getter exemption.",
+  "regressionCycle": "Failing source/loader substitution regressions and foreign export controls, minimal origin tracking and uncertainty fences, independent review, focused/full tests, authored corpus, holdout and real MCP checks.",
+  "focused": {
+    "total": 51,
+    "passed": 51
+  },
+  "fullSuite": {
+    "total": 1287,
+    "passed": 1282,
+    "skipped": 5,
+    "failed": 0
+  },
+  "lint": "passed including regenerated browser and website parity",
+  "authoredAutomaticTotals": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "holdout": {
+    "total": 20,
+    "review": 10,
+    "clear": 10,
+    "block": 0,
+    "miss": 0,
+    "falseBlock": 0
+  },
+  "mcpChecks": 7,
+  "liveControls": {
+    "counts": {
+      "allow": 3,
+      "block": 1,
+      "error": 0
+    },
+    "measurementValid": true,
+    "allControlsAllowed": false
+  },
+  "limitations": [
+    "Getter/accessor uncertainty remains; live foreign export-object semantics are not fully modeled.",
+    "Existing 84 authored fixtures and four pinned live controls do not establish production accuracy.",
+    "No target package code executed; no local MCP activation or release."
+  ]
+}

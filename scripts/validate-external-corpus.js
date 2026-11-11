@@ -64,6 +64,9 @@ function downloadOnce(url, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = []; let total = 0;
     const req = https.get(target, { headers: { 'user-agent': 'pkgxray-static-corpus-validation', accept: 'application/vnd.github+json' } }, res => {
+      // Install before every destroy/error path, including oversized declared
+      // Content-Length, so acquisition errors are caught and retained per case.
+      res.on('error', reject);
       if (res.statusCode !== 200) {
         res.resume();
         const error = new Error(`Corpus request HTTP ${res.statusCode}`);
@@ -79,7 +82,6 @@ function downloadOnce(url, maxBytes) {
       });
       res.on('end', () => resolve(Buffer.concat(chunks)));
       res.on('aborted', () => reject(new Error('Corpus download interrupted')));
-      res.on('error', reject);
     });
     const timer = setTimeout(() => req.destroy(new Error('Corpus request deadline exceeded')), 20000);
     req.on('close', () => clearTimeout(timer));
@@ -173,6 +175,7 @@ async function evaluateCorpus(options = {}) {
         const archivePath = path.join(work, 'artifact');
         const unwrapped = await unwrap(zipPath, archivePath);
         record.scanInput = unwrapped.mode;
+        record.archiveSelection = unwrapped.archiveSelection;
         let artifact;
         if (unwrapped.mode === 'original-tarball') {
           const tarball = await fsp.readFile(archivePath);
@@ -235,10 +238,12 @@ async function evaluateCorpus(options = {}) {
     const summary = summarizeCases(cases);
     return { schemaVersion: 2, repository: REPOSITORY, commit: COMMIT,
       scannerVersion: require('../package.json').version, scannerBuildId: BUILD_ID,
-      bounds: { zipBytes: MAX_ZIP_BYTES, zipExpandedBytes: 16 * 1024 * 1024, zipEntries: 512, tarballExpandedBytes: 64 * 1024 * 1024 },
+      bounds: { zipBytes: MAX_ZIP_BYTES, zipExpandedBytes: 16 * 1024 * 1024,
+        zipExpandedByteScope: 'Selected original TGZ or complete package subtree; unselected metadata is not decompressed',
+        zipEntries: 512, tarballExpandedBytes: 64 * 1024 * 1024 },
       sourceUrl: `https://github.com/${REPOSITORY}/tree/${COMMIT}`, startedAt,
       selection: SELECTION, mode: 'static-only; source heuristics with network enrichment disabled; extracted package trees where original TGZ is absent',
-      limitations: 'Small third-party labeled malicious sample plus four project-selected benign controls; neither is independently certified accuracy or representative prevalence data. Dataset selection bias remains and no package code is executed. Original ZIP hashes bind corpus archives; derived tree hashes do not establish original npm tarball identity. REVIEW is a hold requiring human review, not a confirmed malware detection. Acquisition/scan errors are retained and not replaced.',
+      limitations: 'Small third-party labeled malicious sample plus four project-selected benign controls; neither is independently certified accuracy or representative prevalence data. Dataset selection bias remains and no package code is executed. Original ZIP hashes bind corpus archives; derived tree hashes do not establish original npm tarball identity. All ZIP central-directory paths/types/collisions are checked; only selected content is decompressed and validated, and ignored declared bytes are reported. REVIEW is raw analyzer uncertainty, not a confirmed malware detection; automatic gates block uncertainty without a manual decision. Acquisition/scan errors are retained and not replaced.',
       counts: summary.byLabel, metrics: summary.metrics, cases, payloadsRetained: false };
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
@@ -254,4 +259,5 @@ if (require.main === module) evaluateCorpus({
 }).catch(error => { process.stderr.write(`Static corpus validation failed: ${error.message}\n`); process.exitCode = 1; });
 
 module.exports = { selectCases, unwrap, evaluateCorpus, safeExtractorAvailable, summarizeCases,
-  isTransientDownloadError, BENIGN_CONTROLS, COMMIT, SELECTION };
+  isTransientDownloadError, BENIGN_CONTROLS, COMMIT, SELECTION,
+  download, digest, REPOSITORY, CATEGORIES, MAX_ZIP_BYTES, MAX_METADATA_BYTES };

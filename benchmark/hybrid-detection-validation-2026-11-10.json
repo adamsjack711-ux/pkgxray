@@ -1,0 +1,248 @@
+{
+  "measuredAt": "2026-11-11T05:21:54.247Z",
+  "packageVersion": "2.0.0",
+  "scannerBuildId": "02170bc08707810feb26993d4591f00e92bd1245793438ec23cae2b6cf2ffc2f",
+  "scope": "Authored static evidence fixtures; no package execution or network requests.",
+  "limitations": [
+    "Not a real-world error-rate estimate.",
+    "Measures binary supplied-evidence decisions, not complete registry/OSV installation checks.",
+    "The existing raw analyzer calibration gate measures a different three-way contract.",
+    "A successful benchmark invocation does not establish acceptable benign-stop rates."
+  ],
+  "totals": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "benignStops": [
+    {
+      "fixture": "benign/build-artifact-divergent-eval.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "code-execution"
+      ]
+    },
+    {
+      "fixture": "benign/bundle-decoder-far-from-eval.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "code-execution"
+      ]
+    },
+    {
+      "fixture": "benign/github-repo-404-abandoned.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "github-mismatch"
+      ]
+    },
+    {
+      "fixture": "benign/gyp-echoes-help-url.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "native-build"
+      ]
+    },
+    {
+      "fixture": "benign/installer-appends-path-to-rc.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "persistence"
+      ]
+    },
+    {
+      "fixture": "benign/mcp-server-ships-own-manifest.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "agent-hook"
+      ]
+    },
+    {
+      "fixture": "benign/npm-github-divergence.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "npm-vs-github-divergence"
+      ]
+    },
+    {
+      "fixture": "benign/pypi-declarative-setup-readme-version.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "fixture": "benign/pypi-pep621-pyproject-only.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "fixture": "benign/pypi-pyproject-hatchling.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "fixture": "benign/pypi-requests-client-library.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "fixture": "benign/pypi-setup-classifiers.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "fixture": "benign/pypi-setup-entry-points.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "fixture": "benign/pypi-setup-import-version.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "unsupported-behavior"
+      ]
+    },
+    {
+      "fixture": "benign/scaffolder-writes-ci-workflow.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "ci-workflow-injection"
+      ]
+    },
+    {
+      "fixture": "benign/security-eval-fixture-ssh-string.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "credential-access"
+      ]
+    },
+    {
+      "fixture": "benign/shell-alias-installer.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "persistence"
+      ]
+    },
+    {
+      "fixture": "benign/shell-completion-installer.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "persistence"
+      ]
+    },
+    {
+      "fixture": "benign/url-shortener-with-capability.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "network-exfil-or-loader"
+      ]
+    },
+    {
+      "fixture": "benign/web3-bundle-executor-co-location.json",
+      "rawVerdict": "review",
+      "decision": "block",
+      "reasonCodes": [
+        "uncertain-findings"
+      ],
+      "categories": [
+        "code-execution"
+      ]
+    }
+  ]
+}

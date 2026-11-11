@@ -11,21 +11,52 @@ import unicodedata
 import zipfile
 
 MAX_ENTRIES = 512
+MAX_ZIP_BYTES = 4 * 1024 * 1024
 MAX_EXPANDED = 16 * 1024 * 1024
 MAX_TARBALL_EXPANDED = 64 * 1024 * 1024
 
 
+def selection_report(members, selected):
+    """Describe skipped bytes without claiming their contents were validated."""
+    selected_size = sum(member.file_size for member in selected)
+    if selected_size > MAX_EXPANDED:
+        raise ValueError("ZIP selected expanded-byte limit exceeded")
+    return {
+        "selectedMembers": len(selected),
+        "selectedDeclaredBytes": selected_size,
+        "ignoredMembers": len(members) - len(selected),
+        "ignoredDeclaredBytes": sum(member.file_size for member in members) - selected_size,
+        "unselectedContentValidated": False,
+        "validationScope": "All central-directory paths/types/collisions; selected content only",
+    }
+
+
 def unwrap(source, destination):
+    descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as zip_source:
+        source_stat = os.fstat(zip_source.fileno())
+        if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_size > MAX_ZIP_BYTES:
+            raise ValueError("ZIP must be a regular file within the compressed-byte limit")
+        return unwrap_archive(zip_source, destination)
+
+
+def unwrap_archive(source, destination):
     with zipfile.ZipFile(source) as archive:
         members = archive.infolist()
         if len(members) > MAX_ENTRIES:
             raise ValueError("ZIP entry limit exceeded")
-        size = 0
         candidates = []
         seen = set()
         path_spellings = {}
+        file_paths = set()
+        directory_paths = set()
         for member in members:
             name = member.filename
+            # ZipInfo silently truncates filename at NUL. Validate the original
+            # central-directory spelling too, including ignored entries, rather
+            # than trusting Python's sanitized output path as archive authority.
+            if member.orig_filename != name:
+                raise ValueError("Unsafe ZIP member path")
             parts = name.rstrip("/").split("/")
             if (not name or name.startswith("/") or "\\" in name or ":" in name
                     or any(p in ("", ".", "..") for p in parts)
@@ -44,9 +75,18 @@ def unwrap(source, destination):
             kind = stat.S_IFMT(member.external_attr >> 16)
             if kind not in (0, stat.S_IFREG, stat.S_IFDIR):
                 raise ValueError("ZIP links/special files refused")
-            size += member.file_size
-            if size > MAX_EXPANDED:
-                raise ValueError("ZIP expanded-byte limit exceeded")
+            if (member.is_dir() and kind == stat.S_IFREG) or (not member.is_dir() and kind == stat.S_IFDIR):
+                raise ValueError("ZIP member type/path mismatch")
+            for depth in range(1, len(parts) + 1):
+                key = unicodedata.normalize("NFC", "/".join(parts[:depth])).casefold()
+                if depth < len(parts) or member.is_dir():
+                    if key in file_paths:
+                        raise ValueError("ZIP file/directory path overlap")
+                    directory_paths.add(key)
+                else:
+                    if key in directory_paths:
+                        raise ValueError("ZIP file/directory path overlap")
+                    file_paths.add(key)
             if not member.is_dir() and name.endswith((".tgz", ".tar.gz")):
                 candidates.append(member)
         if not candidates:
@@ -61,8 +101,13 @@ def unwrap(source, destination):
                 raise ValueError("Expected one unambiguous package subtree")
             prefix = roots.pop()
             selected = [member for member in members if member.filename.startswith(prefix) and member.filename != prefix]
-            if not any(member.filename == prefix + "package.json" for member in selected):
+            if not any(member.filename == prefix + "package.json" and not member.is_dir() for member in selected):
                 raise ValueError("Package subtree has no package.json")
+            # Keep the COMPLETE package subtree, including runtime resources.
+            # The same 16 MiB bound applies to both declared and actual selected
+            # bytes. External dataset metadata is never decompressed. Every
+            # member still passed the path/type/collision checks above.
+            selection = selection_report(members, selected)
             os.mkdir(destination, 0o700)
             tree_hash = hashlib.sha256()
             total = 0
@@ -96,7 +141,8 @@ def unwrap(source, destination):
                         raise ValueError("Truncated package member")
                     files += 1
                     tree_hash.update(relative.encode("utf-8") + b"\0" + str(count).encode("ascii") + b"\0" + file_hash.digest())
-                return {"mode": "derived-package-tree", "bytes": total, "files": files, "treeSha256": tree_hash.hexdigest()}
+                return {"mode": "derived-package-tree", "bytes": total, "files": files,
+                        "treeSha256": tree_hash.hexdigest(), "archiveSelection": selection}
             except Exception:
                 import shutil
                 shutil.rmtree(destination)
@@ -104,6 +150,7 @@ def unwrap(source, destination):
         if len(candidates) != 1:
             raise ValueError("Expected exactly one package tarball in ZIP")
         candidate = candidates[0]
+        selection = selection_report(members, [candidate])
         # The destination is caller-controlled, not taken from the ZIP member.
         # O_EXCL/O_NOFOLLOW prevent replacement or following a destination link.
         descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -135,7 +182,8 @@ def unwrap(source, destination):
         except Exception:
             os.unlink(destination)
             raise
-        return {"mode": "original-tarball", "member": candidate.filename, "bytes": count}
+        return {"mode": "original-tarball", "member": candidate.filename, "bytes": count,
+                "archiveSelection": selection}
 
 
 if __name__ == "__main__":

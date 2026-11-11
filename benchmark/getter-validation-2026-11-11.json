@@ -1,0 +1,46 @@
+{
+  "measuredAt": "2026-11-11T14:52:31.663Z",
+  "scannerBuildId": "c8b6fefb7603a9c718aff98a08e3c91473ec3c64186c9ab9b27064782b386846",
+  "scope": "Exact branded primitive private getters and fresh instance fields; linked-state gap still held.",
+  "regressionCycle": "Failing primitive getter/read-only/private identity/instance-state tests, adversarial review and follow-up regressions, full suite, corpus and real MCP.",
+  "focused": {
+    "total": 42,
+    "passed": 42
+  },
+  "adversarialGroups": 31,
+  "fullSuite": {
+    "total": 1357,
+    "passed": 1352,
+    "skipped": 5,
+    "failed": 0
+  },
+  "lint": "passed including rebuilt browser and website parity",
+  "authoredAutomaticTotals": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "liveControls": {
+    "counts": {
+      "allow": 3,
+      "block": 1,
+      "error": 0
+    },
+    "measurementValid": true,
+    "allControlsAllowed": false
+  },
+  "limitations": [
+    "Getter support alone does not reach four live allows; linked-tail assignment remains unresolved.",
+    "Nonprimitive getters, reflection, unknown receivers and dormant sensitive-state effects retain uncertainty.",
+    "No target package execution, local MCP activation or release."
+  ]
+}

@@ -1,0 +1,1518 @@
+{
+  "schemaVersion": 1,
+  "frozenCasesSha256": "37079b3f50d0b545bbae5b9084c22b64ea271f42f14e0da59eb9008dc888f33d",
+  "parsedManifestSha256": "dc527d1a03e04e844b4f62f5b12d5e99b73236f0f978b9fc3840f41681ea48c4",
+  "parsedManifestEncoding": "UTF-8 JSON.stringify(parsed manifest), without formatting or trailing newline",
+  "repository": "DataDog/malicious-software-packages-dataset",
+  "commit": "df32a361b27b78c5de4cdb4b4c549b666accaa40",
+  "scannerBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+  "scannerVersion": "2.0.0",
+  "measuredAt": "2026-11-11T16:03:07.745Z",
+  "mode": "static-only; no package execution or installation",
+  "bounds": {
+    "zipBytes": 4194304,
+    "selectedExpandedBytes": 16777216,
+    "zipEntries": 512,
+    "tarballExpandedBytes": 67108864
+  },
+  "limitations": "External dataset labels, selected historical cohort, not independently verified accuracy or representative prevalence. Family/campaign independence is unknown; correlated variants remain selected. Raw block, uncertainty, safe and errors are separate. CVE and network enrichment are disabled: guard blocks are not malicious detections or install approvals. Only selected ZIP content is decompressed; derived tree hashes do not identify original npm tarballs. Frozen acquisition failures remain errors and are never replaced.",
+  "allocation": {
+    "compromised_lib": 4,
+    "malicious_intent": 28
+  },
+  "requestedAllocation": {
+    "compromised_lib": 16,
+    "malicious_intent": 16
+  },
+  "availableEligibleCases": {
+    "compromised_lib": 4,
+    "malicious_intent": 4052
+  },
+  "counts": {
+    "selected": 32,
+    "rawBlock": 3,
+    "rawUncertainty": 29,
+    "rawSafe": 0,
+    "errors": 0,
+    "frozenAcquisitionErrors": 0,
+    "completed": 32
+  },
+  "sourceCoverage": {
+    "complete": 25,
+    "incomplete": 7,
+    "unknown": 0
+  },
+  "metrics": {
+    "rawBlockRateAmongSelected": 0.09375,
+    "rawBlockRateAmongCompleted": 0.09375,
+    "rawUncertaintyRateAmongCompleted": 0.90625
+  },
+  "byCategory": {
+    "compromised_lib": {
+      "counts": {
+        "selected": 4,
+        "rawBlock": 0,
+        "rawUncertainty": 4,
+        "rawSafe": 0,
+        "errors": 0,
+        "frozenAcquisitionErrors": 0,
+        "completed": 4
+      },
+      "sourceCoverage": {
+        "complete": 1,
+        "incomplete": 3,
+        "unknown": 0
+      },
+      "metrics": {
+        "rawBlockRateAmongSelected": 0,
+        "rawBlockRateAmongCompleted": 0,
+        "rawUncertaintyRateAmongCompleted": 1
+      }
+    },
+    "malicious_intent": {
+      "counts": {
+        "selected": 28,
+        "rawBlock": 3,
+        "rawUncertainty": 25,
+        "rawSafe": 0,
+        "errors": 0,
+        "frozenAcquisitionErrors": 0,
+        "completed": 28
+      },
+      "sourceCoverage": {
+        "complete": 24,
+        "incomplete": 4,
+        "unknown": 0
+      },
+      "metrics": {
+        "rawBlockRateAmongSelected": 0.10714285714285714,
+        "rawBlockRateAmongCompleted": 0.10714285714285714,
+        "rawUncertaintyRateAmongCompleted": 0.8928571428571429
+      }
+    }
+  },
+  "observedPolicySha256": [
+    "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217"
+  ],
+  "policyConsistency": "consistent",
+  "identities": {
+    "distinctPackageNames": 32,
+    "distinctPackageVersions": 32,
+    "archiveHashesObserved": 32,
+    "derivedTreeHashesObserved": 32,
+    "duplicateArchiveHashes": [],
+    "duplicateDerivedTreeHashes": [],
+    "originalArchiveComparisons": [
+      {
+        "sourcePath": "samples/npm/compromised_lib/vant/2.13.3/2024-12-20-vant-v2.13.3.zip",
+        "expectedSha256": "448f080faf66a90e6ca13596eb414291c9acfaa1d601c9f167e2b1c63d288238",
+        "status": "unchanged"
+      },
+      {
+        "sourcePath": "samples/npm/compromised_lib/@rspack@cli/1.1.7/2024-12-20-@rspack_cli-v1.1.7.zip",
+        "expectedSha256": "f77f3b9068bb0478b3f005249370489038bef26fd9de6c5978d7a3a1dc997646",
+        "status": "unchanged"
+      },
+      {
+        "sourcePath": "samples/npm/compromised_lib/@rspack@core/1.1.7/2024-12-20-@rspack_core-v1.1.7.zip",
+        "expectedSha256": "ccb55d450eef5dec8732fbe4d9df92b31511198ab38b00ab1c50dbb83bdcd34d",
+        "status": "unchanged"
+      },
+      {
+        "sourcePath": "samples/npm/compromised_lib/@solana@web3.js/1.95.7/2024-12-03-@solana_web3.js-v1.95.7.zip",
+        "expectedSha256": "9059d6e4265a83aa89f47b6254947ae147889c2bada930f67c9cc7c0521a46bb",
+        "status": "unchanged"
+      },
+      {
+        "sourcePath": "samples/npm/malicious_intent/kurnia-bubur54-sluey/4.3.2/2024-05-09-kurnia-bubur54-sluey-v4.3.2.zip",
+        "expectedSha256": "5947e7a527e5d4b6074eca901bdb154d22f9068971769d0c15c5564ba5d99231",
+        "status": "unchanged"
+      },
+      {
+        "sourcePath": "samples/npm/malicious_intent/nurul-kue46-breki/3.1.4/2024-05-12-nurul-kue46-breki-v3.1.4.zip",
+        "expectedSha256": "3c942380ef4889f73778941120ea8cb951ef7e7a0ef4e0e140823fe86fee4e28",
+        "status": "unchanged"
+      },
+      {
+        "sourcePath": "samples/npm/malicious_intent/lutfi-ongol-ongol65-sukiwir/2.3.2/2024-05-11-lutfi-ongol-ongol65-sukiwir-v2.3.2.zip",
+        "expectedSha256": "50eab1988f6acf15a0e382b1631d729ed22ed30aebc41a5f49dd7e127f67455b",
+        "status": "unchanged"
+      },
+      {
+        "sourcePath": "samples/npm/malicious_intent/lutfi-botok93-ruro/1.1.4/2024-05-08-lutfi-botok93-ruro-v1.1.4.zip",
+        "expectedSha256": "777c774d2b6040232e4b1830ab0ae91104bb744fa4860a04b93b282d811cd60e",
+        "status": "unchanged"
+      }
+    ],
+    "familyOrCampaignIndependence": "Unknown. Distinct package identities or archive hashes do not establish independent malware families or campaigns."
+  },
+  "cases": [
+    {
+      "label": "malicious",
+      "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/vant/2.13.3/2024-12-20-vant-v2.13.3.zip",
+      "packageName": "vant",
+      "version": "2.13.3",
+      "zipBytes": 1157688,
+      "rank": "2935f7a0e75da4d7cc0b0c9ac169a13dbb98d0c49fc7f74c1edada8d7ccade06",
+      "categoryRank": 1,
+      "originalCohort": true,
+      "blobSha1": "94508a9665079c479df2bf0372acd6ac069e3bc2",
+      "zipSha256": "448f080faf66a90e6ca13596eb414291c9acfaa1d601c9f167e2b1c63d288238",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": false,
+      "configuredFindingCategories": [
+        "flow-analysis-gap",
+        "incomplete-source-scan",
+        "install-hook",
+        "missing-metadata",
+        "network-access",
+        "unresolved-runtime-execution"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 300,
+        "selectedDeclaredBytes": 2769074,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 2563639,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "3a40024589dbbb13f2837018c7cc33bf77aa988b2125a6f0d628843e358ee90f",
+      "derivedTreeFiles": 252
+    },
+    {
+      "label": "malicious",
+      "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/@rspack@cli/1.1.7/2024-12-20-@rspack_cli-v1.1.7.zip",
+      "packageName": "@rspack/cli",
+      "version": "1.1.7",
+      "zipBytes": 683418,
+      "rank": "4bc8d5026983dc339609fdabb113a0ad6b19b82bbad4d6ca99064c732a76f599",
+      "categoryRank": 2,
+      "originalCohort": true,
+      "blobSha1": "88e10c7277103f8a003a07617a2de368b86d2a86",
+      "zipSha256": "f77f3b9068bb0478b3f005249370489038bef26fd9de6c5978d7a3a1dc997646",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": false,
+      "configuredFindingCategories": [
+        "code-execution",
+        "dynamic-require",
+        "flow-analysis-gap",
+        "incomplete-source-scan",
+        "install-hook",
+        "missing-metadata",
+        "network-access",
+        "structural-obfuscation",
+        "unresolved-runtime-execution"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 28,
+        "selectedDeclaredBytes": 720582,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 2940388,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "25eefcd49790a956798aebd283ce28c08d3041ffeb3bbd7b5cefeca17e745ff3",
+      "derivedTreeFiles": 24
+    },
+    {
+      "label": "malicious",
+      "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/@rspack@core/1.1.7/2024-12-20-@rspack_core-v1.1.7.zip",
+      "packageName": "@rspack/core",
+      "version": "1.1.7",
+      "zipBytes": 1170459,
+      "rank": "69894f0dc6ed0fbc7eba4962fe10bbfd0315e0d583c2c9875182b2cc3777a3db",
+      "categoryRank": 3,
+      "originalCohort": true,
+      "blobSha1": "d75e4a92cf2d7c7e979a3d1eee20aada487d05e6",
+      "zipSha256": "ccb55d450eef5dec8732fbe4d9df92b31511198ab38b00ab1c50dbb83bdcd34d",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": false,
+      "configuredFindingCategories": [
+        "code-execution",
+        "dynamic-require",
+        "flow-analysis-gap",
+        "incomplete-source-scan",
+        "install-hook",
+        "missing-metadata",
+        "network-access",
+        "structural-obfuscation",
+        "unresolved-runtime-execution"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 274,
+        "selectedDeclaredBytes": 2562505,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 4270236,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "f45b26febf837eae7f2b55048e8e77fded22521f1cb02dbb952985667210283a",
+      "derivedTreeFiles": 244
+    },
+    {
+      "label": "malicious",
+      "category": "compromised_lib",
+      "sourcePath": "samples/npm/compromised_lib/@solana@web3.js/1.95.7/2024-12-03-@solana_web3.js-v1.95.7.zip",
+      "packageName": "@solana/web3.js",
+      "version": "1.95.7",
+      "zipBytes": 3305138,
+      "rank": "6fea7cbf374e1d12ebb79fa867a29c4781183ebd7b14a80bda6be5481a8288d7",
+      "categoryRank": 4,
+      "originalCohort": true,
+      "blobSha1": "fee554638593fdc881c446d34afae9fffb9a109a",
+      "zipSha256": "9059d6e4265a83aa89f47b6254947ae147889c2bada930f67c9cc7c0521a46bb",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "flow-analysis-gap",
+        "missing-metadata",
+        "network-access"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 88,
+        "selectedDeclaredBytes": 10881310,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 12091140,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "75304bf3b716906fdabbfebe18a00471f798c98ea3368f9daed3576e77bcf790",
+      "derivedTreeFiles": 78
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/kurnia-bubur54-sluey/4.3.2/2024-05-09-kurnia-bubur54-sluey-v4.3.2.zip",
+      "packageName": "kurnia-bubur54-sluey",
+      "version": "4.3.2",
+      "zipBytes": 23927,
+      "rank": "0008ef0bf96b2430c0f4277b1959379da71b1a3e0230907c110692a710371854",
+      "categoryRank": 1,
+      "originalCohort": true,
+      "blobSha1": "e7ba0926e05db51015829f01b26afaf251cc9f7f",
+      "zipSha256": "5947e7a527e5d4b6074eca901bdb154d22f9068971769d0c15c5564ba5d99231",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45601,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3492,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "479516a004420651dc4462068e3c9b62ab29624eb9192670d57272acfec3c898",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/nurul-kue46-breki/3.1.4/2024-05-12-nurul-kue46-breki-v3.1.4.zip",
+      "packageName": "nurul-kue46-breki",
+      "version": "3.1.4",
+      "zipBytes": 23915,
+      "rank": "000f7d5db5ea2ffaf4f93115b7e651d33737c80b35f0bbd8edb1dbc5708143ea",
+      "categoryRank": 2,
+      "originalCohort": true,
+      "blobSha1": "c1485ed00d59df86c5896941b72e335d925972cd",
+      "zipSha256": "3c942380ef4889f73778941120ea8cb951ef7e7a0ef4e0e140823fe86fee4e28",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45598,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3462,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "4911dcefe27f842ff627d456da4b5320f0f9600beb10134ebfd88a297236ea19",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/lutfi-ongol-ongol65-sukiwir/2.3.2/2024-05-11-lutfi-ongol-ongol65-sukiwir-v2.3.2.zip",
+      "packageName": "lutfi-ongol-ongol65-sukiwir",
+      "version": "2.3.2",
+      "zipBytes": 23951,
+      "rank": "003595410bd169df74f93e1f95c2828fed34b86053089ff2d6eb982e21d0d7ff",
+      "categoryRank": 3,
+      "originalCohort": true,
+      "blobSha1": "36920d336732a69139b747788050fd133fa56765",
+      "zipSha256": "50eab1988f6acf15a0e382b1631d729ed22ed30aebc41a5f49dd7e127f67455b",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45610,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3537,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "fa0017c13f6fbe647b8e3ef8e416ccdd6426403205ba5b5aecfd14830fc03839",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/lutfi-botok93-ruro/1.1.4/2024-05-08-lutfi-botok93-ruro-v1.1.4.zip",
+      "packageName": "lutfi-botok93-ruro",
+      "version": "1.1.4",
+      "zipBytes": 23915,
+      "rank": "00499de40a51360a5d37a5ad6a8b63f3a6e514ec011330ba278d5e8c86103a57",
+      "categoryRank": 4,
+      "originalCohort": true,
+      "blobSha1": "2e290a2dd5df1c989daa3107362f711884d9efc7",
+      "zipSha256": "777c774d2b6040232e4b1830ab0ae91104bb744fa4860a04b93b282d811cd60e",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45598,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3475,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "b73dc60a53ad7793d78a553dc88f9acb7e991a38f963bff0b57e392408cdcdd1",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/zain-lapis88-riris/4.4.3/2024-05-18-zain-lapis88-riris-v4.4.3.zip",
+      "packageName": "zain-lapis88-riris",
+      "version": "4.4.3",
+      "zipBytes": 23917,
+      "rank": "00549f3204513e888f534b98980c5b7d208976221ee2bf97098c98e13abc930d",
+      "categoryRank": 5,
+      "originalCohort": false,
+      "blobSha1": "c437e83d0d3a3628388e1c4c4a61e89afcbcae81",
+      "zipSha256": "756d328dccf769634f6aa58f90135c411826e3b7512b96036066dcd5be1c6066",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45599,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3473,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "601988f5761e8381aaf8a307b31406094408d5cb01243a3bf2d173950c3ba6b4",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/qwant-extension/1.0.0/2024-12-22-qwant-extension-v1.0.0.zip",
+      "packageName": "qwant-extension",
+      "version": "1.0.0",
+      "zipBytes": 2933,
+      "rank": "00563beb18472db3b9e64f89c76b9bedc992aaf7d9727bd2da548109fbb826ea",
+      "categoryRank": 6,
+      "originalCohort": false,
+      "blobSha1": "5b658927140e6322c398834271c23bd5272cab3c",
+      "zipSha256": "90794a8e3ceb83e18d43ce1abc7daa8cd624cafddf071a37ef91cf14b2b6230e",
+      "rawVerdict": "block",
+      "configuredVerdict": "block",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": false,
+      "configuredFindingCategories": [
+        "flow-analysis-gap",
+        "incomplete-source-scan",
+        "install-hook",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal",
+        "unresolved-runtime-execution"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 2,
+        "selectedDeclaredBytes": 1375,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 1524,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "33a5c4b7fbb618e8b8e6d18bbc3df7f158553d2e98568693ede851916ae8e9be",
+      "derivedTreeFiles": 2
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/nina-ikan10-ruro/3.2.2/2024-05-18-nina-ikan10-ruro-v3.2.2.zip",
+      "packageName": "nina-ikan10-ruro",
+      "version": "3.2.2",
+      "zipBytes": 23908,
+      "rank": "008348bef5b41d976f3f43b9532c4e35f4153c1fddb4b27064fcc12852a5783e",
+      "categoryRank": 7,
+      "originalCohort": false,
+      "blobSha1": "3b10b12053a7fcc0a18c76f04bf1d3ec68b9d51e",
+      "zipSha256": "1c007b4466c0d2351a9e2bfbf54d9bcd39e7c6a9d393b21d52e3024b9e2db136",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45596,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3461,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "a7d619d5378762dd43d5cd2fc7d46a3fcbc82043007016bed757a74db7fc077a",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/sinta-mangga20-riris/3.4.2/2024-05-19-sinta-mangga20-riris-v3.4.2.zip",
+      "packageName": "sinta-mangga20-riris",
+      "version": "3.4.2",
+      "zipBytes": 23921,
+      "rank": "008f0312a2f0b18aaa22940c17e3d5e0af5cbb0b3abb5381b4fd6ab5ac0fa65a",
+      "categoryRank": 8,
+      "originalCohort": false,
+      "blobSha1": "5f4375a784ead41eec4904f66f3a2135e9d21790",
+      "zipSha256": "90441bd32c6d13cc76e228c0d23f143c2c80bfa7a766ec32a4791298f957438b",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45601,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3487,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "38386b5316b36edf8dd07448455f7f5e06cbc2e7fc95866b55b5ef65167e2148",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/wawan-lapis77-sukiwir/1.3.1/2024-05-18-wawan-lapis77-sukiwir-v1.3.1.zip",
+      "packageName": "wawan-lapis77-sukiwir",
+      "version": "1.3.1",
+      "zipBytes": 23922,
+      "rank": "00a29563f6240bc3ad09201b48f3fd99b7a8deb93473918d3d2ba55c862a7014",
+      "categoryRank": 9,
+      "originalCohort": false,
+      "blobSha1": "7e45f487d7feac281137fabefb7459772127f47d",
+      "zipSha256": "71789e19e3c33474513c7812ec1a99bac4aba8d7e144e9d986cec02ebfeb7938",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45604,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3494,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "426a8496a9e9d717e3011501ef3ba552b33a3c5bfce4d60bcab6d906415c44ab",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/kurnia-gaplek28-sukiwir/1.1.4/2024-05-20-kurnia-gaplek28-sukiwir-v1.1.4.zip",
+      "packageName": "kurnia-gaplek28-sukiwir",
+      "version": "1.1.4",
+      "zipBytes": 23935,
+      "rank": "00a6484e45f1519b748341d899651c7bb809d03376589665ee129b32d95befcf",
+      "categoryRank": 10,
+      "originalCohort": false,
+      "blobSha1": "3318a395feffb321cc3d924f7edef6f9a17e2778",
+      "zipSha256": "11143b0ac1246cd643acc59f1c47604937c1474cebd9613ab51dc31feb3fa622",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45606,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3507,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "764b583aaf2e01ced1eec4c464eb2e6d298675700a7b2102fb6248dcc6e669b5",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/model-viewer-space-opera/1.1.0/2024-12-25-model-viewer-space-opera-v1.1.0.zip",
+      "packageName": "model-viewer-space-opera",
+      "version": "1.1.0",
+      "zipBytes": 2349,
+      "rank": "00b3b86c9899247910186f6a01e9ecee34b68960a83d20da8999ea331f9125b6",
+      "categoryRank": 11,
+      "originalCohort": false,
+      "blobSha1": "a8eced5e4bb65013a5d7dc9afb8c74fac26671a6",
+      "zipSha256": "7db4466a2cdd965ff8798161577a9691f6dafaed0edd0a3533648363170ff943",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": false,
+      "configuredFindingCategories": [
+        "incomplete-source-scan",
+        "install-hook",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 1,
+        "selectedDeclaredBytes": 325,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 1659,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "95fa7e93a37bcff1c2b62c2fbdbf692dc256540fe0e2d5c8083d4294438a7cfe",
+      "derivedTreeFiles": 1
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/utomo-kentang81-ruro/4.1.4/2024-05-20-utomo-kentang81-ruro-v4.1.4.zip",
+      "packageName": "utomo-kentang81-ruro",
+      "version": "4.1.4",
+      "zipBytes": 23924,
+      "rank": "00cbb8d42e999b11e437132adbb4f52bb3ee9d83c6f29976427e9a5c54269fd9",
+      "categoryRank": 12,
+      "originalCohort": false,
+      "blobSha1": "28a920152170e507333e7f4912dc573af01e147e",
+      "zipSha256": "bc9d00ca0a56c22c22ccedba54a866da32a261c1b1378f843411b8535a164d04",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45600,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3489,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "d2750d34a1a82c269019d93e8902a0fc536edff982af8052279ae6606d12db28",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/minife_node/89.3.5/2024-11-08-minife_node-v89.3.5.zip",
+      "packageName": "minife_node",
+      "version": "89.3.5",
+      "zipBytes": 2983,
+      "rank": "0111a8a1c49acfdca4313063460256c4f2555a635c19a61dbd29ae5be13c93b3",
+      "categoryRank": 13,
+      "originalCohort": false,
+      "blobSha1": "8ac85a69e129ea761b3e9bcd03d8e2ae3bcea834",
+      "zipSha256": "20e3330d96021cd8ba76f3e5cf1f7832dd3f6630907446e27b82025e0337c992",
+      "rawVerdict": "block",
+      "configuredVerdict": "block",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "flow-analysis-gap",
+        "install-hook",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 2,
+        "selectedDeclaredBytes": 1973,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 1477,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "97f033f7f1a4812056a4d9ea3bb13043a2402916a72f13712e06bbf1f49e2db7",
+      "derivedTreeFiles": 2
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/whispering-plum-vicuna/3.3.2/2024-07-12-whispering-plum-vicuna-v3.3.2.zip",
+      "packageName": "whispering-plum-vicuna",
+      "version": "3.3.2",
+      "zipBytes": 5981,
+      "rank": "01316422cc1a34bffe80caa194d4b01e9466195615962baeaba5dd27f6a65086",
+      "categoryRank": 14,
+      "originalCohort": false,
+      "blobSha1": "4c47d7b3a3dad0fa3dc156bcfd78529e55e92062",
+      "zipSha256": "1a3e5ab5c694aeb0b0e0cb93e8cae1018c0acc7479e18d0d1d899c550091ecdb",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 3,
+        "selectedDeclaredBytes": 5327,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 5015,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "c3d52e354953d22f2aa1128665c4fe539783a570fcdaf11d42e71f26601115a1",
+      "derivedTreeFiles": 3
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/dewanto-semur60-sukiwir/4.2.2/2024-05-13-dewanto-semur60-sukiwir-v4.2.2.zip",
+      "packageName": "dewanto-semur60-sukiwir",
+      "version": "4.2.2",
+      "zipBytes": 23937,
+      "rank": "013735a13af6de9241bc140e1cc6a76cf174c8a61aab54ece5e1b509131e7d6f",
+      "categoryRank": 15,
+      "originalCohort": false,
+      "blobSha1": "5a07f24bc8140bf377660ff0c8c009b85bdf1336",
+      "zipSha256": "4385d433f29a5568f61a5e6fccc90878e11d6af3073f73759dc5edbdf6a91ba6",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45606,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3507,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "c3be35ef9390a62c4fc766a8c0ecb2ddd296c53090d5924a94771396dfe19c33",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/@bytedanc@mona-max/9.3.5/2024-11-07-@bytedanc_mona-max-v9.3.5.zip",
+      "packageName": "@bytedanc/mona-max",
+      "version": "9.3.5",
+      "zipBytes": 3082,
+      "rank": "0141a207a832329f56af405d591da7eca4638c88d774352cdb0744e0a6ac18df",
+      "categoryRank": 16,
+      "originalCohort": false,
+      "blobSha1": "a5add2a51706010a38fdf45867abb8beddd139c8",
+      "zipSha256": "a7075c4e59efe9b0b95ab38a3b57de1847edbe7490e7a0170834c12398d1c6a9",
+      "rawVerdict": "block",
+      "configuredVerdict": "block",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "flow-analysis-gap",
+        "install-hook",
+        "missing-metadata",
+        "network-exfil-or-loader",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 2,
+        "selectedDeclaredBytes": 1979,
+        "ignoredMembers": 4,
+        "ignoredDeclaredBytes": 1483,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "24dcb7cc13ac02c99f4e9e03bf75e6ab21346373873e1fd8beddf52be83102a7",
+      "derivedTreeFiles": 2
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/ocha-nasiuduk31-riris/4.2.1/2024-05-21-ocha-nasiuduk31-riris-v4.2.1.zip",
+      "packageName": "ocha-nasiuduk31-riris",
+      "version": "4.2.1",
+      "zipBytes": 23925,
+      "rank": "0164bb4bb33efd5ecaff3d49fe73be257f8501e196765963eeef57939afec873",
+      "categoryRank": 17,
+      "originalCohort": false,
+      "blobSha1": "25761544ee388eddc18c5e23ba1bd4f08d767195",
+      "zipSha256": "f6b160ed8872d1cee1decc6ee26ed057efc29cbda52830e1e5be4e3973bd380b",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45602,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3494,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "6966606fedca75a57350d9dfe987a3f28fd18ca3e0e8dd0adfc861e3657528aa",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/environmental_swift-smiletea/3.4.1/2024-05-19-environmental_swift-smiletea-v3.4.1.zip",
+      "packageName": "environmental_swift-smiletea",
+      "version": "3.4.1",
+      "zipBytes": 24394,
+      "rank": "017606acac5204e9f63930969b65a21d3ce7cb6b9d03a362725e714527b8f7a8",
+      "categoryRank": 18,
+      "originalCohort": false,
+      "blobSha1": "6503022347866caa9b3cb77e153a648a170df4a9",
+      "zipSha256": "ceec6f372ed258f53e4f1b76c5867e12144f4e6baa77756ed80bad50a83e41c8",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": false,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "incomplete-source-scan",
+        "missing-metadata"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45624,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 4278,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "bfc5dca0ae67a1c62c4be0d991a41efae812ccc7b39c27ffa0ade261e25a0d51",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/dewi-mendut80-sukiwir/4.2.3/2024-05-11-dewi-mendut80-sukiwir-v4.2.3.zip",
+      "packageName": "dewi-mendut80-sukiwir",
+      "version": "4.2.3",
+      "zipBytes": 23919,
+      "rank": "018f73b3919a5b2e141d140337559b58bf3d551d3094a6534f30a5aee6257268",
+      "categoryRank": 19,
+      "originalCohort": false,
+      "blobSha1": "f6a4aee5603bb5596000a5f53edddba68ae345d3",
+      "zipSha256": "c5e81e3766c5908ec51f7a23dcbba9a0e7e1281eac10a61b40f8098b6a3105ae",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45604,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3493,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "41ca17b6d22787508414d427a27874e6045d98656de3d7d227bdd2bb1e36281a",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/dewi-kentang96-riris/4.4.2/2024-05-08-dewi-kentang96-riris-v4.4.2.zip",
+      "packageName": "dewi-kentang96-riris",
+      "version": "4.4.2",
+      "zipBytes": 23924,
+      "rank": "0199d1485b269ed6b0fecf3b9cbd73e626021ca44902fb137c7810d5e88856f1",
+      "categoryRank": 20,
+      "originalCohort": false,
+      "blobSha1": "b58ce589f072620c775ca1e4652df46cb33fe96c",
+      "zipSha256": "210da863c098d88cfdf65411ee948660b2f4893dd749c6d82c0df6a92d77d923",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45601,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3487,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "32cfae9112910bfb260c7f4a7a4cadcfc60d4a72fcc860a48fe1402a09ea4d8d",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/nurul-pecel28-sluey/2.4.4/2024-05-13-nurul-pecel28-sluey-v2.4.4.zip",
+      "packageName": "nurul-pecel28-sluey",
+      "version": "2.4.4",
+      "zipBytes": 23921,
+      "rank": "01b506f139719401a0998d975e19b4595fac59f347e9de4a9ef2ff93742a5b93",
+      "categoryRank": 21,
+      "originalCohort": false,
+      "blobSha1": "c079def36711c8e5cd25a36f0825db24aff86c19",
+      "zipSha256": "59831238f0cb85bc3e4cfd7e30685bc85a8307dda8beb92e9cf14adfccfaba4d",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45600,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3486,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "1c2ffd994a02938dafded93debdd8ab340a528db4993d87075f98f7173b82ee7",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/esoftplay/0.0.138-b/2024-04-04-esoftplay-v0.0.138-b.zip",
+      "packageName": "esoftplay",
+      "version": "0.0.138-b",
+      "zipBytes": 1567287,
+      "rank": "01c4da261fa9979c0110436942b0bfa19ae6eb557e666bb0216e4060b0f6bf67",
+      "categoryRank": 22,
+      "originalCohort": false,
+      "blobSha1": "ad25a9ce7f39f6214f93faa96550afc2e638fae6",
+      "zipSha256": "64052f9c46a40d678bc787c0c4d96068849640e30f0e6aada2f32d1649c97ff2",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": false,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "incomplete-source-scan",
+        "install-hook",
+        "metadata-mimicry",
+        "missing-metadata",
+        "network-access"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 126,
+        "selectedDeclaredBytes": 737368,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 4942976,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "d05ae6d29f568bf46791cf3ea25c6f50a937fde4efff3cf3832deac9965da7e1",
+      "derivedTreeFiles": 118
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/very-magenta-newt/9.5.8/2024-07-12-very-magenta-newt-v9.5.8.zip",
+      "packageName": "very-magenta-newt",
+      "version": "9.5.8",
+      "zipBytes": 5965,
+      "rank": "01ccd011d61e2665b2ace5f7e245588019e32cf1f995f1ff5f47f13568719f53",
+      "categoryRank": 23,
+      "originalCohort": false,
+      "blobSha1": "5ae42902ef22ff654a404de95887d5c7ff478f08",
+      "zipSha256": "623397b1b5969d94e914b56ac9a97babe96bf5070d94d4437626e6f899940877",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 3,
+        "selectedDeclaredBytes": 5322,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 4981,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "66209ae8903bbbd8a65b5d239b024621b13028b3085e602ee2c8df4809533e6c",
+      "derivedTreeFiles": 3
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/fajar-taiwan34-miaww/3.2.1/2024-05-10-fajar-taiwan34-miaww-v3.2.1.zip",
+      "packageName": "fajar-taiwan34-miaww",
+      "version": "3.2.1",
+      "zipBytes": 23924,
+      "rank": "01cfc649d1fbc0409993b9d53f8d043b84de6b16a68f63a18d021c48d492db3e",
+      "categoryRank": 24,
+      "originalCohort": false,
+      "blobSha1": "4eebf0b27cee2bf15947c3abf1f343b39ee4648c",
+      "zipSha256": "333f006de0cdecefb391f1c5aaf4a23b493de6eb9f1041afc59cbbde6849a96a",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45601,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3489,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "d3e0ea5e4c1185af8068ae34a64d077590fedcfb85fd178b2e1dd497733a38fb",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/sari-asinan20-devapp/4.2.4/2024-05-07-sari-asinan20-devapp-v4.2.4.zip",
+      "packageName": "sari-asinan20-devapp",
+      "version": "4.2.4",
+      "zipBytes": 23928,
+      "rank": "01d1583b06d216b88df299e5e670251d67f35f54a7414746b2972ff22d15616c",
+      "categoryRank": 25,
+      "originalCohort": false,
+      "blobSha1": "820a8385f18caa629852d0f05ba80c734212da45",
+      "zipSha256": "08a87165003dd114a522dc888a83f4a5f0f5c7b809653fd8e4fbbba8380fe263",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45602,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3499,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "c9d1fbfe4fc6a4b2d5f629ccb49d7bbee4b9ee0cf662376eb28d96404e8f4a55",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/dewanto-klentik66-riris/3.2.4/2024-05-20-dewanto-klentik66-riris-v3.2.4.zip",
+      "packageName": "dewanto-klentik66-riris",
+      "version": "3.2.4",
+      "zipBytes": 23937,
+      "rank": "01daa5cc0fb632d97174a47e4282a5611fe8ebd77b8a9477b0cf21d03f85abac",
+      "categoryRank": 26,
+      "originalCohort": false,
+      "blobSha1": "15ae6e029dda361fbb76f92a02a98b0c5483a6f2",
+      "zipSha256": "ad657aa50e8fff7ff5888f329712e150ceaabdba12f66321156073582223857f",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45604,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3508,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "66d713caa2ac7a0a1475735674d5a23fc2deb39e27a0a6014f96d63aa00aaf67",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/joko-ragi50-miaww/1.3.3/2024-05-17-joko-ragi50-miaww-v1.3.3.zip",
+      "packageName": "joko-ragi50-miaww",
+      "version": "1.3.3",
+      "zipBytes": 23908,
+      "rank": "01e26fc1bbd88e86f4a7595cabab7d4aaf70af88f0a8258e7c6f10f105de3fdd",
+      "categoryRank": 27,
+      "originalCohort": false,
+      "blobSha1": "8b07349cd43888a982e0a5db3becabccdb7129f2",
+      "zipSha256": "d3d87a026caef43930620206e7032fb544d76a306b9f5d1222de245717a07097",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45598,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3468,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "713b9ed5aa2edfb79e24ee30e6cee63bc84198020a3acfb027797f4477c9432a",
+      "derivedTreeFiles": 14
+    },
+    {
+      "label": "malicious",
+      "category": "malicious_intent",
+      "sourcePath": "samples/npm/malicious_intent/rina-kripik13-sluey/1.3.3/2024-05-21-rina-kripik13-sluey-v1.3.3.zip",
+      "packageName": "rina-kripik13-sluey",
+      "version": "1.3.3",
+      "zipBytes": 23920,
+      "rank": "01f7fdba983bc1f40124af38f9679edf22765366b1d958912eace9deadcd14c5",
+      "categoryRank": 28,
+      "originalCohort": false,
+      "blobSha1": "101fb048fe44aa3b79333395ae134bd056bb1e3f",
+      "zipSha256": "2e0c9e8de06465a7bea736acdf5ca62ea7d89c51c59fb5b06948370c779c6152",
+      "rawVerdict": "review",
+      "configuredVerdict": "review",
+      "guardDecision": "block",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "disabled",
+        "directDependencies": "not-requested",
+        "provenance": "not-requested"
+      },
+      "assessmentBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+      "sourceComplete": true,
+      "configuredFindingCategories": [
+        "code-execution",
+        "flow-analysis-gap",
+        "missing-metadata",
+        "supply-chain-signal"
+      ],
+      "scanInput": "derived-package-tree",
+      "archiveSelection": {
+        "selectedMembers": 17,
+        "selectedDeclaredBytes": 45600,
+        "ignoredMembers": 3,
+        "ignoredDeclaredBytes": 3486,
+        "unselectedContentValidated": false,
+        "validationScope": "All central-directory paths/types/collisions; selected content only"
+      },
+      "derivedTreeSha256": "5fd7032e3ab75bcab0761b3f4ae7e071ab4db62e618cf5cf510b90a4af6861a1",
+      "derivedTreeFiles": 14
+    }
+  ],
+  "payloadsRetained": false,
+  "manifestSha256": "791725e1440e716e55809b15785866162fc2a3d67829bc6f74a319fe0798004a",
+  "manifestEncoding": "Exact UTF-8 manifest file bytes, including formatting and trailing newline"
+}
