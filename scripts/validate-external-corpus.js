@@ -64,6 +64,9 @@ function downloadOnce(url, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = []; let total = 0;
     const req = https.get(target, { headers: { 'user-agent': 'pkgxray-static-corpus-validation', accept: 'application/vnd.github+json' } }, res => {
+      // Install before every destroy/error path, including oversized declared
+      // Content-Length, so acquisition errors are caught and retained per case.
+      res.on('error', reject);
       if (res.statusCode !== 200) {
         res.resume();
         const error = new Error(`Corpus request HTTP ${res.statusCode}`);
@@ -79,7 +82,6 @@ function downloadOnce(url, maxBytes) {
       });
       res.on('end', () => resolve(Buffer.concat(chunks)));
       res.on('aborted', () => reject(new Error('Corpus download interrupted')));
-      res.on('error', reject);
     });
     const timer = setTimeout(() => req.destroy(new Error('Corpus request deadline exceeded')), 20000);
     req.on('close', () => clearTimeout(timer));
@@ -257,4 +259,5 @@ if (require.main === module) evaluateCorpus({
 }).catch(error => { process.stderr.write(`Static corpus validation failed: ${error.message}\n`); process.exitCode = 1; });
 
 module.exports = { selectCases, unwrap, evaluateCorpus, safeExtractorAvailable, summarizeCases,
-  isTransientDownloadError, BENIGN_CONTROLS, COMMIT, SELECTION };
+  isTransientDownloadError, BENIGN_CONTROLS, COMMIT, SELECTION,
+  download, digest, REPOSITORY, CATEGORIES, MAX_ZIP_BYTES, MAX_METADATA_BYTES };
