@@ -1,9 +1,22 @@
 # Compatibility & stability
 
-As of **1.0.0**, the Stable surface below is a promise: it will not break
-without a major version bump. This document states, plainly, what is covered by
-that promise and what is explicitly still moving (the Experimental and opt-in
-surfaces), so you know exactly what you can build on.
+This checkout is an **unpublished breaking 2.0 candidate**. The 1.3 work remains a
+separate held PR; neither that work nor this contract implies a published release.
+The 1.x stability promise requires a major version for these removals.
+
+The 2.0 candidate removes manual REVIEW decisions, Proceed/Decline, review flags
+and arguments, session approval endpoints, and `--no-scan-results`. Final gates
+return `allow`/`block` and `SAFE`/`UNSAFE`; unresolved required checks block with
+reasons rather than a malware claim. Eligible transient checks retry once within
+the shared deadline against the same immutable evidence. See the
+[automatic gate contract](review-contract.md) for limits and cache semantics.
+
+Stable JSON output moves to **`schemaVersion: 2`** and the stable decision exit
+codes are **`0` safe/allow and `2` block**, replacing the old review exit `3`.
+Operational/usage failures and explicitly flow-only diagnostic analysis are not
+safety verdicts. Compose's flow-only `analysisStatus` remains distinct.
+Configuration and workflow files have their own schemas; the output version bump
+does not require changing their `schemaVersion: 1` declarations.
 
 ---
 
@@ -16,11 +29,11 @@ pkgxray follows [semantic versioning](https://semver.org/):
 - **Patch** (`1.0.0 → 1.0.1`) — bug fixes and detection-calibration changes.
   New *findings* on the same input are **not** a breaking change: the detection
   engine is expected to get more accurate over time, and a package that was
-  `safe` yesterday may become `review`/`block` today (that is the entire point
+  `safe` yesterday may become `block` today (that is the entire point
   of [`recheck`](reference.md#monitoring-pkgxray-recheck)).
 - **Minor** (`1.0.0 → 1.1.0`) — new surfaces, new flags, new JSON fields.
   Additive only on the stable surface (see below).
-- The **JSON contract** carries its own `schemaVersion` (currently `1`),
+- The **JSON contract** carries its own `schemaVersion` (`2` in this candidate),
   independent of the package version. Within a `schemaVersion`, fields are
   **added, never removed or repurposed**. A removal bumps `schemaVersion`.
 
@@ -34,15 +47,15 @@ Changes here are additive within a major version; removals wait for a major bump
 
 | Surface | Contract |
 |---|---|
-| `pkgxray guard <ref>` | decision (`allow`/`review`/`block`), exit codes `0`/`2`/`3`, quarantine-then-promote flow |
+| `pkgxray guard <ref>` | decision (`allow`/`block`), decision exit codes `0`/`2`, quarantine-then-promote flow |
 | `pkgxray audit <lockfile>` / `--file` | verdict, per-dep results, exit codes |
 | `pkgxray recheck <lockfile>` | verdict-drift diff, `.pkgxray.lock` baseline format, exit codes |
-| `--format json` output | `schemaVersion: 1`, additive fields only |
+| `--format json` output | `schemaVersion: 2`, additive fields only within 2.x |
 | `.pkgxray.json` config | the schema in [configuration.md](configuration.md); precedence order; "tighten freely, loosen loudly" invariants |
 | MCP server tools | `audit_agent_extension_supply_chain`, `guard_agent_extension_install`, `audit_lockfile_supply_chain`, `triage_lockfile_supply_chain` — names and input shapes |
-| Exit-code convention | `0` safe/allow · `2` block · `3` review, across every command |
+| Exit-code convention | `0` safe/allow · `2` block for stable decision outputs; no review exit |
 | `pkgxray mcp` (connect-time MCP adapter) | subcommands + `--pin` / `--recheck` / `--package` / `--force` / `--no-package-scan` flags; the package-scan-first ordering; additive stdio-only `--sandbox` / `--sandbox-read` / `--sandbox-write` / `--sandbox-network` grants |
-| `pkgxray mcp-proxy` (per-call runtime gate) | the `pkgxray mcp-proxy -- <launcher>` invocation, `--policy strict\|balanced\|permissive`, `--pin` / `--recheck` / `--no-scan-results`; stdout stays protocol-clean |
+| `pkgxray mcp-proxy` (per-call runtime gate) | the `pkgxray mcp-proxy -- <launcher>` invocation, `--policy strict\|balanced\|permissive`, `--pin` / `--recheck`; mandatory result screening and uncertainty blocks in every policy; stdout stays protocol-clean |
 | `pkgxray-cache` server + `PKGXRAY_CACHE_URL` | routes `GET /github/repos/{owner}/{repo}`, `GET /github/tarball/{owner}/{repo}/{ref}`, `GET /healthz`; opt-in via the env var; explicitly **not** an auth boundary |
 
 ### 🟡 Beta — works, contract may still shift
@@ -72,10 +85,11 @@ is intentionally removed as security hardening of this executes-code surface.
 
 ---
 
-## Path to 1.0
+## Historical path to 1.0
 
-1.0 means "the Stable surface above will not break without a major bump." The
-checklist to get there:
+The following records the 1.x contract and validation history, including its old
+JSON schema and review exit code. It is not validation of the 2.0 candidate.
+The checklist for 1.0 was:
 
 - [x] **Calibration gate in CI** — the [benchmark corpus](../benchmark/) runs on
       every PR and fails on a false block or a missed detection, so the "0 false
@@ -119,5 +133,5 @@ checklist to get there:
       maintained release, but removing the published floor requires an explicit
       compatibility decision. *(landed)*
 
-The 1.0 checklist is complete. Current priorities and experimental surfaces are
+The historical 1.0 checklist is complete. Current priorities and experimental surfaces are
 tracked in [project-status.md](project-status.md).
