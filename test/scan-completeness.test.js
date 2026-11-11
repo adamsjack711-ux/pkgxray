@@ -161,7 +161,8 @@ test('local subprocess targets are collected even when their extension looks ine
   });
   const result = await guardExtension(source,offline);
   assert.ok(result.sourceCoverage.runtimeFiles.includes('worker.dat'));
-  assert.equal(result.sourceCoverage.complete,true);
+  assert.equal(result.sourceCoverage.complete,false);
+  assert.ok(result.sourceCoverage.reasons.some(reason => /computed module specifier/.test(reason)));
   assert.equal(result.decision,'block');
   assert.ok(result.report.findings.some(f=>f.category==='hidden-local-loader'));
 });
