@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs/promises");
+const fsSync = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
@@ -206,8 +207,19 @@ async function installProject(project = ".", options = {}, deps = {}) {
     const manifest = JSON.parse(manifestBytes);
     const lock = JSON.parse(lockBytes);
     const packages = validateLock(manifest, lock);
-    const initialFilePolicy = artifact.fingerprint(cfg.loadConfig({ cwd: project }).config);
-    const config = options.config || cfg.loadConfig({ cwd: project }).config;
+    const initialFilePolicy = cfg.loadConfig({ cwd: project });
+    const config = options.config || initialFilePolicy.config;
+    const policyState = file => ({ file, effective: config,
+      requireProvenance: process.env.PKGXRAY_REQUIRE_PROVENANCE === "1",
+      sigstoreModule: process.env.PKGXRAY_SIGSTORE_MODULE || null });
+    const initialPolicy = artifact.fingerprint(policyState(initialFilePolicy));
+    const validatePolicy = () => {
+      options.validatePolicy?.();
+      require("./shared-scans").assertCurrentBuild();
+      if (artifact.fingerprint(policyState(cfg.loadConfig({ cwd: project }))) !== initialPolicy) {
+        throw new Error("Project policy changed during installation");
+      }
+    };
     workspace = await fs.mkdtemp(path.join(project, ".pkgxray-install-"));
     const stage = path.join(workspace, "project");
     await fs.mkdir(stage);
@@ -265,7 +277,7 @@ async function installProject(project = ".", options = {}, deps = {}) {
     const checked = await verifyInstalled(stage, packages);
     if (!(await readRegular(path.join(project, "package.json"))).equals(manifestBytes) ||
         !(await readRegular(path.join(project, "package-lock.json"))).equals(lockBytes)) throw new Error("Project manifest or lockfile changed during installation");
-    if (artifact.fingerprint(cfg.loadConfig({ cwd: project }).config) !== initialFilePolicy) throw new Error("Project policy changed during installation");
+    validatePolicy();
     // npm's hidden lock contains temporary file URLs that will no longer exist.
     await fs.rm(path.join(stage, "node_modules/.package-lock.json"), { force: true });
     const receipt = { schemaVersion: 1, command: "install", manifestSha256: hash(manifestBytes), lockfileSha256: hash(lockBytes),
@@ -274,14 +286,18 @@ async function installProject(project = ".", options = {}, deps = {}) {
     await fs.writeFile(path.join(stage, "node_modules/.pkgxray-install.json"), JSON.stringify(receipt, null, 2), { mode: 0o600 });
     const target = path.join(project, "node_modules");
     let backupPath = null;
+    // No await between current build/policy validation and the replacement.
+    // Receipt preparation is asynchronous, but the directory transaction and
+    // rollback must commit against the policy that authorized these bytes.
+    validatePolicy();
     try {
-      const stat = await fs.lstat(target);
+      const stat = fsSync.lstatSync(target);
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Existing node_modules must be a real directory");
       backupPath = path.join(project, `.pkgxray-previous-node_modules-${crypto.randomUUID()}`);
-      await fs.rename(target, backupPath);
+      fsSync.renameSync(target, backupPath);
     } catch (error) { if (error.code !== "ENOENT") throw error; }
-    try { await fs.rename(path.join(stage, "node_modules"), target); }
-    catch (error) { if (backupPath) await fs.rename(backupPath, target); throw error; }
+    try { fsSync.renameSync(path.join(stage, "node_modules"), target); }
+    catch (error) { if (backupPath) fsSync.renameSync(backupPath, target); throw error; }
     return { decision: "allow", installed: checked.installed.length, skipped: checked.skipped, project,
       receiptPath: path.join(target, ".pkgxray-install.json"), backupPath, lifecycleScripts: "disabled" };
   } finally {

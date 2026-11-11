@@ -340,3 +340,85 @@ test('cancellation during promotion preparation preserves the existing destinati
   assert.equal(await fs.readFile(path.join(target,'original'),'utf8'),'keep');
   assert.ok(!(await fs.readdir(f.root)).some(name => name.startsWith('.pkgxray-promotion-')));
 });
+
+test('policy changes while writing the receipt cannot replace the existing installation', async t => {
+  const cases = [
+    ['setting', async (f, write) => write(path.join(f.project, '.pkgxray.json'), JSON.stringify({ typosquat: true }))],
+    ['deleted policy with identical defaults', async f => fs.unlink(path.join(f.project, '.pkgxray.json'))],
+    ['malformed policy with identical defaults', async (f, write) => write(path.join(f.project, '.pkgxray.json'), '{broken')],
+    ['local override', async (f, write) => write(path.join(f.project, '.pkgxray.local.json'), JSON.stringify({ typosquat: false }))],
+    ['supplied effective policy', async (f, write, config) => { config.typosquat = !config.typosquat; }]
+  ];
+  for (const [name, mutate] of cases) await t.test(name, async t => {
+    const f = await fixture(t);
+    await fs.writeFile(path.join(f.project, '.pkgxray.json'), '{}');
+    await fs.mkdir(path.join(f.project, 'node_modules'));
+    await fs.writeFile(path.join(f.project, 'node_modules/original'), 'keep');
+    const config = structuredClone(DEFAULTS);
+    const originalWrite = fs.writeFile;
+    let changed = false;
+    fs.writeFile = async (file, ...args) => {
+      await originalWrite(file, ...args);
+      if (String(file).endsWith('/node_modules/.pkgxray-install.json')) {
+        changed = true;
+        await mutate(f, originalWrite, config);
+      }
+    };
+    try {
+      await assert.rejects(installProject(f.project, { config }, { guard: f.guard }), /policy changed/i);
+    } finally { fs.writeFile = originalWrite; }
+    assert.equal(changed, true, 'mutation lands after the earlier validation during receipt writing');
+    assert.equal(await fs.readFile(path.join(f.project, 'node_modules/original'), 'utf8'), 'keep');
+    assert.deepEqual(await fs.readdir(path.join(f.project, 'node_modules')), ['original']);
+    assert.ok(!(await fs.readdir(f.project)).some(name => name.startsWith('.pkgxray-previous-') || name.startsWith('.pkgxray-install')));
+  });
+});
+
+
+test('failed installation replacement synchronously restores the previous tree', async t => {
+  const f = await fixture(t);
+  const target = path.join(await fs.realpath(f.project), 'node_modules');
+  await fs.mkdir(target);
+  await fs.writeFile(path.join(target, 'original'), 'keep');
+  const sync = require('node:fs');
+  const rename = sync.renameSync;
+  let attempted = false;
+  sync.renameSync = (source, destination) => {
+    if (String(source).includes('/project/node_modules') && destination === target) {
+      attempted = true;
+      throw Object.assign(new Error('simulated replacement failure'), { code: 'EIO' });
+    }
+    return rename(source, destination);
+  };
+  try {
+    await assert.rejects(installProject(f.project, { config: DEFAULTS }, { guard: f.guard }), /simulated replacement failure/);
+  } finally { sync.renameSync = rename; }
+  assert.equal(attempted, true);
+  assert.equal(await fs.readFile(path.join(target, 'original'), 'utf8'), 'keep');
+  assert.deepEqual(await fs.readdir(target), ['original']);
+  assert.ok(!(await fs.readdir(f.project)).some(name => name.startsWith('.pkgxray-previous-') || name.startsWith('.pkgxray-install')));
+});
+
+test('scanner build is revalidated after receipt writing before installation commit', async t => {
+  const f = await fixture(t);
+  const target = path.join(await fs.realpath(f.project), 'node_modules');
+  await fs.mkdir(target);
+  await fs.writeFile(path.join(target, 'original'), 'keep');
+  const sharing = require('../src/shared-scans');
+  const validate = sharing.assertCurrentBuild;
+  const write = fs.writeFile;
+  let receiptWritten = false;
+  fs.writeFile = async (file, ...args) => {
+    await write(file, ...args);
+    if (String(file).endsWith('/node_modules/.pkgxray-install.json')) receiptWritten = true;
+  };
+  sharing.assertCurrentBuild = () => {
+    if (receiptWritten) throw Object.assign(new Error('simulated scanner build change'), { code: 'SCANNER_CHANGED' });
+    validate();
+  };
+  try {
+    await assert.rejects(installProject(f.project, { config: DEFAULTS }, { guard: f.guard }), { code: 'SCANNER_CHANGED' });
+  } finally { fs.writeFile = write; sharing.assertCurrentBuild = validate; }
+  assert.equal(receiptWritten, true);
+  assert.deepEqual(await fs.readdir(target), ['original']);
+});
