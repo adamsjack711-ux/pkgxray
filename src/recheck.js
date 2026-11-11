@@ -10,6 +10,7 @@ const {
 const { mapPool, defaultConcurrency } = require("./pool");
 const { newerCandidates } = require("./semver");
 const { newerPypiCandidates } = require("./pep440");
+const { compareUpgradeFindings } = require("./upgrade-diff");
 
 // ---------------------------------------------------------------------------
 // recheck — the monitoring tier.
@@ -79,7 +80,7 @@ function makeDefaultEvaluator(options, scheme = "npm") {
       quarantineRoot: options.quarantineRoot,
       typosquat: options.typosquat
     });
-    return { verdict: result.report.verdict, report: result.report };
+    return { verdict: result.report.verdict, report: result.report, assessment: result.assessment };
   };
 }
 
@@ -94,7 +95,7 @@ function makeDefaultEvaluator(options, scheme = "npm") {
 // passes failOnAvailableUpdates. Candidates are bounded (latest + latest-in-
 // major, ≤2 per dep) to keep registry/OSV cost sane.
 // ---------------------------------------------------------------------------
-async function versionDriftPass(depList, evaluate, options, eco = { scheme: "npm" }) {
+async function versionDriftPass(depList, evaluate, options, eco = { scheme: "npm" }, baselines = new Map()) {
   const listVersions = options.listVersions || defaultListVersions(options, eco);
   // PyPI versions are PEP 440, not semver — pick the matching newer-candidate
   // comparator so a `1!2.0.post1`-style version isn't mis-ordered as garbage.
@@ -118,13 +119,15 @@ async function versionDriftPass(depList, evaluate, options, eco = { scheme: "npm
     for (const candidate of candidates) {
       let verdict = "unknown";
       let error = null;
+      let outcome = null;
       try {
-        const outcome = await evaluate({ name: dep.name, version: candidate, paths: [] }, { versionDrift: true });
-        verdict = outcome && typeof outcome.verdict === "string" ? outcome.verdict : "unknown";
+        outcome = await evaluate({ name: dep.name, version: candidate, paths: [] }, { versionDrift: true });
+        verdict = verdictRank(outcome?.verdict) >= 0 ? outcome.verdict : "unknown";
       } catch (err) {
         error = err && err.message ? err.message : String(err);
       }
-      vetted.push({ version: candidate, verdict, ...(error ? { error } : {}) });
+      vetted.push({ version: candidate, verdict, ...(error ? { error } : {}),
+        securityChanges: compareUpgradeFindings(baselines.get(`${dep.name}@${dep.version}`), outcome) });
     }
     return { name: dep.name, version: dep.version, candidates: vetted };
   });
@@ -139,22 +142,22 @@ async function versionDriftPass(depList, evaluate, options, eco = { scheme: "npm
     }
     if (r.candidates.length === 0) continue; // no newer version -> nothing
     const vettedVerdicts = r.candidates.map((c) => c.verdict).filter((v) => verdictRank(v) >= 0);
-    // Fail-open guard: if EVERY candidate's guard scan errored (all "unknown"),
-    // worstVerdict([]) is "safe" — do NOT report an unvetted newer version as a
-    // clean/available update. Surface it as unknown so it isn't blind-installed.
-    if (vettedVerdicts.length === 0) {
+    // A successful in-major scan must not hide an unvetted latest release (or
+    // vice versa). Preserve known risk while surfacing partial failure too.
+    const hasUnknown = vettedVerdicts.length !== r.candidates.length;
+    if (hasUnknown) {
       unknown.push({
         name: r.name,
         version: r.version,
         candidates: r.candidates,
-        error: "no candidate could be vetted"
+        error: vettedVerdicts.length ? "some candidates could not be vetted" : "no candidate could be vetted"
       });
-      continue;
     }
+    if (vettedVerdicts.length === 0) continue;
     const worst = worstVerdict(vettedVerdicts);
     const entry = { name: r.name, version: r.version, candidates: r.candidates, worst };
     if (worst === "review" || worst === "block") flagged.push(entry);
-    else available.push(entry);
+    else if (!hasUnknown) available.push(entry);
   }
   return { available, flagged, unknown };
 }
@@ -201,10 +204,12 @@ async function recheckLockfile(lockfilePath, options = {}) {
     let fresh = "unknown";
     let error = null;
     let report = null;
+    let assessment = null;
     try {
       const outcome = await evaluate(dep, { record });
-      fresh = outcome && typeof outcome.verdict === "string" ? outcome.verdict : "unknown";
+      fresh = verdictRank(outcome?.verdict) >= 0 ? outcome.verdict : "unknown";
       report = outcome ? outcome.report || null : null;
+      assessment = outcome ? outcome.assessment || null : null;
     } catch (err) {
       fresh = "unknown";
       error = err && err.message ? err.message : String(err);
@@ -222,7 +227,8 @@ async function recheckLockfile(lockfilePath, options = {}) {
       checkedAt: record ? record.checkedAt : null, // baseline age
       decision: record ? record.decision : null,   // human triage choice, if any
       error,
-      report
+      report,
+      assessment
     };
   });
 
@@ -260,7 +266,8 @@ async function recheckLockfile(lockfilePath, options = {}) {
   // skip with { versionDrift: false }.
   let versionDrift = { available: [], flagged: [], unknown: [] };
   if (options.versionDrift !== false) {
-    versionDrift = await versionDriftPass(depList, evaluate, options, eco);
+    const freshBaselines = new Map(perDep.map(dep => [`${dep.name}@${dep.version}`, dep]));
+    versionDrift = await versionDriftPass(depList, evaluate, options, eco, freshBaselines);
   }
 
   // Exit code keys off the worst *regression* target — not the worst absolute
@@ -277,6 +284,9 @@ async function recheckLockfile(lockfilePath, options = {}) {
     const flaggedExit = worstFlagged === "block" ? 2 : worstFlagged === "review" ? 3 : 0;
     // Worst (lowest-tolerance) exit wins: block(2) over review(3) over ok(0).
     exitCode = mergeExit(exitCode, flaggedExit);
+  }
+  if (options.failOnAvailableUpdates && versionDrift.unknown.length > 0) {
+    exitCode = mergeExit(exitCode, 3);
   }
 
   return {
@@ -336,7 +346,7 @@ function renderRecheckText(result, options = {}) {
     }
     lines.push("");
   } else {
-    lines.push("No regressions. Nothing you already depend on became worse.");
+    lines.push("No verdict regressions observed in completed baseline comparisons.");
     lines.push("");
   }
 
@@ -383,6 +393,31 @@ function renderRecheckText(result, options = {}) {
       lines.push(`- ${sanitizeForTerminal(a.name)} (pinned ${sanitizeForTerminal(a.version)}) → ${newest}`);
     }
     lines.push("");
+  }
+  if (vd.unknown.length > 0) {
+    lines.push("UPDATE CHECK INCOMPLETE (these releases are not cleared for upgrade):");
+    for (const update of vd.unknown) {
+      const candidates = update.candidates.map(candidate => `${sanitizeForTerminal(candidate.version)}=${sanitizeForTerminal(candidate.verdict)}`).join(", ");
+      lines.push(`- ${sanitizeForTerminal(update.name)} (pinned ${sanitizeForTerminal(update.version)})${candidates ? ` → ${candidates}` : ""} — ${sanitizeForTerminal(update.error)}`);
+    }
+    lines.push("");
+  }
+  const displayed = new Set();
+  for (const update of [...vd.flagged, ...vd.available, ...vd.unknown]) {
+    for (const candidate of update.candidates) {
+      const key = `${update.name}@${update.version}->${candidate.version}`;
+      if (displayed.has(key)) continue;
+      displayed.add(key);
+      const changes = candidate.securityChanges;
+      if (!changes || (!verbose && !changes.counts?.added)) continue;
+      lines.push(`Security changes: ${sanitizeForTerminal(update.name)} ${sanitizeForTerminal(update.version)} → ${sanitizeForTerminal(candidate.version)} (${changes.status})`);
+      for (const finding of changes.added) {
+        lines.push(`  + ${sanitizeForTerminal(finding.severity)} ${sanitizeForTerminal(finding.category)} at ${sanitizeForTerminal(finding.file)} (${finding.count})`);
+      }
+      if (changes.notObserved) lines.push(`  ${changes.counts.notObserved} prior finding(s) not observed; this is not proof of remediation.`);
+      if (changes.limitations.length) lines.push(`  Comparison limits: ${changes.limitations.join(", ")}`);
+      if (changes.truncated) lines.push("  Finding details truncated; counts include omitted entries.");
+    }
   }
 
   const verb = result.exitCode === 2 ? "BLOCK" : result.exitCode === 3 ? "REVIEW" : "OK";
