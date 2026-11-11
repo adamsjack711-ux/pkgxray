@@ -130,6 +130,13 @@ function analyzeExecutionFile(file, source) {
     // that possibility rather than treating an unknown function as inert.
     if (v.kind === 'global' && (k === undefined || ['eval', 'Function'].includes(k))) return tag('dynamic-code');
     if (['function', 'dynamic-code', 'global-factory'].includes(v.kind) && k === 'constructor') return tag('dynamic-code');
+    if (k === 'constructor') {
+      if (v.props?.has(k)) return v.props.get(k);
+      // Plain values inherit their type constructor; its constructor is
+      // Function. An unresolved receiver may already be a function (for
+      // example [].filter), so retain evaluator capability conservatively.
+      return v.props || v.items || Object.hasOwn(v, 'literal') ? tag('function') : tag('dynamic-code');
+    }
     if (v.kind === 'vm' && ['Script', 'SourceTextModule', 'compileFunction', 'runInContext', 'runInNewContext', 'runInThisContext'].includes(k)) return tag('dynamic-code');
     if (['dynamic-code', 'global-factory'].includes(v.kind) && ['call', 'apply'].includes(k)) return v;
     if (['dynamic-code', 'global-factory'].includes(v.kind) && k === 'bind') return tag('dynamic-code-bind');
@@ -148,6 +155,7 @@ function analyzeExecutionFile(file, source) {
     for (; dest; dest = dest.parent, a = a.parent, b = b.parent) {
       for (const name of new Set([...a.bindings.keys(), ...b.bindings.keys()])) {
         const x = a.get(name) || UNKNOWN, y = b.get(name) || UNKNOWN;
+        if (x === y) { dest.bindings.set(name, x); continue; }
         const evaluator = hasEvaluator(x) || hasEvaluator(y);
         if (evaluator) diagnostic(null, 'dynamic code execution alias escapes runtime graph');
         dest.bindings.set(name, evaluator ? tag('dynamic-code') :
@@ -257,6 +265,11 @@ function analyzeExecutionFile(file, source) {
           const x = node.consequent ? walk(node.consequent, a, loops) : left;
           const y = walk(node.alternate || node.right, b, loops);
           joinScopes(scope, a, b);
+          // Evaluator functions are truthy. Reading their name through an AND
+          // expression returns the right operand, not the capability itself.
+          if (node.type === 'LogicalExpression' && ['dynamic-code', 'dynamic-code-bind', 'global-factory'].includes(left.kind)) {
+            return node.operator === '&&' ? y : left;
+          }
           if (hasEvaluator(x) || hasEvaluator(y)) {
             diagnostic(node, 'dynamic code execution alias escapes runtime graph');
             return tag('dynamic-code');

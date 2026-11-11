@@ -156,3 +156,19 @@ test('inert literal evaluator probes retain coverage without admitting executabl
     `eval("const x: string='value'")`
   ]) assert.ok([...planFor(source).gaps].some(gap => /dynamic code execution/.test(gap)), source);
 });
+
+for (const source of [
+  `({}).constructor.constructor("return require('./hidden.js')")()`,
+  `[].filter.constructor("return require('./hidden.js')")()`
+]) test(`inherited constructor capability stays incomplete: ${source}`, () => {
+  assert.ok([...planFor(source).gaps].some(gap => /dynamic code execution/.test(gap)));
+});
+
+
+test('constructor display-name inspection does not imply code evaluation', () => {
+  const source = `function label(instance) {
+    instance = ((instance = instance.constructor) && (instance.displayName || instance.name)) || "Class";
+    return instance;
+  }`;
+  assert.deepEqual([...planFor(source).gaps], []);
+});
