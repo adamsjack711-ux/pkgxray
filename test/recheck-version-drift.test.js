@@ -223,7 +223,9 @@ test("upgrade finding deltas use the fresh pinned scan, survive JSON, and do not
     write: false,
     listVersions: listVersionsFrom({ widget: ["1.0.0", "1.1.0"] }),
     evaluate: async dep => ({ verdict: "review", report: { findings: dep.version === "1.0.0" ? [hook] : [hook, newFinding] },
-      assessment: { engine: { buildId: "fixture-build" }, policySha256: "fixture-policy", checks: { source: "completed", vulnerabilities: "completed" } } })
+      assessment: { engine: { buildId: "fixture-build" }, policySha256: "fixture-policy",
+        authorization: { behavioralCoverage: "completed", mandatoryHoldReasons: [], explicitOverride: false },
+        checks: { source: "completed", vulnerabilities: "completed" } } })
   });
   const candidate = recheckJson(result).versionDrift.updateAvailableFlagged[0].candidates[0];
   assert.equal(candidate.verdict, "review");

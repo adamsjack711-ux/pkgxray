@@ -33,8 +33,11 @@ function indexFindings(outcome) {
 function scanComplete(outcome) {
   const assessment = outcome?.assessment;
   const checks = assessment?.checks;
+  const authorization = assessment?.authorization;
   return Boolean(checks && checks.source === "completed" && checks.vulnerabilities === "completed" &&
     !Object.values(checks).some(value => ["failed", "partial", "skipped"].includes(value)) &&
+    authorization?.behavioralCoverage === "completed" &&
+    Array.isArray(authorization.mandatoryHoldReasons) && authorization.mandatoryHoldReasons.length === 0 &&
     typeof assessment.engine?.buildId === "string" && assessment.engine.buildId.length > 0 &&
     typeof assessment.policySha256 === "string" && assessment.policySha256.length > 0);
 }

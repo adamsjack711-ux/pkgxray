@@ -9,6 +9,7 @@ const finding = { category: "install-hook", severity: "medium", file: "package.j
 function outcome(findings, patch = {}) {
   return { verdict: "review", report: { findings }, assessment: {
     engine: { buildId: "engine-a" }, policySha256: "policy-a",
+    authorization: { behavioralCoverage: "completed", mandatoryHoldReasons: [], explicitOverride: false },
     checks: { source: "completed", vulnerabilities: "completed", directDependencies: "not-requested" },
     ...patch
   } };
@@ -64,6 +65,23 @@ test("partial baseline still yields new observations, without claiming removed r
   assert.equal(result.status, "partial");
   assert.equal(result.counts.added, 1);
   assert.equal(result.notObserved, null);
+});
+
+test("behavioral coverage and mandatory holds cannot be hidden by completed source/CVE checks", () => {
+  const variants = [undefined, {},
+    { behavioralCoverage: "partial", mandatoryHoldReasons: [] },
+    { behavioralCoverage: "completed", mandatoryHoldReasons: ["unsupported-behavior"] },
+    { behavioralCoverage: "partial", mandatoryHoldReasons: ["flow-analysis-gap"], explicitOverride: true }];
+  for (const authorization of variants) {
+    for (const side of ["baseline", "candidate"]) {
+      const baseline = outcome([finding], side === "baseline" ? { authorization } : {});
+      const candidate = outcome([], side === "candidate" ? { authorization } : {});
+      const result = compareUpgradeFindings(baseline, candidate);
+      assert.equal(result.status, "partial");
+      assert.equal(result.notObserved, null);
+      assert.equal(result.counts.notObserved, null);
+    }
+  }
 });
 
 test("missing and malformed finding arrays remain unavailable, not empty", () => {

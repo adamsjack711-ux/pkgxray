@@ -14,7 +14,10 @@ instead of reducing both releases to the same verdict.
 ## Output and interpretation
 
 - `status: "compared"`: both finding lists are valid, source and vulnerability
-  checks completed, and scanner build, policy hash and check states match.
+  checks completed, behavioral coverage completed with no mandatory holds,
+  and scanner build, policy hash and check states match. A completed file scan
+  alone does not establish completed behavioral analysis. An explicit approval
+  override does not erase a coverage gap for this comparison.
 - `status: "partial"`: finding lists can be compared, but scan completion or
   context cannot be established. New observations remain visible, while
   `notObserved` and its count are `null`.

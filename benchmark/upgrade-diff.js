@@ -3,6 +3,7 @@
 
 const { auditEvidence } = require("../src/auditor");
 const { compareUpgradeFindings } = require("../src/upgrade-diff");
+const { authorizationFor } = require("../src/approval-policy");
 const corpus = require("./upgrade-corpus.json");
 
 // A synthetic context for comparing reports made by the same in-process
@@ -11,6 +12,7 @@ function fixtureOutcome(evidence) {
   const report = auditEvidence(evidence);
   return { verdict: report.verdict, report, assessment: {
     engine: { buildId: "synthetic-fixture-engine" }, policySha256: "synthetic-fixture-policy",
+    authorization: authorizationFor(report),
     checks: { source: "completed", vulnerabilities: "completed" }
   } };
 }
