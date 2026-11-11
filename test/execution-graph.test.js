@@ -71,7 +71,7 @@ test('unresolved execution is cited and cannot be muted or promoted through allo
     const config = {...DEFAULTS,policy:'allow-review',mute:[{check:'unresolved-runtime-execution',scope:'*'}]};
     const report = applyConfig(raw,{config,packageName:'fixture',version:'1.0.0'});
     assert.equal(report.verdict,'review');
-    assert.equal(guardDecision(report,{policy:'allow-review',config}),'review');
+    assert.equal(guardDecision(report,{policy:'allow-review',config}),'block');
     assert.ok(report.findings.some(f=>f.category==='unresolved-runtime-execution'));
   }
 });

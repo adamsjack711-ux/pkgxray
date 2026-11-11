@@ -20,7 +20,7 @@ test('behavioral gaps stop both guard promotion and evidence CLI approval', asyn
   const config = {...cfg.DEFAULTS,policy:'allow-review'};
   const result = await guardExtension(source,{config,policy:'allow-review',githubDiff:false,
     vulnerabilityCheck:false,promoteTo:path.join(root,'promoted')});
-  assert.equal(result.decision,'review');
+  assert.equal(result.decision,'block');
   assert.equal(result.promotedPath,null);
   await assert.rejects(fs.access(path.join(root,'promoted')));
   const evidence = {sourceFiles};
@@ -28,7 +28,7 @@ test('behavioral gaps stop both guard promotion and evidence CLI approval', asyn
   await fs.writeFile(evidencePath,JSON.stringify(evidence));
   const cli = spawnSync(process.execPath,[path.resolve(__dirname,'../bin/audit.js'),'--file',evidencePath,
     '--policy','allow-review','--format','json'],{cwd:root,encoding:'utf8',timeout:10000});
-  assert.equal(cli.status,3,cli.stderr);
+  assert.equal(cli.status,2,cli.stderr);
   assert.equal(JSON.parse(cli.stdout).verdict,'review');
   const report = auditEvidence(evidence);
   const adjusted = cfg.applyConfig(report,{config:{...config,mute:[{check:'flow-analysis-gap',scope:'*'}]}});

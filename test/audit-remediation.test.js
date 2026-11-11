@@ -144,7 +144,7 @@ test('every mandatory coverage hold is part of receipt authorization', () => {
     assert.equal(receiptAuthorizes({ ...receipt, decision: 'allow', authorization }), false);
   }
   const authorization = authorizationFor({ findings: [] });
-  assert.equal(receiptAuthorizes({ ...receipt, authorization }, { allowReview: true }), true);
+  assert.equal(receiptAuthorizes({ ...receipt, authorization }, { allowReview: true }), false);
   assert.equal(receiptAuthorizes({ ...receipt, authorization, schemaVersion: 1 }, { allowReview: true }), false);
 });
 

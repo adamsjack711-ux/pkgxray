@@ -189,6 +189,7 @@ async function verifyInstalled(root, packages) {
 }
 
 async function installProject(project = ".", options = {}, deps = {}) {
+  require("./review").rejectManualReviewOptions(options);
   if (process.platform === "win32") throw new Error("Enforced install currently supports POSIX npm installations only");
   project = await fs.realpath(path.resolve(project));
   const mutex = path.join(project, ".pkgxray-install.lock");
@@ -221,11 +222,10 @@ async function installProject(project = ".", options = {}, deps = {}) {
       const scan = await guard(`npm:${pkg.name}@${pkg.version}`, {
         artifact: { resolved: pkg.entry.resolved, integrity: pkg.entry.integrity },
         quarantineRoot: path.join(workspace, "quarantine"), keepStaging: true,
-        config, reviewAction: 'install', reviewDecisions: options.reviewDecisions, reviewScope: options.reviewScope, typosquat: config.typosquat, vulnerabilityCheck: true, sourceScan: true, githubDiff: false
+        config, typosquat: config.typosquat, vulnerabilityCheck: true, sourceScan: true, githubDiff: false
       });
       const a = scan.approval;
-      const reviewed = scan.decision === 'review' && scan.allowed === true && scan.review?.choice === 'Proceed';
-      if ((scan.decision !== "allow" && !reviewed) || !require("./approval-policy").receiptAuthorizes(a, { allowReview: reviewed }) || a.name !== pkg.name || a.version !== pkg.version ||
+      if ((scan.decision !== "allow" || scan.allowed !== true) || !require("./approval-policy").receiptAuthorizes(a) || a.name !== pkg.name || a.version !== pkg.version ||
           a.scannerBuildId !== artifact.BUILD_ID || a.policySha256 !== artifact.fingerprint(config) || a.sourceComplete !== true ||
           a.checks?.source !== "completed" || a.checks?.vulnerabilities !== "completed") {
         throw new Error(`Installation refused: ${pkg.name}@${pkg.version} lacks a complete ALLOW receipt (${scan.decision || "unknown"})`);

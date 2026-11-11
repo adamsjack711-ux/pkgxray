@@ -40,7 +40,10 @@ test("an absolute path parses as a local reference on this platform", () => {
   assert.equal(parsed.path, path.resolve(os.tmpdir()));
 });
 
-test("guards local extension in quarantine and promotes safe packages", async () => {
+test("guards local extension in quarantine and promotes safe packages", async t => {
+  const transport = require("../src/http-client"), originalRequest = transport.requestJson;
+  transport.requestJson = async () => ({});
+  t.after(() => { transport.requestJson = originalRequest; });
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "sca-test-"));
   const source = path.join(root, "source");
   const promoteTo = path.join(root, "promoted");
@@ -58,7 +61,7 @@ test("guards local extension in quarantine and promotes safe packages", async ()
   const result = await guardExtension(source, {
     quarantineRoot: path.join(root, "quarantine"),
     promoteTo,
-    vulnerabilityCheck: false,
+    vulnerabilityCheck: true,
     githubMetadata: false,
     githubDiff: false
   });

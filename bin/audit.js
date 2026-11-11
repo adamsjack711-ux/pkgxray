@@ -45,7 +45,7 @@ function printUsage() {
       "  pkgxray recheck <lockfile> [--verbose] [--no-write]                      # re-evaluate pinned deps; diff verdict vs. stored baseline",
       "                     [--no-version-drift] [--fail-on-available-updates]     #   + pre-vet newer versions (informational unless --fail-on-...)",
       "",
-      "  REVIEW: inspect evidence, then --review-id <id> --review-choice Proceed|Decline.",
+      "  Guard/install: allow or block. Missing transient intelligence is retried once; unresolved uncertainty blocks.",
       "  Exit codes: 0 safe/allow · 2 block · 3 review.",
       "",
       "Evidence in / out (no acquisition, just render a verdict):",
@@ -268,12 +268,8 @@ function parseArgs(argv) {
       options.quarantineRoot = argv[++i];
     } else if (arg === "--promote-to") {
       options.promoteTo = argv[++i];
-    } else if (arg === "--review-for-install") {
-      options.reviewAction = "install";
-    } else if (arg === "--review-id") {
-      options.reviewId = argv[++i];
-    } else if (arg === "--review-choice") {
-      options.reviewChoice = argv[++i];
+    } else if (["--review-for-install", "--review-id", "--review-choice"].includes(arg) || /^--review-(?:for-install|id|choice)=/.test(arg)) {
+      throw new Error("Manual REVIEW flags have been removed; uncertain packages are retried automatically or blocked.");
     } else if (arg === "--policy") {
       options.policy = argv[++i];
     } else if (arg === "--force") {
@@ -436,12 +432,12 @@ async function main() {
 
   if (options.command === "install") {
     let result;
-    try { result = await require("../src/install").installProject(options.project, { reviewScope: 'local-user', reviewDecisions: new (require('../src/review').LocalReviewDecisions)(require('node:path').join(require('node:os').homedir(), '.local', 'state', 'pkgxray', 'reviews.json')) }); }
-    catch (error) { result = { decision: "review", installed: false, error: error.message }; }
+    try { result = await require("../src/install").installProject(options.project); }
+    catch (error) { result = { decision: "block", outcome: "UNSAFE", allowed: false, installed: false, error: error.message }; }
     if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     else if (result.error) process.stderr.write(`Installation refused: ${result.error}\n`);
     else process.stdout.write(`Installed ${result.installed} approved packages; lifecycle scripts disabled.\nReceipt: ${result.receiptPath}\n${result.backupPath ? `Previous node_modules: ${result.backupPath}\n` : ""}`);
-    process.exitCode = result.decision === "allow" ? 0 : 3;
+    process.exitCode = result.decision === "allow" ? 0 : 2;
     return;
   }
 
@@ -458,18 +454,16 @@ async function main() {
         ...options,
         config,
         scanErrorPolicy: config.scanErrorPolicy,
-        keepStaging: !options.artifact,
-        reviewScope: 'local-user',
-        reviewDecisions: new (require('../src/review').LocalReviewDecisions)(require('node:path').join(require('node:os').homedir(), '.local', 'state', 'pkgxray', 'reviews.json'))
+        keepStaging: !options.artifact
       });
     } catch (error) {
       // A guard that crashes / times out must not exit to an unclear state.
-      // Route it through the config's scan-error policy (fail-closed → review),
-      // never a bare crash-to-1-or-silent-safe.
-      const verdict = cfg.verdictForScanError(config);
+      // Execution authority fails closed even if a diagnostic scan-error or
+      // CI threshold option would otherwise permit a successful process exit.
+      const verdict = "block";
       process.stderr.write(`pkgxray: guard failed to complete (${error.message}); treating as ${verdict}\n`);
       // Under --format json, a JSON consumer must still receive a parseable
-      // verdict on stdout — otherwise the degraded review is indistinguishable
+      // decision on stdout — otherwise an incomplete scan is indistinguishable
       // from a silent crash (empty stdout), which is exactly what batch scanners
       // record as a "scan error". Emit a minimal, schema-tagged object.
       if (options.format === "json") {
@@ -478,6 +472,9 @@ async function main() {
             {
               schemaVersion: 1,
               decision: verdict,
+              outcome: "UNSAFE",
+              allowed: false,
+              resolution: { reasonCodes: ["scan-unavailable"], retry: { attempted: false, attempts: 0, check: null } },
               reference: options.reference,
               scanError: error.message
             },
@@ -486,12 +483,12 @@ async function main() {
           )}\n`
         );
       }
-      process.exitCode = cfg.exitCodeForVerdict(verdict, config);
+      process.exitCode = 2;
       return;
     }
 
     const adjusted = result.report;
-    const finalVerdict = result.allowed ? 'allow' : result.outcome === 'UNSAFE' ? 'block' : result.decision;
+    const finalVerdict = result.allowed === true && result.decision === "allow" ? "allow" : "block";
 
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify(options.receiptOnly ? { ...result, sourceFiles: undefined } : result, null, 2)}\n`);
@@ -499,7 +496,7 @@ async function main() {
       const lines = [renderGuardMarkdown(result), ...cfg.renderConfigEffects(adjusted.configEffects)];
       process.stdout.write(`${lines.join("\n")}\n`);
     }
-    process.exitCode = cfg.exitCodeForVerdict(finalVerdict, config);
+    process.exitCode = finalVerdict === "allow" ? 0 : 2;
     return;
   }
 
@@ -848,18 +845,16 @@ function renderCanaryMarkdown(staged, behavioral) {
 
 function renderGuardMarkdown(result) {
   const lines = [
-    `Outcome: **${result.outcome || (result.decision === "review" ? "Pending decision" : result.decision === "allow" ? "SAFE" : "UNSAFE")}**`,
+    `Outcome: **${result.allowed === true && result.decision === "allow" ? "SAFE" : "UNSAFE"}**`,
     `Reference: \`${sanitizeForTerminal(result.reference)}\``,
     `Quarantine: \`${sanitizeForTerminal(result.quarantinePath)}\``,
     ""
   ];
 
-  if (result.review) {
-    lines.push(result.review.choice ? `REVIEW: ${result.review.choice} remembered for this developer.` : result.review.eligible
-      ? `REVIEW: inspect the evidence below, then choose Proceed or Decline. Review ID: ${result.review.id}. Use --review-id <id> --review-choice Proceed (or Decline).`
-      : 'REVIEW: required checks are incomplete; resolve them before use or promotion.', '');
+  if (result.resolution?.reasonCodes?.length) {
+    lines.push(`Blocked: ${result.resolution.reasonCodes.join(", ")}. Unverified evidence is not a finding of maliciousness.`, "");
   }
-  lines.push(...require("../src/review-plan").renderReviewPlan(result.reviewPlan));
+  if (result.resolution?.retry.attempted) lines.push("Retried the vulnerability check once using the same resolved package identity.", "");
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,

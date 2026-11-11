@@ -75,13 +75,12 @@ test("lifecycle scripts and hostile npm configuration cannot override the instal
   t.after(() => { if (old === undefined) delete process.env.npm_config_ignore_scripts; else process.env.npm_config_ignore_scripts = old; });
   const config = { ...DEFAULTS, policy: "allow-review" };
   await assert.rejects(installProject(f.project, { config }, { guard: f.guard }), /refused/);
-  const reviewDecisions = new (require('../src/review').ReviewDecisions)();
-  for (const name of ['demo', 'transitive']) {
-    const scan = await f.guard(`npm:${name}@1.0.0`, { config, reviewAction: 'install', reviewDecisions, reviewScope: 'developer', artifact: { integrity: f.lock.packages[`node_modules/${name}`].integrity } });
-    assert.equal(scan.review.state, 'pending');
-    reviewDecisions.choose('developer', scan.review.id, 'Proceed');
-  }
-  const result = await installProject(f.project, { config, reviewDecisions, reviewScope: 'developer' }, { guard: f.guard });
+  await assert.rejects(installProject(f.project, { config, reviewChoice: "Proceed" }, { guard: f.guard }), /Manual REVIEW options have been removed/);
+  await assert.rejects(fs.stat(path.join(f.project, "node_modules")), { code: "ENOENT" });
+  // A fixed operator policy can suppress this known hook finding. Even then,
+  // npm cannot execute it or obey hostile project/environment configuration.
+  const policy = { ...DEFAULTS, mute: [{ check: "install-hook", scope: "*", reason: "fixture policy" }] };
+  const result = await installProject(f.project, { config: policy }, { guard: f.guard });
   assert.equal(result.installed, 2);
   for (const name of ["demo", "transitive"]) await assert.rejects(fs.stat(path.join(f.project, `node_modules/${name}/SCRIPT-RAN`)), { code: "ENOENT" });
   assert.equal(installEnvironment("/private/home").npm_config_ignore_scripts, undefined);
@@ -285,60 +284,46 @@ test("trusted npm discovery rejects a project-controlled npm package", async t =
   }), /Trusted npm CLI not found/);
 });
 
-test('review promotion requires a bound choice and remembers it only for that developer', async t => {
+test('uncertain archives cannot promote or install through old manual choices', async t => {
   const f = await fixture(t, { scripts: true });
-  const { ReviewDecisions, LocalReviewDecisions } = require('../src/review');
-  const decisionFile = path.join(f.root, 'private', 'reviews.json');
-  let reviewDecisions = new LocalReviewDecisions(decisionFile);
   const promoteTo = path.join(f.root, 'promoted');
-  const opts = { config: DEFAULTS, reviewScope: 'alice',
-    artifact: { integrity: f.lock.packages['node_modules/demo'].integrity }, promoteTo };
-  const pending = await f.guard('npm:demo@1.0.0', { ...opts, reviewDecisions });
-  assert.equal(pending.allowed, false);
-  assert.equal(pending.reviewPlan.state, 'review-required');
-  assert.equal(pending.reviewPlan.binding.reviewId, pending.review.id);
-  assert.equal(pending.reviewPlan.escalation.to, 'user');
-  assert.equal(pending.promotedPath, null);
+  const options = { config: DEFAULTS, promoteTo,
+    artifact: { integrity: f.lock.packages['node_modules/demo'].integrity } };
+  const blocked = await f.guard('npm:demo@1.0.0', options);
+  assert.equal(blocked.decision, 'block');
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.outcome, 'UNSAFE');
+  assert.equal(blocked.approval.decision, 'block');
+  assert.equal(blocked.review, null);
+  assert.equal(blocked.reviewPlan, null);
+  assert.ok(blocked.resolution.reasonCodes.includes('uncertain-findings'));
   await assert.rejects(fs.stat(promoteTo), { code: 'ENOENT' });
-  const approved = await f.guard('npm:demo@1.0.0', { ...opts, reviewDecisions,
-    reviewId: pending.review.id, reviewChoice: 'Proceed' });
-  assert.equal(approved.outcome, 'SAFE');
-  assert.equal(approved.reviewPlan.state, 'decision-recorded');
-  assert.equal(approved.reviewPlan.escalation.to, 'none');
-  assert.equal(approved.approval.decision, 'review', 'shared receipt must remain unapproved');
-  assert.equal(approved.promotedPath, promoteTo);
-  reviewDecisions = new LocalReviewDecisions(decisionFile);
-  const repeated = await f.guard('npm:demo@1.0.0', { ...opts, force: true, reviewDecisions });
-  assert.equal(repeated.review.requiresDecision, false);
-  const bob = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, reviewScope: 'bob', reviewDecisions });
-  assert.equal(bob.review.state, 'pending');
-  const newPolicy = { ...DEFAULTS, policy: 'allow-review' };
-  await assert.rejects(f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, config: newPolicy,
-    reviewDecisions, reviewId: pending.review.id, reviewChoice: 'Proceed' }), /changed/);
-  const changed = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, config: newPolicy, reviewDecisions });
-  assert.equal(changed.review.state, 'pending');
-  assert.notEqual(changed.review.id, pending.review.id);
-  const freshSession = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, reviewDecisions: new ReviewDecisions() });
-  assert.equal(freshSession.allowed, false);
+  for (const legacy of [{ reviewChoice: 'Proceed' }, { reviewId: 'old' },
+    { reviewDecisions: { choose() { throw new Error('must not use'); } } }, { reviewScope: 'alice' }, { reviewAction: 'install' }]) {
+    await assert.rejects(f.guard('npm:demo@1.0.0', { ...options, ...legacy }), /Manual REVIEW options have been removed/);
+  }
+  let ran = false;
+  await assert.rejects(installProject(f.project, { config: DEFAULTS }, { guard: async (...args) => {
+    const scan = await f.guard(...args);
+    // An old adapter claiming a remembered Proceed is still refused.
+    return { ...scan, decision: 'review', allowed: true, review: { choice: 'Proceed' } };
+  }, run: async () => { ran = true; } }), /refused/);
+  assert.equal(ran, false);
 });
 
-test('Decline and changed archive bytes never promote a previously reviewed artifact', async t => {
+test('changed uncertain archive bytes remain blocked without any decision store', async t => {
   const f = await fixture(t, { scripts: true });
-  const reviews = new (require('../src/review').ReviewDecisions)();
-  const target = path.join(f.root,'declined-promotion');
-  const options = { config: DEFAULTS, promoteTo: target, reviewScope: 'A', reviewDecisions: reviews,
+  const target = path.join(f.root, 'target');
+  const options = { config: DEFAULTS, promoteTo: target,
     artifact: { integrity: f.lock.packages['node_modules/demo'].integrity } };
-  const pending = await f.guard('npm:demo@1.0.0', options);
-  const declined = await f.guard('npm:demo@1.0.0', { ...options, reviewId: pending.review.id, reviewChoice: 'Decline' });
-  assert.equal(declined.allowed, false); assert.equal(declined.outcome, 'UNSAFE');
-  await assert.rejects(fs.stat(target), { code: 'ENOENT' });
-  reviews.choose('A', pending.review.id, 'Proceed');
-  await fs.appendFile(path.join(f.root,'demo/index.js'), '\nexports.changed = true;\n');
+  const first = await f.guard('npm:demo@1.0.0', options);
+  await fs.appendFile(path.join(f.root, 'demo/index.js'), '\nexports.changed = true;\n');
   execFileSync('tar', ['-czf', f.archives.get('demo'), '-C', f.root, 'demo'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
   const bytes = await fs.readFile(f.archives.get('demo'));
   options.artifact.integrity = `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}`;
   const changed = await f.guard('npm:demo@1.0.0', options);
-  assert.equal(changed.allowed, false); assert.notEqual(changed.review.id, pending.review.id);
+  assert.notEqual(first.approval.artifactSha256, changed.approval.artifactSha256);
+  assert.equal(changed.allowed, false);
   await assert.rejects(fs.stat(target), { code: 'ENOENT' });
 });
 
