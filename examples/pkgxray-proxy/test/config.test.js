@@ -124,3 +124,17 @@ test('throws on malformed config file', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('legacy permissive policy inputs normalize to mandatory blocking', () => {
+  for (const reviewPolicy of ['warn', 'allow']) {
+    const cfg = loadConfig({ reviewPolicy, scanErrorPolicy: 'fail-open' }, {});
+    assert.equal(cfg.reviewPolicy, 'block');
+    assert.equal(cfg.scanErrorPolicy, 'fail-closed');
+  }
+  const cfg = loadConfig({}, {
+    PKGXRAY_PROXY_REVIEW_POLICY: 'allow',
+    PKGXRAY_PROXY_SCAN_ERROR_POLICY: 'fail-open',
+  });
+  assert.equal(cfg.reviewPolicy, 'block');
+  assert.equal(cfg.scanErrorPolicy, 'fail-closed');
+});

@@ -8,13 +8,12 @@ import { Transform } from 'node:stream';
 import artifact from '../../../src/artifact.js';
 import policy from '../../../src/config.js';
 import approvalPolicy from '../../../src/approval-policy.js';
-import reviews from '../../../src/review.js';
 import sharing from '../../../src/shared-scans.js';
 const coordinators = new WeakMap();
 
 export function assertArtifactCurrent(store, name, version, revision) {
   sharing.assertCurrentBuild();
-  if (store.recheckRevision(name, version) !== revision) throw sharing.failure('RECHECK_CHANGED', 'Evidence changed during scan; retry for a fresh review');
+  if (store.recheckRevision(name, version) !== revision) throw sharing.failure('RECHECK_CHANGED', 'Evidence changed during scan; retry for fresh evidence');
 }
 
 // Hold the download in a private file. No upstream byte reaches the installer
@@ -74,13 +73,13 @@ export async function acquireArtifact(request, target, headers = {}, signal) {
   } catch (error) { await rm(dir, { recursive: true, force: true }); throw error; }
 }
 
-export async function gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy, scanCoordinator, scope, decisions, signal }) {
+export async function gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy, scanCoordinator, signal }) {
   try { sharing.assertCurrentBuild(); signal?.throwIfAborted(); }
   catch (error) { return denied(error.code || 'scan-error', error.message); }
   const revision = store.recheckRevision(name, version);
   const index = store.get(name, version);
   if (index?.rechecked && index.decision === 'block') return denied('block', 'Blocked by administrator recheck', index.findings);
-  const context = artifact.fingerprint({ cacheSchema: 3, scannerBuildId: artifact.BUILD_ID, upstream: config.upstream,
+  const context = artifact.fingerprint({ cacheSchema: 4, scannerBuildId: artifact.BUILD_ID, upstream: config.upstream,
     pkgxrayBin: config.pkgxrayBin, scanTimeoutMs: config.scanTimeoutMs, cacheUrl: config.cacheUrl,
     policy: sharedPolicy || policy.DEFAULTS, reviewPolicy: config.reviewPolicy,
     requireProvenance: process.env.PKGXRAY_REQUIRE_PROVENANCE === '1',
@@ -88,15 +87,15 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
     allowlist: config.allowlist, denylist: config.denylist, reviewRevision: store.reviewRevision(name, version) });
   const expectedPolicy = artifact.fingerprint(sharedPolicy || policy.DEFAULTS);
   function bound(a, decision) {
-    return approvalPolicy.receiptAuthorizes(a, { allowReview: true }) && a.artifactSha256 === snapshot.sha256 && a.name === name && a.version === version &&
+    return approvalPolicy.receiptAuthorizes(a) && a.artifactSha256 === snapshot.sha256 && a.name === name && a.version === version &&
       a.scannerBuildId === artifact.BUILD_ID && a.policySha256 === expectedPolicy && a.decision === decision &&
       a.sourceComplete === true && a.checks?.source === 'completed' && a.checks?.vulnerabilities === 'completed' &&
-      ['allow', 'review'].includes(decision);
+      decision === 'allow';
   }
   const binding = { artifactSha256: snapshot.sha256, context };
   const held = store.getHold(name, version);
   const holdTtl = held?.decision === 'scan-error' ? config.scanErrorTtlMs : config.holdTtlMs;
-  // Mandatory holds remain denial-only; a session choice cannot override them.
+  // All unresolved evidence remains denial-only; there is no manual override.
   if (held?.binding?.artifactSha256 === snapshot.sha256 && held.binding.context === context &&
       !store.isStale(held, Math.min(config.verdictTtlMs, holdTtl))) {
     return { ...denied(held.decision, held.note, held.findings), source: 'cache', cached: true };
@@ -107,7 +106,7 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
     bound(entry.binding.approval, entry.decision);
   if (valid(cached) && !store.isStale(cached, config.verdictTtlMs)) return map(cached.decision, cached.findings, 'cache', true, cached.binding.approval);
 
-  // Coalesce evidence, then apply each waiter's own review decision. Retain the
+  // Coalesce evidence, never session approvals. Retain the
   // owner's private snapshot until the shared job stops, even if it disconnects.
   let coordinator = coordinators.get(store);
   if (!coordinator) {
@@ -142,9 +141,10 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
       artifact: { archivePath: snapshot.file, integrity: `sha256-${Buffer.from(snapshot.sha256, 'hex').toString('base64')}` }
     });
     assertFresh(jobSignal);
-    if (result.decision === 'block' || !bound(result.approval, result.decision)) {
-      const error = result.decision === 'block' ? 'block' : 'unbound';
-      const note = error === 'block' ? 'Scanner blocked this artifact' :
+    if (result.decision !== 'allow' || !bound(result.approval, result.decision)) {
+      const error = result.decision === 'review' ? 'review' : result.decision === 'block' ? 'block' : 'unbound';
+      const note = error === 'review' ? 'Blocked because scanner uncertainty remains unresolved; this is not a finding of confirmed malware' :
+        error === 'block' ? 'Scanner did not clear this artifact; findings or incomplete checks prevent use' :
         'Scanner evidence does not bind these bytes to the current build, policy and completed checks';
       hold(error, note, result.findings);
       return { error, note, findings: result.findings };
@@ -154,17 +154,15 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
   }
   function map(decision, findings, source, cached, receipt) {
     try { assertFresh(); } catch (error) { return denied(error.code || 'scan-error', error.message); }
-    const state = reviews.reviewOutcome(decision, {
-      reviewId: reviews.reviewIdentity(receipt, { action: 'deliver', target: context }), scope, decisions
-    });
-    return { serve: state.allowed, status: state.allowed ? 200 : state.review?.state === 'pending' ? 409 : 403,
-      decision, ...state, findings: findings || [], source, cached, recheckRevision: revision };
+    if (decision !== 'allow') return denied('uncertain', 'Artifact was not cleared by completed checks', findings);
+    return { serve: true, allowed: true, outcome: 'SAFE', status: 200, decision: 'allow',
+      findings: findings || [], source, cached, recheckRevision: revision };
   }
   function assertFresh(checkSignal = signal) {
     assertArtifactCurrent(store, name, version, revision); checkSignal?.throwIfAborted();
   }
   function denied(decision, note, findings = []) {
-    return { serve: false, outcome: 'UNSAFE', status: 403, decision, note, findings, source: 'scan', cached: false };
+    return { serve: false, allowed: false, outcome: 'UNSAFE', status: 403, decision: 'block', reasonCode: decision, note, findings, source: 'scan', cached: false };
   }
   function hold(decision, note, findings = []) {
     store.setHold(name, version, decision, findings, note, binding);
