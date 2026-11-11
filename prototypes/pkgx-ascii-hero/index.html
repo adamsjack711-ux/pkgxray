@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08090b">
+  <title>pkg x-ray — ASCII hero concept</title>
+  <link rel="stylesheet" href="./pkgx-ascii-hero.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; min-height: 100%; margin: 0; }
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #050607;
+      color: #f4f4f2;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    @media (max-width: 560px) { body { padding: 14px; } }
+  </style>
+  <script src="./pkgx-ascii-hero.js" defer></script>
+</head>
+<body>
+  <main>
+    <section class="pkgx-ascii-hero" aria-labelledby="pkgx-ascii-hero-title">
+      <canvas class="pkgx-ascii-hero__field" aria-hidden="true"></canvas>
+      <div class="pkgx-ascii-hero__shade" aria-hidden="true"></div>
+      <h1 class="pkgx-ascii-hero__sr-only" id="pkgx-ascii-hero-title">pkg x-ray</h1>
+      <div class="pkgx-ascii-hero__footnote" aria-hidden="true">
+        <span>Local · static · evidence-led</span>
+        <span>Move pointer to disturb field</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

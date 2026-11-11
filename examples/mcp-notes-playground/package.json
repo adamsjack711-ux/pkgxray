@@ -1,0 +1,1 @@
+{"name":"fieldnotes-local-playground","version":"0.1.0","private":true,"description":"A local notes board for exercising Package X-Ray MCP tools","scripts":{"start":"node server.cjs"}}

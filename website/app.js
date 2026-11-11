@@ -1,121 +1,89 @@
-// Homepage interactions: local examples and command copying only.
-// No packages are downloaded, analyzed, or executed by the browser.
-const EXAMPLES = {
-  safe: {
-    command: 'pkgxray guard npm:express@4.21.0', stage: 'Tarball staged in quarantine',
-    verdict: 'SAFE', exit: 'exit 0', label: 'NO HIGH- OR MEDIUM-RISK FINDINGS',
-    evidence: 'The default policy permits promotion from quarantine.',
-    citation: 'npm:express@4.21.0',
-    note: 'SAFE means no high- or medium-risk indicators were found. It is not proof that a package is harmless.'
-  },
-  review: {
-    command: 'pkgxray guard ./example-package', stage: 'Package staged in quarantine',
-    verdict: 'REVIEW', exit: 'exit 3', label: 'MEDIUM · INSTALL SCRIPT',
-    evidence: 'A lifecycle script needs a human to inspect it before promotion.',
-    citation: 'package.json → scripts.postinstall',
-    note: 'Illustrative install-script finding. REVIEW also covers incomplete evidence; inspect the quarantined copy before proceeding.'
-  },
-  block: {
-    command: 'pkgxray --file ./pkgxray-onboarding.json', stage: 'Inert source evidence loaded',
-    verdict: 'BLOCK', exit: 'exit 2', label: 'HIGH · CREDENTIAL ACCESS',
-    evidence: 'The inert example contains a private-key read and an outbound transfer.',
-    citation: 'index.js → cited source evidence',
-    note: 'Illustrative result from inert source text. BLOCK means high-severity evidence was found: stop and investigate.'
-  }
-};
-
-const COMMANDS = {
-  package: {
-    code: 'npx --yes pkgxray@1.1.0 guard npm:express@4.21.0',
-    help: 'Downloads the package into quarantine and inspects it. The package’s install scripts and code are not executed.'
-  },
-  lockfile: {
-    code: 'npx --yes pkgxray@1.1.0 audit package-lock.json',
-    help: 'Run from a project containing package-lock.json to check its dependency evidence. Add --deep to download and inspect dependency source.'
-  },
-  python: {
-    code: 'npx --yes pkgxray@1.1.0 audit requirements.txt',
-    help: 'Run from a Python project with requirements.txt. PyPI checks have narrower coverage than npm; general Python behavioral analysis is not implemented.'
-  }
-};
-
-function initTabs(selector, attribute, activate) {
-  const tabs = [...document.querySelectorAll(selector)];
-  function select(tab, focus = false) {
-    for (const item of tabs) {
-      const selected = item === tab;
-      item.setAttribute('aria-selected', String(selected));
-      item.tabIndex = selected ? 0 : -1;
-    }
-    activate(tab.dataset[attribute], tab.id);
-    if (focus) tab.focus();
-  }
-  tabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => select(tab));
-    tab.addEventListener('keydown', (event) => {
-      let next;
-      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
-      if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
-      if (event.key === 'Home') next = 0;
-      if (event.key === 'End') next = tabs.length - 1;
-      if (next !== undefined) {
-        event.preventDefault();
-        select(tabs[next], true);
-      }
-    });
-  });
-}
-
-initTabs('[data-example]', 'example', (key, id) => {
-  const example = EXAMPLES[key];
-  const panel = document.querySelector('#scan-result');
-  panel.dataset.state = key;
-  panel.setAttribute('aria-labelledby', id);
-  for (const [field, value] of Object.entries(example)) {
-    document.querySelector(`[data-demo-${field}]`).textContent = value;
-  }
-  document.querySelector('.inspection-heading > span:last-child').textContent = `${String(Object.keys(EXAMPLES).indexOf(key) + 1).padStart(2, '0')} / 03`;
-});
-
-initTabs('[data-command]', 'command', (key, id) => {
-  const command = COMMANDS[key];
-  document.querySelector('#command-panel').setAttribute('aria-labelledby', id);
-  document.querySelector('[data-command-code]').textContent = command.code;
-  document.querySelector('[data-command-help]').textContent = command.help;
-  document.querySelector('[data-command-copy]').dataset.copy = command.code;
-});
-
-let statusTimer;
-for (const button of document.querySelectorAll('[data-copy]')) {
+// Homepage integration only; the HeyClicky hero bundle remains unchanged.
+// No package is fetched, scanned, installed, or executed by this page.
+const copyStatus = document.querySelector('.copy-status');
+for (const button of document.querySelectorAll('[data-copy-target]')) {
+  button.hidden = false;
+  let resetTimer;
   button.addEventListener('click', async () => {
-    const status = document.querySelector('[data-copy-status]');
+    const code = document.getElementById(button.dataset.copyTarget);
     const label = button.querySelector('[data-copy-label]');
-    clearTimeout(statusTimer);
+    clearTimeout(resetTimer);
     try {
-      await navigator.clipboard.writeText(button.dataset.copy);
+      await navigator.clipboard.writeText(code.textContent.trim());
       label.textContent = 'Copied';
-      status.textContent = 'Command copied. Paste it into your terminal.';
-      window.setTimeout(() => { label.textContent = 'Copy'; }, 2200);
+      copyStatus.textContent = 'Command copied. Paste it into your terminal.';
     } catch {
-      status.textContent = 'Copy unavailable. Select and copy the command text above.';
+      // Keep the command selectable when clipboard access is denied.
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(code);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      label.textContent = 'Select text';
+      copyStatus.textContent = 'Clipboard unavailable. The command is selected; copy it with your keyboard or touch menu.';
     }
-    statusTimer = window.setTimeout(() => { status.textContent = ''; }, 4000);
+    resetTimer = window.setTimeout(() => {
+      label.textContent = 'Copy';
+      copyStatus.textContent = '';
+    }, 6500);
   });
 }
 
-const menuButton = document.querySelector('.menu-toggle');
-const menu = document.querySelector('#primary-nav');
-function setMenu(open) {
-  menuButton.setAttribute('aria-expanded', String(open));
-  menu.classList.toggle('is-open', open);
-  menuButton.querySelector('span').textContent = open ? '−' : '+';
-}
-menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
-menu.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => setMenu(false)));
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && menuButton.getAttribute('aria-expanded') === 'true') {
-    setMenu(false);
-    menuButton.focus();
+const hero = document.querySelector('.pkgx-ascii-hero');
+const live = hero.querySelector('.pkgx-ascii-hero__field');
+const still = hero.querySelector('.hero-still');
+const motionButton = document.querySelector('.motion-button');
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+let userPaused = false;
+let snapshotFrame = 0;
+
+// A page-owned still frame provides pause/reduced-motion behavior without
+// forking or editing the approved renderer. Its decorative RAF remains owned
+// by the prototype. No letters or field pixels are reconstructed here.
+function syncMotion() {
+  cancelAnimationFrame(snapshotFrame);
+  const paused = userPaused || reduced.matches;
+  motionButton.hidden = false;
+  motionButton.disabled = reduced.matches;
+  motionButton.setAttribute('aria-pressed', String(paused));
+  motionButton.textContent = reduced.matches ? 'Reduced motion on' : userPaused ? 'Resume animation' : 'Pause animation';
+  if (!paused) {
+    still.hidden = true;
+    live.style.visibility = '';
+    return;
   }
-});
-document.body.classList.add('has-js');
+  // Wait for the original renderer's resized/reduced-motion frame.
+  snapshotFrame = requestAnimationFrame(() => {
+    still.width = live.width;
+    still.height = live.height;
+    still.getContext('2d').drawImage(live, 0, 0);
+    still.hidden = false;
+    live.style.visibility = 'hidden';
+  });
+}
+// Do not forward pointer movement to the original interpolating renderer when
+// motion is disabled. This also prevents hidden pointer animation in reduce mode.
+const forwardedPointers = new WeakSet();
+for (const type of ['pointermove', 'pointerleave']) {
+  hero.addEventListener(type, event => {
+    if (userPaused || reduced.matches) { event.stopImmediatePropagation(); return; }
+    if (type !== 'pointermove' || forwardedPointers.has(event)) return;
+    const displayed = live.getBoundingClientRect();
+    const rendered = hero.getBoundingClientRect();
+    if (Math.abs(displayed.width - rendered.width) < 1) return;
+    // The mobile canvas displays the same original grid at a smaller size.
+    // Map pointer positions back into that grid before the renderer sees them.
+    event.stopImmediatePropagation();
+    const mapped = new PointerEvent('pointermove', {
+      clientX: rendered.left + (event.clientX - displayed.left) * rendered.width / displayed.width,
+      clientY: rendered.top + (event.clientY - displayed.top) * rendered.height / displayed.height,
+      pointerType: event.pointerType
+    });
+    forwardedPointers.add(mapped);
+    hero.dispatchEvent(mapped);
+  }, { capture: true });
+}
+motionButton.addEventListener('click', () => { userPaused = !userPaused; syncMotion(); });
+reduced.addEventListener('change', syncMotion);
+window.addEventListener('resize', syncMotion, { passive: true });
+requestAnimationFrame(() => { hero.classList.add('hero-ready'); syncMotion(); });

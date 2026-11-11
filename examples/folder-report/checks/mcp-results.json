@@ -1,0 +1,2076 @@
+{
+  "transport": "Real JSON-RPC over stdio via the local test harness; not native chat tool binding",
+  "startedAt": "2026-11-08T13:35:32.964Z",
+  "network": "disabled",
+  "calls": [
+    {
+      "label": "Source audit 1",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 75.85,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "scan"
+      }
+    },
+    {
+      "label": "Source audit 2",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 73.66,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "scan"
+      }
+    },
+    {
+      "label": "Concurrent audit 1",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 1.49,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 2",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 7.98,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 3",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.08,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 4",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.07,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 5",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.05,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 6",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.12,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 7",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.09,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 8",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.09,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 9",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.13,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Concurrent audit 10",
+      "tool": "audit_agent_extension_supply_chain",
+      "ms": 8.12,
+      "result": {
+        "schemaVersion": 1,
+        "verdict": "review",
+        "grade": "C+",
+        "score": 79,
+        "parameters": {
+          "installHooks": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "codeExecution": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "dataAccess": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "networkExposure": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "persistence": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "obfuscation": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "knownVulnerabilities": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.15,
+            "weightedScore": 15,
+            "findingCount": 0
+          },
+          "provenance": {
+            "score": 85,
+            "grade": "B",
+            "weight": 0.1,
+            "weightedScore": 8.5,
+            "findingCount": 3
+          },
+          "injectionResistance": {
+            "score": 100,
+            "grade": "A+",
+            "weight": 0.1,
+            "weightedScore": 10,
+            "findingCount": 0
+          },
+          "evidenceCompleteness": {
+            "score": 90,
+            "grade": "A-",
+            "weight": 0.05,
+            "weightedScore": 4.5,
+            "findingCount": 2
+          }
+        },
+        "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+        "packageName": "folder-report-local",
+        "riskBands": [
+          {
+            "band": "behavioral-coverage",
+            "label": "behavioral-coverage",
+            "severity": "medium",
+            "count": 1,
+            "examples": [
+              "index.js"
+            ],
+            "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+          },
+          {
+            "band": "missing-metadata",
+            "label": "missing-metadata",
+            "severity": "info",
+            "count": 3,
+            "examples": [
+              "package.json",
+              "NPM_METADATA",
+              "GITHUB_METADATA"
+            ],
+            "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+          }
+        ],
+        "findings": [
+          {
+            "severity": "medium",
+            "category": "flow-analysis-gap",
+            "file": "index.js",
+            "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+            "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "GITHUB_METADATA",
+            "snippet": "GITHUB_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "missing-metadata",
+            "file": "NPM_METADATA",
+            "snippet": "NPM_METADATA was not provided.",
+            "rationale": "Supply-chain reputation and repository consistency could not be checked."
+          },
+          {
+            "severity": "info",
+            "category": "supply-chain-signal",
+            "file": "package.json",
+            "snippet": "\"repository\" field is missing.",
+            "rationale": "Missing repository metadata reduces provenance confidence."
+          }
+        ],
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "scanSource": "cache"
+      }
+    },
+    {
+      "label": "Guard app, no promotion",
+      "tool": "guard_agent_extension_install",
+      "ms": 77.08,
+      "result": {
+        "schemaVersion": 1,
+        "scanSource": "scan",
+        "decision": "review",
+        "reference": "file:/Users/jackadamslovell/Documents/pkgxray/examples/folder-report/app",
+        "resolved": {
+          "type": "local",
+          "source": "/Users/jackadamslovell/Documents/pkgxray/examples/folder-report/app",
+          "packageName": "folder-report-local",
+          "version": "0.1.0",
+          "npmMetadata": null
+        },
+        "sourceFiles": {
+          "package.json": "{\"name\":\"folder-report-local\",\"version\":\"0.1.0\",\"private\":true,\"description\":\"Read-only directory inventory with bounded traversal and no symlink following\",\"main\":\"index.js\",\"bin\":{\"folder-report\":\"index.js\"},\"license\":\"UNLICENSED\"}\n",
+          "index.js": "#!/usr/bin/env node\n'use strict';\nconst fs = require('node:fs/promises');\nconst path = require('node:path');\n\nasync function inventory(directory, { maxEntries = 10000 } = {}) {\n  if (!Number.isInteger(maxEntries) || maxEntries < 1 || maxEntries > 100000) throw new Error('maxEntries must be an integer from 1 to 100000');\n  const root = path.resolve(directory);\n  const rootStat = await fs.lstat(root);\n  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new Error('Root must be a directory, not a symlink');\n  const stack = [root], files = [], extensions = new Map();\n  let examined = 0, skippedLinks = 0, skippedDirectories = 0, totalBytes = 0;\n  while (stack.length) {\n    const current = stack.pop();\n    const handle = await fs.opendir(current);\n    for await (const entry of handle) {\n      if (++examined > maxEntries) throw new Error(`Entry limit (${maxEntries}) exceeded; no complete report produced`);\n      const full = path.join(current, entry.name);\n      const stat = await fs.lstat(full);\n      if (stat.isSymbolicLink()) { skippedLinks++; continue; }\n      if (stat.isDirectory()) {\n        if (entry.name === '.git' || entry.name === 'node_modules') skippedDirectories++;\n        else stack.push(full);\n      } else if (stat.isFile()) {\n        const relative = path.relative(root, full);\n        const extension = path.extname(entry.name).toLowerCase() || '(none)';\n        const group = extensions.get(extension) || { extension, files: 0, bytes: 0 };\n        group.files++; group.bytes += stat.size; extensions.set(extension, group);\n        files.push({ path: relative, bytes: stat.size }); totalBytes += stat.size;\n      }\n    }\n  }\n  return { root, files: files.length, totalBytes, examined, skippedLinks, skippedDirectories,\n    largest: files.sort((a,b) => b.bytes-a.bytes || a.path.localeCompare(b.path)).slice(0,5),\n    types: [...extensions.values()].sort((a,b) => b.bytes-a.bytes || a.extension.localeCompare(b.extension)) };\n}\n\nconst USAGE = 'Usage: node index.js <directory> [--json] [--max-entries N]';\nfunction parseArgs(args) {\n  const options = { json: false, maxEntries: 10000 };\n  let directory, positionalOnly = false;\n  for (let i = 0; i < args.length; i++) {\n    const arg = args[i];\n    if (!positionalOnly && arg === '--') { positionalOnly = true; continue; }\n    if (!positionalOnly && arg === '--json') { options.json = true; continue; }\n    if (!positionalOnly && arg === '--help') return { help: true };\n    if (!positionalOnly && arg === '--max-entries') {\n      const value = args[++i];\n      if (!/^\\d+$/.test(value || '')) throw new Error('--max-entries requires a positive integer');\n      options.maxEntries = Number(value); continue;\n    }\n    if (!positionalOnly && arg.startsWith('--')) throw new Error(`Unknown option: ${JSON.stringify(arg)}`);\n    if (directory !== undefined) throw new Error(USAGE);\n    directory = arg;\n  }\n  if (!directory) throw new Error(USAGE);\n  return { directory, ...options };\n}\nfunction formatReport(report) {\n  return [\n    `Folder: ${JSON.stringify(report.root)}`,\n    `${report.files} files | ${report.totalBytes} bytes`,\n    `Skipped: ${report.skippedLinks} symbolic links; ${report.skippedDirectories} .git/node_modules directories`,\n    '', 'File types:',\n    ...report.types.map(t => `  ${JSON.stringify(t.extension)}: ${t.files} files, ${t.bytes} bytes`),\n    '', 'Largest files:',\n    ...report.largest.map(f => `  ${f.bytes} bytes  ${JSON.stringify(f.path)}`)\n  ].join('\\n');\n}\nasync function main(args) {\n  const options = parseArgs(args);\n  if (options.help) { console.log(USAGE); return; }\n  const result = await inventory(options.directory, options);\n  console.log(options.json ? JSON.stringify(result,null,2) : formatReport(result));\n}\nif (require.main === module) main(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });\nmodule.exports = { inventory, parseArgs, formatReport, main };\n"
+        },
+        "sourceCoverage": {
+          "complete": true,
+          "scannedFiles": 2,
+          "skippedFiles": 0,
+          "truncatedFiles": 0,
+          "inventoryFiles": 2,
+          "runtimeFiles": [
+            "index.js"
+          ],
+          "reasons": [],
+          "installTimeFiles": [],
+          "behavioralScope": "npm-static-heuristics"
+        },
+        "assessment": {
+          "engine": {
+            "name": "pkgxray",
+            "version": "1.1.0",
+            "buildId": "50356efd152103596a91c436cf0014f9ec5ad309d053b79c4d773404db330100"
+          },
+          "artifact": {
+            "name": "folder-report-local",
+            "version": "0.1.0",
+            "origin": "local",
+            "resolved": null,
+            "integrity": null,
+            "sha256": null
+          },
+          "effectivePolicy": "safe-only",
+          "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+          "checks": {
+            "source": "completed",
+            "vulnerabilities": "disabled",
+            "directDependencies": "not-requested"
+          },
+          "rawVerdict": "review",
+          "authorization": {
+            "mandatoryHoldReasons": [
+              "flow-analysis-gap"
+            ],
+            "behavioralCoverage": "partial",
+            "explicitOverride": false
+          },
+          "decision": "review"
+        },
+        "configEffects": {
+          "muted": [],
+          "mutedCount": 0,
+          "allowlisted": null,
+          "ignoredAllow": null,
+          "notices": []
+        },
+        "githubMetadata": null,
+        "npmVsGithubDiff": null,
+        "provenanceAttestation": null,
+        "vulnerabilityPrecheck": {
+          "enabled": false,
+          "database": "OSV",
+          "completed": false,
+          "error": null,
+          "vulnerabilityCount": 0,
+          "vulnerabilities": []
+        },
+        "timings": {
+          "stageMs": 2,
+          "vulnerabilityPrecheckMs": 0,
+          "downloadMs": 0,
+          "sourceCollectionMs": 8,
+          "githubMetadataMs": 8,
+          "provenanceMs": 0,
+          "diffMs": 0,
+          "auditMs": 63
+        },
+        "quarantinePath": null,
+        "stagedPath": null,
+        "promotedPath": null,
+        "report": {
+          "schemaVersion": 1,
+          "verdict": "review",
+          "grade": "C+",
+          "score": 79,
+          "parameters": {
+            "installHooks": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.1,
+              "weightedScore": 10,
+              "findingCount": 0
+            },
+            "codeExecution": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.15,
+              "weightedScore": 15,
+              "findingCount": 0
+            },
+            "dataAccess": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.15,
+              "weightedScore": 15,
+              "findingCount": 0
+            },
+            "networkExposure": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.15,
+              "weightedScore": 15,
+              "findingCount": 0
+            },
+            "persistence": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.1,
+              "weightedScore": 10,
+              "findingCount": 0
+            },
+            "obfuscation": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.1,
+              "weightedScore": 10,
+              "findingCount": 0
+            },
+            "knownVulnerabilities": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.15,
+              "weightedScore": 15,
+              "findingCount": 0
+            },
+            "provenance": {
+              "score": 85,
+              "grade": "B",
+              "weight": 0.1,
+              "weightedScore": 8.5,
+              "findingCount": 3
+            },
+            "injectionResistance": {
+              "score": 100,
+              "grade": "A+",
+              "weight": 0.1,
+              "weightedScore": 10,
+              "findingCount": 0
+            },
+            "evidenceCompleteness": {
+              "score": 90,
+              "grade": "A-",
+              "weight": 0.05,
+              "weightedScore": 4.5,
+              "findingCount": 2
+            }
+          },
+          "summary": "Manual review required: 1 medium-severity finding(s) or incomplete evidence prevent a safe verdict.",
+          "packageName": "folder-report-local",
+          "riskBands": [
+            {
+              "band": "behavioral-coverage",
+              "label": "behavioral-coverage",
+              "severity": "medium",
+              "count": 1,
+              "examples": [
+                "index.js"
+              ],
+              "rationale": "Behavioral analysis is incomplete; collected source bytes do not establish semantic coverage."
+            },
+            {
+              "band": "missing-metadata",
+              "label": "missing-metadata",
+              "severity": "info",
+              "count": 3,
+              "examples": [
+                "package.json",
+                "NPM_METADATA",
+                "GITHUB_METADATA"
+              ],
+              "rationale": "Provenance metadata (npm registry / GitHub) absent or weak; cross-checks skipped."
+            }
+          ],
+          "findings": [
+            {
+              "severity": "medium",
+              "category": "flow-analysis-gap",
+              "file": "index.js",
+              "snippet": "n) || { extension, files: 0, bytes: 0 }; group.files++; group.bytes += stat.size; extensions.set(extension, group); files.push({ path: relative, bytes: stat.size })",
+              "rationale": "Sensitive-flow analysis is incomplete: unmodeled executable semantics (CallExpression). The cited location requires review."
+            },
+            {
+              "severity": "info",
+              "category": "missing-metadata",
+              "file": "GITHUB_METADATA",
+              "snippet": "GITHUB_METADATA was not provided.",
+              "rationale": "Supply-chain reputation and repository consistency could not be checked."
+            },
+            {
+              "severity": "info",
+              "category": "missing-metadata",
+              "file": "NPM_METADATA",
+              "snippet": "NPM_METADATA was not provided.",
+              "rationale": "Supply-chain reputation and repository consistency could not be checked."
+            },
+            {
+              "severity": "info",
+              "category": "supply-chain-signal",
+              "file": "package.json",
+              "snippet": "\"repository\" field is missing.",
+              "rationale": "Missing repository metadata reduces provenance confidence."
+            }
+          ],
+          "configEffects": {
+            "muted": [],
+            "mutedCount": 0,
+            "allowlisted": null,
+            "ignoredAllow": null,
+            "notices": []
+          }
+        },
+        "outcome": null,
+        "allowed": false,
+        "review": {
+          "id": null,
+          "state": "pending",
+          "choice": null,
+          "actions": [],
+          "requiresDecision": true,
+          "eligible": false
+        }
+      }
+    },
+    {
+      "label": "Audit dependency-free manifest",
+      "tool": "audit_lockfile_supply_chain",
+      "ms": 0.8,
+      "result": {
+        "schemaVersion": 1,
+        "file": "/Users/jackadamslovell/Documents/pkgxray/examples/folder-report/app/package.json",
+        "format": "package-json",
+        "totalDeps": 0,
+        "uniqueDeps": 0,
+        "timings": {
+          "osvMs": 0,
+          "deepMs": 0,
+          "totalMs": 0
+        },
+        "summary": {
+          "safe": 0,
+          "reviewed": 0,
+          "blocked": 0
+        },
+        "coverage": {
+          "vulnerabilityCheck": false,
+          "vulnerabilities": {
+            "enabled": false,
+            "completed": false,
+            "evidenceOrigin": "none"
+          },
+          "sourceScan": "none",
+          "deepFailures": 0
+        },
+        "worstDecision": "safe",
+        "results": []
+      }
+    }
+  ],
+  "tools": [
+    "audit_agent_extension_supply_chain",
+    "guard_agent_extension_install",
+    "audit_lockfile_supply_chain",
+    "triage_lockfile_supply_chain"
+  ],
+  "metrics": {
+    "scans": 3,
+    "hits": 10,
+    "joined": 0,
+    "rejections": 0,
+    "errors": 0,
+    "cancellations": 0,
+    "timeouts": 0,
+    "peakQueue": 0,
+    "peakActive": 1,
+    "active": 0,
+    "queued": 0,
+    "jobs": 0,
+    "waiters": 0,
+    "cacheEntries": 3,
+    "cacheBytes": 7917
+  }
+}

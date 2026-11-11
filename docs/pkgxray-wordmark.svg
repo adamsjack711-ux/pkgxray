@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="136" viewBox="0 0 640 136" role="img" aria-labelledby="title desc">
+  <title id="title">pkgxray wordmark</title>
+  <desc id="desc">Angular off-white terminal lettering with the original copper and split-stroke inspection X.</desc>
+  <rect width="640" height="136" fill="#191C22"/>
+  <g fill="none" stroke="#F1EEE8" stroke-width="4.2" stroke-linecap="square" stroke-linejoin="miter">
+    <!-- p -->
+    <path d="M155 40V94M155 43H176L182 49V61L176 67H155"/>
+    <!-- k -->
+    <path d="M203 40V68M203 57L228 40M212 51L230 68"/>
+    <!-- g -->
+    <path d="M251 48L257 42H278L284 48V62L278 68H257L251 62V48ZM284 62V88L278 94H256"/>
+    <!-- r -->
+    <path d="M356 68V42H376L383 49"/>
+    <!-- a -->
+    <path d="M410 42V68H384L378 62V48L384 42H410Z"/>
+    <!-- y -->
+    <path d="M430 42L446 68L462 42M446 68L440 92"/>
+  </g>
+  <g transform="translate(300 29)" fill="none" aria-label="copper X with split off-white stroke and inspection ring">
+    <path d="M4.5 43.5 43.5 4.5" stroke="#CE916C" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M4.5 4.5 19.9 19.9M28.1 28.1 43.5 43.5" stroke="#F1EEE8" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="24" cy="24" r="4.6" fill="#191C22" stroke="#F1EEE8" stroke-width="1.8"/>
+  </g>
+</svg>

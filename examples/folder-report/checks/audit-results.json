@@ -1,0 +1,63 @@
+{
+  "measuredAt": "2026-11-08T13:52:13.287Z",
+  "realNetworkUsed": false,
+  "observations": [
+    {
+      "name": "CLI errors escape terminal controls",
+      "classification": "fixture-only; actual CLI subprocess",
+      "passed": true,
+      "observed": {
+        "exit": 1,
+        "stderr": "\"ENOENT: no such file or directory, lstat '/var/folders/y_/lly0mqfs4gvc_nshj6vlcb8c0000gn/T/pkgxray-audit-4EoVcs/missing\\u001b[2J\\nFAKE-SAFE'\"\n",
+        "containsEscape": false
+      }
+    },
+    {
+      "name": "Admin recheck block invalidates deliverable artifact evidence",
+      "classification": "fixture-only; production gate/cache/admin functions; stubbed scanner receipts",
+      "passed": true,
+      "observed": {
+        "recheck": {
+          "total": 1,
+          "changed": [
+            {
+              "name": "audit-fixture",
+              "version": "1.0.0",
+              "from": "review",
+              "to": "block"
+            }
+          ],
+          "errors": [],
+          "unchanged": 0
+        },
+        "packageIndexDecision": "block",
+        "deliveryAllowed": false,
+        "deliverySource": "scan",
+        "scans": 1
+      }
+    },
+    {
+      "name": "Changed scanner build invalidates proxy delivery approval",
+      "classification": "fixture-only; production gate/cache; copied runtime mutated; stubbed scanner receipt",
+      "passed": true,
+      "observed": {
+        "buildChanged": true,
+        "deliveryAllowed": false,
+        "deliverySource": "scan",
+        "newScans": 0
+      }
+    },
+    {
+      "name": "Cancelled MCP triage does not persist new allow decisions",
+      "classification": "stubbed-network; real MCP stdio, triage and filesystem; OSV response held until after cancellation",
+      "passed": true,
+      "observed": {
+        "responseError": {
+          "code": -32800,
+          "message": "This operation was aborted"
+        },
+        "written": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pkg x-ray — README preview</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #191C22; color: #F1EEE8; font: 16px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 860px; margin: 20px auto; padding: 28px 38px; background: transparent; }
+    h1, h2, h3 { line-height: 1.25; font-weight: 600; }
+    h1 { margin: 0 0 18px; padding: 0; border: 0; text-align: center; font-size: 30px; }
+    h2 { margin-top: 28px; padding-bottom: 7px; border-bottom: 1px solid #59483F; color: #F1EEE8; font-size: 22px; }
+    p, ul, ol, table, pre { margin: 14px 0; }
+    a { color: #CE916C; text-decoration: none; }
+    a:hover { color: #E3AD8E; text-decoration: underline; }
+    img { max-width: 100%; vertical-align: middle; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { padding: .15em .35em; background: #292E36; color: #F1EEE8; border-radius: 3px; font-size: .9em; }
+    pre { position: relative; overflow: auto; padding: 16px 18px; background: #11151B; border: 1px solid #393E47; border-radius: 4px; }
+    pre code { padding: 0; background: transparent; color: #F1EEE8; font-size: 15px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: 8px 12px; border: 1px solid #393E47; text-align: left; }
+    th { background: #242932; }
+    blockquote { margin: 16px 0; padding: 0 16px; color: #C2BDB6; border-left: 3px solid #CE916C; }
+    .copy-command { position: absolute; top: 8px; right: 8px; padding: 4px 9px; color: #F1EEE8; background: #292E36; border: 1px solid #CE916C; border-radius: 3px; font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; cursor: pointer; }
+    .copy-command:hover { color: #191C22; background: #CE916C; }
+    .status { max-width: 860px; margin: 20px auto; padding: 0 16px; color: #C2BDB6; }
+    @media (max-width: 700px) { main { margin: 0; padding: 24px 20px; } h1 { font-size: 26px; } }
+  </style>
+</head>
+<body>
+  <main id="readme" aria-live="polite"><p>Loading the current README…</p></main>
+  <script>
+    (async () => {
+      const root = document.getElementById("readme");
+      try {
+        const response = await fetch("/README.md", { cache: "no-store" });
+        if (!response.ok) throw new Error(`README request failed (${response.status})`);
+        const markdown = await response.text();
+        if (!window.marked) throw new Error("Markdown renderer did not load");
+        root.innerHTML = window.marked.parse(markdown);
+        const command = "npx --yes pkgxray@1.2.1 guard npm:express@4.21.0";
+        for (const pre of root.querySelectorAll("pre")) {
+          if (pre.textContent.trim() !== command) continue;
+          const button = document.createElement("button");
+          button.className = "copy-command";
+          button.type = "button";
+          button.textContent = "Copy command";
+          button.addEventListener("click", async () => {
+            await navigator.clipboard.writeText(command);
+            button.textContent = "Copied";
+            setTimeout(() => { button.textContent = "Copy command"; }, 1200);
+          });
+          pre.append(button);
+        }
+      } catch (error) {
+        root.innerHTML = `<p>Could not render the README preview: ${String(error.message).replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;", "\"":"&quot;"}[c]))}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

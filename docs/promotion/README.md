@@ -4,10 +4,18 @@ Publication-ready source material for a technically credible pkgxray launch.
 Nothing in this directory authorizes posting, outreach, account creation,
 advertising, or submission. Every public asset requires maintainer review.
 
+For the current coordinated launch, start with
+[`00-launch-runbook.md`](00-launch-runbook.md). It contains the release gate,
+final short-form copy, demonstration, Registry steps and seven-day sequence.
+The numbered files below are a source library and include point-in-time facts
+that must be revalidated before reuse.
+
 Primary positioning: **Inspect what gets installed before it executes.**
 
 ## Contents
 
+0. [`00-launch-runbook.md`](00-launch-runbook.md) — current operating checklist
+   and approved-copy candidates for the coordinated launch.
 1. [`01-positioning.md`](01-positioning.md) — core descriptions, audience
    pitches, comparison with `npm audit` and OSV-Scanner, and claim boundaries.
 2. [`02-launch-materials.md`](02-launch-materials.md) — community-specific
