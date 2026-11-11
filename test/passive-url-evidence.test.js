@@ -3,7 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { onlyPassiveDiagnosticUrls: provePassive } = require('../src/passive-url-evidence');
 const { auditEvidence } = require('../src/auditor');
-const fixture = require('../benchmark/corpus/benign/url-shortener-with-capability.json');
+const baselineFixture = require('../benchmark/corpus/benign/url-shortener-with-capability.json');
+// Positive classification requires new collector coverage evidence. Keep the
+// original benchmark input unchanged so measured improvements are comparable.
+const fixture = { ...baselineFixture, evidence: { ...baselineFixture.evidence,
+  sourceCoverage: { complete: true, scannedFiles: 2, inventoryFiles: 2,
+    skippedFiles: 0, truncatedFiles: 0, runtimeFiles: ['index.js'], installTimeFiles: [], reasons: [] } } };
 const url = 'https://goo.gl/MqrFmX';
 const domains = ['goo.gl', 'bit.ly'];
 const network = "const https = require('https'); module.exports.get = (u) => https.get(u);\n";
@@ -23,6 +28,7 @@ function shortenerFinding(source, extra) {
 }
 
 test('direct passive diagnostics clear only the shortener-capability coincidence', () => {
+  assert.equal(auditEvidence(baselineFixture.evidence).verdict, 'review', 'original evidence without coverage stays uncertain');
   for (const call of [passive, `console.warn('See ${url}' + name);`, `console.log('See ${url}', name);`]) {
     assert.equal(onlyPassiveDiagnosticUrls(network + call, domains), true);
     assert.equal(shortenerFinding(network + call), false);
