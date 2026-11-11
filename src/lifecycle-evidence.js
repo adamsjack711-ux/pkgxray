@@ -24,6 +24,64 @@ function member(node, property) {
     identifier(node.property, property);
 }
 
+// Shell command exactness does not establish interpreter identity. Supplied
+// node shims or ambiguous manifest metadata invalidate this exception. External
+// PATH, shell configuration and NODE_OPTIONS/preloads remain trusted host inputs;
+// this static proof never certifies an arbitrary execution environment.
+function interpreterUnshadowed(files) {
+  if (files.length > 20000) return false;
+  const manifests = new Set();
+  let manifestNodes = 0, manifestBytes = 0;
+  const nodeName = name => typeof name === "string" && /^(?:node)(?:\.(?:exe|cmd|bat|com))?$/i.test(name.split(/[\\/]/).at(-1));
+  for (const file of files) {
+    if (typeof file.path !== "string") return false;
+    const normalized = file.path.replace(/\\/g, "/").toLowerCase();
+    if (/(?:^|\/)\.bin\/node(?:\.(?:exe|cmd|bat|com))?$/.test(normalized)) return false;
+    if (!/(?:^|\/)package\.json$/.test(normalized)) continue;
+    if (manifests.has(normalized) || typeof file.content !== "string" || file.content.length > MAX_SOURCE_LENGTH) return false;
+    manifests.add(normalized);
+    manifestBytes += file.content.length;
+    if (manifestBytes > 64 * 1024) return false;
+    let manifest, ast;
+    try {
+      manifest = JSON.parse(file.content);
+      ast = acorn.parse("(" + file.content + ")", { ecmaVersion: "latest" });
+    } catch { return false; }
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return false;
+    // JSON.parse discards duplicate properties. Do not let a later benign bin
+    // value hide an earlier shadow declaration from a different consumer.
+    const pending = [ast];
+    while (pending.length) {
+      const node = pending.pop();
+      if (++manifestNodes > MAX_NODES) return false;
+      if (node.type === "ObjectExpression") {
+        const names = new Set();
+        for (const property of node.properties) {
+          const key = property.key?.value;
+          if (typeof key !== "string" || names.has(key)) return false;
+          names.add(key);
+        }
+      }
+      for (const value of Object.values(node)) {
+        for (const child of Array.isArray(value) ? value : [value]) {
+          if (child && typeof child === "object" && typeof child.type === "string") pending.push(child);
+        }
+      }
+    }
+    if (manifest.directories && Object.hasOwn(manifest.directories, "bin")) return false;
+    if (!Object.hasOwn(manifest, "bin")) continue;
+    if (typeof manifest.bin === "string") {
+      if (typeof manifest.name !== "string" || !manifest.name || nodeName(manifest.name) || !manifest.bin) return false;
+    } else {
+      if (!manifest.bin || typeof manifest.bin !== "object" || Array.isArray(manifest.bin)) return false;
+      for (const [name, target] of Object.entries(manifest.bin)) {
+        if (!name || /[\\/]/.test(name) || nodeName(name) || typeof target !== "string" || !target) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function proveLiteralLifecycle(command, manifestPath, evidence) {
   if (typeof command !== "string" || command.length > 520 ||
       !/^node \.\/[A-Za-z0-9_/-][A-Za-z0-9_./-]*\.(?:js|cjs|mjs)$/.test(command) ||
@@ -33,7 +91,7 @@ function proveLiteralLifecycle(command, manifestPath, evidence) {
   const directory = manifestPath.slice(0, -"package.json".length);
   const scriptPath = directory + relative;
   const files = evidence?.sourceFiles;
-  if (!Array.isArray(files)) return null;
+  if (!Array.isArray(files) || !interpreterUnshadowed(files)) return null;
   const matches = files.filter(file => file.path === scriptPath);
   if (matches.length !== 1 || files.filter(file => file.path === manifestPath).length !== 1) return null;
   const source = matches[0].content;
@@ -109,6 +167,8 @@ function proveLiteralLifecycle(command, manifestPath, evidence) {
   return {
     kind: "literal-node-lifecycle-v1",
     command,
+    assumptions: ["The host resolves node to the trusted Node.js interpreter.",
+      "External PATH, shell configuration and NODE_OPTIONS/preloads do not alter the analyzed behavior."],
     script: { file: scriptPath, source },
     operations: [...operations].sort(),
     environmentChecks: [...environmentChecks].sort()

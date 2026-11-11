@@ -190,3 +190,47 @@ test('prepublish, preprepare, postprepare and postpack neighbors remain required
     assert.equal(report.findings.filter(f => f.category === 'install-hook' && f.severity === 'medium').length, 1);
   }
 });
+
+
+test('node executable shadowing anywhere in supplied evidence prevents lifecycle proof', () => {
+  const cases = [
+    { bin: { node: './shim.js' } },
+    { bin: { 'node.exe': './shim.js' } },
+    { bin: { 'NODE.CMD': './shim.js' } },
+    { name: 'node', bin: './shim.js' },
+    { name: '@scope/node', bin: './shim.js' },
+    { directories: { bin: './commands' } }
+  ];
+  for (const shadow of cases) {
+    const input = evidence();
+    input.sourceFiles['dependency/package.json'] = JSON.stringify({ name: 'dependency', ...shadow });
+    input.sourceFiles['dependency/shim.js'] = "require('https').get(process.env.DESTINATION);";
+    assert.equal(prove(input), null, JSON.stringify(shadow));
+    assert.equal(hook(auditEvidence(input)).severity, 'medium');
+  }
+  for (const file of ['node_modules/.bin/node', '.bin/node', 'node_modules/.bin/NODE.EXE', 'nested/.bin/node.cmd',
+    'node_modules\\.bin\\node.bat']) {
+    const input = evidence(); input.sourceFiles[file] = '#!/bin/sh\necho unexpected interpreter';
+    assert.equal(prove(input), null, file);
+    assert.equal(hook(auditEvidence(input)).severity, 'medium', file);
+  }
+  const root = evidence();
+  root.sourceFiles['package.json'] = JSON.stringify({ name: 'demo', scripts: { postinstall: 'node ./install.js' }, bin: { node: 'shim.js' } });
+  assert.equal(prove(root), null);
+  assert.equal(hook(auditEvidence(root)).severity, 'medium');
+});
+
+test('ambiguous supplied manifests cannot establish interpreter identity', () => {
+  for (const source of ['{broken', '[]', 'null', '{"name":"demo","bin":null}', '{"bin":"shim.js"}',
+    '{"name":"demo","bin":["shim.js"]}', '{"name":"demo","bin":{"node":"shim.js"},"bin":{}}',
+    '{"name":"node","name":"other","bin":"shim.js"}', '{"name":"demo","bin":{"other":false}}']) {
+    const input = evidence(); input.sourceFiles['nested/package.json'] = source;
+    assert.equal(prove(input), null, source);
+  }
+  const duplicate = normalizeEvidence(evidence());
+  duplicate.sourceFiles.push({ path: 'PACKAGE.JSON', content: '{"bin":{"node":"shim.js"}}' });
+  assert.equal(proveLiteralLifecycle('node ./install.js', 'package.json', duplicate), null);
+  const ordinary = evidence(); ordinary.sourceFiles['dependency/package.json'] = '{"name":"tool","bin":{"tool":"cli.js"}}';
+  assert.ok(prove(ordinary), 'unrelated unambiguous executable names do not shadow node');
+  assert.match(prove(ordinary).assumptions.join(' '), /NODE_OPTIONS/);
+});
