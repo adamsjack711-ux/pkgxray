@@ -9634,7 +9634,8 @@ function auditFiles(files, findings, evidence) {
   let {
     all: runtimePaths,
     lifecycle: lifecyclePaths,
-    installTime: installTimePaths
+    installTime: installTimePaths,
+    gaps: seedGaps
   } = collectLifecycleReferencedPaths(files);
 
   for (const file of (evidence.sourceCoverage && evidence.sourceCoverage.runtimeFiles) || []) runtimePaths.add(normalizeRelPath(file));
@@ -9647,7 +9648,7 @@ function auditFiles(files, findings, evidence) {
   runtimePaths = executionGraph.runtime;
   lifecyclePaths = executionGraph.lifecycle;
   installTimePaths = executionGraph.installTime;
-  for (const gap of executionGraph.gaps) {
+  for (const gap of [...seedGaps, ...executionGraph.gaps]) {
     findings.push({ severity: 'medium', category: 'unresolved-runtime-execution', file: gap.file,
       snippet: clipAround(files.find(f => f.path === gap.file)?.content || '', gap.index),
       rationale: `Runtime execution coverage is incomplete: ${gap.reason}.` });
@@ -9924,21 +9925,31 @@ const REQUIRE_GRAPH_MAX_DEPTH = 2;
 const REQUIRE_GRAPH_MAX_VISITS = 400;
 
 // Resolve a relative specifier (`./util`, `../lib/x.js`) referenced FROM a given
-// source path against the known file set, returning the normalized path of the
-// matching file, or null. Mirrors Node's extension/index resolution loosely —
-// this is a static reachability check, not the real resolver.
-function resolveRelativeSpec(fromPath, spec, fileIndex) {
+// source path without clamping parent traversal to the artifact root. Absolute
+// paths and traversal beyond that root are unresolved, not local file aliases.
+function relativeArtifactPath(fromPath, spec) {
+  if (typeof spec !== "string" || /^(?:[\\/]|[A-Za-z]:)/.test(spec)) return null;
   const norm = normalizeRelPath(fromPath);
   // Directory of the referencing file: drop the final path segment. A bare
   // filename (`index.js`) or the "./" root sentinel resolves against the root.
   const slash = norm.lastIndexOf("/");
   const segments = slash === -1 ? [] : norm.slice(0, slash).split("/");
-  for (const part of spec.split("/")) {
+  for (const part of spec.replace(/\\/g, "/").split("/")) {
     if (part === "" || part === ".") continue;
-    if (part === "..") segments.pop();
+    if (part === "..") {
+      if (!segments.length) return null;
+      segments.pop();
+    }
     else segments.push(part);
   }
-  const joined = segments.join("/");
+  return segments.join("/");
+}
+
+// Match the artifact-local target against supplied files. This is a bounded
+// static reachability check, not the actual Node module resolver.
+function resolveRelativeSpec(fromPath, spec, fileIndex) {
+  const joined = relativeArtifactPath(fromPath, spec);
+  if (joined === null) return null;
   for (const ext of REQUIRE_RESOLVE_EXTENSIONS) {
     const candidate = normalizeRelPath(joined + ext);
     if (fileIndex.has(candidate)) return candidate;
@@ -9985,6 +9996,7 @@ function collectLifecycleReferencedPaths(files) {
   const lifecycleSeeds = [];
   const installSeeds = [];
   const entrySeeds = [];
+  const gaps = [];
   const pkg = findPackageJson(files);
   if (pkg && pkg.json) {
     if (pkg.json.scripts && typeof pkg.json.scripts === "object") {
@@ -9993,9 +10005,13 @@ function collectLifecycleReferencedPaths(files) {
         let m;
         SCRIPT_PATH_TOKEN_REGEX.lastIndex = 0;
         while ((m = SCRIPT_PATH_TOKEN_REGEX.exec(command)) !== null) {
-          const seed = normalizeRelPath(m[1]);
-          const resolved = resolveRelativeSpec("./", seed, fileIndex);
           const install = AUTO_RUN_INSTALL_HOOKS.has(hook);
+          const seed = relativeArtifactPath(pkg.path, m[1]);
+          if (seed === null) {
+            if (install) gaps.push({ file: pkg.path, index: 0, reason: `script target escapes or is outside the artifact: ${m[1]}` });
+            continue;
+          }
+          const resolved = resolveRelativeSpec(pkg.path, m[1], fileIndex);
           // Manual build/test scripts often point at files deliberately omitted
           // from the published tarball. An absent file cannot execute there;
           // retain missing targets only for npm's automatic install hooks.
@@ -10009,9 +10025,14 @@ function collectLifecycleReferencedPaths(files) {
     collectEntryStrings(pkg.json.module, entryStrings);
     collectEntryStrings(pkg.json.bin, entryStrings);
     collectEntryStrings(pkg.json.exports, entryStrings);
-    if (!pkg.json.main && !pkg.json.exports && fileIndex.has('index.js')) entrySeeds.push('index.js');
+    const defaultEntry = relativeArtifactPath(pkg.path, 'index.js');
+    if (!pkg.json.main && !pkg.json.exports && fileIndex.has(defaultEntry)) entrySeeds.push(defaultEntry);
     for (const raw of entryStrings) {
-      const resolved = resolveRelativeSpec("./", raw.replace(/^\.?\//, "./"), fileIndex);
+      if (relativeArtifactPath(pkg.path, raw) === null) {
+        gaps.push({ file: pkg.path, index: 0, reason: `entry target escapes or is outside the artifact: ${raw}` });
+        continue;
+      }
+      const resolved = resolveRelativeSpec(pkg.path, raw, fileIndex);
       if (resolved) entrySeeds.push(resolved);
     }
   }
@@ -10047,7 +10068,7 @@ function collectLifecycleReferencedPaths(files) {
   const lifecycle = walk(lifecycleSeeds);
   const installTime = walk(installSeeds);
   const all = walk([...lifecycleSeeds, ...entrySeeds]);
-  return { all, lifecycle, installTime };
+  return { all, lifecycle, installTime, gaps };
 }
 
 // Lifecycle commands relevant to installation and package preparation. Keep

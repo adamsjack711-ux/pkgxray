@@ -30,10 +30,8 @@ test('both relative Node command spellings inspect the same exact script', () =>
         } };
         const report = auditEvidence(input);
         assert.equal(hook(report).severity, 'info', `${directory}: ${command}`);
-        // The execution graph separately reports unresolved nested roots.
-        // Command spelling must not suppress that existing coverage finding.
-        assert.equal(report.verdict, directory ? 'review' : 'safe', `${directory}: ${command}`);
-        if (directory) assert.ok(report.findings.some(f => f.category === 'unresolved-runtime-execution'));
+        assert.equal(report.verdict, 'safe', `${directory}: ${command}`);
+        assert.ok(!report.findings.some(f => f.category === 'unresolved-runtime-execution'));
         const proof = hook(report).lifecycleProof;
         assert.equal(proof.command, command, 'retain the original command as evidence');
         assert.deepEqual(proof.script, { file: directory + script, source: message });
