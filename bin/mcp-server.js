@@ -199,7 +199,7 @@ function guardToolDefinition() {
     name: GUARD_TOOL_NAME,
     title: "Guard a package before installation",
     description:
-      "Fetch and inspect one package reference, then return a redacted SAFE or UNSAFE report, or a pending REVIEW requiring an explicit Proceed or Decline. Never runs package code or writes package files outside temporary quarantine. Local references are confined to operator-approved roots.",
+      "Fetch and inspect one package reference, then return a redacted SAFE or UNSAFE report, or a pending REVIEW with advisory reviewPlan investigation steps and an explicit user Proceed or Decline when eligible. The plan never authorizes use or clears mandatory holds. Never runs package code or writes package files outside temporary quarantine. Local references are confined to operator-approved roots.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -964,6 +964,7 @@ function renderGuardMarkdown(result) {
   ];
 
   if (result.review) lines.push(`REVIEW ${result.review.state}: ${result.review.id || 'unavailable'}. ${result.review.choice ? 'Decision remembered for this session.' : result.review.eligible ? 'Show evidence to the user and request Proceed or Decline before use or promotion.' : 'Complete required checks before use or promotion.'}`, '');
+  lines.push(...require("../src/review-plan").renderReviewPlan(result.reviewPlan));
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,

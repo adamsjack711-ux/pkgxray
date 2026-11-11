@@ -380,6 +380,9 @@ async function guardExtension(reference, options = {}) {
   Object.assign(result, reviews.reviewOutcome(decision, {
     reviewId, scope: options.reviewScope, decisions: options.reviewDecisions, eligible
   }));
+  result.reviewPlan = require("./review-plan").buildReviewPlan(result, {
+    action: options.promoteTo ? "promote" : options.reviewAction || "use"
+  });
 
   options.signal?.throwIfAborted();
   if (options.promoteTo && result.allowed) {

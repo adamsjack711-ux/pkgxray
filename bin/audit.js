@@ -859,6 +859,7 @@ function renderGuardMarkdown(result) {
       ? `REVIEW: inspect the evidence below, then choose Proceed or Decline. Review ID: ${result.review.id}. Use --review-id <id> --review-choice Proceed (or Decline).`
       : 'REVIEW: required checks are incomplete; resolve them before use or promotion.', '');
   }
+  lines.push(...require("../src/review-plan").renderReviewPlan(result.reviewPlan));
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,

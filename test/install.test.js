@@ -295,11 +295,16 @@ test('review promotion requires a bound choice and remembers it only for that de
     artifact: { integrity: f.lock.packages['node_modules/demo'].integrity }, promoteTo };
   const pending = await f.guard('npm:demo@1.0.0', { ...opts, reviewDecisions });
   assert.equal(pending.allowed, false);
+  assert.equal(pending.reviewPlan.state, 'review-required');
+  assert.equal(pending.reviewPlan.binding.reviewId, pending.review.id);
+  assert.equal(pending.reviewPlan.escalation.to, 'user');
   assert.equal(pending.promotedPath, null);
   await assert.rejects(fs.stat(promoteTo), { code: 'ENOENT' });
   const approved = await f.guard('npm:demo@1.0.0', { ...opts, reviewDecisions,
     reviewId: pending.review.id, reviewChoice: 'Proceed' });
   assert.equal(approved.outcome, 'SAFE');
+  assert.equal(approved.reviewPlan.state, 'decision-recorded');
+  assert.equal(approved.reviewPlan.escalation.to, 'none');
   assert.equal(approved.approval.decision, 'review', 'shared receipt must remain unapproved');
   assert.equal(approved.promotedPath, promoteTo);
   reviewDecisions = new LocalReviewDecisions(decisionFile);
