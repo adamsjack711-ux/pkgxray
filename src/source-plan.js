@@ -2,7 +2,7 @@
 
 const path = require("node:path").posix;
 const { analyzeExecutionFile } = require('./execution-graph');
-const INSTALL_HOOKS = new Set(["preinstall", "install", "postinstall", "prepare", "prepack"]);
+const INSTALL_HOOKS = new Set(["preinstall", "install", "postinstall", "prepare", "prepack", "prepublish", "preprepare", "postprepare", "postpack"]);
 const EXTENSIONS = ["", ".js", ".cjs", ".mjs", ".json", ".ts", ".node", "/index.js", "/index.cjs", "/index.mjs"];
 
 // A conservative plan over the actual artifact inventory. This follows literal

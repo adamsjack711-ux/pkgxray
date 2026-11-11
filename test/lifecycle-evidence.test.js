@@ -1,0 +1,192 @@
+"use strict";
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { auditEvidence, normalizeEvidence } = require('../src/auditor');
+const { proveLiteralLifecycle } = require('../src/lifecycle-evidence');
+const { collectSourceEvidence, guardExtension } = require('../src/quarantine');
+
+const message = "console.log('setup skipped');";
+function evidence(source = message, command = 'node ./install.js', extra = {}) {
+  return { packageName: 'arbitrary-name', sourceFiles: {
+    'package.json': JSON.stringify({ name: 'arbitrary-name', version: '1.0.0', scripts: { postinstall: command } }),
+    'install.js': source
+  }, ...extra };
+}
+const hook = report => report.findings.find(f => f.category === 'install-hook');
+const prove = raw => proveLiteralLifecycle('node ./install.js', 'package.json', normalizeEvidence(raw));
+
+test('complete literal logging and fixed CI checks carry replayable exact-source proof', () => {
+  for (const source of [message, ';', "process.exit(0);", "#!/usr/bin/env node\nconsole.log('ok', 'done');",
+    "if (process.env.CI || process.env.SKIP_DOWNLOAD) { console.log('skip'); process.exit(0); }",
+    "if (!process.env.CI && process.env.SKIP_DOWNLOAD !== 'false') console.log('skip'); else { console.log('done'); }"
+  ]) {
+    const input = evidence(source);
+    const report = auditEvidence(input);
+    assert.equal(report.verdict, 'safe', source);
+    assert.equal(hook(report).severity, 'info');
+    const proof = hook(report).lifecycleProof;
+    assert.equal(proof.kind, 'literal-node-lifecycle-v1');
+    assert.equal(proof.command, 'node ./install.js');
+    assert.deepEqual(proof.script, { file: 'install.js', source });
+    assert.deepEqual(proof, prove(input), 'evidence consumers can replay the exact same bounded proof');
+  }
+});
+
+test('a benign log never conceals other effects, aliases, calls, or unvisited branches', () => {
+  const unsupported = [
+    "console.log('ok'); require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');",
+    "process.exit(0); require('child_process').execSync('id');",
+    "if (process.env.CI) console.log('ok'); else require('./hidden.js');",
+    "console.log('ok'); process.env.CI = 'true';",
+    "console.log('ok'); globalThis.console = { log() { require('./hidden.js'); } };",
+    "const console = { log() { require('./hidden.js'); } }; console.log('ok');",
+    "var process = { exit() { require('./hidden.js'); } }; process.exit(0);",
+    "console.log('ok'); Object.defineProperty(process.env, 'CI', { get() { require('./hidden.js'); } });",
+    "const f = console.log; f('ok');",
+    "console['log']('ok');",
+    "globalThis.console.log('ok');",
+    "(0, console.log)('ok');",
+    "console.log.call(null, 'ok');",
+    "console.log(...['ok']);",
+    "console.log(`ok`);",
+    "console.log(`${require('./hidden.js')}`);",
+    "console.log(process.env.NPM_TOKEN);",
+    "if (process.env['CI']) console.log('ok');",
+    "if (process.env.HOME) console.log('ok');",
+    "if (process.env.CI || require('./hidden.js')) console.log('ok');",
+    "if (process.env.CI) { function hidden() { require('./hidden.js'); } }",
+    "console.log('ok'); import('./hidden.js');",
+    "import './hidden.js'; console.log('ok');",
+    "console?.log('ok');",
+    "process.exit(1);",
+    "console.log('\\u001b[2J');",
+    "console.log('ok'); while (true) {}"
+  ];
+  for (const source of unsupported) {
+    const input = evidence(source);
+    assert.equal(prove(input), null, source);
+    const report = auditEvidence(input);
+    assert.equal(hook(report).severity, 'medium', source);
+    assert.notEqual(report.verdict, 'safe', source);
+  }
+});
+
+test('command proof excludes flags, preloads, shell composition, arguments and path ambiguity', () => {
+  for (const command of ['node --require ./hidden.js ./install.js', 'node -r ./hidden.js ./install.js',
+    'node --import ./hidden.js ./install.js', 'NODE_OPTIONS=--require=./hidden.js node ./install.js',
+    'node ./install.js && node ./hidden.js', 'node ./install.js; node ./hidden.js',
+    'node ./install.js | sh', 'node ./install.js\nnode ./hidden.js', 'node ./install.js extra',
+    'node ../install.js', 'node ./../install.js', 'node /install.js', 'node ./scripts/../install.js',
+    'node .\\install.js', 'node ./node_modules/install.js', 'node ./install', 'node "./install.js"',
+    'node ./install.js ', 'node  ./install.js', 'node ./install.js\n', 'node $(echo ./install.js)']) {
+    assert.equal(hook(auditEvidence(evidence(message, command))).severity, 'medium', command);
+  }
+});
+
+test('missing, ambiguous, malformed, oversized and explicitly truncated evidence never proves a hook', () => {
+  const missing = evidence(); delete missing.sourceFiles['install.js'];
+  const duplicate = evidence(); duplicate.sourceFiles = [
+    { path: 'package.json', content: duplicate.sourceFiles['package.json'] },
+    { path: 'install.js', content: message }, { path: 'install.js', content: "require('./hidden.js')" }
+  ];
+  for (const input of [missing, duplicate, evidence(''), evidence("console.log('ok'); ???"), evidence(' '.repeat(16 * 1024) + message),
+    evidence(message, undefined, { sourceCoverage: { complete: false, truncatedFiles: 1 } }),
+    evidence(message, undefined, { sourceCoverage: { complete: true, truncatedFiles: 1 } }),
+    evidence(message, undefined, { sourceCoverage: { complete: true, skippedFiles: 1 } }),
+    evidence(message, undefined, { sourceCoverage: { complete: true, runtimeFiles: [] } })]) {
+    assert.equal(prove(input), null);
+    assert.equal(hook(auditEvidence(input)).severity, 'medium');
+  }
+});
+
+test('AST and source budgets reject pathological proofs without partial traversal', () => {
+  for (const source of [';'.repeat(1100), 'if(process.env.CI){'.repeat(40) + message + '}'.repeat(40)]) {
+    assert.equal(prove(evidence(source)), null);
+  }
+});
+
+test('every lifecycle hook is checked independently and a hostile neighbor remains blocked', () => {
+  const scripts = { preinstall: 'node ./first.js', install: 'node ./second.js', postinstall: 'node ./install.js',
+    prepack: 'node ./pack.js', prepare: 'node ./prepare.js', prepublish: 'node ./publish.js',
+    preprepare: 'node ./preprepare.js', postprepare: 'node ./postprepare.js', postpack: 'node ./postpack.js' };
+  const input = evidence();
+  input.sourceFiles['package.json'] = JSON.stringify({ name: 'demo', scripts });
+  for (const command of Object.values(scripts)) input.sourceFiles[command.slice('node ./'.length)] = message;
+  let report = auditEvidence(input);
+  assert.equal(report.verdict, 'safe');
+  assert.equal(report.findings.filter(f => f.category === 'install-hook' && f.severity === 'info').length, 9);
+  input.sourceFiles['first.js'] = "require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');";
+  report = auditEvidence(input);
+  assert.equal(report.verdict, 'block');
+  assert.equal(report.findings.filter(f => f.category === 'install-hook' && f.severity === 'medium').length, 1);
+  assert.equal(report.findings.filter(f => f.category === 'install-hook' && f.severity === 'info').length, 8);
+});
+
+test('clearing a literal hook never clears vulnerability or required-coverage findings', () => {
+  const vulnerable = auditEvidence(evidence(message, undefined, { knownVulnerabilities: [{ id: 'TEST-CVE', summary: 'known vulnerable dependency' }] }));
+  assert.equal(hook(vulnerable).severity, 'info');
+  assert.equal(vulnerable.verdict, 'block');
+  const gap = auditEvidence(evidence(message, undefined, { sourceCoverage: { complete: false, reasons: ['truncated source'] } }));
+  assert.notEqual(gap.verdict, 'safe');
+  assert.ok(gap.findings.some(f => f.category === 'incomplete-source-scan'));
+});
+
+test('source collection rejects linked lifecycle files instead of trusting their visible target', { skip: process.platform === 'win32' }, async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-lifecycle-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const dir = path.join(root, 'package'); await fs.mkdir(dir);
+  await fs.writeFile(path.join(dir, 'package.json'), evidence().sourceFiles['package.json']);
+  await fs.writeFile(path.join(root, 'outside.js'), message);
+  await fs.symlink('../outside.js', path.join(dir, 'install.js'));
+  const collected = await collectSourceEvidence(dir);
+  assert.equal(collected.coverage.complete, false);
+  assert.equal(Object.hasOwn(collected.sourceFiles, 'install.js'), false);
+  const report = auditEvidence({ sourceFiles: collected.sourceFiles, sourceCoverage: collected.coverage });
+  assert.equal(hook(report).severity, 'medium');
+});
+
+test('actual guard clears only a fully collected proof plus completed vulnerability checks', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-lifecycle-guard-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const input = evidence();
+  for (const [file, source] of Object.entries(input.sourceFiles)) await fs.writeFile(path.join(root, file), source);
+  const transport = require('../src/http-client');
+  const requestJson = transport.requestJson;
+  transport.requestJson = async url => { assert.equal(url, 'https://api.osv.dev/v1/query'); return { vulns: [] }; };
+  t.after(() => { transport.requestJson = requestJson; });
+  const options = { githubMetadata: false, githubDiff: false, provenance: false };
+  const cleared = await guardExtension(root, options);
+  assert.equal(cleared.decision, 'allow');
+  assert.equal(cleared.assessment.checks.source, 'completed');
+  assert.equal(cleared.assessment.checks.vulnerabilities, 'completed');
+  const disabled = await guardExtension(root, { ...options, vulnerabilityCheck: false });
+  assert.equal(disabled.decision, 'block');
+  await fs.appendFile(path.join(root, 'install.js'), "\nrequire('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');");
+  const hostile = await guardExtension(root, options);
+  assert.equal(hostile.decision, 'block');
+  assert.equal(hook(hostile.report).severity, 'medium');
+});
+
+
+test('prepublish, preprepare, postprepare and postpack neighbors remain required runtime evidence', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-lifecycle-neighbor-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'install.js'), message);
+  await fs.writeFile(path.join(root, 'neighbor.dat'), "console.log('ok'); require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');");
+  for (const name of ['prepublish', 'preprepare', 'postprepare', 'postpack']) {
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'demo', scripts: {
+      postinstall: 'node ./install.js', [name]: 'node ./neighbor.dat'
+    } }));
+    const collected = await collectSourceEvidence(root);
+    assert.equal(collected.coverage.complete, true);
+    assert.ok(collected.coverage.runtimeFiles.includes('neighbor.dat'), name);
+    assert.ok(collected.coverage.installTimeFiles.includes('neighbor.dat'), name);
+    const report = auditEvidence({ sourceFiles: collected.sourceFiles, sourceCoverage: collected.coverage });
+    assert.equal(report.verdict, 'block', name);
+    assert.equal(report.findings.filter(f => f.category === 'install-hook' && f.severity === 'info').length, 1);
+    assert.equal(report.findings.filter(f => f.category === 'install-hook' && f.severity === 'medium').length, 1);
+  }
+});

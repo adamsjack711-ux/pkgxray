@@ -1,7 +1,7 @@
 {
   "name": "postinstall-reads-ci-env",
-  "expect": "review",
-  "note": "postinstall reads a couple of env vars to detect CI and skip a download — lifecycle script is review, but no env-harvest-to-network, must not block",
+  "expect": "safe",
+  "note": "The complete supplied install.js only tests fixed CI/SKIP_DOWNLOAD variables, logs a literal message and exits 0. Both conditional paths are inspected; no download or other effect is present.",
   "evidence": {
     "packageName": "native-build-dep",
     "sourceFiles": {

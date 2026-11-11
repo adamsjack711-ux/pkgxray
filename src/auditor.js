@@ -7,6 +7,7 @@ const { compareProvenanceToRepository } = require("./attestation");
 const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = require("./credential-targets");
 const { inspectRuntimeLoaders } = require("./runtime-loaders");
 const { onlyPassiveDiagnosticUrls } = require("./passive-url-evidence");
+const { proveLiteralLifecycle } = require("./lifecycle-evidence");
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -881,7 +882,7 @@ function computeRiskBands(findings) {
 function auditMetadata(evidence, findings) {
   const packageJson = findPackageJson(evidence.sourceFiles);
   if (packageJson) {
-    inspectPackageJson(packageJson.path, packageJson.json, findings);
+    inspectPackageJson(packageJson.path, packageJson.json, findings, evidence);
   } else {
     // No package.json — but a Python package's manifest is setup.py /
     // pyproject.toml. When one is present the evidence is NOT incomplete: it IS
@@ -1267,7 +1268,7 @@ function findPackageJson(files) {
   return null;
 }
 
-function inspectPackageJson(path, json, findings) {
+function inspectPackageJson(path, json, findings, evidence) {
   if (!json) {
     findings.push({
       severity: "medium",
@@ -1280,15 +1281,18 @@ function inspectPackageJson(path, json, findings) {
   }
 
   const scripts = json.scripts || {};
-  for (const hook of ["preinstall", "install", "postinstall", "prepack", "prepare"]) {
+  for (const hook of AUTO_RUN_INSTALL_HOOKS) {
     if (scripts[hook]) {
+      const lifecycleProof = proveLiteralLifecycle(scripts[hook], path, evidence);
       findings.push({
-        severity: "medium",
+        severity: lifecycleProof ? "info" : "medium",
         category: "install-hook",
         file: path,
         snippet: `"${hook}": "${scripts[hook]}"`,
-        rationale:
-          "Install-time scripts run automatically with the installing user's privileges and require manual review."
+        rationale: lifecycleProof
+          ? "The exact supplied lifecycle script is fully parsed and limited to literal messages, fixed CI/SKIP_DOWNLOAD conditions, and exit(0). This proof does not clear other findings."
+          : "Install-time scripts run automatically with the installing user's privileges; this command or its complete script is outside the bounded benign proof.",
+        ...(lifecycleProof ? { lifecycleProof } : {})
       });
       // An install hook that publishes INLINE never reaches the file-level
       // self-publish check, because the command lives in package.json and
@@ -1984,14 +1988,18 @@ function collectLifecycleReferencedPaths(files) {
   return { all, lifecycle, installTime };
 }
 
-// The package.json hooks npm executes on its own during `npm install`. Kept in
-// sync with the hook list inspectPackageJson reports as install-hook findings.
+// Lifecycle commands relevant to installation and package preparation. Keep
+// source-plan.js in sync so every reported hook is collected as runtime code.
 const AUTO_RUN_INSTALL_HOOKS = new Set([
   "preinstall",
   "install",
   "postinstall",
   "prepack",
-  "prepare"
+  "prepare",
+  "prepublish",
+  "preprepare",
+  "postprepare",
+  "postpack"
 ]);
 
 // --- Install-time / auto-execution surfaces (#1) ---------------------------
