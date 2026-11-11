@@ -161,7 +161,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install OS confinement backend
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap iproute2
+        run: sudo bash ./scripts/ci-install-confinement.sh
       - name: Require real Linux confinement tests
         env:
           PKGXRAY_REQUIRE_OS_SANDBOX_TESTS: "1"
