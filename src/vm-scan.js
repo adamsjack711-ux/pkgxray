@@ -19,6 +19,10 @@ async function scanInVm(reference, options = {}) {
   if (options.allowExecution !== true) throw new Error("VM scanning executes untrusted code; explicit authorization is required");
   const profile = options.profile || "developer";
   if (!["developer", "ci"].includes(profile)) throw new Error("VM profile must be developer or ci");
+  if (options.expectedSha256 !== undefined &&
+      (typeof options.expectedSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedSha256))) {
+    throw new Error("expectedSha256 must be a 64-character SHA-256 digest");
+  }
   let staged;
   try {
     // This is evidence collection, never an install or promotion path. The MCP
@@ -29,6 +33,10 @@ async function scanInVm(reference, options = {}) {
       artifact: options.artifact, vulnerabilityCheck: options.vulnerabilityCheck,
       githubMetadata: options.githubMetadata, githubDiff: options.githubDiff
     });
+    if (options.expectedSha256 !== undefined &&
+        staged.resolved?.sha256?.toLowerCase() !== options.expectedSha256.toLowerCase()) {
+      throw new Error("VM artifact does not match expectedSha256; no code was executed");
+    }
     const behavioral = await (options.runVm || runLocalVm)({
       archivePath: `${staged.stagedPath}.tgz`, artifactSha256: staged.resolved?.sha256,
       scannerBuildId: staged.assessment?.engine?.buildId, policySha256: staged.assessment?.policySha256,
