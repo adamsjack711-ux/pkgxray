@@ -41,6 +41,8 @@ function printUsage() {
       "                     #   the report cites the missing CVE check.",
       "  pkgxray install [project-dir] [--format json]  # install approved npm lockfile archives offline; lifecycle scripts disabled",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json> [--deep|--deep-all]  # OSV; --deep scans blocked deps, --deep-all scans all resolved deps",
+      "  pkgxray compose --file compose.yaml [--format text|json] [--policy policy.json]  # offline Compose configuration checks",
+      "                     # Compose exits: 0 no findings, 2 findings, 3 incomplete, 1 error; these are not package verdicts.",
       "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
       "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
       "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
@@ -353,6 +355,10 @@ function readInput(file) {
 }
 
 async function main() {
+  if (process.argv[2] === "compose") {
+    process.exitCode = require("./compose.js").main(process.argv.slice(3));
+    return;
+  }
   // `pkgxray mcp-server` runs THIS package as a stdio MCP server — the same
   // server the `pkgxray-mcp` bin exposes — so MCP hosts can launch it with
   // `npx -y pkgxray mcp-server` (the registry entry) without a separate

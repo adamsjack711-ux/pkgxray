@@ -16,8 +16,11 @@ const GUARD_TOOL_NAME = "guard_agent_extension_install";
 const LOCKFILE_AUDIT_TOOL_NAME = "audit_lockfile_supply_chain";
 const LOCKFILE_TRIAGE_TOOL_NAME = "triage_lockfile_supply_chain";
 const VM_TOOL_NAME = "scan_npm_package_in_vm";
+const COMPOSE_TOOL_NAME = "audit_compose_configuration";
 // Read once from the trusted operator environment; callers cannot enable it.
 const VM_ENABLED = process.env.PKGXRAY_VM_TESTS === "1";
+const COMPOSE_ENABLED = process.env.PKGXRAY_COMPOSE === "1";
+const COMPOSE_POLICY = process.env.PKGXRAY_COMPOSE_POLICY;
 let vmBusy = false;
 
 // Always the published package version — a hardcoded string here drifted to
@@ -47,7 +50,8 @@ const CONFIG_TOOL_KEY = Object.freeze({
   [AUDIT_TOOL_NAME]: "audit",
   [LOCKFILE_AUDIT_TOOL_NAME]: "audit",
   [LOCKFILE_TRIAGE_TOOL_NAME]: "recheck",
-  [VM_TOOL_NAME]: "guard"
+  [VM_TOOL_NAME]: "guard",
+  [COMPOSE_TOOL_NAME]: "compose"
 });
 
 const { config: CONFIG, warnings: CONFIG_WARNINGS } = cfg.loadConfig({ cwd: process.cwd() });
@@ -59,6 +63,7 @@ const MCP_CONFIG = cfg.mcpConfig(CONFIG);
 // Whether an MCP tool is exposed under the effective config.
 function toolExposed(mcpToolName) {
   if (mcpToolName === VM_TOOL_NAME && !VM_ENABLED) return false;
+  if (mcpToolName === COMPOSE_TOOL_NAME && !COMPOSE_ENABLED) return false;
   const key = CONFIG_TOOL_KEY[mcpToolName];
   if (!key) return true; // unmapped tools are never hidden by config
   return cfg.mcpToolAllowed(CONFIG, key);
@@ -347,6 +352,19 @@ function lockfileTriageToolDefinition() {
   };
 }
 
+function composeToolDefinition() {
+  return {
+    name: COMPOSE_TOOL_NAME,
+    title: "Check a Compose configuration",
+    description: "Read one local Compose YAML file under operator-approved roots and inspect published ports, host access and connected configuration risks. Offline and read-only: no Docker, image pulls, environment-file reads or execution. Reports riskStatus separately from analysisStatus; no findings never means deployment approval. Interpolation and multi-file configuration remain incomplete. Suppressions can only come from the operator's explicit policy file.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: { type: "object", additionalProperties: false, required: ["composePath"], properties: {
+      composePath: { type: "string", description: "One regular UTF-8 Compose YAML file, at most 1 MiB, under an operator-approved filesystem root." },
+      outputFormat: { type: "string", enum: ["markdown", "json"], default: "markdown" }
+    } }
+  };
+}
+
 function vmToolDefinition() {
   return {
     name: VM_TOOL_NAME, title: "Observe an npm package in a disposable VM",
@@ -367,7 +385,7 @@ function listTools() {
     auditToolDefinition(),
     guardToolDefinition(),
     lockfileAuditToolDefinition(),
-    lockfileTriageToolDefinition(), vmToolDefinition()
+    lockfileTriageToolDefinition(), vmToolDefinition(), composeToolDefinition()
   ].filter((t) => toolExposed(t.name));
 }
 
@@ -375,13 +393,13 @@ const TOOL_NAMES = new Set([
   AUDIT_TOOL_NAME,
   GUARD_TOOL_NAME,
   LOCKFILE_AUDIT_TOOL_NAME,
-  LOCKFILE_TRIAGE_TOOL_NAME, VM_TOOL_NAME
+  LOCKFILE_TRIAGE_TOOL_NAME, VM_TOOL_NAME, COMPOSE_TOOL_NAME
 ]);
 
 // Acquisition's parser is the authority for classification AND path semantics.
 // In particular, do not separately decode URLs or maintain a prefix allowlist.
 const TOOL_SCHEMAS = new Map([
-  auditToolDefinition(), guardToolDefinition(), lockfileAuditToolDefinition(), lockfileTriageToolDefinition(), vmToolDefinition()
+  auditToolDefinition(), guardToolDefinition(), lockfileAuditToolDefinition(), lockfileTriageToolDefinition(), vmToolDefinition(), composeToolDefinition()
 ].map(tool => [tool.name, tool.inputSchema]));
 
 function toolOptions(toolName, args) {
@@ -478,7 +496,14 @@ function validateToolCall(toolName, args) {
     }
     if (spec.enum && !spec.enum.includes(value)) return `${key} must be ${spec.enum.map(v => `'${v}'`).join(" or ")}`;
   }
-  if (toolName === VM_TOOL_NAME) {
+  if (toolName === COMPOSE_TOOL_NAME) {
+    if (typeof args.composePath !== "string" || !args.composePath || args.composePath.length > 4096 || args.composePath.includes("\0")) {
+      return "composePath must be a non-empty path without a NUL byte";
+    }
+    const resolved = resolveOperatorPath(args.composePath);
+    if (!resolved) return "composePath is unreadable or outside the operator-approved filesystem roots";
+    args.composePath = resolved;
+  } else if (toolName === VM_TOOL_NAME) {
     try { exactVmReference(args.reference); } catch { return "VM scans require npm:name@exact-version"; }
   } else if (toolName === GUARD_TOOL_NAME) {
     if (args.artifact !== undefined) return "artifact is reserved for trusted acquisition callers";
@@ -623,6 +648,18 @@ function handleRequest(request) {
     const validationError = validateToolCall(name, args);
     if (validationError) {
       return invalidParams(id, validationError);
+    }
+
+    if (name === COMPOSE_TOOL_NAME) {
+      // Lazy-load the separate engine only after operator opt-in and path checks.
+      const { auditComposeFile } = require("../src/compose/mcp");
+      return auditComposeFile(args.composePath, {
+        resolvePath: resolveOperatorPath, policyPath: COMPOSE_POLICY
+      }).then(report => ({ jsonrpc: "2.0", id, result: {
+        content: textContent(args.outputFormat === "json" ? JSON.stringify(report, null, 2) : require("../src/compose/audit").render(report)),
+        structuredContent: report,
+        isError: report.analysisStatus === "error"
+      } }));
     }
 
     if (name === VM_TOOL_NAME) {

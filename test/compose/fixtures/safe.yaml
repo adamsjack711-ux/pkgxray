@@ -1,0 +1,29 @@
+name: personal-notes
+services:
+  app:
+    image: example/notes:1.0
+    user: "1000:1000"
+    privileged: false
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    ports:
+      - "127.0.0.1:8080:8080"
+      - target: 8080
+        published: "8081"
+        host_ip: "::1"
+    volumes:
+      - notes:/data
+      - ./public:/srv/public:ro
+      - type: tmpfs
+        target: /tmp
+    environment:
+      LOG_LEVEL: info
+  db:
+    image: postgres:17
+    expose: [5432]
+    volumes:
+      - database:/var/lib/postgresql/data
+volumes:
+  notes:
+  database:

@@ -1,0 +1,22 @@
+services:
+  dashboard:
+    image: example/dashboard:1.0
+    ports:
+      - "8080:80"
+      - target: 8443
+        published: "8443"
+        host_ip: "::"
+    privileged: true
+    pid: host
+    cap_add: [SYS_ADMIN, CAP_SYS_PTRACE, NET_ADMIN]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - type: bind
+        source: /etc
+        target: /host/etc
+        read_only: true
+  monitor:
+    image: example/monitor:1.0
+    network_mode: host
+    volumes:
+      - /proc:/host/proc:ro

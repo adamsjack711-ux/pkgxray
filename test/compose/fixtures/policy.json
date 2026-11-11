@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "suppressions": [
+    { "ruleId": "CXR-001", "service": "dashboard", "reason": "Intentional public listener behind the reviewed gateway." }
+  ]
+}

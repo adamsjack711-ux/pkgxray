@@ -8,6 +8,7 @@
   "type": "commonjs",
   "bin": {
     "pkgxray": "./bin/audit.js",
+    "pkgxray-compose": "./bin/compose.js",
     "pkgxray-mcp": "./bin/mcp-server.js",
     "pkgxray-cache": "./bin/pkgxray-cache.js"
   },

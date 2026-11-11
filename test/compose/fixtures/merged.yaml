@@ -1,0 +1,16 @@
+x-defaults: &defaults
+  privileged: true
+  ports: &ports
+    - "[::1]:8080:80"
+x-extra: &extra
+  privileged: false
+  pid: host
+services:
+  inherited:
+    <<: [*defaults, *extra]
+    image: example/tool:1
+  replaced:
+    <<: *defaults
+    privileged: false
+    ports: []
+  alias: *defaults
