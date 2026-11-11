@@ -148,7 +148,10 @@ test('100 guard requests through MCP share static analysis but never share stagi
   for (const response of responses) {
     assert.ok(response.result, JSON.stringify(response));
     const scan = response.result.structuredContent;
-    assert.equal(scan.allowed, false); assert.equal(scan.review.state, 'pending');
+    assert.equal(scan.allowed, false); assert.equal(scan.decision, 'block');
+    assert.equal(Object.hasOwn(scan, 'review'), false);
+    assert.equal(Object.hasOwn(scan, 'reviewPlan'), false);
+    assert.ok(scan.resolution.reasonCodes.includes('vulnerability-check-disabled'));
     for (const key of ['promotedPath', 'stagedPath', 'quarantinePath', 'sourceFiles']) assert.equal(Object.hasOwn(scan, key), false);
   }
   const stats = await client.stats();

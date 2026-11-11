@@ -4,7 +4,7 @@
 //
 // These drive the actual CLI via child_process so the whole chain is exercised:
 // loadConfig at startup → applyConfig on the report → renderConfigEffects in
-// the output → exitCodeForVerdict for the process exit code. The single-file
+// the output → binary authorization for the process exit code. The single-file
 // audit path (`--file` / stdin) is used because it runs fully offline from a
 // crafted evidence JSON, so identity + sha256 are deterministic and no network
 // or tarball staging is involved.
@@ -83,7 +83,7 @@ test("muted finding is surfaced in the report but excluded from the verdict", as
     assert.ok(parsed.configEffects, "configEffects is present in JSON output");
     assert.equal(parsed.configEffects.mutedCount, 1);
 
-    // Exit 0 under the default failOn:"review" now that nothing survives.
+    // Completed, policy-cleared evidence exits 0.
     assert.equal(json.status, 0, "safe verdict exits 0");
 
     // Human/markdown output surfaces the mute loudly.
@@ -95,15 +95,16 @@ test("muted finding is surfaced in the report but excluded from the verdict", as
   }
 });
 
-test("without a mute, the same install-hook finding produces review (exit 3)", async () => {
+test("without a mute, the same install-hook uncertainty blocks (exit 2)", async () => {
   // Baseline: no config file at all → maximum strictness, install-hook survives.
   const dir = await tempProject(undefined);
   try {
     const evidence = evidenceWithInstallHook();
     const res = runAudit(dir, ["--format", "json"], JSON.stringify(evidence));
     const parsed = JSON.parse(res.stdout);
-    assert.equal(parsed.verdict, "review");
-    assert.equal(res.status, 3, "default config reproduces today's review→3 exit code");
+    assert.equal(parsed.verdict, "block");
+    assert.ok(parsed.findings.some(f => f.category === "install-hook"));
+    assert.equal(res.status, 2, "unresolved uncertainty blocks automatically");
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
@@ -149,35 +150,36 @@ test("a pinned allow with a NON-matching sha256 does not apply", async () => {
   try {
     const res = runAudit(dir, ["--format", "json"], JSON.stringify(evidence));
     const parsed = JSON.parse(res.stdout);
-    assert.equal(parsed.verdict, "review", "sha mismatch → allow not applied, package scanned normally");
+    assert.equal(parsed.verdict, "block", "sha mismatch cannot clear uncertainty");
     assert.equal(parsed.configEffects.allowlisted, null);
-    assert.equal(res.status, 3);
+    assert.equal(res.status, 2);
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
 });
 
-test("failOn changes the exit code for the same verdict", async () => {
+test("failOn cannot turn unresolved uncertainty into successful authorization", async () => {
   const evidence = evidenceWithInstallHook(); // verdict "review"
 
-  // failOn:"block" → review no longer fails the run (exit 0), block still 2.
+  // Legacy reporting thresholds cannot authorize unresolved evidence.
   const blockDir = await tempProject({ failOn: "block" });
-  // failOn:"never" → nothing fails the run.
+  // Even failOn:"never" must retain the binary denial exit.
   const neverDir = await tempProject({ failOn: "never" });
   try {
     const blockRes = runAudit(blockDir, ["--format", "json"], JSON.stringify(evidence));
-    assert.equal(JSON.parse(blockRes.stdout).verdict, "review");
-    assert.equal(blockRes.status, 0, 'failOn:"block" lets a review pass (exit 0)');
+    assert.equal(JSON.parse(blockRes.stdout).verdict, "block");
+    assert.equal(blockRes.status, 2, 'failOn:"block" cannot clear uncertainty');
 
     const neverRes = runAudit(neverDir, ["--format", "json"], JSON.stringify(evidence));
-    assert.equal(neverRes.status, 0, 'failOn:"never" never fails on the verdict');
+    assert.equal(JSON.parse(neverRes.stdout).verdict, "block");
+    assert.equal(neverRes.status, 2, 'failOn:"never" cannot clear uncertainty');
   } finally {
     await fsp.rm(blockDir, { recursive: true, force: true });
     await fsp.rm(neverDir, { recursive: true, force: true });
   }
 });
 
-test("legacy policy warning explains that REVIEW remains pending", async () => {
+test("legacy policy warns and leaves unresolved uncertainty blocked", async () => {
   // The legacy setting emits migration guidance.
   const dir = await tempProject({ policy: "allow-review" });
   try {
@@ -185,21 +187,21 @@ test("legacy policy warning explains that REVIEW remains pending", async () => {
     const res = runAudit(dir, ["--format", "json"], JSON.stringify(evidence));
     assert.match(res.stderr, /^pkgxray: /m, "warnings are prefixed and go to stderr");
     assert.match(res.stderr, /allow-review/);
-    // A policy setting cannot supply a developer decision.
-    assert.equal(res.status, 3);
+    // A legacy policy setting cannot clear unresolved evidence.
+    assert.equal(res.status, 2);
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
 });
 
 test("--policy CLI flag overrides the config file policy", async () => {
-  // The CLI flag takes precedence but cannot authorize a pending REVIEW.
+  // The CLI flag takes precedence but cannot authorize unresolved evidence.
   const dir = await tempProject({ policy: "safe-only" });
   try {
     const evidence = evidenceWithInstallHook();
     const res = runAudit(dir, ["--policy", "allow-review", "--format", "json"], JSON.stringify(evidence));
     assert.match(res.stderr, /allow-review/, "CLI --policy override is applied and warns");
-    assert.equal(res.status, 3, "allow-review leaves REVIEW pending");
+    assert.equal(res.status, 2, "allow-review cannot clear uncertainty");
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }

@@ -58,18 +58,19 @@ test("promotion uses config-adjusted verdict before copying", async t => {
   assert.ok(result.resolution.reasonCodes.includes("vulnerability-check-disabled"));
 });
 
-test("deep scan failure changes safe to review and preserves an existing block", async t => {
+test("deep scan failure blocks unverified packages and preserves existing vulnerability findings", async t => {
   const q = require("../src/quarantine");
   const original = q.guardExtension;
   q.guardExtension = async () => { throw new Error("download unavailable"); };
   t.after(() => { q.guardExtension = original; });
   const { source } = await fixture(t, { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/demo": { version: "1.0.0", resolved: "https://registry.npmjs.org/demo/-/demo-1.0.0.tgz", integrity: "sha256-" + Buffer.alloc(32).toString("base64") } } }) });
   const { auditLockfile } = require("../src/lockfile");
-  for (const [osv, expected] of [[{}, "review"], [{ vulns: [{ id: "TEST-1" }] }, "block"]]) {
+  for (const [osv, expected] of [[{}, "block"], [{ vulns: [{ id: "TEST-1" }] }, "block"]]) {
     const r = await auditLockfile(path.join(source, "package-lock.json"), { osvResults: [osv], deepAll: true, triageDecisions: false });
     assert.equal(r.worstDecision, expected);
     assert.equal(r.coverage.deepFailures, 1);
     assert.equal(r.results[0].deep.error, "download unavailable");
+    if (osv.vulns) assert.equal(r.results[0].vulnerabilities[0].id, "TEST-1");
   }
 });
 
