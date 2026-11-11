@@ -111,3 +111,62 @@ oversized ignored metadata, complete subtree resources, selected-byte and gzip
 limits, compressed-input and entry limits, unsafe ignored members, duplicate and
 conflicting paths, links/special files, corrupt selected content, destination
 preservation, and cleanup. No executable package fixture is required.
+
+## Broader frozen malicious cohort
+
+`benchmark/broad-malicious-manifest.json` expands the historical malicious set to
+32 distinct package identities at the same pinned DataDog revision. Selection
+retains the lexicographically first eligible pre-2025 ZIP per package, then ranks
+source paths by SHA256. The complete compromised-library inventory has only four
+eligible packages under the existing limits. The initially requested 16+16 split
+therefore becomes **4 compromised libraries and 28 malicious-intent packages**,
+with that allocation decided before scanning. Results are separated by category.
+The original eight archives remain selected with unchanged ZIP hashes.
+
+Selection, Git blob identities, byte counts, and ZIP SHA256 values are frozen
+before extraction or evaluation. Cases are never replaced after acquisition,
+extraction, or scanning errors. The static runner reuses the bounded extractor
+described above, removes temporary payloads, and never installs, imports, or
+executes package code. CVE, dependency, and network enrichment checks are disabled
+for this static dataset experiment; guard blocks are not positive malware
+detections. Raw analyzer verdicts, configured verdicts, errors, and check states
+are recorded separately.
+
+```sh
+node scripts/validate-broad-malicious.js --scan
+node --test test/broad-malicious.test.js test/external-corpus.test.js
+```
+
+The report records the exact manifest-file digest as well as the scanner build
+and observed policy identities. Exit status is nonzero for errors or raw `safe`
+results on the externally labeled malicious samples. Raw `review` is uncertainty,
+not a confirmed detection. Distinct package names and archive hashes do not
+establish independent malware families; related campaigns and variants can
+dominate this selected historical cohort. No production recall or prevalence
+estimate follows from its aggregate result.
+
+### Observed broader result on 2026-11-11
+
+`benchmark/broad-malicious-validation-2026-11-11.json` accounts for all 32
+selected cases: **3 raw BLOCK, 29 raw REVIEW, zero raw SAFE, and zero errors**.
+The four compromised-library cases all remain REVIEW. The 28 malicious-intent
+cases contribute the three BLOCK and 25 REVIEW results. All eight original cases
+retain their archive identities and raw REVIEW outcomes. Source collection is
+complete for 28 cases and incomplete for four; completeness of collection does
+not establish complete behavioral understanding.
+
+The detector build is
+`6ef8d992d9e1790b67edbe16cf8fa73384a04e24343ce7067509e52b238c5a7a`,
+with observed policy SHA256
+`1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217`.
+The exact manifest-file SHA256 is
+`791725e1440e716e55809b15785866162fc2a3d67829bc6f74a319fe0798004a`.
+All 32 archive and derived-tree hashes are distinct, while family/campaign
+independence remains unknown.
+
+The guard blocks all 32, but mandatory CVE checks are disabled for this static
+experiment. That guard count must not be presented as 32 confirmed detections or
+100% malicious recall. The raw analyzer's 3/32 BLOCK count is a selected-cohort
+observation, with the other 29 still uncertain. These results prioritize better
+behavioral evidence and independent malicious-family coverage alongside the
+benign-flow gaps in the broader live cohort.

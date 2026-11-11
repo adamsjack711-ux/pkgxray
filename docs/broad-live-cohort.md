@@ -39,3 +39,46 @@ node --test test/broad-cohort-acquisition.test.js
 ```
 
 The output path must not exist. A new acquisition can select different latest versions and therefore cannot replace this frozen cohort or be represented as a rerun on the same inputs. The script reserves its output before network activity and only writes the complete manifest after every selected case finishes. An interrupted acquisition can leave an empty reserved output; this is not a valid frozen manifest and must not be scanned.
+
+## Observed result on 2026-11-11
+
+`benchmark/broad-live-validation-2026-11-11.json` records **11 allows, 21 blocks,
+and zero errors** through the real stdio MCP server. The original four controls
+still allow. Every artifact matches its frozen SHA256, every allowance passes
+the shared authorization-receipt predicate, and no explicit override is used.
+The detector build remains
+`6ef8d992d9e1790b67edbe16cf8fa73384a04e24343ce7067509e52b238c5a7a`
+and every case has policy SHA256
+`1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217`.
+
+| Stratum | Allowed | Blocked | Errors |
+| --- | ---: | ---: | ---: |
+| Utilities | 10 | 2 | 0 |
+| Larger libraries | 1 | 7 | 0 |
+| Framework and tooling | 0 | 6 | 0 |
+| Network and native | 0 | 6 | 0 |
+
+All 32 vulnerability checks completed with zero reported vulnerabilities. All
+21 blocked cases expose raw `inconclusive` through MCP. Twenty contain
+`flow-analysis-gap`, nine have incomplete source coverage, and eight contain
+`unresolved-runtime-execution`; these groups overlap. The remaining block,
+fast-deep-equal, has install-hook and npm-versus-GitHub-divergence findings.
+These observations are not adjudicated false positives or confirmed malicious
+packages. They show that the original four-control success does not establish
+quiet operation across this broader set.
+
+The next investigation should focus on flow-analysis coverage and runtime-target
+classification. Coverage diagnostics include unresolved build-script targets in
+glob and tar, `cjs/MyComponent` in React, declaration-file targets in several
+larger packages, and a computed Node target in esbuild. Lodash and the MCP SDK
+reach the existing 600-file cap; Vite also reports the 1 MiB execution-graph file
+limit. These diagnostics need source-level adjudication and adversarial tests
+before changing detection or budgets. No thresholds or policies were relaxed
+for this measurement.
+
+Observed request times have a 1.54-second median and a 30.94-second maximum;
+the sum is 204.53 seconds. They include registry/OSV and other default enrichment,
+varying package sizes, and MCP processing, and exclude session initialization
+and cohort acquisition. This single sequential run is not a production latency
+benchmark. Direct dependency scanning was not requested, and provenance status
+varied, so the result does not establish complete dependency-closure verification.
