@@ -1,0 +1,78 @@
+{
+  "measuredAt": "2026-11-11T06:51:11.120Z",
+  "scannerBuildId": "8cbcf07066bdb14d9e6a0ae58e0dc58cc2088c46320696859b79535b4c2ff5af",
+  "scope": "Explicit, bound and lexical receivers across supported calls, callbacks and defining-module imports; unsupported instance initializer and getter behavior remains uncertain.",
+  "regressionCycle": "Receiver regressions, independent cross-review follow-ups, six combined module/receiver regressions failing before integration, minimal corrections, focused and full tests, corpus and real MCP checks.",
+  "focused": {
+    "total": 50,
+    "passed": 50
+  },
+  "independentAdditionalCallbackCombinations": 16,
+  "fullSuite": {
+    "total": 1309,
+    "passed": 1304,
+    "skipped": 5,
+    "failed": 0
+  },
+  "lint": "passed including regenerated browser and website parity",
+  "authoredAutomaticTotals": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "holdout": {
+    "total": 20,
+    "review": 10,
+    "clear": 10,
+    "block": 0,
+    "miss": 0,
+    "falseBlock": 0
+  },
+  "upgrade": {
+    "total": 12,
+    "passed": 12
+  },
+  "mcpChecks": 7,
+  "liveControls": {
+    "counts": {
+      "allow": 3,
+      "block": 1,
+      "error": 0
+    },
+    "measurementValid": true,
+    "allControlsAllowed": false
+  },
+  "externalStatic": {
+    "sameCohortAndArtifactHashes": true,
+    "counts": {
+      "malicious": {
+        "safe": 0,
+        "review": 8,
+        "block": 0,
+        "errors": 0
+      },
+      "benign": {
+        "safe": 3,
+        "review": 1,
+        "block": 0,
+        "errors": 0
+      }
+    },
+    "positiveMalwareDetectionEstablished": false
+  },
+  "limitations": [
+    "20 of 48 authored benign cases still stop; the four pinned real controls still include one accessor-related block.",
+    "Eight third-party malicious samples remain raw uncertainty; automatic blocking does not establish positive malware detection.",
+    "Small selected samples do not establish production accuracy or performance.",
+    "No target package code executed; no release, hosted deployment or local MCP activation."
+  ]
+}

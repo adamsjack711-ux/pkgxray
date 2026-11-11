@@ -1,0 +1,131 @@
+{
+  "measuredAt": "2026-11-11T06:49:21.212Z",
+  "scannerBuildId": "8cbcf07066bdb14d9e6a0ae58e0dc58cc2088c46320696859b79535b4c2ff5af",
+  "transport": "real stdio MCP",
+  "realNetwork": true,
+  "packageExecution": false,
+  "selection": "Four fixed exact-version registry controls with pinned artifact SHA256; no replacement on errors.",
+  "limitations": "Small selected benign cohort; labels are assumptions. Not production accuracy, malicious recall, or a latency benchmark. A valid measurement may contain blocks.",
+  "cases": [
+    {
+      "packageName": "escape-string-regexp",
+      "version": "5.0.0",
+      "expectedSha256": "c8b662afe8aa2b852ecc27d766e584a502f8351fbbd890611f2509bf083d28e6",
+      "status": "allow",
+      "artifactSha256": "c8b662afe8aa2b852ecc27d766e584a502f8351fbbd890611f2509bf083d28e6",
+      "buildId": "8cbcf07066bdb14d9e6a0ae58e0dc58cc2088c46320696859b79535b4c2ff5af",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "explicitOverride": false,
+      "categories": [],
+      "informationalCategories": [
+        "lonely-maintainer",
+        "npm-vs-github-clean"
+      ]
+    },
+    {
+      "packageName": "is-number",
+      "version": "7.0.0",
+      "expectedSha256": "7b75c1057198cf97696909a9bee176c9c5e9bcb5b03bf3ecef2f484defadd51e",
+      "status": "allow",
+      "artifactSha256": "7b75c1057198cf97696909a9bee176c9c5e9bcb5b03bf3ecef2f484defadd51e",
+      "buildId": "8cbcf07066bdb14d9e6a0ae58e0dc58cc2088c46320696859b79535b4c2ff5af",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "explicitOverride": false,
+      "categories": [],
+      "informationalCategories": [
+        "github-stale",
+        "npm-vs-github-clean"
+      ]
+    },
+    {
+      "packageName": "picocolors",
+      "version": "1.1.1",
+      "expectedSha256": "d3aedb2807967b7eb37fd11b03b7e3701e725af79c650d0812ff7213f8f882d9",
+      "status": "allow",
+      "artifactSha256": "d3aedb2807967b7eb37fd11b03b7e3701e725af79c650d0812ff7213f8f882d9",
+      "buildId": "8cbcf07066bdb14d9e6a0ae58e0dc58cc2088c46320696859b79535b4c2ff5af",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "explicitOverride": false,
+      "categories": [],
+      "informationalCategories": [
+        "lonely-maintainer",
+        "npm-vs-github-clean"
+      ]
+    },
+    {
+      "packageName": "yocto-queue",
+      "version": "1.2.1",
+      "expectedSha256": "2b3bd9bfcd6ca5e17556846221a11e15b43c81f76cb6bce3059405fed9753055",
+      "status": "block",
+      "artifactSha256": "2b3bd9bfcd6ca5e17556846221a11e15b43c81f76cb6bce3059405fed9753055",
+      "buildId": "8cbcf07066bdb14d9e6a0ae58e0dc58cc2088c46320696859b79535b4c2ff5af",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "sourceComplete": true,
+      "authorization": {
+        "mandatoryHoldReasons": [
+          "flow-analysis-gap"
+        ],
+        "behavioralCoverage": "partial",
+        "explicitOverride": false
+      },
+      "explicitOverride": false,
+      "categories": [
+        "flow-analysis-gap"
+      ],
+      "informationalCategories": [
+        "lonely-maintainer",
+        "npm-vs-github-clean"
+      ]
+    }
+  ],
+  "counts": {
+    "allow": 3,
+    "block": 1,
+    "error": 0
+  },
+  "sessionErrors": [],
+  "measurementValid": true,
+  "allControlsAllowed": false
+}

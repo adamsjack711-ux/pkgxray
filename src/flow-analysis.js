@@ -241,9 +241,13 @@ function createFlowAnalysis(files) {
       active.add(signature); activeFunctions.set(fn.node, active);
       const context = stateContext();
       const savedExports = result.exports;
-      const local = new Scope(isolated ? fn.scope.clone(context) : fn.scope);
+      const closure = isolated ? fn.scope.clone(context) : fn.scope;
+      const local = new Scope(closure);
       if (isolated) result.exports = copyState(result.exports, context);
-      local.set('this', thisValue || {bits:0,props:new Map()}, true);
+      // Callback paths invoke functions directly too. Resolve lexical this at
+      // this shared boundary, including the cloned closure during speculation.
+      const receiver = fn.node.type === 'ArrowFunctionExpression' ? closure.get('this') : thisValue;
+      local.set('this', receiver || {bits:0,props:new Map()}, true);
       const callerFile = lexicalFile;
       try {
         lexicalFile = fn.sourceFile;
@@ -290,7 +294,22 @@ function createFlowAnalysis(files) {
       }
       return checkExportRead(property(object, key));
     }
-    function callValue(node, callee, args) {
+    function readsReceiver(fn) {
+      const pending = [fn.node.body, ...fn.node.params];
+      while (pending.length) {
+        tick();
+        const node = pending.pop();
+        if (node.type === 'ThisExpression') return true;
+        // Nested ordinary functions establish their own receiver; nested
+        // arrows and class heritage/computed keys can still capture this one.
+        if (['FunctionExpression', 'FunctionDeclaration'].includes(node.type)) continue;
+        for (const value of Object.values(node)) for (const child of Array.isArray(value) ? value : [value]) {
+          if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
+        }
+      }
+      return false;
+    }
+    function callValue(node, callee, args, explicitThis) {
       tick();
       // Calls generally need the union of taint bits, not a structural join of
       // every argument object. Keeping this shallow prevents framework APIs
@@ -300,7 +319,7 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'alternatives') {
         if (callee.overflow) gap('callable alternatives limit', node,
           Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
-        return merge(...callee.alternatives.map(fn => callValue(node, fn, args)));
+        return merge(...callee.alternatives.map(fn => callValue(node, fn, args, explicitThis)));
       }
       if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null);
       if (callee.kind === 'builtin-loader') return load(args[0]?.value, null);
@@ -308,16 +327,26 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'reflect-get') return readProperty(args[0] || clean(), args[1]?.value);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
         const list = args[callee.kind === 'reflect-apply' ? 2 : 1];
-        if (!list?.elements) { gap('unresolved reflected argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
-        return callValue(node, args[0] || clean(), list.elements);
+        if (!list?.elements) { gap('unresolved reflected argument list', node,
+          Boolean(value.bits & (SECRET | ENV | REMOTE)) || ['function', 'bound', 'class'].includes(args[0]?.kind)); return value; }
+        if (callee.kind === 'reflect-construct' && args[0]?.kind === 'bound') gap('bound constructor receiver semantics are not modeled', node);
+        return callee.kind === 'reflect-apply'
+          ? callValue(node, args[0] || clean(), list.elements, args[1] || clean())
+          : callValue(node, args[0] || clean(), list.elements);
       }
-      if (callee.kind === 'invoke-call') return callValue(node, callee.target, args.slice(1));
+      if (callee.kind === 'invoke-call') return callValue(node, callee.target, args.slice(1), args[0] || clean());
       if (callee.kind === 'invoke-apply') {
-        if (!args[1]?.elements) { gap('unresolved apply argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
-        return callValue(node, callee.target, args[1].elements);
+        if (!args[1]?.elements) { gap('unresolved apply argument list', node,
+          Boolean(value.bits & (SECRET | ENV | REMOTE)) || ['function', 'bound', 'class'].includes(callee.target?.kind)); return value; }
+        return callValue(node, callee.target, args[1].elements, args[0] || clean());
       }
-      if (callee.kind === 'invoke-bind') return { bits: 0, kind: 'bound', target: callee.target, args: args.slice(1) };
-      if (callee.kind === 'bound') return callValue(node, callee.target, [...callee.args, ...args]);
+      if (callee.kind === 'invoke-bind') return { bits: 0, kind: 'bound', target: callee.target, receiver: args[0] || clean(), args: args.slice(1) };
+      // The first bound receiver survives later .call/.apply/.bind operations.
+      // Arrows ignore this receiver at the eventual function invocation.
+      if (callee.kind === 'bound') {
+        if (node.type === 'NewExpression') gap('bound constructor receiver semantics are not modeled', node);
+        return callValue(node, callee.target, [...callee.args, ...args], callee.receiver || clean());
+      }
       if (callee.kind === 'string-concat') {
         const parts = [callee.target, ...args];
         const combined = merge(...parts);
@@ -391,30 +420,37 @@ function createFlowAnalysis(files) {
           callee.target.bits |= value.bits;
           return literal(elements.length);
         }
-        const callback = args.find(arg => arg.kind === 'function');
-        if (callback) invoke(callback, [merge(...elements)]);
+        const callback = ['function', 'bound'].includes(args[0]?.kind) ? args[0] : null;
+        const returned = callback ? callValue(node, callback, [merge(...elements), clean(), callee.target], args[1] || clean()) : clean();
+        if (callee.method === 'map') {
+          if (!callback) gap('unresolved array map callback', node);
+          // One conservative abstract invocation represents every element;
+          // retain its returned taint instead of returning the input array.
+          const mapped = elements.map(() => returned);
+          return { ...merge(...mapped), elements: mapped };
+        }
         if (callee.method === 'find') return merge(...elements);
         if (callee.method === 'forEach') return clean();
         return { ...callee.target, elements: [...elements] };
       }
       if (callee.kind === 'promise-chain') {
-        const callback = args.find(arg => arg.kind === 'function');
+        const callback = args.find(arg => ['function', 'bound'].includes(arg.kind));
         if (!callback) return callee.target;
-        return merge(callee.target, invoke(callback, [callee.target]));
+        return merge(callee.target, callValue(node, callback, [callee.target], clean()));
       }
       if (callee.kind === 'promise-resolve') {
         callee.target.bits |= value.bits;
         return clean();
       }
       if (callee.kind === 'event-on') {
-        if (args[0]?.value === undefined || args[1]?.kind !== 'function') { gap(); return callee.target; }
+        if (args[0]?.value === undefined || !['function', 'bound'].includes(args[1]?.kind)) { gap(); return callee.target; }
         callee.target.listeners ||= new Map();
         callee.target.listeners.set(args[0].value, args[1]);
         return callee.target;
       }
       if (callee.kind === 'event-emit') {
         const listener = callee.target.listeners?.get(args[0]?.value);
-        if (listener) invoke(listener, args.slice(1));
+        if (listener) callValue(node, listener, args.slice(1), callee.target);
         else if (args[0]?.value === undefined) gap();
         return clean();
       }
@@ -426,7 +462,7 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'request') return tagged('request-stream');
       if (callee.kind === 'http2-connect') return tagged('http2-client');
       if (callee.kind === 'socket-create') {
-        for (const arg of args) if (arg.kind === 'function') callbacks.push(arg);
+        for (const arg of args) if (['function', 'bound'].includes(arg.kind)) callbacks.push(arg);
         return tagged('socket');
       }
       if (callee.kind === 'WebSocket') return tagged('websocket');
@@ -435,16 +471,24 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'Promise') {
         const promise = { bits: 0, kind: 'promise-chain' };
         promise.target = promise;
-        const executor = args.find(arg => arg.kind === 'function');
-        if (executor) invoke(executor, [
+        const executor = args.find(arg => ['function', 'bound'].includes(arg.kind));
+        if (executor) callValue(node, executor, [
           { bits: 0, kind: 'promise-resolve', target: promise },
           { bits: 0, kind: 'promise-resolve', target: promise }
-        ]);
+        ], clean());
         return promise;
       }
       if (['events', 'event-emitter-constructor'].includes(callee.kind)) return { bits: 0, kind: 'event-emitter', listeners: new Map() };
       if (callee.kind === 'vm' && value.bits & REMOTE) hint(node, 'remote-vm-code');
-      if (callee.kind === 'function') return invoke(callee, args, false, callee.boundThis);
+      if (callee.kind === 'function') {
+        const arrow = callee.node.type === 'ArrowFunctionExpression';
+        const receiver = explicitThis === undefined ? callee.boundThis : explicitThis;
+        if (!arrow && explicitThis !== undefined &&
+            (!receiver || (!receiver.props && !receiver.kind && (!Object.hasOwn(receiver, 'value') || receiver.value === null))) && readsReceiver(callee)) {
+          gap('unresolved explicit call receiver', node);
+        }
+        return invoke(callee, args, false, receiver);
+      }
       if (callee.kind === 'class') {
         const instance = { bits: callee.bits, kind: 'instance', props: new Map(callee.props || []) };
         const constructor = callee.props?.get('constructor');
@@ -464,7 +508,7 @@ function createFlowAnalysis(files) {
       if (callee.kind === 'global-factory') return tagged('global');
       if (['setTimeout', 'setInterval', 'setImmediate'].includes(callee.kind)) {
         if (typeof args[0]?.value === 'string') gap();
-        else if (args[0]?.kind === 'function') invoke(args[0], args.slice(callee.kind === 'setImmediate' ? 1 : 2));
+        else if (['function', 'bound'].includes(args[0]?.kind)) callValue(node, args[0], args.slice(callee.kind === 'setImmediate' ? 1 : 2), clean());
         return clean();
       }
       // An unknown higher-order API can pass a secret into a callback whose
@@ -513,6 +557,32 @@ function createFlowAnalysis(files) {
       if (node.id) local.set(node.id.name, value, true);
       local.set('this', value, true);
       for (const member of node.body.body) {
+        if (!member.static && member.type === 'PropertyDefinition' && member.value) {
+          // Field initializers currently run against the class definition once,
+          // not against each allocated instance. An arrow initialized here
+          // must not claim a clean lexical receiver from that approximation.
+          const pending = [member.value];
+          while (pending.length) {
+            tick();
+            const initializer = pending.pop();
+            if (initializer.type === 'ArrowFunctionExpression') {
+              gap('instance field arrow receiver initialization is not modeled', member);
+              break;
+            }
+            if (['CallExpression', 'NewExpression', 'TaggedTemplateExpression'].includes(initializer.type)) {
+              // A factory can create an arrow outside this initializer's AST.
+              // Calls also run per instance in JavaScript, which this model
+              // cannot yet reproduce against the correct receiver.
+              gap('instance field initializer calls are not modeled per instance', member);
+              break;
+            }
+            for (const value of Object.values(initializer)) {
+              for (const child of Array.isArray(value) ? value : [value]) {
+                if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
+              }
+            }
+          }
+        }
         if (member.type === 'StaticBlock') { statements(member.body, local); continue; }
         const key = member.computed ? expr(member.key, local).value : member.key.name ?? member.key.value;
         const v = expr(member.value, local);
@@ -812,7 +882,7 @@ function createFlowAnalysis(files) {
     }
     try {
       stmt(ast, new Scope());
-      for (let i = 0; i < callbacks.length; i++) { tick(); invoke(callbacks[i], []); }
+      for (let i = 0; i < callbacks.length; i++) { tick(); callValue(currentNode, callbacks[i], [], clean()); }
     }
     catch (error) {
       result.status = 'budget';
