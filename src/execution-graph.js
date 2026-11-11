@@ -84,6 +84,21 @@ function analyzeExecutionFile(file, source) {
     catch { return null; }
     if (kind === 'Function') return parsed.body.length === 1 && parsed.body[0].type === 'ReturnStatement' &&
       parsed.body[0].argument?.type === 'ThisExpression' ? tag('global-factory') : null;
+    if (kind === 'vm-arithmetic') {
+      if (parsed.body.length !== 1 || parsed.body[0].type !== 'ExpressionStatement') return null;
+      const pending = [parsed.body[0].expression];
+      let nodes = 0;
+      while (pending.length) {
+        if (++work > 200000) throw new Error('execution graph work/depth limit');
+        if (++nodes > 64) return null;
+        const expression = pending.pop();
+        if (expression.type === 'Literal' && typeof expression.value === 'number' && Number.isFinite(expression.value)) continue;
+        if (expression.type === 'UnaryExpression' && ['+', '-'].includes(expression.operator)) pending.push(expression.argument);
+        else if (expression.type === 'BinaryExpression' && ['+', '-', '*', '/', '%', '**'].includes(expression.operator)) pending.push(expression.left, expression.right);
+        else return null;
+      }
+      return UNKNOWN;
+    }
     if (kind !== 'eval' || parsed.body.length > 32) return null;
     const locals = new Set();
     const primitive = n => n?.type === 'Literal' && (n.value === null || ['string', 'number', 'boolean'].includes(typeof n.value)) && !n.regex;
@@ -137,8 +152,12 @@ function analyzeExecutionFile(file, source) {
       // example [].filter), so retain evaluator capability conservatively.
       return v.props || v.items || Object.hasOwn(v, 'literal') ? tag('function') : tag('dynamic-code');
     }
-    if (v.kind === 'vm' && ['Script', 'SourceTextModule', 'compileFunction', 'runInContext', 'runInNewContext', 'runInThisContext'].includes(k)) return tag('dynamic-code');
-    if (['dynamic-code', 'global-factory'].includes(v.kind) && ['call', 'apply'].includes(k)) return v;
+    if (v.kind === 'vm' && ['Script', 'SourceTextModule', 'compileFunction', 'runInContext', 'runInNewContext', 'runInThisContext'].includes(k)) {
+      return { kind: 'dynamic-code', evaluator: ['runInContext', 'runInNewContext', 'runInThisContext'].includes(k) ? 'vm-arithmetic' : null };
+    }
+    // call/apply shift the code argument, so they must not inherit a direct
+    // evaluator's literal-source exception.
+    if (['dynamic-code', 'global-factory'].includes(v.kind) && ['call', 'apply'].includes(k)) return tag(v.kind);
     if (['dynamic-code', 'global-factory'].includes(v.kind) && k === 'bind') return tag('dynamic-code-bind');
     if (v.kind === 'child_process' && ['spawn', 'spawnSync', 'execFile', 'execFileSync', 'fork'].includes(k)) return { kind: 'subprocess', method: k };
     if (v.kind === 'path' && ['join', 'resolve'].includes(k)) return { kind: 'path-call', method: k };
@@ -329,7 +348,8 @@ function analyzeExecutionFile(file, source) {
           if (fn.kind === 'global-factory') return tag('global');
           if (fn.kind === 'dynamic-code' || fn.kind === 'dynamic-code-bind' || evaluatorSyntax) {
             const inert = evaluatorSyntax && fn.kind === 'dynamic-code' && node.arguments.length === 1
-              ? inertLiteral(node.arguments[0], c.name) : null;
+              ? inertLiteral(node.arguments[0], c.name)
+              : fn.evaluator === 'vm-arithmetic' ? inertLiteral(node.arguments[0], fn.evaluator) : null;
             if (inert) return inert;
             diagnostic(node, 'dynamic code execution is not modeled in runtime graph');
             return fn.kind === 'dynamic-code-bind' ? tag('dynamic-code') : UNKNOWN;

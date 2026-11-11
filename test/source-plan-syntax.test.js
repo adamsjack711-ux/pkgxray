@@ -172,3 +172,26 @@ test('constructor display-name inspection does not imply code evaluation', () =>
   }`;
   assert.deepEqual([...planFor(source).gaps], []);
 });
+
+test('recognized VM evaluators accept only bounded literal numeric arithmetic', () => {
+  for (const method of ['runInContext', 'runInNewContext', 'runInThisContext']) {
+    for (const expression of ['1+1', '-(2 * 3) + 4 / 2', '2 ** 3 % 5']) {
+      assert.deepEqual([...planFor(`require('node:vm').${method}(${JSON.stringify(expression)},Object.create(null));`).gaps], []);
+    }
+  }
+  assert.deepEqual([...planFor(`const vm=require('vm');const run=vm.runInNewContext;run('1+1');`).gaps], []);
+});
+
+test('VM arithmetic exception does not admit code, coercion, unknown source or shifted call arguments', () => {
+  for (const expression of [
+    `require('./hidden.js')`, `import('./hidden.js')`, `1 + secret`, `1 + ({valueOf(){return require('./hidden.js')}})`,
+    `1;require('./hidden.js')`, `1 + Function("return require('./hidden.js')")()`,
+    `'1' + '2'`, `1n + 2n`, `const x: number=1`, '1+'.repeat(80)+'1'
+  ]) assert.ok([...planFor(`require('vm').runInNewContext(${JSON.stringify(expression)});`).gaps].some(g => /dynamic code execution/.test(g)), expression);
+  for (const source of [
+    `require('vm').runInNewContext(code)`,
+    `require('vm').runInNewContext.call('1+1',"require('./hidden.js')")`,
+    `require('vm').runInNewContext.apply('1+1',["require('./hidden.js')"])`,
+    `require('vm').runInNewContext.bind('1+1',"require('./hidden.js')")()`
+  ]) assert.ok([...planFor(source).gaps].some(g => /dynamic code execution/.test(g)), source);
+});
