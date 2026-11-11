@@ -1,0 +1,76 @@
+# External static corpus validation
+
+`node scripts/validate-external-corpus.js` evaluates a fixed historical cohort
+from the DataDog dataset revision pinned in the script, plus four exact-version
+benign controls with pinned artifact hashes. Selection finishes before any
+scan. Acquisition and scan errors remain in the results; no failing sample is
+replaced. The harness never installs, imports, or executes package code.
+
+The results distinguish the raw analyzer verdict from the automatic guard's
+decision. Raw `review` means unresolved evidence, not confirmed malicious
+behavior. Network enrichment is disabled in this experiment, so a guard block
+can also reflect missing checks. A small, selected corpus is not an independent
+accuracy certification or a prevalence estimate.
+
+## Archive selection and limits
+
+The ZIP reader accepts a regular file of at most 4 MiB with at most 512 members.
+Every central-directory member must retain its original name (including no NUL
+truncation) and undergoes path, Unicode/case collision, duplicate,
+file/directory overlap, and file-type checks, including members not selected for
+extraction. Links and special files are rejected. A pre-existing destination is
+never replaced or followed.
+
+If there is exactly one original TGZ, the reader selects that archive. Otherwise
+it requires one unambiguous outer `package/` subtree with `package.json` and
+materializes the **entire subtree**, including non-code runtime resources. It
+does not select files by extension or by detector findings. It does not treat
+sibling dataset metadata outside this root as published package content.
+
+The unchanged 16 MiB expanded-byte limit applies to the selected TGZ or complete
+package subtree, both before extraction using declared sizes and while streaming
+actual bytes. A selected gzip stream also retains its 64 MiB expansion limit.
+Unselected contents are never decompressed or CRC-validated. Each case reports
+selected and ignored member counts and declared byte totals, with
+`unselectedContentValidated: false`; the report does not claim that all ZIP
+contents were inspected. The Python subprocess has a 15-second deadline.
+
+Derived-tree files are written without execute permission into a private working
+directory. Extraction failure removes the partial destination, and evaluation
+removes its entire working directory in a `finally` block. Original ZIP hashes
+identify the corpus inputs; a derived-tree hash does **not** establish the
+original npm tarball's identity.
+
+## Solana extraction-limit regression
+
+The previously selected `@solana/web3.js@1.95.7` sample is unchanged:
+
+- Dataset revision: `df32a361b27b78c5de4cdb4b4c549b666accaa40`.
+- ZIP SHA-256: `9059d6e4265a83aa89f47b6254947ae147889c2bada930f67c9cc7c0521a46bb`.
+- ZIP size: 3,305,138 bytes; 92 entries; 22,972,450 declared expanded bytes.
+- No original TGZ is present. The complete package subtree has 78 files,
+  totaling 10,881,310 bytes. Four unselected entries, including directory
+  records and an external `package_info` JSON file, declare 12,091,140 bytes.
+
+The earlier aggregate limit counted that unselected metadata and rejected the
+sample before scanning. Applying the existing budget to selected content permits
+the complete package tree without decompressing the external metadata. The
+resulting derived-tree SHA-256 is
+`75304bf3b716906fdabbfebe18a00471f798c98ea3368f9daed3576e77bcf790`.
+
+A static check on the detector baseline `10c8672` returned raw `review` and guard
+`block`, with 77 source files scanned, no skipped or truncated files, and
+`sourceCoverage.complete: true`. Findings included `flow-analysis-gap`,
+`missing-metadata`, and `network-access`. This resolves an extraction error; it
+does not establish positive detection of the known compromise or complete
+behavioral understanding. No payload was retained. The earlier benchmark JSON
+remains a historical record of its failure; rerun the full fixed cohort against
+the integrated scanner before drawing a new comparison.
+
+## Regression checks
+
+`node --test test/external-corpus.test.js` uses inert generated archives to cover
+oversized ignored metadata, complete subtree resources, selected-byte and gzip
+limits, compressed-input and entry limits, unsafe ignored members, duplicate and
+conflicting paths, links/special files, corrupt selected content, destination
+preservation, and cleanup. No executable package fixture is required.

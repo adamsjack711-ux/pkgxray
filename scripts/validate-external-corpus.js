@@ -173,6 +173,7 @@ async function evaluateCorpus(options = {}) {
         const archivePath = path.join(work, 'artifact');
         const unwrapped = await unwrap(zipPath, archivePath);
         record.scanInput = unwrapped.mode;
+        record.archiveSelection = unwrapped.archiveSelection;
         let artifact;
         if (unwrapped.mode === 'original-tarball') {
           const tarball = await fsp.readFile(archivePath);
@@ -235,10 +236,12 @@ async function evaluateCorpus(options = {}) {
     const summary = summarizeCases(cases);
     return { schemaVersion: 2, repository: REPOSITORY, commit: COMMIT,
       scannerVersion: require('../package.json').version, scannerBuildId: BUILD_ID,
-      bounds: { zipBytes: MAX_ZIP_BYTES, zipExpandedBytes: 16 * 1024 * 1024, zipEntries: 512, tarballExpandedBytes: 64 * 1024 * 1024 },
+      bounds: { zipBytes: MAX_ZIP_BYTES, zipExpandedBytes: 16 * 1024 * 1024,
+        zipExpandedByteScope: 'Selected original TGZ or complete package subtree; unselected metadata is not decompressed',
+        zipEntries: 512, tarballExpandedBytes: 64 * 1024 * 1024 },
       sourceUrl: `https://github.com/${REPOSITORY}/tree/${COMMIT}`, startedAt,
       selection: SELECTION, mode: 'static-only; source heuristics with network enrichment disabled; extracted package trees where original TGZ is absent',
-      limitations: 'Small third-party labeled malicious sample plus four project-selected benign controls; neither is independently certified accuracy or representative prevalence data. Dataset selection bias remains and no package code is executed. Original ZIP hashes bind corpus archives; derived tree hashes do not establish original npm tarball identity. REVIEW is a hold requiring human review, not a confirmed malware detection. Acquisition/scan errors are retained and not replaced.',
+      limitations: 'Small third-party labeled malicious sample plus four project-selected benign controls; neither is independently certified accuracy or representative prevalence data. Dataset selection bias remains and no package code is executed. Original ZIP hashes bind corpus archives; derived tree hashes do not establish original npm tarball identity. All ZIP central-directory paths/types/collisions are checked; only selected content is decompressed and validated, and ignored declared bytes are reported. REVIEW is raw analyzer uncertainty, not a confirmed malware detection; automatic gates block uncertainty without a manual decision. Acquisition/scan errors are retained and not replaced.',
       counts: summary.byLabel, metrics: summary.metrics, cases, payloadsRetained: false };
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
