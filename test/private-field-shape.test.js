@@ -16,8 +16,15 @@ function held(source, label) {
     `${label}: unknown or secret-bearing private state was cleared (${JSON.stringify({ status: result.status, hints: result.hints, gaps: result.gaps })})`);
 }
 
-// Positive coverage will be specified alongside the bounded local-class proof;
-// these negatives must not be weakened merely because a field sometimes holds
+test('closed private links backed by an inert local data class retain complete coverage', () => {
+  for (const extra of ['', 'first(){return this.#head.value}', 'clear(){this.#head=undefined;this.#tail=undefined}']) {
+    const result = analyze(link + queue(extra) + 'module.exports=Queue;');
+    assert.equal(result.status, 'parsed', JSON.stringify(result.gaps));
+    assert.equal(result.hints.some(h => h.kind === 'credential-export'), false);
+  }
+});
+
+// These negatives must not be weakened merely because a field sometimes holds
 // an instance of a known class.
 test('an externally assignable private tail does not acquire a closed local shape', () => {
   held(link + queue('setTail(value){this.#tail=value}') + 'const q=new Queue();q.setTail(unknownTail);q.append(1);', 'external tail');
@@ -60,4 +67,41 @@ test('secret insertion followed by a later private-state read remains detected o
 
 test('branch-written external tails cannot disappear when a local shape is merged', () => {
   held(link + queue('setTail(value){if(flag)this.#tail=value}') + 'const q=new Queue();q.append(0);q.setTail(unknownTail);q.append(1);', 'branch external write');
+});
+
+test('undefined or constructor name shadowing cannot establish a closed private shape', () => {
+  for (const extra of [
+    'replace(undefined){this.#tail=undefined}',
+    'replace({value:undefined}){this.#tail=undefined}',
+    'replace([undefined]){this.#tail=undefined}',
+    'replace(undefined=unknownTail){this.#tail=undefined}',
+    'replace(...undefined){this.#tail=undefined}',
+    'replace(){const undefined=unknownTail;this.#tail=undefined}',
+    'replace(){const {value:undefined}=unknown;this.#tail=undefined}',
+    'replace(){try{external()}catch(undefined){this.#tail=undefined}}',
+    'replace(Link){this.#tail=new Link(1)}',
+    'replace(){const Link=UnknownLink;this.#tail=new Link(1)}'
+  ]) held(link + queue(extra) + 'module.exports=Queue;', extra);
+});
+
+test('private link escapes through data assignments or local aliases retain uncertainty', () => {
+  for (const extra of [
+    'expose(){external.tail=this.#tail}',
+    "expose(){external['tail']=this.#tail}",
+    'expose(){this.publicTail=this.#tail}',
+    'expose(){const alias=this.#tail;external.tail=alias}',
+    'expose(){const alias=this.#tail;return alias}',
+    'expose(){const alias=this.#tail;external(alias)}',
+    'expose(){const alias=this.#tail;delete alias.next}',
+    'replace(value){this.#tail.next=value}'
+  ]) held(link + queue(extra) + 'module.exports=Queue;', extra);
+});
+
+test('shape proof does not replace actual private state populated by constructed instances', () => {
+  for (const secret of [true, false]) {
+    const result = analyze(link + queue('first(){return this.#head.value}') + `const q=new Queue();q.append(${secret ? 'process.env.TEST_TOKEN' : "'public'"});fetch('/api',{body:q.first()});`);
+    assert.equal(result.hints.some(h => h.kind === 'credential-export'), secret);
+    // Real receiver branches may remain uncertain; the dormant-only proof is
+    // not permission to replace their state with clean shape data.
+  }
 });
