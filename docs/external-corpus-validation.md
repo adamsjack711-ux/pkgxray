@@ -29,6 +29,26 @@ measurement exits nonzero. These four controls do not measure malicious recall,
 production false-positive prevalence, or latency. The command requires `--live`
 so an accidental invocation does not start network checks.
 
+## Primitive getters and internal linked state
+
+The flow model supports an instance getter whose entire body returns one
+declared private field. Reads retain the field's lexical identity and require a
+matching instance brand and a modeled primitive value. Unsupported accessors,
+ambiguous receivers, descriptor changes and unresolved cross-method effects
+retain uncertainty.
+
+For dormant methods, a bounded proof can describe private linked data whose
+values come only from a local, non-escaping class with declared plain data
+fields and inert constructor writes. Every relevant assignment and alias must
+fit the proof. External assignments, factories, binding ambiguity, escaping
+links and reflective mutations do not qualify. The possible data shape is
+merged only into the isolated dormant receiver; it never replaces actual
+instance state or its taint. This is not general JavaScript class modeling.
+
+`node --test test/getter-adversarial.test.js test/private-field-shape.test.js`
+checks the supported controls and conservative boundaries. Follow it with the
+live command above to verify actual approvals under the current policy.
+
 ## Archive selection and limits
 
 The ZIP reader accepts a regular file of at most 4 MiB with at most 512 members.

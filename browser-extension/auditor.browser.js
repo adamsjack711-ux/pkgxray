@@ -6517,6 +6517,7 @@ function property(object, key) {
   if (object.kind === 'process' && key === 'mainModule') return tagged('module');
   if (object.kind === 'process' && key === 'nextTick') return tagged('setImmediate');
   if (object.kind === 'module' && key === 'require') return { ...tagged('require'), sourceFile: object.sourceFile };
+  if (object.kind === 'private-data-shape' && object.pointers.includes(key) && !object.props.has(key)) return object;
   if (object.kind === 'Symbol' && key === 'iterator') return literal(Symbol.iterator);
   if (object.kind === 'module' && key === 'createRequire') return tagged('require-factory');
   if (object.props?.has(key)) {
@@ -6752,7 +6753,13 @@ function createFlowAnalysis(files) {
       tick();
       if (object.kind === 'alternatives') {
         if (object.overflow) gap('assignment receiver alternatives limit', node);
-        for (const alternative of object.alternatives) writeProperty(alternative, key, value, node, privateAccess, true);
+        const certified = inspectingGetterState && object.alternatives.some(item => item.kind === 'private-data-shape');
+        for (const alternative of object.alternatives) {
+          // This path throws before the data write; the certified object path
+          // still models every possible successful write and its taint.
+          if (certified && Object.hasOwn(alternative, 'value') && alternative.value == null && !alternative.kind && !alternative.props) continue;
+          writeProperty(alternative, key, value, node, privateAccess, true);
+        }
         return;
       }
       if (hasGetter(object.props?.get(key)) || (hasGetter(object) && (key === undefined || key === '__proto__'))) {
@@ -7074,6 +7081,131 @@ function createFlowAnalysis(files) {
       } finally { lexicalFile = previousFile; }
       return instance;
     }
+    function dormantPrivateShapes(node, scope, names) {
+      // A shape describes only a possible non-throwing dormant receiver. It is
+      // never installed on an actual instance or inferred from a package name.
+      if (lexicalFile !== file) return new Map();
+      const parents = new Map(), all = [], pending = [[ast, null]];
+      while (pending.length) {
+        tick();
+        const [item, parent] = pending.pop();
+        parents.set(item, parent); all.push(item);
+        for (const child of Object.values(item).flatMap(value => Array.isArray(value) ? value : [value])) {
+          if (child && typeof child === 'object' && typeof child.type === 'string') pending.push([child, item]);
+        }
+      }
+      const within = item => {
+        while (item) { tick(); if (item === node) return true; item = parents.get(item); }
+        return false;
+      };
+      const body = all.filter(within);
+      // Nested lexical environments require a more general alias analysis.
+      if (body.some(item => item !== node && (['ClassDeclaration', 'ClassExpression', 'ArrowFunctionExpression', 'FunctionDeclaration'].includes(item.type) ||
+          (item.type === 'FunctionExpression' && parents.get(item)?.type !== 'MethodDefinition')))) return new Map();
+      const fresh = body.filter(item => item.type === 'NewExpression');
+      if (!fresh.length || fresh.some(item => item.callee.type !== 'Identifier')) return new Map();
+      const name = fresh[0].callee.name, data = scope.get(name);
+      if (fresh.some(item => item.callee.name !== name) || data?.kind !== 'class' || data.sourceFile !== file ||
+          data.node.type !== 'ClassDeclaration' || data.node.superClass) return new Map();
+      const fields = new Set(), payload = new Set();
+      const primitive = item => !item || (item.type === 'Literal' && !item.regex && (item.value === null || typeof item.value !== 'object'));
+      if (fresh.some(item => item.arguments.some(argument => argument.type !== 'Identifier' && !primitive(argument)))) return new Map();
+      for (const member of data.node.body.body) {
+        tick();
+        if (member.type === 'PropertyDefinition' && !member.static && !member.computed && member.key.type === 'Identifier' &&
+            !['constructor', '__proto__'].includes(member.key.name) && primitive(member.value)) {
+          fields.add(member.key.name);
+          if (member.value) payload.add(member.key.name);
+        } else if (member.type !== 'MethodDefinition' || member.kind !== 'constructor') return new Map();
+      }
+      const ctor = data.node.body.body.find(member => member.kind === 'constructor')?.value;
+      if (ctor) {
+        if (ctor.params.some(param => param.type !== 'Identifier')) return new Map();
+        const params = new Set(ctor.params.map(param => param.name));
+        for (const statement of ctor.body.body) {
+          const assignment = statement.type === 'ExpressionStatement' && statement.expression;
+          const left = assignment?.left, right = assignment?.right;
+          if (assignment?.type !== 'AssignmentExpression' || assignment.operator !== '=' || left?.type !== 'MemberExpression' ||
+              left.computed || left.object.type !== 'ThisExpression' || !fields.has(left.property.name) ||
+              !(primitive(right) || (right.type === 'Identifier' && params.has(right.name)))) return new Map();
+          payload.add(left.property.name);
+        }
+      }
+      // The constructor binding itself must not escape or be replaced. This
+      // also rejects every prototype/descriptor mutation, including aliases.
+      for (const item of all) if (item.type === 'Identifier' && item.name === name) {
+        tick(); const parent = parents.get(item);
+        if (parent === data.node && parent.id === item) continue;
+        if (parent?.type === 'NewExpression' && parent.callee === item && fresh.includes(parent)) continue;
+        return new Map();
+      }
+      const pointers = new Set([...fields].filter(key => !payload.has(key)));
+      const privateFields = new Set(), aliases = new Set();
+      const declared = new Set(body.filter(item => item.type === 'VariableDeclarator' && item.id.type === 'Identifier').map(item => item.id.name));
+      if (declared.has('undefined') || body.some(item =>
+        (item.type === 'FunctionExpression' && item.params.some(param => param.type !== 'Identifier' || param.name === 'undefined')) ||
+        (item.type === 'VariableDeclarator' && item.id.type !== 'Identifier') ||
+        (item.type === 'CatchClause' && item.param && (item.param.type !== 'Identifier' || item.param.name === 'undefined')))) return new Map();
+      const privateName = item => item?.type === 'MemberExpression' && !item.computed && item.object.type === 'ThisExpression' &&
+        item.property.type === 'PrivateIdentifier' ? item.property.name : null;
+      const isLink = item => {
+        if (!item) return false;
+        tick();
+        if (fresh.includes(item)) return true;
+        if (item.type === 'Identifier') return aliases.has(item.name);
+        if (privateFields.has(privateName(item))) return true;
+        return item.type === 'MemberExpression' && !item.computed && item.property.type === 'Identifier' &&
+          pointers.has(item.property.name) && isLink(item.object);
+      };
+      let changed = true, passes = 0;
+      while (changed) {
+        if (++passes > 16) return new Map();
+        changed = false;
+        for (const item of body) {
+          tick();
+          const left = item.type === 'VariableDeclarator' ? item.id : item.type === 'AssignmentExpression' && item.operator === '=' ? item.left : null;
+          const right = item.type === 'VariableDeclarator' ? item.init : item.right;
+          if (!left || !isLink(right)) continue;
+          const field = privateName(left);
+          if (field && !privateFields.has(field)) { privateFields.add(field); changed = true; }
+          else if (left.type === 'Identifier' && declared.has(left.name) && !aliases.has(left.name)) { aliases.add(left.name); changed = true; }
+        }
+      }
+      if (!privateFields.size) return new Map();
+      const isUndefined = item => !item || (item.type === 'Identifier' && item.name === 'undefined' && !scope.get('undefined'));
+      for (const item of all) if (!within(item) && item.type === 'Identifier' && aliases.has(item.name)) return new Map();
+      const identifierKey = (item, parent) => parent?.type === 'MemberExpression' && parent.property === item && !parent.computed;
+      for (const item of body) {
+        tick(); const parent = parents.get(item);
+        if (item.type === 'PrivateIdentifier' && privateFields.has(item.name) && privateName(parent) !== item.name && !(parent?.type === 'PropertyDefinition' && parent.key === item && !parent.static)) return new Map();
+        if (item.type === 'PropertyDefinition' && item.key.type === 'PrivateIdentifier' && privateFields.has(item.key.name) && !isUndefined(item.value)) return new Map();
+        if (item.type === 'Identifier' && aliases.has(item.name) && identifierKey(item, parent)) continue;
+        const assignment = item.type === 'VariableDeclarator' || item.type === 'AssignmentExpression';
+        if (assignment) {
+          const left = item.id || item.left, right = item.init || item.right;
+          const target = privateFields.has(privateName(left)) || (left.type === 'Identifier' && aliases.has(left.name)) ||
+            (left.type === 'MemberExpression' && isLink(left.object) && pointers.has(left.property.name));
+          if (target && ((item.operator && item.operator !== '=') || (!isLink(right) && !isUndefined(right)))) return new Map();
+        }
+        if (item.type === 'MemberExpression' && isLink(item.object) && parent?.type === 'UnaryExpression' && parent.operator === 'delete') return new Map();
+        if (!isLink(item)) continue;
+        if (parent?.type === 'MemberExpression' && parent.object === item && !parent.computed && fields.has(parent.property.name)) continue;
+        if (parent?.type === 'VariableDeclarator' && parent.init === item && parent.id.type === 'Identifier' && aliases.has(parent.id.name)) continue;
+        if (parent?.type === 'AssignmentExpression' && parent.right === item) {
+          const left = parent.left;
+          if (privateFields.has(privateName(left)) || (left.type === 'Identifier' && aliases.has(left.name)) ||
+              (left.type === 'MemberExpression' && !left.computed && isLink(left.object) && pointers.has(left.property.name))) continue;
+        }
+        if (parent?.type === 'VariableDeclarator' && parent.id === item && isLink(parent.init)) continue;
+        if (parent?.type === 'AssignmentExpression' && parent.left === item && parent.operator === '=' && (isLink(parent.right) || isUndefined(parent.right))) continue;
+        if (['IfStatement', 'WhileStatement', 'DoWhileStatement'].includes(parent?.type) && parent.test === item) continue;
+        if (parent?.type === 'UnaryExpression' && parent.operator === '!') continue;
+        return new Map();
+      }
+      const shape = { bits: 0, kind: 'private-data-shape', node: data.node, pointers: [...pointers], props: new Map() };
+      for (const key of fields) if (!pointers.has(key)) shape.props.set(key, clean());
+      return new Map([...privateFields].map(key => [names.get(key)?.value, shape]).filter(([key]) => typeof key === 'symbol'));
+    }
     function classValue(node, scope) {
       expr(node.superClass, scope);
       if (node.superClass) gap();
@@ -7169,6 +7301,11 @@ function createFlowAnalysis(files) {
         inspectingGetterState = value.getterFields.length ? new Set(value.getterFields) : null;
         try { if (isolated.constructorFn) invoke(isolated.constructorFn, [], false, specimen); }
         finally { inspectingGetterState = previousInspection; }
+        if (value.getterFields.length) {
+          for (const [key, shape] of dormantPrivateShapes(node, scope, names)) {
+            specimen.props.set(key, merge(specimen.props.get(key) || clean(), shape));
+          }
+        }
         for (const method of inspected) {
           const previous = inspectingGetterState;
           inspectingGetterState = value.getterFields.length ? new Set(value.getterFields) : null;
