@@ -2,11 +2,29 @@
 
 const acorn = require('./vendor/acorn/acorn');
 
-// Narrow syntax proof, not a general dataflow or host-integrity claim. Assume
-// standard console only when this file contains no other reference, alias,
+// Narrow source-pattern classification under standard, unmodified builtins;
+// never a whole-package safety or host-integrity proof. Admit console only in
+// an explicitly complete, isolated supplied artifact
+// (one unique root manifest and one JavaScript source), with no other reference, alias,
 // rebinding or reflective/dynamic-code access that can invalidate that model.
 // Unknown syntax/uses fail closed. Never execute inspected source.
-function onlyPassiveDiagnosticUrls(source, domains) {
+function onlyPassiveDiagnosticUrls(source, domains, context) {
+  const files = context?.sourceFiles;
+  const coverage = context?.sourceCoverage;
+  const target = context?.filePath;
+  // Per-file syntax cannot rule out mutations in a neighboring module. Missing
+  // inventory/coverage is uncertainty, not an assertion that no neighbor exists.
+  if (!Array.isArray(files) || files.length !== 2 || target === "package.json" ||
+      typeof target !== "string" || !/\.(?:js|cjs|mjs)$/.test(target) ||
+      files.filter(file => file.path === "package.json").length !== 1 ||
+      files.filter(file => file.path === target && file.content === source).length !== 1 ||
+      coverage?.complete !== true || coverage.scannedFiles !== files.length || coverage.inventoryFiles !== files.length ||
+      coverage.skippedFiles !== 0 || coverage.truncatedFiles !== 0 ||
+      !Array.isArray(coverage.reasons) || coverage.reasons.length !== 0 ||
+      !Array.isArray(coverage.runtimeFiles) || !coverage.runtimeFiles.includes(target) ||
+      coverage.runtimeFiles.some(file => file !== target && file !== "package.json") ||
+      (coverage.installTimeFiles !== undefined && (!Array.isArray(coverage.installTimeFiles) ||
+        coverage.installTimeFiles.some(file => file !== target && file !== "package.json")))) return false;
   if (typeof source !== 'string' || source.length > 1024 * 1024) return false;
   const tokens = [];
   let ast;
@@ -26,6 +44,9 @@ function onlyPassiveDiagnosticUrls(source, domains) {
     const { node, parent } = pending.pop();
     parents.set(node, parent);
     if (node.type === 'WithStatement' || node.type === 'ThisExpression' || node.type === 'TaggedTemplateExpression') return false;
+    // Computed properties can recover Function/console through escaped or
+    // assembled names. This narrow exception does not resolve reflection.
+    if (node.type === 'MemberExpression' && node.computed) return false;
     if (node.type === 'Identifier' && (forbidden.has(node.name) || ['constructor', '__proto__'].includes(node.name))) return false;
     if (node.type === 'Identifier' && node.name === 'require' &&
         (parent?.type !== 'CallExpression' || parent.callee !== node)) return false;

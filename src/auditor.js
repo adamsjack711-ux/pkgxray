@@ -1703,7 +1703,7 @@ function auditFiles(files, findings, evidence) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectAgentConfigAccess(file, content, lower, findings, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence.sourceCoverage);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence);
     inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged);
     if (!suppressObfuscationHeuristics) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
@@ -3257,7 +3257,7 @@ const READ_DATA_BLOB_REGEX =
 const READ_OPAQUE_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
-function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, sourceCoverage) {
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
   // (`require("ht"+"tps")`, a domain spelled in fragments) count too.
   const nlower = normChanged ? normalized.toLowerCase() : lower;
@@ -3374,11 +3374,14 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // shortener alone is not proof of exfil. Placed after the HIGH loader/env
   // branches above so a genuine stage-2 loader still BLOCKS first.
   // Suppress only this coincidence when every original and normalized URL
-  // occurrence is proven to be a direct passive diagnostic argument.
+  // occurrence is classified as a direct diagnostic argument in the bounded,
+  // complete supplied-source context. This assumes standard host builtins.
+  const passiveContext = { sourceFiles: evidence.sourceFiles, sourceCoverage: evidence.sourceCoverage, filePath: file.path };
   const passiveShorteners = hasCapability && shortener && !hasExec && !hasDynamicEval && !hasLiteralEval &&
-    sourceCoverage?.complete !== false && !(sourceCoverage?.truncatedFiles > 0) &&
-    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS) &&
-    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS));
+    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS, passiveContext) &&
+    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS, {
+      ...passiveContext, sourceFiles: evidence.sourceFiles.map(source => source.path === file.path ? { ...source, content: normalized } : source)
+    }));
   if (hasCapability && shortener && !passiveShorteners) {
     findings.push({
       severity: "medium",
