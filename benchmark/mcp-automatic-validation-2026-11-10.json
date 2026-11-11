@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-11T04:47:09.641Z",
+  "measuredAt": "2026-11-11T04:59:24.583Z",
   "transport": "real stdio MCP",
   "realNetwork": true,
   "fixtureExecution": false,
@@ -16,13 +16,13 @@
     },
     {
       "label": "benign source and repeated cache",
-      "ms": 61.05,
+      "ms": 60.36,
       "verdict": "safe",
       "repeatedSource": "cache"
     },
     {
       "label": "inert credential exfiltration evidence",
-      "ms": 44.29,
+      "ms": 43.85,
       "verdict": "block",
       "categories": [
         "credential-access"
@@ -30,7 +30,7 @@
     },
     {
       "label": "25 concurrent identical source audits",
-      "ms": 56.82,
+      "ms": 57.06,
       "responses": 25,
       "sources": [
         "scan",
@@ -62,7 +62,7 @@
     },
     {
       "label": "guard automatically blocks incomplete checks without executing or prompting",
-      "ms": 56.33,
+      "ms": 56.04,
       "decision": "block",
       "allowed": false,
       "reasonCodes": [
@@ -75,23 +75,23 @@
         "attempts": 0,
         "check": null
       },
-      "buildId": "008c0004754f717ef03950166721e36301e544ef606ecdc7411baaa75474035c"
+      "buildId": "8ab5b4f1121f86e4c43c4c427a0b3de93d9859ae8a3bc0637768761b8deeb6e9"
     },
     {
       "label": "forbidden promotion and out-of-root input",
-      "ms": 0.62,
+      "ms": 0.53,
       "denied": 2
     },
     {
       "label": "Compose MCP analyzes inert local source",
-      "ms": 53.23,
+      "ms": 53.02,
       "decision": "block",
       "execution": "completed",
       "installAllowed": false
     },
     {
       "label": "real npm and OSV guard for ms@2.1.3",
-      "ms": 705.92,
+      "ms": 764.98,
       "decision": "allow",
       "allowed": true,
       "checks": {
@@ -106,16 +106,16 @@
         "attempts": 0,
         "check": null
       },
-      "buildId": "008c0004754f717ef03950166721e36301e544ef606ecdc7411baaa75474035c",
+      "buildId": "8ab5b4f1121f86e4c43c4c427a0b3de93d9859ae8a3bc0637768761b8deeb6e9",
       "timings": {
-        "stageMs": 124,
-        "vulnerabilityPrecheckMs": 226,
-        "downloadMs": 19,
-        "sourceCollectionMs": 4,
-        "githubMetadataMs": 250,
+        "stageMs": 62,
+        "vulnerabilityPrecheckMs": 269,
+        "downloadMs": 16,
+        "sourceCollectionMs": 3,
+        "githubMetadataMs": 290,
         "provenanceMs": 1,
-        "diffMs": 265,
-        "auditMs": 62
+        "diffMs": 348,
+        "auditMs": 60
       }
     }
   ]

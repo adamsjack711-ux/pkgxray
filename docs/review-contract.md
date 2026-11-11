@@ -63,3 +63,9 @@ Approval receipts bind the artifact, applicable policy, scanner build and comple
 Promotion uses a private temporary sibling copy and rechecks cancellation/policy before an atomic rename. Cancellation before that commit preserves the prior destination; cancellation after an authorized commit does not undo it. Runtime tool calls and responses continue through `McpGate` individually and never consult the static package-analysis cache.
 
 Run `npm run benchmark:mcp-load` for the full 1/5/25/100 request matrix (three rounds by default; `PKGXRAY_BENCH_ROUNDS=1..10`). The separate static and runtime paths, measurements, limits, and unmeasured areas are recorded in `docs/mcp-load-report.md` and `benchmark/mcp-load-results.json`.
+
+## Candidate flow measurement
+
+Run `node benchmark/automatic-flow.js` to measure the public binary policy separately from raw analyzer calibration. On the authored static corpus, this candidate blocks all 36 malicious fixtures and 22 of 48 benign controls (26 benign controls remain safe). All 22 benign stops previously returned internal REVIEW. This is a fixture-only flow cost, not a real-world error rate or an acceptable-production-flow claim. Common gaps include build hooks, dynamic/generated code, Python source coverage, and provenance divergence. A retry cannot resolve deterministic missing analysis. Automatically resolving these cases with additional bounded evidence is follow-up work; the candidate remains unpublished.
+
+Machine-readable evidence: `benchmark/automatic-flow-validation-2026-11-10.json`, `benchmark/mcp-automatic-validation-2026-11-10.json`, and `benchmark/team-automatic-validation-2026-11-10.json`. The team benchmark uses one inert archive and a stubbed clean advisory provider; it excludes network downloads and real advisory latency.

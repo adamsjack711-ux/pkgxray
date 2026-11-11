@@ -26,7 +26,7 @@ test("coding-agent guide covers every requested host and integration mode", () =
   for (const topic of [
     "Installation and configuration",
     "Minimal working example",
-    "Blocking and review",
+    "Blocking and uncertainty",
     "Removal",
     "limitations",
     "troubleshooting",
@@ -44,7 +44,7 @@ test("agent examples pin pkgxray and distinguish guidance from enforcement", () 
     GUIDE,
     /only integration in this repository\s+that claims command\s+interception/i
   );
-  assert.match(GUIDE, /Transport errors are not SAFE/);
+  assert.match(GUIDE, /transport errors block without a prompt/);
 });
 
 test("integration guide relative links resolve", () => {
