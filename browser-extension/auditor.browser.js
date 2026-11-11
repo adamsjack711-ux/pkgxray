@@ -8905,7 +8905,7 @@ const BAND_DEFINITIONS = [
   { band: "github-young", label: "github-young", categories: ["github-young"], rationale: "Linked repository was created within the last 30 days — common slopsquat shape." },
   { band: "github-lonely", label: "github-lonely", categories: ["github-lonely"], rationale: "0 stars + 0 forks + low watcher count on a young repo. Low community signal." },
   { band: "github-stale", label: "github-stale", categories: ["github-stale"], rationale: "Repository hasn't been pushed to in over two years and isn't formally archived." },
-  { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "Established package with exactly one publishing maintainer — single point of failure for an account takeover." },
+  { band: "lonely-maintainer", label: "lonely-maintainer", categories: ["lonely-maintainer"], rationale: "One publishing maintainer is account-concentration context, not evidence of malicious package behavior." },
   { band: "npm-vs-github-divergence", label: "npm-vs-github-divergence", categories: ["npm-vs-github-divergence"], rationale: "Published npm tarball contains source files that aren't in (or differ from) the linked GitHub repo at the matching ref. A review-level signal: real tampering looks like this, but so does any legitimate build/transpile/bundle step — the diff can't distinguish them on its own." },
   { band: "npm-vs-github-clean", label: "npm-vs-github-clean", categories: ["npm-vs-github-clean"], rationale: "npm tarball matches the linked GitHub repo at the published version." },
   { band: "self-scan-verified", label: "self-scan-verified", categories: ["self-scan-verified"], rationale: "The scanned package is pkgxray itself, provenance-verified against its canonical repo; signature-database findings report as review instead of block." },
@@ -9105,12 +9105,9 @@ function daysAgo(iso) {
   return Math.floor(ms / 86400000);
 }
 
-// Lonely-maintainer detection. A package with exactly ONE npm maintainer is
-// a single point of failure: if that person's account is compromised, the
-// attacker can publish anything (event-stream, ua-parser-js, ESLint config-
-// conventional, etc. were all single-maintainer at the time of attack). Only
-// flagged when the package looks established enough to be a real target.
-// Reuses already-fetched data — adds zero latency.
+// Keep publishing-account concentration visible without treating a maintainer
+// count as evidence of compromise. Source, vulnerability, provenance and
+// required-coverage findings decide independently. Reuses fetched metadata.
 function inspectMaintainerSurface(evidence, findings) {
   const ghMeta = evidence.githubMetadata;
   const npmMeta = evidence.npmMetadata;
@@ -9132,12 +9129,12 @@ function inspectMaintainerSurface(evidence, findings) {
     : String(onlyMaintainer);
 
   findings.push({
-    severity: "medium",
+    severity: "info",
     category: "lonely-maintainer",
     file: "NPM_METADATA",
     snippet: `Single npm maintainer: ${name}${stars !== null ? ` · ${stars} stars` : ""}${ageDays !== null ? ` · ${ageDays}d old` : ""}`,
     rationale:
-      "Established package with exactly one publishing maintainer — single point of failure. If that account is compromised, the attacker can publish any code. (event-stream, ua-parser-js, conventional-changelog-conventionalcommits, etc. were all single-maintainer at the time of their attacks.)"
+      "This established package has one publishing maintainer, concentrating account access. That is contextual metadata, not evidence that this artifact is compromised or executes malicious behavior. It does not independently block installation or clear any other finding or required check."
   });
 }
 
