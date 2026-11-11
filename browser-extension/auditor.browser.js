@@ -7740,6 +7740,221 @@ function inspectRuntimeLoaders({ file, code, normalized, normChanged, isInstallT
 module.exports = { inspectRuntimeLoaders };
 
 return module.exports; })();
+pure["./passive-url-evidence"] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];
+"use strict";
+
+const acorn = require('./vendor/acorn/acorn');
+
+// Narrow syntax proof, not a general dataflow or host-integrity claim. Assume
+// standard console only when this file contains no other reference, alias,
+// rebinding or reflective/dynamic-code access that can invalidate that model.
+// Unknown syntax/uses fail closed. Never execute inspected source.
+function onlyPassiveDiagnosticUrls(source, domains) {
+  if (typeof source !== 'string' || source.length > 1024 * 1024) return false;
+  const tokens = [];
+  let ast;
+  try {
+    ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module',
+      allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true,
+      allowHashBang: true, onToken: tokens });
+  } catch { return false; }
+  const contains = text => domains.some(domain => String(text).toLowerCase().includes(domain));
+  const parents = new Map(), literals = [];
+  const pending = [{ node: ast, parent: null }];
+  let visited = 0;
+  const diagnostics = new Set(['error', 'warn', 'log']);
+  const forbidden = new Set(['eval', 'Function', 'globalThis', 'global', 'window', 'self', 'Reflect', 'process']);
+  while (pending.length) {
+    if (++visited > 100000) return false;
+    const { node, parent } = pending.pop();
+    parents.set(node, parent);
+    if (node.type === 'WithStatement' || node.type === 'ThisExpression' || node.type === 'TaggedTemplateExpression') return false;
+    if (node.type === 'Identifier' && (forbidden.has(node.name) || ['constructor', '__proto__'].includes(node.name))) return false;
+    if (node.type === 'Identifier' && node.name === 'require' &&
+        (parent?.type !== 'CallExpression' || parent.callee !== node)) return false;
+    if (node.type === 'Identifier' && node.name === 'console') {
+      // Even unrelated scopes that shadow console disable the exception. This
+      // intentionally avoids optimistic name resolution across closures/hoisting.
+      if (parent?.type !== 'MemberExpression' || parent.object !== node || parent.computed || parent.optional ||
+          !diagnostics.has(parent.property.name)) return false;
+    }
+    if (node.type === 'MemberExpression' && node.object?.name === 'console') {
+      if (parent?.type !== 'CallExpression' || parent.callee !== node || parent.optional) return false;
+    }
+    if (node.type === 'Literal' && node.value === 'console' && parent?.type === 'MemberExpression') return false;
+    if (node.type === 'CallExpression' && node.callee?.name === 'require') {
+      // Loading arbitrary modules can replace global console through hidden
+      // code. This first slice only admits the fixture's standard HTTP imports.
+      if (node.arguments.length !== 1 || !['http', 'https', 'node:http', 'node:https'].includes(node.arguments[0]?.value)) return false;
+    }
+    if (node.type === 'ImportExpression' || node.type === 'ImportDeclaration') return false;
+    if (node.type === 'Literal' && typeof node.value === 'string') literals.push(node);
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object') {
+        if (Array.isArray(value)) {
+          for (const child of value) if (child?.type) pending.push({ node: child, parent: node });
+        } else if (value.type) pending.push({ node: value, parent: node });
+      }
+    }
+  }
+  let proofWork = 0;
+  const simple = node => {
+    const work = [node];
+    while (work.length) {
+      if (++proofWork > 100000) return false;
+      const part = work.pop();
+      if (part.type === 'Literal' || part.type === 'Identifier') continue;
+      if (part.type !== 'BinaryExpression' || part.operator !== '+') return false;
+      work.push(part.left, part.right);
+    }
+    return true;
+  };
+  const approved = new Set();
+  for (const literal of literals) {
+    if (!contains(literal.value) && !contains(source.slice(literal.start, literal.end))) continue;
+    let argument = literal, parent = parents.get(argument);
+    while (parent?.type === 'BinaryExpression' && parent.operator === '+') {
+      if (++proofWork > 100000) return false;
+      argument = parent; parent = parents.get(argument);
+    }
+    if (!simple(argument) || parent?.type !== 'CallExpression' || parent.optional ||
+        !parent.arguments.includes(argument) || parent.callee?.type !== 'MemberExpression' ||
+        parent.callee.computed || parent.callee.optional || parent.callee.object?.name !== 'console' ||
+        !diagnostics.has(parent.callee.property?.name) || parents.get(parent)?.type !== 'ExpressionStatement') return false;
+    approved.add(`${literal.start}:${literal.end}`);
+  }
+  let occurrences = 0;
+  for (const token of tokens) {
+    if (!contains(source.slice(token.start, token.end)) && !(typeof token.value === 'string' && contains(token.value))) continue;
+    occurrences++;
+    if (!approved.has(`${token.start}:${token.end}`)) return false;
+  }
+  return occurrences > 0;
+}
+module.exports = { onlyPassiveDiagnosticUrls };
+
+return module.exports; })();
+pure["./lifecycle-evidence"] = (() => { const module = {exports:{}}; const exports = module.exports; const require = key => pure[key];
+"use strict";
+
+const acorn = require("./vendor/acorn/acorn");
+
+// A syntax proof over supplied evidence, never a package execution or a trust
+// decision about its name. Unknown syntax fails closed, including unreachable
+// statements and alternate branches. The collector remains authoritative for
+// regular files and completeness; omitted/symlinked/truncated files cannot be
+// recovered or inferred here. Direct evidence callers supply the complete text.
+const MAX_SOURCE_LENGTH = 16 * 1024;
+const MAX_NODES = 1024;
+const MAX_DEPTH = 32;
+const ENV_KEYS = new Set(["CI", "SKIP_DOWNLOAD"]);
+const BOOLEAN_STRINGS = new Set(["", "0", "1", "false", "true"]);
+const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+
+function canonicalPath(file) {
+  return typeof file === "string" && file.length <= 512 &&
+    file.split("/").every(part => SEGMENT.test(part) && part !== "node_modules");
+}
+function identifier(node, name) { return node?.type === "Identifier" && node.name === name; }
+function member(node, property) {
+  return node?.type === "MemberExpression" && node.computed === false && !node.optional &&
+    identifier(node.property, property);
+}
+
+function proveLiteralLifecycle(command, manifestPath, evidence) {
+  if (typeof command !== "string" || command.length > 520 ||
+      !/^node \.\/[A-Za-z0-9_/-][A-Za-z0-9_./-]*\.(?:js|cjs|mjs)$/.test(command) ||
+      !canonicalPath(manifestPath) || manifestPath.split("/").at(-1) !== "package.json") return null;
+  const relative = command.slice("node ./".length);
+  if (!canonicalPath(relative)) return null;
+  const directory = manifestPath.slice(0, -"package.json".length);
+  const scriptPath = directory + relative;
+  const files = evidence?.sourceFiles;
+  if (!Array.isArray(files)) return null;
+  const matches = files.filter(file => file.path === scriptPath);
+  if (matches.length !== 1 || files.filter(file => file.path === manifestPath).length !== 1) return null;
+  const source = matches[0].content;
+  const coverage = evidence.sourceCoverage;
+  if (coverage && (coverage.complete !== true || coverage.truncatedFiles > 0 || coverage.skippedFiles > 0 ||
+      coverage.reasons?.length || (Array.isArray(coverage.runtimeFiles) && !coverage.runtimeFiles.includes(scriptPath)))) return null;
+  if (typeof source !== "string" || !source.trim() || source.length > MAX_SOURCE_LENGTH || source.includes("\0")) return null;
+
+  let ast;
+  try { ast = acorn.parse(source, { ecmaVersion: "latest", sourceType: "script", allowHashBang: true }); }
+  catch { return null; }
+  // Traverse every AST child before interpreting the deliberately smaller
+  // grammar. Bound nesting and total nodes even for unsupported syntax.
+  let nodes = 0;
+  const pending = [{ node: ast, depth: 0 }];
+  while (pending.length) {
+    const { node, depth } = pending.pop();
+    if (++nodes > MAX_NODES || depth > MAX_DEPTH) return null;
+    for (const value of Object.values(node)) {
+      for (const child of Array.isArray(value) ? value : [value]) {
+        if (child && typeof child === "object" && typeof child.type === "string") pending.push({ node: child, depth: depth + 1 });
+      }
+    }
+  }
+  const operations = new Set();
+  const environmentChecks = new Set();
+  const envRead = node => {
+    if (!member(node, node?.property?.name) || !ENV_KEYS.has(node.property.name) ||
+        !member(node.object, "env") || !identifier(node.object.object, "process")) return false;
+    environmentChecks.add(node.property.name);
+    return true;
+  };
+  function condition(node) {
+    if (!node) return false;
+    if (envRead(node)) return true;
+    if (node.type === "UnaryExpression" && node.operator === "!" && node.prefix) return condition(node.argument);
+    if (node.type === "LogicalExpression" && ["&&", "||"].includes(node.operator)) {
+      return condition(node.left) && condition(node.right);
+    }
+    if (node.type === "BinaryExpression" && ["===", "!=="].includes(node.operator)) {
+      const literal = node.right;
+      return envRead(node.left) && literal.type === "Literal" &&
+        (typeof literal.value === "boolean" || (typeof literal.value === "string" && BOOLEAN_STRINGS.has(literal.value)));
+    }
+    return false;
+  }
+  function call(node) {
+    if (node?.type !== "CallExpression" || node.optional) return false;
+    if (member(node.callee, "log") && identifier(node.callee.object, "console") &&
+        node.arguments.length >= 1 && node.arguments.length <= 4 &&
+        node.arguments.every(arg => arg.type === "Literal" && typeof arg.value === "string" &&
+          !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(arg.value))) {
+      operations.add("console.log(literal strings)");
+      return true;
+    }
+    if (member(node.callee, "exit") && identifier(node.callee.object, "process") &&
+        node.arguments.length === 1 && node.arguments[0].type === "Literal" && node.arguments[0].value === 0) {
+      operations.add("process.exit(0)");
+      return true;
+    }
+    return false;
+  }
+  function statement(node) {
+    if (!node) return false;
+    if (node.type === "Program" || node.type === "BlockStatement") return node.body.every(child => statement(child));
+    if (node.type === "EmptyStatement") return true;
+    if (node.type === "ExpressionStatement") return call(node.expression);
+    if (node.type === "IfStatement") return condition(node.test) && statement(node.consequent) &&
+      (!node.alternate || statement(node.alternate));
+    return false;
+  }
+  if (!statement(ast)) return null;
+  return {
+    kind: "literal-node-lifecycle-v1",
+    command,
+    script: { file: scriptPath, source },
+    operations: [...operations].sort(),
+    environmentChecks: [...environmentChecks].sort()
+  };
+}
+
+module.exports = { proveLiteralLifecycle };
+
+return module.exports; })();
 const { sensitiveFlowHints } = pure['./sensitive-flows'];
 const { createFlowAnalysis } = pure['./flow-analysis'];
 const { createExecutionGraph } = pure['./execution-graph'];
@@ -7768,6 +7983,8 @@ function compareProvenanceToRepository(primary, declaredRepository) {
 }
 const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = pure['./credential-targets'];
 const { inspectRuntimeLoaders } = pure['./runtime-loaders'];
+const { onlyPassiveDiagnosticUrls } = pure['./passive-url-evidence'];
+const { proveLiteralLifecycle } = pure['./lifecycle-evidence'];
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -8642,7 +8859,7 @@ function computeRiskBands(findings) {
 function auditMetadata(evidence, findings) {
   const packageJson = findPackageJson(evidence.sourceFiles);
   if (packageJson) {
-    inspectPackageJson(packageJson.path, packageJson.json, findings);
+    inspectPackageJson(packageJson.path, packageJson.json, findings, evidence);
   } else {
     // No package.json — but a Python package's manifest is setup.py /
     // pyproject.toml. When one is present the evidence is NOT incomplete: it IS
@@ -9028,7 +9245,7 @@ function findPackageJson(files) {
   return null;
 }
 
-function inspectPackageJson(path, json, findings) {
+function inspectPackageJson(path, json, findings, evidence) {
   if (!json) {
     findings.push({
       severity: "medium",
@@ -9041,15 +9258,18 @@ function inspectPackageJson(path, json, findings) {
   }
 
   const scripts = json.scripts || {};
-  for (const hook of ["preinstall", "install", "postinstall", "prepack", "prepare"]) {
+  for (const hook of AUTO_RUN_INSTALL_HOOKS) {
     if (scripts[hook]) {
+      const lifecycleProof = proveLiteralLifecycle(scripts[hook], path, evidence);
       findings.push({
-        severity: "medium",
+        severity: lifecycleProof ? "info" : "medium",
         category: "install-hook",
         file: path,
         snippet: `"${hook}": "${scripts[hook]}"`,
-        rationale:
-          "Install-time scripts run automatically with the installing user's privileges and require manual review."
+        rationale: lifecycleProof
+          ? "The exact supplied lifecycle script is fully parsed and limited to literal messages, fixed CI/SKIP_DOWNLOAD conditions, and exit(0). This proof does not clear other findings."
+          : "Install-time scripts run automatically with the installing user's privileges; this command or its complete script is outside the bounded benign proof.",
+        ...(lifecycleProof ? { lifecycleProof } : {})
       });
       // An install hook that publishes INLINE never reaches the file-level
       // self-publish check, because the command lives in package.json and
@@ -9460,7 +9680,7 @@ function auditFiles(files, findings, evidence) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectAgentConfigAccess(file, content, lower, findings, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence.sourceCoverage);
     inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged);
     if (!suppressObfuscationHeuristics) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
@@ -9745,14 +9965,18 @@ function collectLifecycleReferencedPaths(files) {
   return { all, lifecycle, installTime };
 }
 
-// The package.json hooks npm executes on its own during `npm install`. Kept in
-// sync with the hook list inspectPackageJson reports as install-hook findings.
+// Lifecycle commands relevant to installation and package preparation. Keep
+// source-plan.js in sync so every reported hook is collected as runtime code.
 const AUTO_RUN_INSTALL_HOOKS = new Set([
   "preinstall",
   "install",
   "postinstall",
   "prepack",
-  "prepare"
+  "prepare",
+  "prepublish",
+  "preprepare",
+  "postprepare",
+  "postpack"
 ]);
 
 // --- Install-time / auto-execution surfaces (#1) ---------------------------
@@ -11010,7 +11234,7 @@ const READ_DATA_BLOB_REGEX =
 const READ_OPAQUE_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
-function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, sourceCoverage) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
   // (`require("ht"+"tps")`, a domain spelled in fragments) count too.
   const nlower = normChanged ? normalized.toLowerCase() : lower;
@@ -11126,7 +11350,13 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // legitimate doc/error links, so this is reviewed rather than blocked — a
   // shortener alone is not proof of exfil. Placed after the HIGH loader/env
   // branches above so a genuine stage-2 loader still BLOCKS first.
-  if (hasCapability && shortener) {
+  // Suppress only this coincidence when every original and normalized URL
+  // occurrence is proven to be a direct passive diagnostic argument.
+  const passiveShorteners = hasCapability && shortener && !hasExec && !hasDynamicEval && !hasLiteralEval &&
+    sourceCoverage?.complete !== false && !(sourceCoverage?.truncatedFiles > 0) &&
+    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS) &&
+    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS));
+  if (hasCapability && shortener && !passiveShorteners) {
     findings.push({
       severity: "medium",
       category: "network-exfil-or-loader",
