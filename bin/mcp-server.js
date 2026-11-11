@@ -941,15 +941,21 @@ function publicGuardResult(result) {
   return redactSourceExcerpts(safe);
 }
 
-function redactSourceExcerpts(value) {
-  if (Array.isArray(value)) return value.map(redactSourceExcerpts);
+function redactSourceExcerpts(value, location = []) {
+  if (Array.isArray(value)) return value.map((child, index) => redactSourceExcerpts(child, [...location, String(index)]));
   if (!value || typeof value !== "object") return value;
   const out = {};
   for (const [key, child] of Object.entries(value)) {
-    if (["content", "source", "sourceText", "snippet", "excerpt"].includes(key) && typeof child === "string") {
+    // These two scanner-authored fields describe coverage; they are not
+    // package source text. Only preserve recognized statuses at exact paths.
+    const coverageStatus = key === "source" && location.length === 2 &&
+      ["assessment", "approval"].includes(location[0]) && location[1] === "checks" &&
+      ["completed", "partial", "disabled", "skipped", "failed", "not-requested"].includes(child);
+    if (coverageStatus) out[key] = child;
+    else if (["content", "source", "sourceText", "snippet", "excerpt"].includes(key) && typeof child === "string") {
       out[key] = "<redacted>";
     } else {
-      out[key] = redactSourceExcerpts(child);
+      out[key] = redactSourceExcerpts(child, [...location, key]);
     }
   }
   return out;
@@ -1126,6 +1132,7 @@ if (require.main === module) {
 // tests only — the wire behavior is unchanged whether or not they are consumed;
 // they let the offline suite unit-test the config seam.
 module.exports = {
+  publicGuardResult,
   guardAdmission,
   applyConfigToGuardResult,
   toolExposed,

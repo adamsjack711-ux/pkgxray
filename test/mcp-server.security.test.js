@@ -368,6 +368,7 @@ test("MCP review guidance is advisory, redacted and present in JSON and Markdown
     assert.equal(result.allowed, false);
     assert.equal(result.review.eligible, false);
     assert.equal(result.reviewPlan.state, "checks-required");
+    assert.equal(result.assessment.checks.source, "partial");
     assert.ok(result.reviewPlan.blockers.includes("complete-source-check"));
     assert.equal(result.reviewPlan.escalation.to, "operator");
     assert.equal(result.sourceEvidence.contentReturned, false);
@@ -375,6 +376,25 @@ test("MCP review guidance is advisory, redacted and present in JSON and Markdown
     if (outputFormat === "markdown") assert.match(reply.result.content[0].text, /Agent review guidance \(advisory; no approval authority\)/);
     else assert.equal(JSON.parse(reply.result.content[0].text).reviewPlan.advisoryOnly, true);
   }
+});
+
+test("guard redaction preserves only known source-check statuses at trusted paths", () => {
+  const { publicGuardResult } = require("../bin/mcp-server");
+  for (const status of ["completed", "partial", "disabled", "skipped", "failed", "not-requested"]) {
+    const result = publicGuardResult({
+      sourceFiles: { "index.js": "private source bytes" },
+      assessment: { checks: { source: status } }, approval: { checks: { source: status } },
+      report: { findings: [{ source: status, snippet: "private source bytes", checks: { source: status } }] }
+    });
+    assert.equal(result.assessment.checks.source, status);
+    assert.equal(result.approval.checks.source, status);
+    assert.equal(result.report.findings[0].source, "<redacted>");
+    assert.equal(result.report.findings[0].checks.source, "<redacted>");
+    assert.ok(!JSON.stringify(result).includes("private source bytes"));
+  }
+  const result = publicGuardResult({ assessment: { checks: { source: "private source bytes" } }, approval: { checks: { source: "private source bytes" } } });
+  assert.equal(result.assessment.checks.source, "<redacted>");
+  assert.equal(result.approval.checks.source, "<redacted>");
 });
 
 test("HIGH: MCP refuses ~ home-relative references", async () => {
