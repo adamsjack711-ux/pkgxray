@@ -444,9 +444,9 @@ async function main() {
 
   if (options.command === "install") {
     let result;
-    try { result = await require("../src/install").installProject(options.project); }
+    try { result = await require("../src/install").installProject(options.project, { config, validatePolicy }); }
     catch (error) { result = { decision: "block", outcome: "UNSAFE", allowed: false, installed: false, error: error.message }; }
-    if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (options.format === "json") process.stdout.write(`${JSON.stringify(toBinaryResult({ schemaVersion: 2, ...result }), null, 2)}\n`);
     else if (result.error) process.stderr.write(`Installation refused: ${result.error}\n`);
     else process.stdout.write(`Installed ${result.installed} approved packages; lifecycle scripts disabled.\nReceipt: ${result.receiptPath}\n${result.backupPath ? `Previous node_modules: ${result.backupPath}\n` : ""}`);
     process.exitCode = result.decision === "allow" ? 0 : 2;

@@ -54,7 +54,7 @@ Changes here are additive within a major version; removals wait for a major bump
 | `.pkgxray.json` config | the schema in [configuration.md](configuration.md); precedence order; "tighten freely, loosen loudly" invariants |
 | MCP server tools | `audit_agent_extension_supply_chain`, `guard_agent_extension_install`, `audit_lockfile_supply_chain`, `triage_lockfile_supply_chain` — names and input shapes |
 | Exit-code convention | `0` safe/allow · `2` block for stable decision outputs; no review exit |
-| `pkgxray mcp` (connect-time MCP adapter) | subcommands + `--pin` / `--recheck` / `--package` / `--force` / `--no-package-scan` flags; the package-scan-first ordering; additive stdio-only `--sandbox` / `--sandbox-read` / `--sandbox-write` / `--sandbox-network` grants |
+| `pkgxray mcp` (connect-time MCP adapter) | subcommands + `--pin` / `--recheck` / `--package` / `--no-package-scan` flags; the package-scan-first ordering; additive stdio-only `--sandbox` / `--sandbox-read` / `--sandbox-write` / `--sandbox-network` grants |
 | `pkgxray mcp-proxy` (per-call runtime gate) | the `pkgxray mcp-proxy -- <launcher>` invocation, `--policy strict\|balanced\|permissive`, `--pin` / `--recheck`; mandatory result screening and uncertainty blocks in every policy; stdout stays protocol-clean |
 | `pkgxray-cache` server + `PKGXRAY_CACHE_URL` | routes `GET /github/repos/{owner}/{repo}`, `GET /github/tarball/{owner}/{repo}/{ref}`, `GET /healthz`; opt-in via the env var; explicitly **not** an auth boundary |
 
