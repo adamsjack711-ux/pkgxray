@@ -200,7 +200,7 @@ rich = "^13.0"
 // End-to-end audit (network-free via osvResults injection)
 // ---------------------------------------------------------------------------
 
-test("auditLockfile: requirements.txt block/review/safe decisions", async () => {
+test("auditLockfile: requirements.txt binary block/safe decisions", async () => {
   const file = await tmpFile("requirements.txt", [
     "vulnpkg==1.0.0", // OSV will report a vuln -> block
     "safepkg==2.0.0", // OSV clean -> safe
@@ -224,10 +224,10 @@ test("auditLockfile: requirements.txt block/review/safe decisions", async () => 
   assert.equal(byName.get("vulnpkg").decision, "block");
   assert.equal(byName.get("vulnpkg").vulnerabilities[0].id, "PYSEC-2026-9999");
   assert.equal(byName.get("safepkg").decision, "safe");
-  assert.equal(byName.get("unpinned").decision, "review");
+  assert.equal(byName.get("unpinned").decision, "block");
   assert.equal(byName.get("unpinned").unresolved, true);
-  assert.equal(result.summary.blocked, 1);
-  assert.equal(result.summary.reviewed, 1);
+  assert.equal(result.summary.blocked, 2);
+  assert.equal(result.summary.inconclusive, 1);
   assert.equal(result.summary.safe, 1);
   assert.equal(result.worstDecision, "block");
 });

@@ -195,7 +195,7 @@ test("one SAFE candidate cannot mask an unknown candidate in either order", asyn
       assert.equal(result.exitCode, 3, "strict update check cannot pass incomplete vetting");
       const text = renderRecheckText(result);
       assert.match(text, /UPDATE CHECK INCOMPLETE/);
-      assert.match(text, new RegExp(`${unknownVersion}=unknown`));
+      assert.match(text, new RegExp(`${unknownVersion}=block`));
       assert.doesNotMatch(text, /Update available \(guards clean\)/);
     }
   }
@@ -228,7 +228,7 @@ test("upgrade finding deltas use the fresh pinned scan, survive JSON, and do not
         checks: { source: "completed", vulnerabilities: "completed" } } })
   });
   const candidate = recheckJson(result).versionDrift.updateAvailableFlagged[0].candidates[0];
-  assert.equal(candidate.verdict, "review");
+  assert.equal(candidate.verdict, "block");
   assert.equal(candidate.securityChanges.counts.added, 1);
   assert.equal(candidate.securityChanges.added[0].category, "remote-code-load");
   const text = renderRecheckText(result);

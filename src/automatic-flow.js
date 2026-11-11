@@ -3,9 +3,10 @@
 // Presentation boundary for the automatic flow. The analyzer may retain its
 // three-way evidence vocabulary internally; uncertainty never authorizes use.
 // Findings and supplied source are evidence, not control-plane instructions.
-const EVIDENCE_FIELDS = new Set(["findings", "sourceFiles", "sourceEvidence", "vulnerabilities", "configEffects"]);
+const EVIDENCE_FIELDS = new Set(["findings", "sourceFiles", "sourceEvidence", "vulnerabilities", "configEffects", "manifest", "inputSchema", "outputSchema", "config", "policy", "npmMetadata"]);
 const MANUAL_FIELDS = new Set(["review", "reviewPlan", "reviewId", "reviewChoice", "reviewScope", "reviewDecisions"]);
-const DECISION_FIELDS = new Set(["verdict", "decision", "worstDecision", "recommendation"]);
+const DECISION_FIELDS = new Set(["verdict", "decision", "worstDecision", "worstRegression", "recommendation"]);
+const UNCERTAIN = new Set(["review", "unknown", "incomplete"]);
 const PERMISSION_FIELDS = ["allowed", "installAllowed", "executeAllowed", "promoteAllowed", "deliveryAllowed"];
 
 function hasMissingChecks(value) {
@@ -30,14 +31,17 @@ function denyPermissions(value) {
 function toBinaryResult(value) {
   if (Array.isArray(value)) return value.map(toBinaryResult);
   if (!value || typeof value !== "object") return value;
-  const uncertain = [...DECISION_FIELDS].some(key => value[key] === "review") ||
-    value.report?.verdict === "review";
+  const uncertain = [...DECISION_FIELDS].some(key => UNCERTAIN.has(value[key])) ||
+    UNCERTAIN.has(value.report?.verdict);
   const result = {};
   for (const [key, item] of Object.entries(value)) {
     if (MANUAL_FIELDS.has(key)) continue;
     if (EVIDENCE_FIELDS.has(key)) { result[key] = structuredClone(item); continue; }
-    if (DECISION_FIELDS.has(key) && item === "review") { result[key] = "block"; continue; }
-    if (key === "rawVerdict" && item === "review") { result[key] = "inconclusive"; continue; }
+    if (key === "schemaVersion" && item === 1) { result[key] = 2; continue; }
+    if (DECISION_FIELDS.has(key) && UNCERTAIN.has(item)) { result[key] = "block"; continue; }
+    if (key === "rawVerdict" && UNCERTAIN.has(item)) { result[key] = "inconclusive"; continue; }
+    if (key === "baseline" && item === "review") { result[key] = "block"; continue; }
+    if (key === "exitCode" && item === 3) { result[key] = 2; continue; }
     result[key] = toBinaryResult(item);
   }
   if (uncertain) {
@@ -46,7 +50,7 @@ function toBinaryResult(value) {
     if ("outcome" in result) result.outcome = "UNSAFE";
     denyPermissions(result);
     if (result.approval) { result.approval.decision = "block"; denyPermissions(result.approval); }
-    const reason = hasMissingChecks(value) ? "incomplete-checks" : "uncertain-findings";
+    const reason = hasMissingChecks(value) || ["unknown", "incomplete"].includes(value.verdict) ? "incomplete-checks" : "uncertain-findings";
     result.resolution = {
       ...result.resolution,
       reasonCodes: [...new Set([...(result.resolution?.reasonCodes || []), reason])],

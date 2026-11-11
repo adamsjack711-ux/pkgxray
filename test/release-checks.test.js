@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const { verifyReleaseScan } = require('../scripts/verify-release');
 const digest = 'a'.repeat(64);
 function fixture() {
-  return { resolved: { sha256: digest }, decision: 'review',
+  return { resolved: { sha256: digest }, decision: 'block',
+    resolution: { reasonCodes: ['source-check-disabled', 'incomplete-source-scan', 'uncertain-findings'] },
     assessment: { checks: { source: 'disabled', vulnerabilities: 'completed' } },
     vulnerabilityPrecheck: { enabled: true, completed: true, error: null, vulnerabilityCount: 0, vulnerabilities: [] },
     report: { verdict: 'review', findings: [{ severity: 'medium', category: 'incomplete-source-scan' }] } };
@@ -19,7 +20,10 @@ test('release permits only the deliberate source omission after a completed clea
     s => { s.vulnerabilityPrecheck.vulnerabilities = [{ id: 'fixture' }]; },
     s => { s.resolved.sha256 = 'b'.repeat(64); },
     s => { s.report.findings.push({ severity: 'medium', category: 'flow-analysis-gap' }); },
-    s => { s.assessment.authorization = { explicitOverride: true }; }
+    s => { s.assessment.authorization = { explicitOverride: true }; },
+    s => { s.resolution.reasonCodes.push('vulnerability-check-unavailable'); },
+    s => { s.assessment.authorization = { mandatoryHoldReasons: ['flow-analysis-gap'] }; },
+    s => { s.decision = 'review'; }
   ]) { const scan = fixture(); modify(scan); assert.throws(() => verifyReleaseScan(scan, digest)); }
 });
 

@@ -315,7 +315,7 @@ async function inspectMcpServer(target, options = {}) {
       verdict: result.report ? result.report.verdict : null,
       report: result.report || null
     };
-    if (result.decision === "block" && !options.force) {
+    if (result.decision !== "allow") {
       return { packageScan, manifest: null, manifestAudit: null, verdict: "block", halted: true };
     }
   }

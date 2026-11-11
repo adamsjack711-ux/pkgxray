@@ -37,7 +37,7 @@ test("a block package scan halts before any connection", async () => {
   assert.equal(result.packageScan.decision, "block");
 });
 
-test("--force connects past a block scan, and the scan verdict is surfaced", async () => {
+test("legacy force cannot connect past a blocked package scan", async () => {
   const calls = [];
   const result = await inspectMcpServer(TARGET, {
     packageRef: "npm:evil-server@1.0.0",
@@ -45,9 +45,9 @@ test("--force connects past a block scan, and the scan verdict is surfaced", asy
     force: true,
     timeoutMs: 10_000
   });
-  assert.equal(result.halted, false);
+  assert.equal(result.halted, true);
   assert.equal(result.packageScan.decision, "block");
-  assert.equal(result.manifest.server.name, "fixture-server");
+  assert.equal(result.manifest, null);
 });
 
 test("an allow scan proceeds to enumeration with the verdict alongside", async () => {
@@ -73,14 +73,15 @@ test("no packageRef: no scan runs, enumeration still works", async () => {
   assert.equal(result.manifest.tools.length, 2);
 });
 
-test("the final verdict folds worst-of over package scan and manifest audit", async () => {
+test("an inconclusive package scan halts before manifest enumeration", async () => {
   const result = await inspectMcpServer(TARGET, {
     packageRef: "npm:sketchy-server@1.0.0",
     guard: fakeGuard("review", []),
     timeoutMs: 10_000
   });
-  assert.equal(result.manifestAudit.verdict, "safe", "fixture manifest is clean");
-  assert.equal(result.verdict, "review", "package review verdict must win the fold");
+  assert.equal(result.manifestAudit, null);
+  assert.equal(result.halted, true);
+  assert.equal(result.verdict, "block", "uncertainty must stop enumeration");
 });
 
 test("audit:false skips the manifest audit and the fold sees only the package scan", async () => {

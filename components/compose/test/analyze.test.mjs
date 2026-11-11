@@ -271,15 +271,15 @@ test('target source is never executed', t => {
   assert.equal(f.scan().verdict, 'incomplete'); assert.equal(fs.existsSync(marker), false);
 });
 
-test('CLI exposes JSON and correct review, benign and incomplete exit codes', t => {
+test('CLI exposes JSON and binary finding, benign and incomplete exit codes', t => {
   const f = fixture(t);
   const invoke = (...args) => spawnSync(process.execPath, [cli, ...args, ...(args.includes("--help") ? [] : ["--flow-only"])], { encoding: 'utf8' });
   let run = invoke(f.root, '--json');
-  assert.equal(run.status, 1, run.stderr); assert.equal(JSON.parse(run.stdout).verdict, 'review');
+  assert.equal(run.status, 2, run.stderr); assert.equal(JSON.parse(run.stdout).analysisStatus, 'flow-found');
   f.write('index.js', 'const send=require("sender"); send("public");');
   run = invoke(f.root, '--json'); assert.equal(run.status, 0);
   f.write('index.js', 'require("unknown");');
-  run = invoke(f.root, '--json'); assert.equal(run.status, 2); assert.equal(JSON.parse(run.stdout).verdict, 'incomplete');
+  run = invoke(f.root, '--json'); assert.equal(run.status, 2); assert.equal(JSON.parse(run.stdout).analysisStatus, 'incomplete');
   for (const args of [[], [f.root, '--wat'], [f.root, '--entry'], [f.root, '--json', '--json']]) assert.equal(invoke(...args).status, 2);
   assert.equal(invoke('--help').status, 0);
 });

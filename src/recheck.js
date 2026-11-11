@@ -98,7 +98,7 @@ function makeDefaultEvaluator(options, scheme = "npm") {
       quarantineRoot: options.quarantineRoot,
       typosquat: options.typosquat
     });
-    return { verdict: result.report.verdict, report: result.report, assessment: result.assessment };
+    return { verdict: result.decision === "allow" ? "safe" : "block", report: result.report, assessment: result.assessment };
   };
 }
 
@@ -346,6 +346,7 @@ function driftArrow(d) {
 }
 
 function renderRecheckText(result, options = {}) {
+  result = require("./automatic-flow").toBinaryResult(result);
   const verbose = Boolean(options.verbose);
   const lines = [];
   lines.push(`Recheck: \`${sanitizeForTerminal(result.file)}\` (${result.format}) — ${result.totalDeps} pinned dep(s)`);
@@ -395,7 +396,7 @@ function renderRecheckText(result, options = {}) {
 
   const vd = result.versionDrift || { available: [], flagged: [], unknown: [] };
   if (vd.flagged.length > 0) {
-    lines.push("UPDATE AVAILABLE BUT FLAGGED (don't blind-upgrade — newer version is review/block):");
+    lines.push("UPDATE AVAILABLE BUT BLOCKED (newer version has findings or incomplete checks):");
     for (const f of vd.flagged) {
       const cs = f.candidates
         .map((c) => `${sanitizeForTerminal(c.version)}=${sanitizeForTerminal(c.verdict)}`)
@@ -438,7 +439,7 @@ function renderRecheckText(result, options = {}) {
     }
   }
 
-  const verb = result.exitCode === 2 ? "BLOCK" : result.exitCode === 3 ? "REVIEW" : "OK";
+  const verb = result.exitCode === 2 ? "BLOCK" : "OK";
   lines.push(`Result: **${verb}** (exit ${result.exitCode})`);
   return lines.join("\n");
 }
@@ -458,7 +459,7 @@ function recheckJson(result) {
     ...(d.error ? { error: d.error } : {})
   });
   const vd = result.versionDrift || { available: [], flagged: [], unknown: [] };
-  return {
+  return require("./automatic-flow").toBinaryResult({
     schemaVersion: result.schemaVersion,
     file: result.file,
     format: result.format,
@@ -479,7 +480,7 @@ function recheckJson(result) {
       updateAvailableFlagged: vd.flagged,
       unknown: vd.unknown
     }
-  };
+  });
 }
 
 module.exports = {

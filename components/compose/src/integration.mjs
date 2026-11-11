@@ -91,22 +91,24 @@ export function analyzeWithEngine({ root, entry = 'index.js', limits }, scanEvid
   const blocking = pkgxray.packages.filter(item => item.report?.verdict === 'block').map(item => item.id);
   return {
     schemaVersion: 1, tool: 'pkgxray-compose', mode: 'pkgxray-composition',
-    decision: blocking.length ? 'block' : 'review', authorization: { installAllowed: false },
+    decision: 'block', authorization: { installAllowed: false },
+    resolution: { reasonCodes: [blocking.length ? 'blocking-findings' : 'incomplete-checks'],
+      explanation: blocking.length ? 'Blocked by package findings.' : 'Blocked because selected local source cannot establish complete package safety. This is not a confirmed malware finding.' },
     summary: blocking.length ? 'pkgxray found blocking evidence; composition results cannot clear it.'
-      : compose.findings.length ? 'Environment data reaches a network call. Review the route and whether the transfer is intended.'
-        : gaps.length ? 'Analysis could not complete; review the reported gaps.'
-          : 'No modeled flow found. Limited source coverage still requires review.',
+      : compose.findings.length ? 'Environment data reaches a network call; the purpose of this transfer could not be verified.'
+        : gaps.length ? 'Analysis could not complete; the reported gaps prevent authorization.'
+          : 'No modeled flow found. Limited source coverage cannot authorize installation.',
     coverage: { status: 'partial', flow: compose.coverage, packageChecks: 'selected-source-files',
       registryIntegrityVerified: false, vulnerabilityCheck: 'not-run', provenanceCheck: 'not-run' },
     execution: gaps.length ? 'partial' : 'completed', blockingPackages: blocking,
     gaps, limitations: [PARTIAL, 'Local file hashes bind the two scans, not registry archives.',
-      'This report is evidence for review, not a pkgxray installation approval.'],
+      'This report supplies analysis evidence and never authorizes installation.'],
     compose, pkgxray,
   };
 }
 
 export function integrationExitCode(report) {
-  return report.decision === 'block' ? 2 : 3;
+  return report.decision === 'allow' && report.authorization?.installAllowed === true ? 0 : 2;
 }
 
 export function renderIntegration(report) {
@@ -125,7 +127,7 @@ export function renderIntegration(report) {
       lines.push(`    ${finding.severity.toUpperCase()} ${safe(finding.category)} — ${safe(finding.file)}: ${safe(finding.rationale)}`);
     }
   }
-  lines.push('', `Connections: ${report.compose.verdict} (${report.compose.findings.length} flow(s))`);
+  lines.push('', `Connections: ${report.compose.analysisStatus || (report.compose.verdict === 'review' ? 'flow-found' : report.compose.verdict)} (${report.compose.findings.length} flow(s))`);
   for (const finding of report.compose.findings) {
     lines.push(`  ${finding.crossPackage ? 'CROSS-PACKAGE' : 'LOCAL'} environment data → network`);
     for (const step of finding.trace) lines.push(`    ${step.kind}: ${safe(step.label)} — ${safe(step.package.name)}@${safe(step.package.version)} [${safe(step.package.id)}] ${safe(step.file)}:${step.line}:${step.column}`);
