@@ -42,13 +42,17 @@ function joinValues(values, context, depth = 0) {
   stateTick(context, depth);
   const [out, seen] = joinMemo(present, context, () => ({ bits: present.reduce((n, v) => n | v.bits, 0) }));
   if (seen) return out;
-  if (present.length && present.every(v => v.kind === 'function' && v.node === present[0].node)) {
-    out.kind = 'function'; out.node = present[0].node;
+  if (present.length && present.every(v => v.kind === 'function' && v.node === present[0].node && v.sourceFile === present[0].sourceFile)) {
+    out.kind = 'function'; out.node = present[0].node; out.sourceFile = present[0].sourceFile;
     out.scope = joinStates(null, present.map(v => v.scope), context, depth + 1);
   }
   // A callable is more than its kind: dropping node/scope/target at a branch
   // join produced malformed functions and TypeErrors on ordinary TS helpers.
-  else if (present.some(v => v.node || v.target || v.kind === 'alternatives')) {
+  else if (present.length && present.every(v => ['require', 'module', 'exports'].includes(v.kind) &&
+    v.kind === present[0].kind && v.sourceFile === present[0].sourceFile)) {
+    out.kind = present[0].kind; out.sourceFile = present[0].sourceFile;
+  }
+  else if (present.some(v => v.node || v.target || v.kind === 'alternatives' || ['require', 'module', 'exports'].includes(v.kind))) {
     const alternatives = [...new Set(present.flatMap(v => v.alternatives || [v]))];
     Object.assign(out, { kind: 'alternatives', alternatives: alternatives.slice(0, 16), overflow: alternatives.length > 16 || present.some(v => v.overflow) });
     return out;
@@ -86,7 +90,7 @@ function property(object, key) {
   if (object.kind === 'process' && key === 'getBuiltinModule') return tagged('builtin-loader');
   if (object.kind === 'process' && key === 'mainModule') return tagged('module');
   if (object.kind === 'process' && key === 'nextTick') return tagged('setImmediate');
-  if (object.kind === 'module' && key === 'require') return tagged('require');
+  if (object.kind === 'module' && key === 'require') return { ...tagged('require'), sourceFile: object.sourceFile };
   if (object.kind === 'module' && key === 'createRequire') return tagged('require-factory');
   if (object.props?.has(key)) {
     const value = object.props.get(key);
@@ -193,18 +197,22 @@ function createFlowAnalysis(files) {
     const activeFunctions = new Map();
     let depth = 0;
     let currentNode = ast;
+    // Imported function bodies execute abstractly in this evaluator, but their
+    // relative imports belong to the module that defined them, not the caller.
+    let lexicalFile = file;
     const tick = () => { if (++work > 500000 || depth > 160) throw new Error('flow budget'); };
     const hint = (node, kind) => {
       const key = `${node.start}:${kind}`;
       if (!seen.has(key) && result.hints.length < 8) { seen.add(key); result.hints.push({ index: node.start, kind }); }
     };
-    function load(raw) {
+    function load(raw, origin = lexicalFile) {
       if (typeof raw !== 'string') return clean();
       if (!raw.startsWith('.')) {
         const name = raw.replace(/^node:/, '');
         return tagged(name === 'http' ? 'https' : name);
       }
-      const target = normalizeFile(file.slice(0, file.lastIndexOf('/') + 1) + raw);
+      if (typeof origin !== 'string') { gap('unresolved relative module loader origin'); return clean(); }
+      const target = normalizeFile(origin.slice(0, origin.lastIndexOf('/') + 1) + raw);
       if (!target) return clean();
       const resolved = ['', '.js', '.cjs', '.mjs', '/index.js', '/index.cjs', '/index.mjs'].map(ext => target + ext).find(name => sources.has(name));
       if (!resolved) { result.status = 'missing'; return clean(); }
@@ -220,9 +228,9 @@ function createFlowAnalysis(files) {
       else if (pattern.type === 'AssignmentPattern') bind(pattern.left, merge(value, expr(pattern.right, scope)), scope, declare);
       else if (pattern.type === 'ObjectPattern') for (const p of pattern.properties) {
         if (p.type === 'RestElement') bind(p.argument, value, scope, declare);
-        else bind(p.value, property(value, p.computed ? expr(p.key, scope).value : p.key.name ?? p.key.value), scope, declare);
+        else bind(p.value, readProperty(value, p.computed ? expr(p.key, scope).value : p.key.name ?? p.key.value), scope, declare);
       }
-      else if (pattern.type === 'ArrayPattern') pattern.elements.forEach((p, i) => bind(p, property(value, i), scope, declare));
+      else if (pattern.type === 'ArrayPattern') pattern.elements.forEach((p, i) => bind(p, readProperty(value, i), scope, declare));
     }
     function invoke(fn, args, isolated = false, thisValue = null) {
       const signature = args.map(v => `${v.bits}:${v.kind || ''}`).join('|');
@@ -236,9 +244,16 @@ function createFlowAnalysis(files) {
       const local = new Scope(isolated ? fn.scope.clone(context) : fn.scope);
       if (isolated) result.exports = copyState(result.exports, context);
       local.set('this', thisValue || {bits:0,props:new Map()}, true);
-      fn.node.params.forEach((p, i) => bind(p, args[i] || clean(), local));
-      try { return fn.node.body.type === 'BlockStatement' ? stmt(fn.node.body, local) : expr(fn.node.body, local); }
-      finally { active.delete(signature); if (isolated) result.exports = savedExports; }
+      const callerFile = lexicalFile;
+      try {
+        lexicalFile = fn.sourceFile;
+        fn.node.params.forEach((p, i) => bind(p, args[i] || clean(), local));
+        return fn.node.body.type === 'BlockStatement' ? stmt(fn.node.body, local) : expr(fn.node.body, local);
+      } finally {
+        lexicalFile = callerFile;
+        active.delete(signature);
+        if (isolated) result.exports = savedExports;
+      }
     }
     function gap(reason = 'unmodeled executable semantics', node = currentNode, relevant = true) {
       if (relevant && result.status === 'parsed') result.status = 'unmodeled';
@@ -247,6 +262,33 @@ function createFlowAnalysis(files) {
         result.gaps.sort((a, b) => Number(b.relevant) - Number(a.relevant) || a.index - b.index);
         result.gaps.length = Math.min(result.gaps.length, 8);
       }
+    }
+    function checkExportRead(value) {
+      if (!['exports', 'alternatives'].includes(value.kind)) return value;
+      const pending = [value], visited = new Set();
+      while (pending.length) {
+        tick();
+        const current = pending.pop();
+        if (visited.has(current)) continue;
+        visited.add(current);
+        if (current.kind === 'exports' && current.sourceFile !== file) gap('foreign module export read is not modeled');
+        if (current.kind === 'alternatives') pending.push(...current.alternatives);
+      }
+      return value;
+    }
+    function readProperty(object, key) {
+      tick();
+      if (object.kind === 'alternatives') return merge(...object.alternatives.map(value => readProperty(value, key)));
+      if ((object.kind === 'module' && key === 'exports') || object.kind === 'exports') {
+        if (object.sourceFile !== file) {
+          gap('foreign module export read is not modeled');
+          return clean();
+        }
+        // Preserve opaque ownership through captured aliases. This is not a
+        // model of the export object's live contents or cross-module mutation.
+        if (object.kind === 'module') return { ...tagged('exports'), sourceFile: object.sourceFile };
+      }
+      return checkExportRead(property(object, key));
     }
     function callValue(node, callee, args) {
       tick();
@@ -260,10 +302,10 @@ function createFlowAnalysis(files) {
           Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
         return merge(...callee.alternatives.map(fn => callValue(node, fn, args)));
       }
-      if (callee.kind === 'require') return load(args[0]?.value);
-      if (callee.kind === 'builtin-loader') return load(args[0]?.value);
+      if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null);
+      if (callee.kind === 'builtin-loader') return load(args[0]?.value, null);
       if (callee.kind === 'require-factory') return tagged('require');
-      if (callee.kind === 'reflect-get') return property(args[0] || clean(), args[1]?.value);
+      if (callee.kind === 'reflect-get') return readProperty(args[0] || clean(), args[1]?.value);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
         const list = args[callee.kind === 'reflect-apply' ? 2 : 1];
         if (!list?.elements) { gap('unresolved reflected argument list', node, Boolean(value.bits & (SECRET | ENV | REMOTE))); return value; }
@@ -507,7 +549,16 @@ function createFlowAnalysis(files) {
       try {
         switch (node.type) {
           case 'Literal': return literal(node.value);
-          case 'Identifier': return scope.get(node.name) || tagged(({ process: 'process', module: 'module', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Map: 'Map', Object: 'Object', Array: 'Array', Promise: 'Promise', setTimeout: 'setTimeout', setInterval: 'setInterval', setImmediate: 'setImmediate', globalThis: 'global', global: 'global' })[node.name]);
+          case 'Identifier': {
+            const binding = scope.get(node.name);
+            if (binding) return checkExportRead(binding);
+            if (node.name === 'exports' && lexicalFile !== file) {
+              gap('foreign module export read is not modeled', node);
+              return clean();
+            }
+            return (['require', 'module', 'exports'].includes(node.name)
+            ? { ...tagged(node.name), sourceFile: lexicalFile } : tagged(({ process: 'process', module: 'module', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Map: 'Map', Object: 'Object', Array: 'Array', Promise: 'Promise', setTimeout: 'setTimeout', setInterval: 'setInterval', setImmediate: 'setImmediate', globalThis: 'global', global: 'global' })[node.name]));
+          }
           case 'ThisExpression': return scope.get('this') || clean();
           case 'MetaProperty': return clean();
           case 'ClassExpression': case 'ClassDeclaration': return classValue(node, scope);
@@ -529,7 +580,11 @@ function createFlowAnalysis(files) {
             const awaited = expr(node.argument, scope);
             return awaited.kind === 'promise-chain' && awaited.target ? awaited.target : awaited;
           }
-          case 'MemberExpression': return property(expr(node.object, scope), node.computed ? expr(node.property, scope).value : node.property.name);
+          case 'MemberExpression': {
+            const object = expr(node.object, scope);
+            const key = node.computed ? expr(node.property, scope).value : node.property.name;
+            return readProperty(object, key);
+          }
           case 'ObjectExpression': {
             const props = new Map(); let bits = 0, env = false;
             for (const p of node.properties) {
@@ -559,10 +614,14 @@ function createFlowAnalysis(files) {
             if (node.left.type === 'MemberExpression') {
               const key = node.left.computed ? expr(node.left.property, scope).value : node.left.property.name;
               const obj = node.left.object;
-              if (obj.type === 'Identifier' && obj.name === 'module' && key === 'exports' && !scope.get('module')) result.exports = v;
+              if (obj.type === 'Identifier' && obj.name === 'module' && key === 'exports' && !scope.get('module')) {
+                if (lexicalFile !== file) gap('foreign module export mutation is not modeled', node);
+                else result.exports = v;
+              }
               else if ((obj.type === 'Identifier' && obj.name === 'exports' && !scope.get('exports')) ||
                 (obj.type === 'MemberExpression' && obj.object.name === 'module' && obj.property.name === 'exports' && !scope.get('module'))) {
-                result.exports.props ||= new Map(); result.exports.props.set(key, v); result.exports.bits |= v.bits;
+                if (lexicalFile !== file) gap('foreign module export mutation is not modeled', node);
+                else { result.exports.props ||= new Map(); result.exports.props.set(key, v); result.exports.bits |= v.bits; }
               } else if (obj.type === 'Identifier') {
                 const old = scope.get(obj.name) || clean();
                 old.props ||= new Map(); old.props.set(key, v); old.bits |= v.bits;
@@ -581,7 +640,7 @@ function createFlowAnalysis(files) {
           }
           case 'FunctionDeclaration': case 'FunctionExpression': case 'ArrowFunctionExpression': {
             const fn = node.type === 'FunctionDeclaration' && node.id && scope.get(node.id.name) ||
-              { bits: 0, kind: 'function', node, scope };
+              { bits: 0, kind: 'function', node, scope, sourceFile: lexicalFile };
             invoke(fn, [], true);
             return fn;
           }
@@ -628,7 +687,7 @@ function createFlowAnalysis(files) {
       for (const n of nodes) {
         if (n.type === 'VariableDeclaration') for (const d of n.declarations) bind(d.id, clean(), scope);
         const fn = ['ExportNamedDeclaration', 'ExportDefaultDeclaration'].includes(n.type) ? n.declaration : n;
-        if (fn?.type === 'FunctionDeclaration' && fn.id) scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope }, true);
+        if (fn?.type === 'FunctionDeclaration' && fn.id) scope.set(fn.id.name, { bits: 0, kind: 'function', node: fn, scope, sourceFile: lexicalFile }, true);
       }
       // Only return-bearing statements contribute a function's result. A
       // prototype assignment is a side effect, not another possible return.
@@ -707,8 +766,8 @@ function createFlowAnalysis(files) {
           case 'ImportDeclaration': {
             const value = load(node.source.value);
             for (const s of node.specifiers) scope.set(s.local.name,
-              s.type === 'ImportSpecifier' ? property(value, s.imported.name ?? s.imported.value) :
-              s.type === 'ImportDefaultSpecifier' && value.kind === 'module-namespace' ? property(value, 'default') : value, true);
+              s.type === 'ImportSpecifier' ? readProperty(value, s.imported.name ?? s.imported.value) :
+              s.type === 'ImportDefaultSpecifier' && value.kind === 'module-namespace' ? readProperty(value, 'default') : value, true);
             break;
           }
           case 'ExportDefaultDeclaration': {
@@ -724,7 +783,7 @@ function createFlowAnalysis(files) {
             const props = result.exports.props || new Map();
             let bits = result.exports.bits || 0;
             for (const s of node.specifiers) {
-              const exported = value ? property(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean();
+              const exported = value ? readProperty(value, s.local.name ?? s.local.value) : scope.get(s.local.name) || clean();
               props.set(s.exported.name ?? s.exported.value, exported);
               bits |= exported.bits || 0;
             }

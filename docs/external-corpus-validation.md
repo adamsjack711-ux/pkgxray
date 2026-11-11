@@ -12,6 +12,23 @@ behavior. Network enrichment is disabled in this experiment, so a guard block
 can also reflect missing checks. A small, selected corpus is not an independent
 accuracy certification or a prevalence estimate.
 
+## Live MCP contrast
+
+`node scripts/check-live-controls.js --live` checks the same four pinned benign
+controls through the current checkout's real stdio MCP server, with npm and OSV
+checks enabled. It never installs or executes the target packages. Each allow
+must have a valid authorization receipt bound to the expected artifact, current
+scanner build and assessment policy, with consistent checks and authorization.
+Explicit overrides remain visible in the output. Errors retain their original
+selected case; they cannot count as allows.
+
+`measurementValid` describes the measurement contract, while
+`allControlsAllowed` describes the observed outcomes. A valid run containing a
+block exits successfully but reports `allControlsAllowed: false`; an invalid
+measurement exits nonzero. These four controls do not measure malicious recall,
+production false-positive prevalence, or latency. The command requires `--live`
+so an accidental invocation does not start network checks.
+
 ## Archive selection and limits
 
 The ZIP reader accepts a regular file of at most 4 MiB with at most 512 members.
