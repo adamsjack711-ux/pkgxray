@@ -851,19 +851,45 @@ async function handleRequest(request, signal) {
 // acquisition is repeated, no budget is raised, and findings never trigger a
 // retry. Queue pressure, cancellation and changed scanner builds are not
 // transient evidence failures and must preserve their existing control paths.
-async function analyzeSuppliedEvidence(evidence, analysis, { signal, analyze = require("../src/shared-scans").analyzeShared } = {}) {
-  const capturedEvidence = JSON.stringify(evidence), capturedAnalysis = JSON.stringify(analysis);
-  const retryable = new Set(["SCAN_ERROR", "SCAN_TIMEOUT", "EAGAIN", "EPIPE"]);
-  for (let attempt = 0; attempt < 2; attempt++) {
+async function analyzeSuppliedEvidence(evidence, analysis, { signal, analyze = require("../src/shared-scans").analyzeShared, timeoutMs = 30000 } = {}) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new RangeError("Static analysis timeout must be positive");
+  signal?.throwIfAborted();
+  // One caller-owned budget covers capture, queueing and both attempts. Aborting
+  // this signal detaches this caller, without cancelling other shared waiters.
+  const deadline = Date.now() + Math.min(timeoutMs, 30000);
+  const controller = new AbortController();
+  let retryAttempts = 0;
+  const expire = () => controller.abort(Object.assign(new Error("Static evidence analysis deadline exceeded"), {
+    code: "SCAN_TIMEOUT", retryAttempts
+  }));
+  const relayAbort = () => controller.abort(signal.reason);
+  signal?.addEventListener("abort", relayAbort, { once: true });
+  const timer = setTimeout(expire, Math.max(1, deadline - Date.now()));
+  const checkBudget = () => {
     signal?.throwIfAborted();
-    try {
-      const result = await analyze(JSON.parse(capturedEvidence), JSON.parse(capturedAnalysis), { signal });
-      return { ...result, retryAttempts: attempt };
-    } catch (error) {
-      signal?.throwIfAborted();
-      if (attempt === 0 && retryable.has(error?.code)) continue;
-      throw Object.assign(new Error(error?.message || "Static evidence scan failed"), { code: error?.code, retryAttempts: attempt });
+    if (Date.now() >= deadline && !controller.signal.aborted) expire();
+    controller.signal.throwIfAborted();
+  };
+  try {
+    checkBudget();
+    const capturedEvidence = JSON.stringify(evidence), capturedAnalysis = JSON.stringify(analysis);
+    const retryable = new Set(["SCAN_ERROR", "SCAN_TIMEOUT", "EAGAIN", "EPIPE"]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      checkBudget();
+      retryAttempts = attempt;
+      try {
+        const result = await analyze(JSON.parse(capturedEvidence), JSON.parse(capturedAnalysis), { signal: controller.signal });
+        checkBudget();
+        return { ...result, retryAttempts: attempt };
+      } catch (error) {
+        checkBudget();
+        if (attempt === 0 && retryable.has(error?.code)) continue;
+        throw Object.assign(new Error(error?.message || "Static evidence scan failed"), { code: error?.code, retryAttempts: attempt });
+      }
     }
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", relayAbort);
   }
 }
 

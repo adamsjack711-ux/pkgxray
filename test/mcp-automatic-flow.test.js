@@ -91,7 +91,7 @@ test("Compose blocks authorization without renaming raw flow categories as safet
   assert.equal(result.compose.analysisStatus, "no-flow-found");
   assert.equal(Object.hasOwn(result.compose, "verdict"), false);
   assert.equal(Object.hasOwn(result, "reviewPlan"), false);
-  assert.match(result.summary, /does not establish malicious behavior/);
+  assert.match(result.summary, /not a confirmed malware finding/);
   assert.equal(result.authorization.installAllowed, false);
   assert.equal(raw.decision, "review");
 });
@@ -150,4 +150,72 @@ test("guard acquisition failure becomes BLOCK without retrying a mutable package
   assert.ok(reply.result.structuredContent.resolution.reasonCodes.includes("incomplete-checks"));
   assert.equal(reply.result.isError, true);
   assert.match(child.stderr, /calls=1$/);
+});
+
+
+test("source retry shares one deadline and caller signal across both attempts", async () => {
+  const signals = [];
+  let attempts = 0;
+  const started = Date.now();
+  await assert.rejects(analyzeSuppliedEvidence({ sourceFiles: {} }, {}, {
+    timeoutMs: 300,
+    analyze: async (evidence, analysis, { signal }) => {
+      signals.push(signal);
+      attempts++;
+      if (attempts === 1) {
+        await new Promise(resolve => setTimeout(resolve, 60));
+        throw Object.assign(new Error("temporary worker failure"), { code: "SCAN_ERROR" });
+      }
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 280);
+        signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+      });
+      return { evidence: { verdict: "safe" }, source: "scan" };
+    }
+  }), error => error.code === "SCAN_TIMEOUT" && error.retryAttempts === 1);
+  assert.equal(attempts, 2);
+  assert.equal(signals[0], signals[1]);
+  assert.equal(signals[1].aborted, true);
+  assert.ok(Date.now() - started < 1000, "deadline bounds the whole retry operation");
+});
+
+test("exhausted source deadline neither retries nor releases a late success", async () => {
+  for (const fail of [false, true]) {
+    let attempts = 0;
+    await assert.rejects(analyzeSuppliedEvidence({ sourceFiles: {} }, {}, {
+      timeoutMs: 10,
+      analyze: async () => {
+        attempts++;
+        // Deliberately ignore cancellation: the caller must still reject late
+        // evidence or avoid retrying even a retryable error after its deadline.
+        await new Promise(resolve => setTimeout(resolve, 25));
+        if (fail) throw Object.assign(new Error("worker failed"), { code: "SCAN_ERROR" });
+        return { evidence: { verdict: "safe" }, source: "scan" };
+      }
+    }), error => error.code === "SCAN_TIMEOUT" && error.retryAttempts === 0);
+    assert.equal(attempts, 1);
+  }
+});
+
+test("source retry cancellation detaches one waiter without cancelling shared peers", async () => {
+  const { SharedScans } = require("../src/shared-scans");
+  const service = new SharedScans({ timeoutMs: 1000 });
+  const caller = new AbortController();
+  let release, workerSignal;
+  const held = new Promise(resolve => { release = resolve; });
+  const scan = async signal => { workerSignal = signal; await held; return { verdict: "safe" }; };
+  try {
+    const peer = service.get("same-source", scan);
+    const cancelled = analyzeSuppliedEvidence({ sourceFiles: {} }, {}, {
+      signal: caller.signal,
+      analyze: (evidence, analysis, { signal }) => service.get("same-source", scan, { signal })
+    });
+    caller.abort();
+    await assert.rejects(cancelled, { name: "AbortError" });
+    assert.equal(workerSignal.aborted, false);
+    release();
+    assert.equal((await peer).evidence.verdict, "safe");
+    assert.equal(service.snapshot().scans, 1);
+    assert.equal(service.snapshot().waiters, 0);
+  } finally { release(); service.close(); }
 });
