@@ -14,6 +14,8 @@ function hasMissingChecks(value) {
     ["failed", "partial"].includes(state) ||
     (["source", "vulnerabilities"].includes(name) && ["disabled", "skipped"].includes(state))) ||
     value.sourceCoverage?.complete === false ||
+    ["partial", "incomplete", "failed"].includes(value.coverage?.status) ||
+    ["partial", "incomplete", "failed"].includes(value.execution) ||
     (value.findings || value.report?.findings || []).some(f =>
       /^(?:incomplete-|scan-error|vulnerability-scan-error|missing-source)/.test(f.category || ""));
 }
