@@ -6428,6 +6428,8 @@ const SECRET = 1, REMOTE = 2, ENV = 4;
 // This key cannot collide with an inspected program binding. Private names
 // resolve to lexical Symbols, never public strings such as "value" or "#value".
 const PRIVATE_NAMES = Symbol("private names");
+const INSTANCE_BRAND = Symbol("instance brand");
+const GETTER_STATE = Symbol("getter-bearing instance");
 const clean = () => ({ bits: 0 });
 const tagged = kind => ({ bits: 0, kind });
 const literal = value => ({ bits: 0, value });
@@ -6475,7 +6477,11 @@ function joinValues(values, context, depth = 0) {
     v.kind === present[0].kind && v.sourceFile === present[0].sourceFile)) {
     out.kind = present[0].kind; out.sourceFile = present[0].sourceFile;
   }
-  else if (present.some(v => v.node || v.target || v.kind === 'alternatives' || ['require', 'module', 'exports'].includes(v.kind))) {
+  else if (present.length && present.every(v => v.kind === 'private-field-getter' &&
+    v.fieldKey === present[0].fieldKey && v.brand === present[0].brand)) {
+    out.kind = 'private-field-getter'; out.fieldKey = present[0].fieldKey; out.brand = present[0].brand;
+  }
+  else if (present.some(v => v.node || v.target || ['private-field-getter', 'alternatives'].includes(v.kind) || ['require', 'module', 'exports'].includes(v.kind))) {
     const alternatives = [...new Set(present.flatMap(v => v.alternatives || [v]))];
     Object.assign(out, { kind: 'alternatives', alternatives: alternatives.slice(0, 16), overflow: alternatives.length > 16 || present.some(v => v.overflow) });
     return out;
@@ -6514,6 +6520,7 @@ function property(object, key) {
   if (object.kind === 'process' && key === 'mainModule') return tagged('module');
   if (object.kind === 'process' && key === 'nextTick') return tagged('setImmediate');
   if (object.kind === 'module' && key === 'require') return { ...tagged('require'), sourceFile: object.sourceFile };
+  if (object.kind === 'Symbol' && key === 'iterator') return literal(Symbol.iterator);
   if (object.kind === 'module' && key === 'createRequire') return tagged('require-factory');
   if (object.props?.has(key)) {
     const value = object.props.get(key);
@@ -6540,7 +6547,7 @@ function property(object, key) {
   // `value.constructor.constructor` reaches the Function constructor without
   // spelling Function or eval. Preserve that intrinsic chain for remote-code
   // flow checks while leaving ordinary single `.constructor` reads inert.
-  if (key === 'constructor' && ['intrinsic-constructor', 'function', 'array-method', 'map-get', 'map-set', 'fetch', 'sink', 'request', 'shell'].includes(object.kind)) return tagged('Function');
+  if (key === 'constructor' && ['intrinsic-constructor', 'class', 'function', 'array-method', 'map-get', 'map-set', 'fetch', 'sink', 'request', 'shell'].includes(object.kind)) return tagged('Function');
   if (key === 'constructor') return tagged('intrinsic-constructor');
   if (object.kind === 'https' && ['request', 'get'].includes(key)) return tagged('request');
   // Explicitly identified network modules only. A method named `post` on an
@@ -6623,6 +6630,7 @@ function createFlowAnalysis(files) {
     // Imported function bodies execute abstractly in this evaluator, but their
     // relative imports belong to the module that defined them, not the caller.
     let lexicalFile = file;
+    let inspectingGetterState = null;
     const tick = () => { if (++work > 500000 || depth > 160) throw new Error('flow budget'); };
     const hint = (node, kind) => {
       const key = `${node.start}:${kind}`;
@@ -6647,7 +6655,10 @@ function createFlowAnalysis(files) {
     function bind(pattern, value, scope, declare = true) {
       if (!pattern) return;
       tick();
-      if (pattern.type === 'Identifier') scope.set(pattern.name, value, declare);
+      if (pattern.type === 'Identifier') {
+        if (!declare && inspectingGetterState && (value.bits & (SECRET | ENV | REMOTE))) gap('unresolved dormant cross-method getter state');
+        scope.set(pattern.name, value, declare);
+      }
       else if (pattern.type === 'AssignmentPattern') bind(pattern.left, merge(value, expr(pattern.right, scope)), scope, declare);
       else if (pattern.type === 'ObjectPattern') for (const p of pattern.properties) {
         if (p.type === 'RestElement') bind(p.argument, value, scope, declare);
@@ -6669,7 +6680,7 @@ function createFlowAnalysis(files) {
       if (isolated) result.exports = copyState(result.exports, context);
       // Callback paths invoke functions directly too. Resolve lexical this at
       // this shared boundary, including the cloned closure during speculation.
-      const receiver = fn.node.type === 'ArrowFunctionExpression' ? closure.get('this') : thisValue;
+      const receiver = fn.node.type === 'ArrowFunctionExpression' ? closure.get('this') : isolated ? copyState(thisValue, context) : thisValue;
       local.set('this', receiver || {bits:0,props:new Map()}, true);
       const callerFile = lexicalFile;
       try {
@@ -6703,9 +6714,76 @@ function createFlowAnalysis(files) {
       }
       return value;
     }
-    function readProperty(object, key) {
+    function hasGetter(value) {
+      const pending = [value], seen = new Set();
+      while (pending.length) {
+        tick();
+        const current = pending.pop();
+        if (!current || seen.has(current)) continue;
+        seen.add(current);
+        if (current.kind === 'private-field-getter' || current.getterBearing ||
+            current.props?.get(GETTER_STATE)?.value === true || current.getterFields?.length) return true;
+        if (current.alternatives) pending.push(...current.alternatives);
+        if (current.props) pending.push(...current.props.values());
+        if (current.elements) pending.push(...current.elements);
+      }
+      return false;
+    }
+    function getterValue(value, receiver) {
       tick();
-      if (object.kind === 'alternatives') return merge(...object.alternatives.map(value => readProperty(value, key)));
+      if (value.kind === 'alternatives') {
+        if (value.overflow) gap('getter descriptor alternatives limit');
+        return merge(...value.alternatives.map(item => getterValue(item, receiver)));
+      }
+      if (value.kind !== 'private-field-getter') return value;
+      if (receiver?.kind === 'alternatives') {
+        if (receiver.overflow) gap('getter receiver alternatives limit');
+        return merge(...receiver.alternatives.map(item => getterValue(value, item)));
+      }
+      if (typeof value.fieldKey !== 'symbol' || typeof value.brand !== 'symbol' ||
+          receiver?.kind !== 'instance' || receiver.props?.get(INSTANCE_BRAND)?.value !== value.brand ||
+          !receiver.props.has(value.fieldKey)) {
+        gap('unresolved private getter receiver or brand'); return clean();
+      }
+      const field = receiver.props.get(value.fieldKey);
+      if (!field || field.kind || field.props || field.elements || (field.value !== null && typeof field.value === 'object')) {
+        gap('private getter field is not a modeled primitive'); return { bits: field?.bits || 0 };
+      }
+      return field;
+    }
+    function writeProperty(object, key, value, node, privateAccess = false, weak = false) {
+      tick();
+      if (object.kind === 'alternatives') {
+        if (object.overflow) gap('assignment receiver alternatives limit', node);
+        for (const alternative of object.alternatives) writeProperty(alternative, key, value, node, privateAccess, true);
+        return;
+      }
+      if (hasGetter(object.props?.get(key)) || (hasGetter(object) && (key === undefined || key === '__proto__'))) {
+        gap('getter-backed property writes are not supported', node); return;
+      }
+      if (privateAccess && !object.props?.has(key)) {
+        gap('unresolved private field assignment receiver', node); return;
+      }
+      if (inspectingGetterState && ((value.bits & (SECRET | ENV | REMOTE)) ||
+          (inspectingGetterState.has(key) && (value.kind || value.props || value.elements)))) {
+        gap('unresolved dormant cross-method getter state', node);
+      }
+      if (!object.props) { gap('unresolved object assignment', node, Boolean(inspectingGetterState || value.bits || value.kind)); return; }
+      object.props.set(key, weak ? merge(object.props.get(key) || clean(), value) : value);
+      object.bits |= value.bits;
+      if (object.elements && /^\d+$/.test(String(key))) {
+        if (Number(key) > 4096) gap('array index limit', node);
+        else object.elements[Number(key)] = value;
+      }
+    }
+    function readProperty(object, key, receiver = object, privateAccess = false) {
+      tick();
+      if (object.kind === 'alternatives') {
+        if (object.overflow) gap('property receiver alternatives limit');
+        return merge(...object.alternatives.map(value => readProperty(value, key, receiver === object ? value : receiver, privateAccess)));
+      }
+      if ((key === undefined && hasGetter(object)) || (key === 'prototype' && object.getterFields?.length)) gap('unresolved getter reflection');
+      if (privateAccess && !object.props?.has(key)) { gap('unresolved private field read receiver'); return clean(); }
       if ((object.kind === 'module' && key === 'exports') || object.kind === 'exports') {
         if (object.sourceFile !== file) {
           gap('foreign module export read is not modeled');
@@ -6715,7 +6793,7 @@ function createFlowAnalysis(files) {
         // model of the export object's live contents or cross-module mutation.
         if (object.kind === 'module') return { ...tagged('exports'), sourceFile: object.sourceFile };
       }
-      return checkExportRead(property(object, key));
+      return checkExportRead(getterValue(property(object, key), receiver));
     }
     function readsReceiver(fn) {
       const pending = [fn.node.body, ...fn.node.params];
@@ -6741,13 +6819,15 @@ function createFlowAnalysis(files) {
       const value = { bits: args.reduce((bits, arg) => bits | (arg?.bits || 0), 0) };
       if (callee.kind === 'alternatives') {
         if (callee.overflow) gap('callable alternatives limit', node,
-          Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
+          callee.alternatives.some(item => item.kind === 'class') || Boolean((callee.bits | value.bits) & (SECRET | ENV | REMOTE)));
         return merge(...callee.alternatives.map(fn => callValue(node, fn, args, explicitThis)));
       }
+      if (inspectingGetterState && (value.bits & (SECRET | ENV | REMOTE))) gap('unresolved dormant cross-method getter state', node);
+      if (['object-values', 'object-entries'].includes(callee.kind) && args.some(hasGetter)) gap('getter-bearing object enumeration is not modeled', node);
       if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null);
       if (callee.kind === 'builtin-loader') return load(args[0]?.value, null);
       if (callee.kind === 'require-factory') return tagged('require');
-      if (callee.kind === 'reflect-get') return readProperty(args[0] || clean(), args[1]?.value);
+      if (callee.kind === 'reflect-get') return readProperty(args[0] || clean(), args[1]?.value, args.length > 2 ? args[2] : undefined);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
         const list = args[callee.kind === 'reflect-apply' ? 2 : 1];
         if (!list?.elements) { gap('unresolved reflected argument list', node,
@@ -6912,12 +6992,7 @@ function createFlowAnalysis(files) {
         }
         return invoke(callee, args, false, receiver);
       }
-      if (callee.kind === 'class') {
-        const instance = { bits: callee.bits, kind: 'instance', props: new Map(callee.props || []) };
-        const constructor = callee.props?.get('constructor');
-        if (constructor?.kind === 'function') invoke(constructor, args, false, instance);
-        return instance;
-      }
+      if (callee.kind === 'class') return instantiateClass(callee, args);
       if (callee.kind === 'Proxy') {
         // Preserve the target's taint; arbitrary traps are not modeled.
         gap(); return args[0] || value;
@@ -6945,6 +7020,7 @@ function createFlowAnalysis(files) {
       // full object graphs. Nested properties already contribute to `bits` at
       // construction time; copying them here caused benign callback/object
       // frameworks to exhaust the state budget without adding flow evidence.
+      if (args.some(hasGetter)) gap('unmodeled operation on getter-bearing object', node);
       return { bits: value.bits | callee.bits };
     }
     function constructorMayReplaceInstance(body) {
@@ -6982,11 +7058,32 @@ function createFlowAnalysis(files) {
       const key = node.property || node.key;
       return node.computed ? expr(key, scope).value : key.name ?? key.value;
     }
+    function instantiateClass(callee, args, runConstructor = true) {
+      const instance = { bits: 0, kind: 'instance', props: new Map(callee.instanceProps || []) };
+      instance.props.set(INSTANCE_BRAND, literal(callee.brand));
+      if (callee.getterFields?.length) instance.props.set(GETTER_STATE, literal(true));
+      const local = new Scope(callee.scope);
+      local.set('this', instance, true);
+      const previousFile = lexicalFile;
+      try {
+        lexicalFile = callee.sourceFile;
+        for (const field of callee.fields || []) {
+          tick();
+          const value = field.node ? expr(field.node, local) : literal(undefined);
+          instance.props.set(field.key, value);
+          instance.bits |= value.bits;
+        }
+        if (runConstructor && callee.constructorFn) invoke(callee.constructorFn, args, false, instance);
+      } finally { lexicalFile = previousFile; }
+      return instance;
+    }
     function classValue(node, scope) {
       expr(node.superClass, scope);
-      if (node.superClass) gap(); // inheritance and constructor effects need review
-      const value = { bits: 0, kind: 'class', props: new Map() };
+      if (node.superClass) gap();
+      const value = { bits: 0, kind: 'class', node, sourceFile: lexicalFile,
+        brand: Symbol('class brand'), props: new Map(), instanceProps: new Map(), fields: [], getterFields: [] };
       const local = new Scope(scope);
+      value.scope = local;
       const names = new Map(scope.get(PRIVATE_NAMES)?.props || []);
       const ownNames = new Set();
       for (const member of node.body.body) {
@@ -6998,49 +7095,90 @@ function createFlowAnalysis(files) {
       local.set(PRIVATE_NAMES, { bits: 0, props: names }, true);
       if (node.id) local.set(node.id.name, value, true);
       local.set('this', value, true);
+      const privateFields = new Set(node.body.body.filter(member => member.type === 'PropertyDefinition' &&
+        !member.static && member.key.type === 'PrivateIdentifier').map(member => member.key.name));
+      const inspected = [];
+      const ordinaryFields = [];
+      // Register every method before inspecting constructors or method bodies.
       for (const member of node.body.body) {
-        if (!member.static && member.type === 'PropertyDefinition' && member.value) {
-          // Field initializers currently run against the class definition once,
-          // not against each allocated instance. An arrow initialized here
-          // must not claim a clean lexical receiver from that approximation.
+        if (member.type === 'StaticBlock') continue;
+        const key = memberKey(member, local);
+        if (key === undefined) gap('unresolved computed class member', member);
+        if (member.type === 'PropertyDefinition') {
+          ordinaryFields.push({ member, key });
+          if (!member.static) value.fields.push({ key, node: member.value });
+          continue;
+        }
+        const fn = { bits: 0, kind: 'function', node: member.value, scope: local, sourceFile: lexicalFile };
+        if (member.kind === 'constructor') {
+          value.constructorFn = fn;
+          if (constructorMayReplaceInstance(member.value.body)) gap('class constructor may return a replacement object', member.value.body);
+          continue;
+        }
+        const returned = member.value.body.body;
+        const expression = returned.length === 1 && returned[0].type === 'ReturnStatement' ? returned[0].argument : null;
+        const supported = member.kind === 'get' && !member.static && !member.computed &&
+          expression?.type === 'MemberExpression' && !expression.computed && !expression.optional &&
+          expression.object.type === 'ThisExpression' && expression.property.type === 'PrivateIdentifier' &&
+          privateFields.has(expression.property.name);
+        if (supported) {
+          const fieldKey = names.get(expression.property.name).value;
+          const descriptor = { bits: 0, kind: 'private-field-getter', fieldKey, brand: value.brand };
+          value.instanceProps.set(key, descriptor);
+          value.getterFields.push(fieldKey);
+        } else {
+          (member.static ? value.props : value.instanceProps).set(key, fn);
+          inspected.push({ fn, static: member.static });
+          if (member.kind === 'get' || member.kind === 'set') gap('unsupported accessor semantics', member);
+        }
+      }
+      const prototype = { bits: 0, kind: 'class-prototype', node, props: value.instanceProps,
+        getterBearing: value.getterFields.length > 0 };
+      value.props.set('prototype', prototype);
+      if (!value.instanceProps.has('constructor')) value.instanceProps.set('constructor', value);
+      for (const { member, key } of ordinaryFields) {
+        if (value.instanceProps.get(key)?.kind === 'private-field-getter') gap('own field and getter name overlap', member);
+        if (!member.static && member.value) {
           const pending = [member.value];
           while (pending.length) {
             tick();
             const initializer = pending.pop();
-            if (initializer.type === 'ArrowFunctionExpression') {
-              gap('instance field arrow receiver initialization is not modeled', member);
-              break;
+            if (['ArrowFunctionExpression', 'CallExpression', 'NewExpression', 'TaggedTemplateExpression'].includes(initializer.type)) {
+              gap('instance field initializer closure/call semantics are not supported', member); break;
             }
-            if (['CallExpression', 'NewExpression', 'TaggedTemplateExpression'].includes(initializer.type)) {
-              // A factory can create an arrow outside this initializer's AST.
-              // Calls also run per instance in JavaScript, which this model
-              // cannot yet reproduce against the correct receiver.
-              gap('instance field initializer calls are not modeled per instance', member);
-              break;
-            }
-            for (const value of Object.values(initializer)) {
-              for (const child of Array.isArray(value) ? value : [value]) {
-                if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
-              }
+            for (const child of Object.values(initializer).flatMap(item => Array.isArray(item) ? item : [item])) {
+              if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
             }
           }
         }
-        if (member.type === 'StaticBlock') { statements(member.body, local); continue; }
-        const key = memberKey(member, local);
-        const v = expr(member.value, local);
-        value.props.set(key, v);
-        value.bits |= v.bits;
-        if (member.kind === 'constructor' && constructorMayReplaceInstance(member.value.body)) {
-          // callValue currently returns the allocated abstract instance. It
-          // must not claim complete analysis if JavaScript can return another
-          // object whose properties and behavior differ from that instance.
-          gap('class constructor may return a replacement object', member.value.body);
-        }
-        // Constructor bodies are inspected above and invoked with the real
-        // arguments/receiver when the class is instantiated. Accessors still
-        // need a property-read/write model before their effects can be cleared.
-        if (member.kind === 'get' || member.kind === 'set') gap();
       }
+      for (const member of node.body.body) {
+        if (member.type === 'StaticBlock') statements(member.body, local);
+        else if (member.type === 'PropertyDefinition' && member.static) {
+          const v = expr(member.value, local); value.props.set(memberKey(member, local), v); value.bits |= v.bits;
+        }
+      }
+      // Inspect dormant bodies against an isolated receiver. Sensitive writes
+      // cannot be cleared on the assumption that separately inspected methods
+      // never run in sequence; complete inter-method state summaries are deferred.
+      const savedExports = result.exports;
+      const context = stateContext();
+      const isolated = copyState(value, context);
+      let specimen;
+      try {
+        result.exports = copyState(result.exports, context);
+        specimen = instantiateClass(isolated, [], false);
+        const previousInspection = inspectingGetterState;
+        inspectingGetterState = value.getterFields.length ? new Set(value.getterFields) : null;
+        try { if (isolated.constructorFn) invoke(isolated.constructorFn, [], false, specimen); }
+        finally { inspectingGetterState = previousInspection; }
+        for (const method of inspected) {
+          const previous = inspectingGetterState;
+          inspectingGetterState = value.getterFields.length ? new Set(value.getterFields) : null;
+          try { invoke(method.fn, [], true, method.static ? value : specimen); }
+          finally { inspectingGetterState = previous; }
+        }
+      } finally { result.exports = savedExports; }
       return value;
     }
     function mayWrite(node) {
@@ -7068,8 +7206,9 @@ function createFlowAnalysis(files) {
               gap('foreign module export read is not modeled', node);
               return clean();
             }
+            if (node.name === 'undefined') return literal(undefined);
             return (['require', 'module', 'exports'].includes(node.name)
-            ? { ...tagged(node.name), sourceFile: lexicalFile } : tagged(({ process: 'process', module: 'module', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Map: 'Map', Object: 'Object', Array: 'Array', Promise: 'Promise', setTimeout: 'setTimeout', setInterval: 'setInterval', setImmediate: 'setImmediate', globalThis: 'global', global: 'global' })[node.name]));
+            ? { ...tagged(node.name), sourceFile: lexicalFile } : tagged(({ process: 'process', module: 'module', Bun: 'Bun', fetch: 'fetch', WebSocket: 'WebSocket', require: 'require', Reflect: 'Reflect', Proxy: 'Proxy', Function: 'Function', Symbol: 'Symbol', Map: 'Map', Object: 'Object', Array: 'Array', Promise: 'Promise', setTimeout: 'setTimeout', setInterval: 'setInterval', setImmediate: 'setImmediate', globalThis: 'global', global: 'global' })[node.name]));
           }
           case 'ThisExpression': return scope.get('this') || clean();
           case 'MetaProperty': return clean();
@@ -7095,19 +7234,35 @@ function createFlowAnalysis(files) {
           case 'MemberExpression': {
             const object = expr(node.object, scope);
             const key = memberKey(node, scope);
-            return readProperty(object, key);
+            return readProperty(object, key, object, node.property.type === 'PrivateIdentifier');
           }
           case 'ObjectExpression': {
             const props = new Map(); let bits = 0, env = false;
             for (const p of node.properties) {
-              if (p.type === 'SpreadElement') { const v = expr(p.argument, scope); bits |= v.bits; env ||= v.kind === 'env'; for (const [k, x] of v.props || []) props.set(k, x); }
+              if (p.type === 'SpreadElement') { const v = expr(p.argument, scope); if (hasGetter(v)) gap('getter-bearing object spread is not modeled', p); bits |= v.bits; env ||= v.kind === 'env'; for (const [k, x] of v.props || []) props.set(k, x); }
               else { if (p.kind === 'get' || p.kind === 'set') gap(); const v = expr(p.value, scope); props.set(p.computed ? expr(p.key, scope).value : p.key.name ?? p.key.value, v); bits |= v.bits; }
             }
             return { bits, props, kind: env ? 'env' : undefined };
           }
           case 'ArrayExpression': { const elements = node.elements.map(n => expr(n, scope)); return { ...merge(...elements), elements }; }
           case 'SpreadElement': return expr(node.argument, scope);
-          case 'UnaryExpression': case 'UpdateExpression': return expr(node.argument, scope);
+          case 'UnaryExpression': {
+            if (node.operator === 'delete' && node.argument.type === 'MemberExpression') {
+              const object = expr(node.argument.object, scope);
+              memberKey(node.argument, scope); // Computed delete keys still execute their expressions.
+              if (hasGetter(object)) gap('deletion on getter-bearing instances is not modeled', node);
+              return literal(true);
+            }
+            return expr(node.argument, scope);
+          }
+          case 'UpdateExpression': {
+            const previous = expr(node.argument, scope);
+            const next = typeof previous.value === 'number' ? { ...previous, value: previous.value + (node.operator === '++' ? 1 : -1) } : { bits: previous.bits };
+            if (previous.kind || previous.props || previous.elements) gap('unresolved update coercion', node);
+            if (node.argument.type === 'MemberExpression') writeProperty(expr(node.argument.object, scope), memberKey(node.argument, scope), next, node, node.argument.property.type === 'PrivateIdentifier');
+            else bind(node.argument, next, scope, false);
+            return node.prefix ? next : previous;
+          }
           case 'LogicalExpression': {
             const left = expr(node.left, scope);
             if (!mayWrite(node.right)) return merge(left, expr(node.right, scope));
@@ -7134,18 +7289,11 @@ function createFlowAnalysis(files) {
                 (obj.type === 'MemberExpression' && obj.object.name === 'module' && obj.property.name === 'exports' && !scope.get('module'))) {
                 if (lexicalFile !== file) gap('foreign module export mutation is not modeled', node);
                 else { result.exports.props ||= new Map(); result.exports.props.set(key, v); result.exports.bits |= v.bits; }
-              } else if (obj.type === 'Identifier') {
-                const old = scope.get(obj.name) || clean();
-                old.props ||= new Map(); old.props.set(key, v); old.bits |= v.bits;
-                if (old.elements && /^\d+$/.test(String(key))) {
-                  if (Number(key) > 4096) gap('array index limit', node);
-                  else old.elements[Number(key)] = v;
-                }
-                scope.set(obj.name, old);
               } else {
                 const target = expr(obj, scope);
-                if (target.props) { target.props.set(key, v); target.bits |= v.bits; }
-                else gap('unresolved object assignment', node, Boolean(v.bits || v.kind));
+                if (!target.props && obj.type === 'Identifier') target.props = new Map();
+                writeProperty(target, key, v, node, node.left.property.type === 'PrivateIdentifier');
+                if (obj.type === 'Identifier') scope.set(obj.name, target);
               }
             } else bind(node.left, v, scope, false);
             return v;
