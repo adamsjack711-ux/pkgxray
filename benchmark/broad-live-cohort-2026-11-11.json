@@ -1,0 +1,530 @@
+{
+  "schemaVersion": 1,
+  "cohortId": "established-package-candidates-2026-11-11",
+  "selectedCount": 32,
+  "selectionFrozenAt": "2026-11-11T15:08:17.415Z",
+  "acquiredAt": "2026-11-11T15:08:19.517Z",
+  "selection": "Four original exact controls plus 28 names fixed before acquisition; resolve latest once successfully, then bind exact version and verified tarball bytes. No replacement on acquisition errors; no scanner used during selection or acquisition.",
+  "label": "Project-selected established-package candidates, not certified benign; vulnerabilities can justify blocks.",
+  "limits": {
+    "metadataBytes": 1048576,
+    "compressedBytes": 8388608,
+    "caseDeadlineMs": 30000,
+    "maxAttemptsPerResource": 2,
+    "concurrency": 4
+  },
+  "cases": [
+    {
+      "packageName": "escape-string-regexp",
+      "stratum": "utilities",
+      "selection": "original-control",
+      "version": "5.0.0",
+      "reference": "escape-string-regexp@5.0.0",
+      "expectedSha256": "c8b662afe8aa2b852ecc27d766e584a502f8351fbbd890611f2509bf083d28e6",
+      "sourceUrl": "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz",
+      "distIntegrity": "sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw==",
+      "compressedBytes": 1964,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "is-number",
+      "stratum": "utilities",
+      "selection": "original-control",
+      "version": "7.0.0",
+      "reference": "is-number@7.0.0",
+      "expectedSha256": "7b75c1057198cf97696909a9bee176c9c5e9bcb5b03bf3ecef2f484defadd51e",
+      "sourceUrl": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+      "distIntegrity": "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==",
+      "compressedBytes": 3730,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "picocolors",
+      "stratum": "utilities",
+      "selection": "original-control",
+      "version": "1.1.1",
+      "reference": "picocolors@1.1.1",
+      "expectedSha256": "d3aedb2807967b7eb37fd11b03b7e3701e725af79c650d0812ff7213f8f882d9",
+      "sourceUrl": "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz",
+      "distIntegrity": "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==",
+      "compressedBytes": 2625,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "yocto-queue",
+      "stratum": "utilities",
+      "selection": "original-control",
+      "version": "1.2.1",
+      "reference": "yocto-queue@1.2.1",
+      "expectedSha256": "2b3bd9bfcd6ca5e17556846221a11e15b43c81f76cb6bce3059405fed9753055",
+      "sourceUrl": "https://registry.npmjs.org/yocto-queue/-/yocto-queue-1.2.1.tgz",
+      "distIntegrity": "sha512-AyeEbWOu/TAXdxlV9wmGcR0+yh2j3vYPGOECcIj2S7MkrLyC7ne+oye2BKTItt0ii2PHk4cDy+95+LshzbXnGg==",
+      "compressedBytes": 3197,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "ms",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "2.1.3",
+      "reference": "ms@2.1.3",
+      "expectedSha256": "f6616e15e530ed552f9daa2d3ce71963947c6bc7c98c9b64fd3e673fd02622c6",
+      "sourceUrl": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "distIntegrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+      "compressedBytes": 2967,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "is-plain-obj",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "4.1.0",
+      "reference": "is-plain-obj@4.1.0",
+      "expectedSha256": "c71d874f7ab7cd560329b080ce790f9768dea503337fe2e2719a18e28be621f7",
+      "sourceUrl": "https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-4.1.0.tgz",
+      "distIntegrity": "sha512-+Pgi+vMuUNkJyExiMBt5IlFoMyKnr5zhJ4Uspz58WOhBF5QoIZkFyNHIbBAtHwzVAgk5RtndVNsDRN61/mmDqg==",
+      "compressedBytes": 1961,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "ansi-regex",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "6.6.0",
+      "reference": "ansi-regex@6.6.0",
+      "expectedSha256": "dfb386fd02161f963368be90e9c6616277a66442ce186dd8b953799a91d30c3b",
+      "sourceUrl": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-6.6.0.tgz",
+      "distIntegrity": "sha512-XZ5apbzreCbXSKwPjJstu8R0zOi247w3XYwWxtwBXgpZrCyc1Ka7p9/xY0A9/diMewmHbEKz+FIraWaEWjlN5g==",
+      "compressedBytes": 4310,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "strip-ansi",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "7.2.0",
+      "reference": "strip-ansi@7.2.0",
+      "expectedSha256": "2fa01de86a5022ef32773abbc4e84a53a1c5d31f5a5cbf03ed2575f10408543f",
+      "sourceUrl": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-7.2.0.tgz",
+      "distIntegrity": "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w==",
+      "compressedBytes": 2156,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "escape-html",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "1.0.3",
+      "reference": "escape-html@1.0.3",
+      "expectedSha256": "a101155c3cbdfb1e4f98f2f83c8b5e392db6accfa606df0eba8b87a5762b0366",
+      "sourceUrl": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
+      "distIntegrity": "sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==",
+      "compressedBytes": 1917,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "fast-deep-equal",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "3.1.3",
+      "reference": "fast-deep-equal@3.1.3",
+      "expectedSha256": "b019a0980f27638dc3f85836b0e478f188e00d7a6e5852c0819fa86f56e47b8f",
+      "sourceUrl": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
+      "distIntegrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
+      "compressedBytes": 3656,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "once",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "1.4.0",
+      "reference": "once@1.4.0",
+      "expectedSha256": "cf51460ba370c698f68b976e514d113497339ba018b6003e8e8eb569c6fccfcf",
+      "sourceUrl": "https://registry.npmjs.org/once/-/once-1.4.0.tgz",
+      "distIntegrity": "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==",
+      "compressedBytes": 1979,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "wrappy",
+      "stratum": "utilities",
+      "selection": "latest-at-acquisition",
+      "version": "1.0.2",
+      "reference": "wrappy@1.0.2",
+      "expectedSha256": "aff3730d91b7b1e143822956d14608f563163cf11b9d0ae602df1fe1e430fdfb",
+      "sourceUrl": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
+      "distIntegrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==",
+      "compressedBytes": 1676,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "lodash",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "4.18.1",
+      "reference": "lodash@4.18.1",
+      "expectedSha256": "696942c2a488c9d7428e9ca5f12ccf03b52de01dcdbfe4d4751d392f0491ae16",
+      "sourceUrl": "https://registry.npmjs.org/lodash/-/lodash-4.18.1.tgz",
+      "distIntegrity": "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==",
+      "compressedBytes": 315640,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "minimatch",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "11.0.8",
+      "reference": "minimatch@11.0.8",
+      "expectedSha256": "1dc838a033c6105308d3d49c1881f9304b2b6821683dfe4815c37f8e19e7956a",
+      "sourceUrl": "https://registry.npmjs.org/minimatch/-/minimatch-11.0.8.tgz",
+      "distIntegrity": "sha512-nFQuYSTVrGvysVBps5Ih+0BdnYFN/Cj3C816r6+p7yK+FHrVLGE4O4N9AFwykrlNlvM2HYt+Rad1Uiro6h88Ig==",
+      "compressedBytes": 121657,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "semver",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "7.8.6",
+      "reference": "semver@7.8.6",
+      "expectedSha256": "c6584c324e8b1e5d0403c6c16ee2b25dd61567c13f0449a58820350c21cd71bf",
+      "sourceUrl": "https://registry.npmjs.org/semver/-/semver-7.8.6.tgz",
+      "distIntegrity": "sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==",
+      "compressedBytes": 33566,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "glob",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "14.0.4",
+      "reference": "glob@14.0.4",
+      "expectedSha256": "22a4f77acd57890859cf16aaa5412790b4fc1282a727034a7c9274dc4cc5690c",
+      "sourceUrl": "https://registry.npmjs.org/glob/-/glob-14.0.4.tgz",
+      "distIntegrity": "sha512-mMiwNKoJZ4HAIRVJxotO6LsNRReA30gQwP9E2/p94tfLv+jygCNpKDjhhSL6OLY6LE371EZm5EAf7RpYuUqlsw==",
+      "compressedBytes": 444914,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "debug",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "4.4.3",
+      "reference": "debug@4.4.3",
+      "expectedSha256": "89c1ac9c946ee8905a875837114528e97eeae35e03be3190584b2216af43e4a7",
+      "sourceUrl": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+      "distIntegrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+      "compressedBytes": 13449,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "chalk",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "6.0.1",
+      "reference": "chalk@6.0.1",
+      "expectedSha256": "22a5b05d62a304c950f24dedb466ea07fb4b458e58bb37b2fe2c69ed2c9ba6c3",
+      "sourceUrl": "https://registry.npmjs.org/chalk/-/chalk-6.0.1.tgz",
+      "distIntegrity": "sha512-/Ce6KNm3vIbWdMlNna6RVIZ/ICQxnJxCicet5LBKK9ZffBkqzDw0xh9EiKSljdRtiIQ1S1z4YgcscUUGzNCWrA==",
+      "compressedBytes": 16463,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "commander",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "15.1.0",
+      "reference": "commander@15.1.0",
+      "expectedSha256": "308f16a324f6d0c889c1a388858868d84e1b4eb4e2bf856caa001f01c1c55bdf",
+      "sourceUrl": "https://registry.npmjs.org/commander/-/commander-15.1.0.tgz",
+      "distIntegrity": "sha512-cgnQ88TRrWcC7pVq46RzJVRMktu3W2RcbnoidnfBsl1bmDCBwJS/udcIZpKoCrbAYYaCqsz1yZCVIgbIaU3ddQ==",
+      "compressedBytes": 52575,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "uuid",
+      "stratum": "larger-libraries",
+      "selection": "latest-at-acquisition",
+      "version": "14.0.3",
+      "reference": "uuid@14.0.3",
+      "expectedSha256": "4750af69abb91dae4c49e4c71c96fd6a3bd0613900f18429b955ad6fb8099977",
+      "sourceUrl": "https://registry.npmjs.org/uuid/-/uuid-14.0.3.tgz",
+      "distIntegrity": "sha512-Sc5u1VVln93y1Xnz4R+CunOZc7R9LUcTmhj7Rc7Eg3HVcf7rVn2FOoa812fe0W8p3jD7xeoGSYbfqCGGH2B6xw==",
+      "compressedBytes": 14991,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "react",
+      "stratum": "framework-tooling",
+      "selection": "latest-at-acquisition",
+      "version": "19.3.1",
+      "reference": "react@19.3.1",
+      "expectedSha256": "56936913918dcf1f7a6fe58784e79df54b18200a88655ce809cf5e9c4ef871aa",
+      "sourceUrl": "https://registry.npmjs.org/react/-/react-19.3.1.tgz",
+      "distIntegrity": "sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==",
+      "compressedBytes": 26394,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "express",
+      "stratum": "framework-tooling",
+      "selection": "latest-at-acquisition",
+      "version": "5.3.0",
+      "reference": "express@5.3.0",
+      "expectedSha256": "62450d99e36dc393295f1ddd93cb9291e658c169f3b700b0110c1ae8fa799930",
+      "sourceUrl": "https://registry.npmjs.org/express/-/express-5.3.0.tgz",
+      "distIntegrity": "sha512-qCqy1xSoaugxOD4IVHb1ZWdkvCF2W3aE2okKouWj8VwJ+ztskSiXoBnCSJqfKT+cVPJhuJqe9YLbY425+Zh00g==",
+      "compressedBytes": 22968,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "typescript",
+      "stratum": "framework-tooling",
+      "selection": "latest-at-acquisition",
+      "version": "7.0.2",
+      "reference": "typescript@7.0.2",
+      "expectedSha256": "da2513f4b95176d6dde8b51aab7afe8a927656c9d277369793f77f7e59371c08",
+      "sourceUrl": "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz",
+      "distIntegrity": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==",
+      "compressedBytes": 365612,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "vite",
+      "stratum": "framework-tooling",
+      "selection": "latest-at-acquisition",
+      "version": "8.3.8",
+      "reference": "vite@8.3.8",
+      "expectedSha256": "96b14ea41f889b70b1ccf74dd5861e365816fce8632c5073ce8d70c90509738b",
+      "sourceUrl": "https://registry.npmjs.org/vite/-/vite-8.3.8.tgz",
+      "distIntegrity": "sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==",
+      "compressedBytes": 592262,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "esbuild",
+      "stratum": "framework-tooling",
+      "selection": "latest-at-acquisition",
+      "version": "0.28.2",
+      "reference": "esbuild@0.28.2",
+      "expectedSha256": "e045f94c235c7adc50e77ba2a579c7bec41b496b6b47c3a7845f7c1e19959a88",
+      "sourceUrl": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz",
+      "distIntegrity": "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==",
+      "compressedBytes": 34207,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "rollup",
+      "stratum": "framework-tooling",
+      "selection": "latest-at-acquisition",
+      "version": "4.68.2",
+      "reference": "rollup@4.68.2",
+      "expectedSha256": "f08039f7cc75ec05aea1106e9deeb550e69509d228c7865a649cb4a2ad531120",
+      "sourceUrl": "https://registry.npmjs.org/rollup/-/rollup-4.68.2.tgz",
+      "distIntegrity": "sha512-xzt45rKOxzEuqjTdkGTIEaePcq9xRELlFI1uoazlKap8T6bENJkONSCfhK51P6XFTixa4rosPcDHihSdduXndQ==",
+      "compressedBytes": 604862,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "undici",
+      "stratum": "network-native",
+      "selection": "latest-at-acquisition",
+      "version": "8.12.4",
+      "reference": "undici@8.12.4",
+      "expectedSha256": "26058cdb2174623666e823e6b44ccfef8d5c1955107f979b8083904b61a0ce6e",
+      "sourceUrl": "https://registry.npmjs.org/undici/-/undici-8.12.4.tgz",
+      "distIntegrity": "sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==",
+      "compressedBytes": 547266,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "axios",
+      "stratum": "network-native",
+      "selection": "latest-at-acquisition",
+      "version": "1.21.1",
+      "reference": "axios@1.21.1",
+      "expectedSha256": "5659acb8c9414ad88aa539db8e529947c9bac8cdf55973e314a078fc0205751c",
+      "sourceUrl": "https://registry.npmjs.org/axios/-/axios-1.21.1.tgz",
+      "distIntegrity": "sha512-6eI5Q/Y4u/Um9dDlsRoq5pY2rxnUTv+L4PpLitnbk/i4jb3MxLZ5CsN5Ih3IysbeRYK4pR+P7qfMsOQl9fwwFQ==",
+      "compressedBytes": 630352,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "ws",
+      "stratum": "network-native",
+      "selection": "latest-at-acquisition",
+      "version": "8.22.2",
+      "reference": "ws@8.22.2",
+      "expectedSha256": "de7148fed079cf115faacda8118276839dc9ab377d6b9075cea3424fa1d758f2",
+      "sourceUrl": "https://registry.npmjs.org/ws/-/ws-8.22.2.tgz",
+      "distIntegrity": "sha512-/rEZ2ejown2N5gxVTHUu9bVVC7ttu0/Tgzf5hbTOixR3Fs7mbbXgn2DbdbcKgJOmpQMtrIUWivtYuVMnp/W/yA==",
+      "compressedBytes": 35509,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "tar",
+      "stratum": "network-native",
+      "selection": "latest-at-acquisition",
+      "version": "7.5.22",
+      "reference": "tar@7.5.22",
+      "expectedSha256": "b792c2d1c7fc770910522ca1ffc29eee02ee38de4fa3a01e7832eb705879c6c6",
+      "sourceUrl": "https://registry.npmjs.org/tar/-/tar-7.5.22.tgz",
+      "distIntegrity": "sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA==",
+      "compressedBytes": 471090,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "sharp",
+      "stratum": "network-native",
+      "selection": "latest-at-acquisition",
+      "version": "0.35.5",
+      "reference": "sharp@0.35.5",
+      "expectedSha256": "3b6bbbe6b308f5c383938ca4a31926cd5d79c4651ed8c5fda16a97da2014a9ac",
+      "sourceUrl": "https://registry.npmjs.org/sharp/-/sharp-0.35.5.tgz",
+      "distIntegrity": "sha512-Ywn4OnzGukp7CDMrp08RQ50YKmuwG47brZgIVPTvBaaAfQlRlygrRqSrxdCiL9M+LlzLBiJ68IR1QqvzHyjC7g==",
+      "compressedBytes": 214749,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    },
+    {
+      "packageName": "@modelcontextprotocol/sdk",
+      "stratum": "network-native",
+      "selection": "latest-at-acquisition",
+      "version": "1.32.2",
+      "reference": "@modelcontextprotocol/sdk@1.32.2",
+      "expectedSha256": "b8d52553a4b7937c0fd9be60c4013af3f46c9a41c5ddde39b7dd0672e4fe19ef",
+      "sourceUrl": "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.32.2.tgz",
+      "distIntegrity": "sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==",
+      "compressedBytes": 616330,
+      "acquisition": {
+        "status": "verified",
+        "metadataAttempts": 1,
+        "tarballAttempts": 1
+      }
+    }
+  ]
+}
