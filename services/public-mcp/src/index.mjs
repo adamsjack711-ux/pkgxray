@@ -165,7 +165,7 @@ export async function checkMetadata(args, fetcher = fetch, { timeoutMs = 6000 } 
   const reasonCodes = ['incomplete-checks', 'source-artifact-checks-not-performed'];
   if (advisories.length) reasonCodes.unshift('known-vulnerabilities');
   if (!registryComplete || !osvComplete) reasonCodes.push('metadata-check-incomplete');
-  return { schemaVersion: 1, packageName: args.name, version: args.version, verdict: 'block',
+  return { schemaVersion: 2, packageName: args.name, version: args.version, verdict: 'block',
     summary: advisories.length ? 'Blocked: known vulnerability advisories were found. Installation is not approved.' :
       'Blocked: metadata alone cannot establish source/artifact safety. This is not a confirmed malware finding.',
     resolution: { reasonCodes, retry },
@@ -211,7 +211,7 @@ async function dispatch(message, env, key) {
     } else report = await checkMetadata(args);
     return result({ content: [{ type: 'text', text: JSON.stringify(report) }], structuredContent: report });
   } catch {
-    const report = { schemaVersion: 1, verdict: 'block', installationApproved: false,
+    const report = { schemaVersion: 2, verdict: 'block', installationApproved: false,
       summary: 'Blocked because analysis could not complete. This is not a confirmed malware finding.',
       resolution: { reasonCodes: ['incomplete-checks'] } };
     return result({ isError: true, content: [{ type: 'text', text: JSON.stringify(report) }], structuredContent: report });
