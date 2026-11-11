@@ -1,4 +1,8 @@
 import { auditEvidence } from '../dist/auditor.mjs';
+import automaticFlow from '../../../src/automatic-flow.js';
+import checkRetry from '../../../src/check-retry.js';
+const { toBinaryResult } = automaticFlow;
+const { isTransientCheckFailure } = checkRetry;
 
 const VERSIONS = ['2025-03-26', '2025-06-18', '2025-11-25'];
 const MAX_REQUEST = 24 * 1024;
@@ -10,7 +14,7 @@ const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint
 export const tools = [
   {
     name: 'audit_agent_extension_supply_chain', title: 'Audit supplied source evidence',
-    description: 'Statically inspect up to 16 KiB across 16 supplied source files. Does not download or execute packages. Results cover only the supplied evidence, not a verified package artifact. Never send credentials or private source without permission.',
+    description: 'Statically inspect up to 16 KiB across 16 supplied source files. Does not download or execute packages. Returns BLOCK for findings or missing artifact checks, without manual approval prompts. Results cover only the supplied evidence, not a verified package artifact. Never send credentials or private source without permission.',
     annotations: { ...annotations, openWorldHint: false },
     inputSchema: { type: 'object', additionalProperties: false, required: ['sourceFiles'], properties: {
       packageName: { type: 'string', maxLength: 214, description: 'Optional package label for the report, such as express or @scope/package. This label does not trigger a package download or establish its identity; omitted labels use supplied-evidence.' },
@@ -21,7 +25,7 @@ export const tools = [
   },
   {
     name: 'check_npm_package_metadata', title: 'Check npm metadata and known vulnerabilities',
-    description: 'Check registry metadata and OSV advisories for one exact public npm version. Does not inspect package source, verify provenance, install or execute code. An advisory-free result is still REVIEW, not installation approval.',
+    description: 'Check registry metadata and OSV advisories for one exact public npm version. Retry an eligible transient lookup failure once within the same deadline. Does not inspect package source, verify provenance, install or execute code. Returns BLOCK even without advisories because source/artifact checks are missing; this is not a malware finding or an approval prompt.',
     annotations: { ...annotations, openWorldHint: true },
     inputSchema: { type: 'object', additionalProperties: false, required: ['name', 'version'], properties: {
       name: { type: 'string', maxLength: 214, description: 'Public npm package name, such as express or @scope/package. Supply the name only, without a version suffix, registry URL, or local path.' },
@@ -100,33 +104,71 @@ function validateArguments(name, args) {
   }
 }
 
-async function upstreamJson(url, init, fetcher) {
-  const res = await fetcher(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(6000),
-    headers: { accept: 'application/json', 'user-agent': 'pkgxray-public-mcp/1.2.1', ...init?.headers } });
-  if (!res.ok) { void res.body?.cancel().catch(() => {}); throw new Error('Upstream unavailable'); }
-  return readJson(res.body, 256 * 1024, 6000);
+async function upstreamJson(url, init, fetcher, timeoutMs) {
+  // The retry shares the original six-second lookup budget. It cannot extend
+  // a deadline, follow redirects, change identity, or fetch source archives.
+  const controller = new AbortController(), expires = Date.now() + timeoutMs;
+  let timer;
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => {
+    controller.abort(); reject(new RequestError('Upstream deadline exceeded', 408));
+  }, timeoutMs); });
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const pending = fetcher(url, { ...init, redirect: 'manual', signal: controller.signal,
+          headers: { accept: 'application/json', 'user-agent': 'pkgxray-public-mcp/1.2.1', ...init?.headers } });
+        const res = await Promise.race([deadline, Promise.resolve(pending).then(response => {
+          if (controller.signal.aborted) { void response.body?.cancel().catch(() => {}); throw new Error('Lookup expired'); }
+          return response;
+        })]);
+        if (!res.ok) {
+          void res.body?.cancel().catch(() => {});
+          throw Object.assign(new Error('Upstream unavailable'), { statusCode: res.status });
+        }
+        const remaining = expires - Date.now();
+        if (remaining <= 0) throw new Error('Lookup expired');
+        const value = await Promise.race([deadline, readJson(res.body, 256 * 1024, remaining)]);
+        return { value, retryAttempts: attempt };
+      } catch (error) {
+        if (!controller.signal.aborted && Date.now() < expires && attempt === 0 &&
+            (isTransientCheckFailure(error) || isTransientCheckFailure(error?.cause))) continue;
+        throw Object.assign(new Error('Upstream check did not complete'), { retryAttempts: attempt });
+      }
+    }
+  } finally { clearTimeout(timer); controller.abort(); }
 }
 
-export async function checkMetadata(args, fetcher = fetch) {
+export async function checkMetadata(args, fetcher = fetch, { timeoutMs = 6000 } = {}) {
+  // The optional lower deadline is a trusted test/library control, never an
+  // MCP argument. Callers cannot raise service limits.
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 6000) throw new TypeError('Metadata timeout must be 1..6000 ms');
   // Both destinations are fixed; URLs, local paths, tarballs and redirects are
   // never accepted from callers or followed from registry metadata.
   const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(args.name)}/${encodeURIComponent(args.version)}`;
   const results = await Promise.allSettled([
-    upstreamJson(registryUrl, {}, fetcher),
+    upstreamJson(registryUrl, {}, fetcher, timeoutMs),
     upstreamJson('https://api.osv.dev/v1/query', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ package: { ecosystem: 'npm', name: args.name }, version: args.version }) }, fetcher)
+      body: JSON.stringify({ package: { ecosystem: 'npm', name: args.name }, version: args.version }) }, fetcher, timeoutMs)
   ]);
-  const registry = results[0].status === 'fulfilled' ? results[0].value : null;
-  const osv = results[1].status === 'fulfilled' ? results[1].value : null;
+  const registry = results[0].status === 'fulfilled' ? results[0].value.value : null;
+  const osv = results[1].status === 'fulfilled' ? results[1].value.value : null;
   const registryComplete = registry?.name === args.name && registry?.version === args.version;
   const osvComplete = object(osv) && (!own(osv, 'vulns') || Array.isArray(osv.vulns)) && !own(osv, 'error') &&
     (osv.vulns || []).every(v => object(v) && typeof v.id === 'string');
   const advisories = osvComplete ? (osv.vulns || []).filter(v => !v.withdrawn).slice(0, 100).map(v => ({
     id: v.id.slice(0, 160), url: `https://osv.dev/vulnerability/${encodeURIComponent(v.id)}`
   })) : [];
-  return { schemaVersion: 1, packageName: args.name, version: args.version, verdict: advisories.length ? 'block' : 'review',
-    summary: advisories.length ? 'Known vulnerability advisories require review before installation.' :
-      'Metadata checks cannot establish package safety. Complete a source/artifact scan before installation.',
+  const retry = Object.fromEntries(results.map((result, index) => {
+    const attempts = result.status === 'fulfilled' ? result.value.retryAttempts : result.reason.retryAttempts || 0;
+    return [index === 0 ? 'registry' : 'vulnerabilities', { attempted: attempts > 0, attempts }];
+  }));
+  const reasonCodes = ['incomplete-checks', 'source-artifact-checks-not-performed'];
+  if (advisories.length) reasonCodes.unshift('known-vulnerabilities');
+  if (!registryComplete || !osvComplete) reasonCodes.push('metadata-check-incomplete');
+  return { schemaVersion: 1, packageName: args.name, version: args.version, verdict: 'block',
+    summary: advisories.length ? 'Blocked: known vulnerability advisories were found. Installation is not approved.' :
+      'Blocked: metadata alone cannot establish source/artifact safety. This is not a confirmed malware finding.',
+    resolution: { reasonCodes, retry },
     checks: { registry: registryComplete ? 'completed' : 'unavailable', vulnerabilities: osvComplete ? 'completed' : 'unavailable',
       source: 'not-performed', provenanceVerification: 'not-performed', execution: 'not-performed' },
     metadata: registryComplete ? { deprecated: typeof registry.deprecated === 'string',
@@ -157,14 +199,22 @@ async function dispatch(message, env, key) {
     if (name === tools[0].name) {
       report = auditEvidence({ packageName: args.packageName || 'supplied-evidence', sourceFiles: args.sourceFiles });
       // Supplied snippets are never a verified complete npm artifact.
-      if (report.verdict === 'safe') report.verdict = 'review';
+      const blockingFindings = report.verdict === 'block';
+      report = toBinaryResult(report);
+      report.verdict = 'block';
       report.coverage = { scope: 'caller-supplied-source', artifactVerified: false, vulnerabilitiesChecked: false, executed: false };
       report.installationApproved = false;
-      report.summary = `Supplied-evidence analysis only; installation is not approved. ${report.summary}`;
+      report.summary = blockingFindings ? 'Blocked: supplied source contains blocking findings. Code was not executed and installation is not approved.' :
+        'Blocked: supplied snippets do not establish complete source/artifact safety. This is not a confirmed malware finding.';
+      report.resolution = { reasonCodes: blockingFindings ? ['security-findings', 'incomplete-checks'] : ['incomplete-checks'],
+        retry: { attempted: false, attempts: 0, check: null } };
     } else report = await checkMetadata(args);
     return result({ content: [{ type: 'text', text: JSON.stringify(report) }], structuredContent: report });
   } catch {
-    return result({ isError: true, content: [{ type: 'text', text: 'Analysis could not complete. No safety verdict or installation approval was issued.' }] });
+    const report = { schemaVersion: 1, verdict: 'block', installationApproved: false,
+      summary: 'Blocked because analysis could not complete. This is not a confirmed malware finding.',
+      resolution: { reasonCodes: ['incomplete-checks'] } };
+    return result({ isError: true, content: [{ type: 'text', text: JSON.stringify(report) }], structuredContent: report });
   }
 }
 
