@@ -82,6 +82,9 @@ test("enabled Compose MCP retains findings and enforces paths and argument autho
   const response = await s.scan({ projectPath: f.root, outputFormat: "json" });
   const report = response.result.structuredContent;
   assert.equal(report.pkgxray.status, "completed");
+  assert.equal(report.decision, "block");
+  assert.equal(report.compose.analysisStatus, "flow-found");
+  assert.equal(Object.hasOwn(report.compose, "verdict"), false);
   assert.ok(report.compose.findings.length);
   assert.equal(report.authorization.installAllowed, false);
   for (const args of [{}, { projectPath: os.tmpdir() }, { projectPath: f.root, scannerRoot: f.root },

@@ -10,7 +10,7 @@ const { auditLockfile, renderLockfileMarkdown, sanitizeForTerminal } = require("
 const { triageLockfile } = require("../src/triage");
 const cfg = require("../src/config");
 const { scanInVm, exactVmReference } = require("../src/vm-scan");
-const reviewDecisions = new (require("../src/review").ReviewDecisions)();
+const { toBinaryResult } = require("../src/automatic-flow");
 // Before an immutable identity is known, preparation still needs a resource
 // bound. Unique keys prohibit sharing caller-owned staging or side effects.
 const guardAdmission = new (require('../src/shared-scans').SharedScans)({ concurrency: 4,
@@ -135,7 +135,7 @@ function auditToolDefinition() {
     name: AUDIT_TOOL_NAME,
     title: "Audit supplied package evidence",
     description:
-      "Statically analyze caller-supplied package source and metadata. Returns a structured SAFE, REVIEW, or BLOCK report with cited findings; it does not read local files, install packages, or execute code. A SAFE result is defense in depth, not proof of harmlessness. For a live npm package, use guard_agent_extension_install.",
+      "Statically analyze caller-supplied package source and metadata. Returns a structured SAFE or BLOCK report with cited findings; incomplete or uncertain evidence is blocked without a manual decision; it does not read local files, install packages, or execute code. A SAFE result is defense in depth, not proof of harmlessness. For a live npm package, use guard_agent_extension_install.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -199,7 +199,7 @@ function guardToolDefinition() {
     name: GUARD_TOOL_NAME,
     title: "Guard a package before installation",
     description:
-      "Fetch and inspect one package reference, then return a redacted SAFE or UNSAFE report, or a pending REVIEW with advisory reviewPlan investigation steps and an explicit user Proceed or Decline when eligible. The plan never authorizes use or clears mandatory holds. Never runs package code or writes package files outside temporary quarantine. Local references are confined to operator-approved roots.",
+      "Fetch and inspect one package reference, then return a redacted SAFE or BLOCK decision. Automatically retry an eligible missing check once against the same acquired artifact, then block if required checks or findings remain uncertain. No manual approval or decision prompts. Never runs package code or writes package files outside temporary quarantine. Local references are confined to operator-approved roots.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -219,11 +219,9 @@ function guardToolDefinition() {
           type: "string",
           description: "Optional staging root under an operator-approved filesystem root. Omit to use an internally selected OS temporary directory."
         },
-        reviewId: { type: "string", description: "Exact REVIEW ID previously presented in this session." },
-        reviewChoice: { type: "string", enum: ["Proceed", "Decline"], description: "The user's explicit decision after inspecting evidence. Never choose on the user's behalf." },
         policy: {
           type: "string",
-          enum: ["safe-only", "allow-review"],
+          enum: ["safe-only"],
           default: "safe-only"
         },
         sourceScan: {
@@ -267,7 +265,7 @@ function lockfileAuditToolDefinition() {
     name: LOCKFILE_AUDIT_TOOL_NAME,
     title: "Audit a dependency manifest",
     description:
-      "Read a dependency manifest under an operator-approved root and query OSV for each resolved dependency. Returns structured SAFE, REVIEW, or BLOCK decisions and honors a sibling .pkgxray.lock; it does not install dependencies or execute package code. deep/deepAll add npm and GitHub network scans.",
+      "Read a dependency manifest under an operator-approved root and query OSV for each resolved dependency. Returns structured SAFE or BLOCK decisions and honors a sibling .pkgxray.lock. Unresolved versions or incomplete checks are blocked. Does not install dependencies or execute package code. deep/deepAll add npm and GitHub network scans.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -341,7 +339,7 @@ function lockfileTriageToolDefinition() {
           type: "boolean",
           default: false,
           description:
-            "If true, every dep (including OSV-safe ones) enters the worklist. Default false — only block/review deps are decided."
+            "If true, every dep (including OSV-safe ones) enters the worklist. Default false — only flagged or blocked deps are decided."
         },
         vulnerabilityCheck: {
           type: "boolean",
@@ -362,7 +360,7 @@ function lockfileTriageToolDefinition() {
 function composeToolDefinition() {
   return {
     name: COMPOSE_TOOL_NAME, title: "Trace data between local packages",
-    description: "Experimental static composition analysis of a stable local npm source snapshot plus bundled pkgxray evidence checks. Requires package-lock.json v2/v3 and matching source files. Reads only under operator-approved roots; never executes target code, downloads packages, or authorizes installation. Incomplete coverage remains REVIEW; package BLOCK findings are preserved.",
+    description: "Experimental static composition analysis of a stable local npm source snapshot plus bundled pkgxray evidence checks. Requires package-lock.json v2/v3 and matching source files. Reads only under operator-approved roots; never executes target code, downloads packages, or authorizes installation. Incomplete coverage blocks installation without a manual decision; package BLOCK findings are preserved.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: "object", additionalProperties: false, required: ["projectPath"], properties: {
       projectPath: { type: "string", description: "Local source directory under an operator-approved root" },
@@ -487,6 +485,8 @@ function validateToolCall(toolName, args) {
   }
   const schema = TOOL_SCHEMAS.get(toolName);
   if (!schema) return "unknown tool";
+  // Deprecated manual approval arguments cannot enter the automatic flow.
+  if (["reviewId", "reviewChoice", "reviewScope", "reviewDecisions", "reviewAction"].some(key => Object.hasOwn(args, key))) return "manual decision arguments are no longer supported; unresolved uncertainty is blocked automatically";
   // Preserve the helpful diagnostics for formerly accepted authority knobs.
   if (args.artifact !== undefined) return "artifact is reserved for trusted acquisition callers";
   if (args.allowLocalReferences !== undefined) return "allowLocalReferences is not supported; only the server operator can grant filesystem roots";
@@ -550,8 +550,8 @@ function validateToolCall(toolName, args) {
         return `${k} must be a boolean`;
       }
     }
-    if (args.policy !== undefined && args.policy !== "safe-only" && args.policy !== "allow-review") {
-      return "policy must be 'safe-only' or 'allow-review'";
+    if (args.policy !== undefined && args.policy !== "safe-only") {
+      return "policy must be 'safe-only'; uncertainty cannot be approved manually";
     }
   } else if (toolName === AUDIT_TOOL_NAME) {
     if (args.sourceFiles === undefined || args.sourceFiles === null) {
@@ -667,8 +667,8 @@ async function handleRequest(request, signal) {
         if (resolveOperatorPath(args.projectPath) !== args.projectPath) return invalidParams(id, "Source root changed; retry");
         const output = await require("../src/compose-scan").scanComposition(args.projectPath, { entry: args.entry, signal });
         signal?.throwIfAborted();
-        const report = output.report || output;
-        const text = args.outputFormat === "json" ? JSON.stringify(report) : output.text || JSON.stringify(report);
+        const report = publicCompositionResult(output.report || output);
+        const text = args.outputFormat === "json" ? JSON.stringify(report) : renderCompositionMarkdown(report);
         return { jsonrpc: "2.0", id, result: { content: textContent(text), structuredContent: report } };
       } finally { composeBusy = false; }
     }
@@ -677,28 +677,31 @@ async function handleRequest(request, signal) {
       if (vmBusy) return invalidParams(id, "VM runner is busy; retry after the current scan completes");
       vmBusy = true;
       return scanInVm(args.reference, { profile: args.profile, config: currentConfig, allowExecution: true })
-        .then(report => ({ jsonrpc: "2.0", id, result: {
+        .then(raw => { const report = toBinaryResult(raw); return { jsonrpc: "2.0", id, result: {
           content: textContent(JSON.stringify(report)), structuredContent: report
-        } })).finally(() => { vmBusy = false; });
+        } }; }).catch(error => {
+          signal?.throwIfAborted();
+          return scanErrorResult(id, VM_TOOL_NAME, error, "json");
+        }).finally(() => { vmBusy = false; });
     }
 
     if (name === GUARD_TOOL_NAME) {
       // Stricter MCP defaults: when the caller doesn't pin a policy, fall back
       // to the (stricter) MCP-view policy rather than guard's own safe-only
       // default, so the agent surface can be tightened centrally in config.
-      const guardOpts = { ...toolOptions(name, args), config: currentConfig, keepStaging: false, reviewScope: "stdio-session", reviewDecisions, signal, sharedAnalysis: true };
+      const guardOpts = { ...toolOptions(name, args), config: currentConfig, keepStaging: false, signal, sharedAnalysis: true };
       if (guardOpts.policy === undefined) guardOpts.policy = currentMcpConfig.policy;
       // The opt-in typosquat heuristic is a config knob, not a tool argument —
       // .pkgxray.json is the single switch for the agent surface.
       guardOpts.typosquat = currentConfig.typosquat;
       guardOpts.validatePolicy = () => {
         const { fingerprint } = require('../src/artifact');
-        if (fingerprint(cfg.loadConfig({ cwd: process.cwd() }).config) !== fingerprint(currentConfig)) throw new Error('Policy changed during scan; retry for a fresh REVIEW');
+        if (fingerprint(cfg.loadConfig({ cwd: process.cwd() }).config) !== fingerprint(currentConfig)) throw new Error('Policy changed during scan; no action authorized');
       };
       // Set AFTER the spread on purpose: `args` is caller-controlled, and a
       // scan-error policy is the server operator's decision, not the calling
       // agent's. This also stops a caller from passing scanErrorPolicy:
-      // "fail-open" to talk the server out of a scan-gap review.
+      // "fail-open" to talk the server out of a scan-gap block.
       guardOpts.scanErrorPolicy = currentConfig.scanErrorPolicy;
       // packageScanFirst (default true): the agent surface insists on a static
       // package scan before it will vouch for anything. Only when config
@@ -726,12 +729,13 @@ async function handleRequest(request, signal) {
             structuredContent: adjusted
           }
         };
+      }).catch(error => {
+        signal?.throwIfAborted();
+        if (["SCAN_CANCELLED", "SCAN_OVERLOADED", "SCANNER_CHANGED"].includes(error.code)) throw error;
+        // Acquisition is never repeated here: a reference could resolve to
+        // different bytes. A failed required check blocks without a prompt.
+        return scanErrorResult(id, GUARD_TOOL_NAME, error, args.outputFormat);
       });
-      // NOTE: guard rejections (bad reference, promote-collision, network) are
-      // caller/usage errors, not scan errors, and fall through to the central
-      // handler, which returns a sanitized -32603. verdictForScanError is
-      // applied on the batch-scan surface (audit_lockfile) below, where an
-      // errored scan genuinely warrants a fail-closed verdict.
     }
 
     if (name === LOCKFILE_AUDIT_TOOL_NAME) {
@@ -739,7 +743,8 @@ async function handleRequest(request, signal) {
       if (fileError) return invalidParams(id, fileError);
       // Thread the config's typosquat setting into the deep-scan path (the
       // shallow pass is OSV-only; typosquat applies wherever auditEvidence runs).
-      return auditLockfile(args.lockfilePath, { ...toolOptions(name, args), typosquat: currentConfig.typosquat, signal }).then((result) => {
+      return auditLockfile(args.lockfilePath, { ...toolOptions(name, args), typosquat: currentConfig.typosquat, signal }).then((raw) => {
+        const result = toBinaryResult(raw);
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(result, null, 2)
@@ -782,7 +787,8 @@ async function handleRequest(request, signal) {
         stdout: fakeStdout,
         stderr: fakeStderr,
         isTTY: true // skip the !isTTY refusal — auto mode runs without input
-      }).then((result) => {
+      }).then((raw) => {
+        const result = toBinaryResult(raw);
         const text =
           args.outputFormat === "json"
             ? JSON.stringify(result, null, 2)
@@ -800,10 +806,18 @@ async function handleRequest(request, signal) {
 
     // audit_agent_extension_supply_chain
     const { outputFormat, ...evidence } = args;
-    const shared = await require('../src/shared-scans').analyzeShared(evidence, { typosquat: currentConfig.typosquat }, { signal });
+    let shared;
+    try { shared = await analyzeSuppliedEvidence(evidence, { typosquat: currentConfig.typosquat }, { signal }); }
+    catch (error) {
+      signal?.throwIfAborted();
+      if (['SCAN_CANCELLED', 'SCAN_OVERLOADED', 'SCANNER_CHANGED'].includes(error.code)) throw error;
+      return scanErrorResult(id, AUDIT_TOOL_NAME, error, outputFormat);
+    }
     signal?.throwIfAborted();
-    const report = { ...cfg.applyConfig(shared.evidence, { config: currentConfig, packageName: evidence.packageName,
-      evidence: { sourceFiles: Object.keys(evidence.sourceFiles || {}) } }), scanSource: shared.source };
+    const report = toBinaryResult({ ...cfg.applyConfig(shared.evidence, { config: currentConfig, packageName: evidence.packageName,
+      evidence: { sourceFiles: Object.keys(evidence.sourceFiles || {}) } }), scanSource: shared.source });
+    report.resolution = { ...report.resolution, retry: { attempted: shared.retryAttempts > 0, attempts: shared.retryAttempts,
+      check: shared.retryAttempts ? 'source' : null } };
     const text =
       args.outputFormat === "json"
         ? JSON.stringify(report, null, 2)
@@ -833,6 +847,55 @@ async function handleRequest(request, signal) {
   };
 }
 
+// A failed worker may be retried once with the identical captured input. No
+// acquisition is repeated, no budget is raised, and findings never trigger a
+// retry. Queue pressure, cancellation and changed scanner builds are not
+// transient evidence failures and must preserve their existing control paths.
+async function analyzeSuppliedEvidence(evidence, analysis, { signal, analyze = require("../src/shared-scans").analyzeShared } = {}) {
+  const capturedEvidence = JSON.stringify(evidence), capturedAnalysis = JSON.stringify(analysis);
+  const retryable = new Set(["SCAN_ERROR", "SCAN_TIMEOUT", "EAGAIN", "EPIPE"]);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    signal?.throwIfAborted();
+    try {
+      const result = await analyze(JSON.parse(capturedEvidence), JSON.parse(capturedAnalysis), { signal });
+      return { ...result, retryAttempts: attempt };
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (attempt === 0 && retryable.has(error?.code)) continue;
+      throw Object.assign(new Error(error?.message || "Static evidence scan failed"), { code: error?.code, retryAttempts: attempt });
+    }
+  }
+}
+
+function publicCompositionResult(raw) {
+  const report = { ...raw };
+  if (raw.compose) {
+    const { verdict, ...flow } = raw.compose;
+    // The flow engine describes modeled routes, not a safety verdict. Keep its
+    // status under a non-authorizing analysis field on the public MCP surface.
+    report.compose = { ...flow, analysisStatus: verdict === "review" ? "flow-found" : verdict };
+  }
+  report.summary = raw.blockingPackages?.length
+    ? "Blocked: package findings prevent use; composition evidence cannot clear them."
+    : "Blocked: selected-entry analysis cannot establish complete safety coverage. This does not establish malicious behavior.";
+  return toBinaryResult(report);
+}
+
+function renderCompositionMarkdown(report) {
+  const lines = ["Decision: **BLOCK**", report.summary, "Installation approval: not issued.", "",
+    `Execution: ${sanitizeForTerminal(report.execution)}; coverage: ${sanitizeForTerminal(report.coverage?.status || "partial")}.`,
+    `Modeled dataflow routes: ${report.compose?.findings?.length || 0}.`];
+  for (const finding of report.compose?.findings || []) {
+    lines.push("", `Dataflow: ${finding.crossPackage ? "cross-package" : "local"}`);
+    for (const step of finding.trace || []) lines.push(`- ${sanitizeForTerminal(step.kind)}: ${sanitizeForTerminal(step.label)} at ${sanitizeForTerminal(step.file)}:${step.line}`);
+  }
+  for (const item of report.pkgxray?.packages || []) for (const finding of item.report?.findings || []) {
+    if (["high", "medium"].includes(finding.severity)) lines.push(`- ${sanitizeForTerminal(finding.severity)} ${sanitizeForTerminal(finding.category)}: ${sanitizeForTerminal(finding.rationale)}`);
+  }
+  for (const gap of report.gaps || []) lines.push(`Incomplete check: ${sanitizeForTerminal(gap.code)} — ${sanitizeForTerminal(gap.message)}`);
+  return lines.join("\n");
+}
+
 // Filesystem existence check — runs AFTER validateToolCall has checked the
 // shape. We don't include the path in the error message so the caller can't
 // use error replies as a fs-probe oracle.
@@ -856,27 +919,24 @@ function invalidParams(id, message) {
   };
 }
 
-// A batch scan (audit_lockfile) that ERRORS or times out must not be reported
-// as an opaque transport failure the agent might treat as "nothing to worry
-// about". Route it through the config's scan-error policy (default fail-closed
-// → "review") and hand the agent an explicit, sanitized verdict it can act on
-// conservatively. (Guard's own rejections are caller/usage errors and keep the
-// -32603 path.)
+// Failed required checks return an explicit block, not an opaque absence of
+// findings. Uncertainty is reported separately from confirmed malicious code.
 function scanErrorResult(id, toolName, error, outputFormat) {
-  const verdict = cfg.verdictForScanError(CONFIG);
+  const verdict = "block";
   const reason = sanitizeErrorMessage(error && error.message);
   const structured = {
     schemaVersion: 1,
     tool: toolName,
     scanError: true,
     verdict,
-    scanErrorPolicy: CONFIG.scanErrorPolicy,
-    message: reason
+    scanErrorPolicy: "fail-closed",
+    resolution: { reasonCodes: ["incomplete-checks"], retry: { attempted: error?.retryAttempts > 0, attempts: error?.retryAttempts || 0, check: error?.retryAttempts ? "source" : null } },
+    message: `Required checks did not complete; this does not establish malicious behavior. ${reason}`
   };
   const text =
     outputFormat === "json"
       ? JSON.stringify(structured, null, 2)
-      : `Scan error: verdict **${verdict.toUpperCase()}** (scanErrorPolicy=${CONFIG.scanErrorPolicy}). ${reason}`;
+      : `Scan error: verdict **BLOCK**. ${structured.message}`;
   return {
     jsonrpc: "2.0",
     id,
@@ -938,7 +998,7 @@ function publicGuardResult(result) {
     fileCount: sourceFiles && typeof sourceFiles === "object" ? Object.keys(sourceFiles).length : 0,
     contentReturned: false
   };
-  return redactSourceExcerpts(safe);
+  return toBinaryResult(redactSourceExcerpts(safe));
 }
 
 function redactSourceExcerpts(value, location = []) {
@@ -963,14 +1023,13 @@ function redactSourceExcerpts(value, location = []) {
 
 function renderGuardMarkdown(result) {
   const lines = [
-    `Outcome: **${result.outcome || (result.decision === "review" ? "Pending decision" : result.decision === "allow" ? "SAFE" : "UNSAFE")}**`,
+    `Decision: **${result.decision === "allow" ? "SAFE" : "BLOCK"}**`,
     `Reference: \`${sanitizeForTerminal(result.reference)}\``,
-    `Quarantine: \`${sanitizeForTerminal(result.quarantinePath)}\``,
     ""
   ];
 
-  if (result.review) lines.push(`REVIEW ${result.review.state}: ${result.review.id || 'unavailable'}. ${result.review.choice ? 'Decision remembered for this session.' : result.review.eligible ? 'Show evidence to the user and request Proceed or Decline before use or promotion.' : 'Complete required checks before use or promotion.'}`, '');
-  lines.push(...require("../src/review-plan").renderReviewPlan(result.reviewPlan));
+  if (result.resolution?.reasonCodes?.length) lines.push(`Reason: ${result.resolution.reasonCodes.map(sanitizeForTerminal).join(", ")}.`,
+    "A block can reflect uncertainty or incomplete checks; it does not by itself establish malicious behavior.", "");
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,
@@ -1133,6 +1192,9 @@ if (require.main === module) {
 // they let the offline suite unit-test the config seam.
 module.exports = {
   publicGuardResult,
+  publicCompositionResult,
+  analyzeSuppliedEvidence,
+  scanErrorResult,
   guardAdmission,
   applyConfigToGuardResult,
   toolExposed,
