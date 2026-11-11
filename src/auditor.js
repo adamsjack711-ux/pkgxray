@@ -6,6 +6,7 @@ const { createExecutionGraph } = require("./execution-graph");
 const { compareProvenanceToRepository } = require("./attestation");
 const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = require("./credential-targets");
 const { inspectRuntimeLoaders } = require("./runtime-loaders");
+const { onlyPassiveDiagnosticUrls } = require("./passive-url-evidence");
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -1698,7 +1699,7 @@ function auditFiles(files, findings, evidence) {
     inspectCredentialAccess(file, content, lower, findings, hasBulkEnv || hasBulkEnvClone, normalized, normChanged);
     inspectAgentConfigAccess(file, content, lower, findings, normalized, normChanged);
     inspectPersistence(file, content, lower, findings);
-    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged);
+    inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, evidence.sourceCoverage);
     inspectDynamicRequire(file, content, findings, hasBulkEnv, normalized, normChanged);
     if (!suppressObfuscationHeuristics) {
       inspectObfuscatedAssembly(file, lower, findings, normalized, normChanged);
@@ -3248,7 +3249,7 @@ const READ_DATA_BLOB_REGEX =
 const READ_OPAQUE_BLOB_REGEX =
   /\b(?:readFileSync|readFile|createReadStream|fsp\.readFile|file_get_contents|Get-Content)\b[\s\S]{0,120}?["'`][^"'`\n]*\.(?:dat|data|bin|b64|base64|enc|payload|blob)["'`]/i;
 
-function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged) {
+function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkEnv, normalized, normChanged, sourceCoverage) {
   // Scan the de-obfuscated text alongside the original so split-string sinks
   // (`require("ht"+"tps")`, a domain spelled in fragments) count too.
   const nlower = normChanged ? normalized.toLowerCase() : lower;
@@ -3364,7 +3365,13 @@ function inspectExecNetworkCombinations(file, content, lower, findings, hasBulkE
   // legitimate doc/error links, so this is reviewed rather than blocked — a
   // shortener alone is not proof of exfil. Placed after the HIGH loader/env
   // branches above so a genuine stage-2 loader still BLOCKS first.
-  if (hasCapability && shortener) {
+  // Suppress only this coincidence when every original and normalized URL
+  // occurrence is proven to be a direct passive diagnostic argument.
+  const passiveShorteners = hasCapability && shortener && !hasExec && !hasDynamicEval && !hasLiteralEval &&
+    sourceCoverage?.complete !== false && !(sourceCoverage?.truncatedFiles > 0) &&
+    onlyPassiveDiagnosticUrls(content, URL_SHORTENERS) &&
+    (!normChanged || onlyPassiveDiagnosticUrls(normalized, URL_SHORTENERS));
+  if (hasCapability && shortener && !passiveShorteners) {
     findings.push({
       severity: "medium",
       category: "network-exfil-or-loader",
