@@ -73,6 +73,41 @@ func TestInvalidProvenanceReceiptCannotAllow(t *testing.T) {
 	}
 }
 
+func TestLegacyOverrideCannotBypassIncompleteCoverage(t *testing.T) {
+	output := `{"decision":"allow","approval":{"sourceComplete":true,"checks":{"source":"completed","vulnerabilities":"completed","provenance":"verified"},"authorization":{"mandatoryHoldReasons":["unsupported-behavior"],"behavioralCoverage":"partial","explicitOverride":true}}}`
+	result := (Guard{Bin: fakePkgxray(t, output, 0)}).Check(context.Background(), InstallSpec{Ref: "npm:inert-fixture"})
+	for _, policy := range []Policy{Strict, Balanced, Permissive} {
+		if !result.MandatoryHold || DecideResult(policy, result) != Deny {
+			t.Fatalf("%s bypassed incomplete checks: %+v", policy, result)
+		}
+	}
+}
+
+func TestUnvettableRegistrationsAndDisabledProbeDenyEveryPolicy(t *testing.T) {
+	for _, command := range []string{
+		"claude mcp add local -- /usr/local/bin/server",
+		"claude mcp add local -- pkgxray mcp-proxy -- /usr/local/bin/server",
+		`claude mcp add-json local '{"command":"python3","args":["server.py"]}'`,
+		"claude mcp add --transport sse legacy https://inert.example/sse",
+		"claude mcp add --transport future remote https://inert.example/mcp",
+		"claude mcp add remote https://inert.example/mcp",
+		"npm install https://inert.example/archive.tgz",
+	} {
+		specs := ParseInstalls(command)
+		if len(specs) == 0 {
+			t.Fatalf("recognized unvettable command disappeared: %s", command)
+		}
+		for _, spec := range specs {
+			r := (Guard{Bin: "/nonexistent/pkgxray", DisableMcpProbe: true}).Check(context.Background(), spec)
+			for _, policy := range []Policy{Strict, Balanced, Permissive} {
+				if DecideResult(policy, r) != Deny {
+					t.Fatalf("%s allowed %s: %+v", policy, command, r)
+				}
+			}
+		}
+	}
+}
+
 func TestBoundedPolicyFoldProperty(t *testing.T) {
 	// Exhaust all pairs: adding a block or hold must never reduce enforcement.
 	for _, policy := range []Policy{Strict, Balanced, Permissive} {

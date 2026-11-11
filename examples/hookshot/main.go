@@ -12,7 +12,7 @@
 //     (`… mcp add`) are gated too: a stdio launcher takes the static package
 //     scan (the hook never spawns the server), a streamable-HTTP URL is probed
 //     with `pkgxray mcp <url>` (read-only manifest enumeration + audit), and a
-//     legacy SSE config surfaces as review-worthy. A vetted stdio registration
+//     legacy SSE config surfaces as unvettable and blocked. A vetted stdio registration
 //     is then AUTO-WRAPPED: the unwrapped `mcp add` is denied with the same
 //     command rewritten to launch through `pkgxray mcp-proxy` (the per-call
 //     runtime gate) in the deny reason — the agent re-runs the wrapped form,
@@ -92,7 +92,7 @@ func main() {
 		if len(specs) > 0 {
 			decision := hostExecutionDecision(ctx.Platform, decideInstalls(cfg, specs))
 			if !decision.Allow {
-				// A flagged launcher stays denied/asked as-is — never mix the
+				// A flagged launcher stays denied as-is — never mix the
 				// verdict message with wrap instructions.
 				return decision
 			}
@@ -101,12 +101,10 @@ func main() {
 			}
 			return decision
 		}
-		// No parseable package specs, but the command may still register a
-		// stdio MCP server pkgxray cannot statically vet (a local binary, a
-		// python launcher, …) — the runtime gate is MOST valuable exactly
-		// there, so the wrap rewrite applies to those registrations too.
-		if wrapped, ok := wrapCandidate(cfg, ctx.Command); ok {
-			return hookshot.DenyExecution(wrapMessage(wrapped))
+		// A recognized but unscannable server never gains authorization just
+		// because its launcher can be wrapped in a runtime proxy.
+		if _, ok := wrapCandidate(cfg, ctx.Command); ok {
+			return hookshot.DenyExecution("pkgxray blocked this MCP registration: launcher checks are incomplete; this is not a confirmed malware finding.")
 		}
 		return hookshot.AllowExecution()
 	})
@@ -141,10 +139,9 @@ type config struct {
 	guardWorkers   int  // max packages guarded concurrently per command
 }
 
-// Only hosts with an enforced approval prompt can receive ASK. Keep this
-// conversion at our boundary as well as in the reviewed Hookshot adapter.
-func hostExecutionDecision(platform hookshot.Platform, decision hookshot.ExecutionDecision) hookshot.ExecutionDecision {
-	if decision.Ask && platform != hookshot.PlatformClaude && platform != hookshot.PlatformCursor {
+// Never emit an approval prompt, including a legacy Ask from an adapter.
+func hostExecutionDecision(_ hookshot.Platform, decision hookshot.ExecutionDecision) hookshot.ExecutionDecision {
+	if decision.Ask {
 		return hookshot.DenyExecution(decision.Reason)
 	}
 	return decision
@@ -217,8 +214,6 @@ func decideInstalls(cfg config, specs []pkgxrayguard.InstallSpec) hookshot.Execu
 	switch pkgxrayguard.DecideAll(cfg.policy, results) {
 	case pkgxrayguard.Deny:
 		return hookshot.DenyExecution(denyMessage(results))
-	case pkgxrayguard.Ask:
-		return hookshot.AskExecution(denyMessage(results))
 	default:
 		return hookshot.AllowExecutionWithReason("pkgxray: no blocking supply-chain risk in " + joinRefs(specs))
 	}
@@ -230,12 +225,11 @@ func denyMessage(results []pkgxrayguard.Result) string {
 	var b strings.Builder
 	b.WriteString("pkgxray blocked this install:")
 	for _, r := range results {
-		switch r.Verdict {
-		case pkgxrayguard.Block, pkgxrayguard.Review, pkgxrayguard.Unknown:
+		if pkgxrayguard.DecideResult(pkgxrayguard.Balanced, r) != pkgxrayguard.Allow {
 			b.WriteString("\n  • ")
 			b.WriteString(r.Spec.Ref)
 			b.WriteString(" → ")
-			b.WriteString(string(r.Verdict))
+			b.WriteString(blockLabel(r))
 			if r.Summary != "" {
 				b.WriteString(" (" + r.Summary + ")")
 			}
@@ -248,8 +242,15 @@ func denyMessage(results []pkgxrayguard.Result) string {
 			}
 		}
 	}
-	b.WriteString("\nRe-run `pkgxray guard <ref>` for the full report, or set PKGXRAY_HOOK_POLICY=permissive to override.")
+	b.WriteString("\nBlocked commands remain blocked while findings or missing checks are unresolved. Incomplete checks do not prove malware; no manual approval is requested.")
 	return b.String()
+}
+
+func blockLabel(r pkgxrayguard.Result) string {
+	if r.Err != nil || r.MandatoryHold || r.Verdict != pkgxrayguard.Block {
+		return "blocked: incomplete or inconclusive checks (not confirmed malware)"
+	}
+	return "blocked"
 }
 
 func joinRefs(specs []pkgxrayguard.InstallSpec) string {
@@ -266,9 +267,8 @@ func joinRefs(specs []pkgxrayguard.InstallSpec) string {
 // (DecideAll) and Verdict vocabulary as the install gate — a regressed dep is
 // treated exactly like a flagged install would be.
 //
-// Exit codes mirror the gate/CLI: 0 = nothing regressed, 3 = a dep regressed to
-// review (ask/notify), 2 = a dep regressed to block, or the engine was
-// unreachable under a fail-closed policy. Version drift is informational and
+// Exit codes are binary: 0 = nothing regressed, 2 = a regression or an
+// incomplete check. Legacy review and exit 3 also deny. Version drift is informational and
 // never moves the exit code. The bounded-concurrency fan-out lives in the
 // engine's single `recheck` call — the hook does not re-implement it.
 func runRecheck(cfg config, args []string) int {
@@ -287,15 +287,13 @@ func runRecheck(cfg config, args []string) int {
 	report := rc.Recheck(context.Background(), lockfile)
 
 	// Fold the regressions (plus an Unknown, if the engine failed) through the
-	// shared policy layer — no second dialect for allow/ask/deny.
+	// shared binary policy layer.
 	action := pkgxrayguard.DecideAll(cfg.policy, report.AsResults())
 	os.Stdout.WriteString(renderRecheck(lockfile, report, action))
 
 	switch action {
 	case pkgxrayguard.Deny:
 		return 2
-	case pkgxrayguard.Ask:
-		return 3
 	default:
 		return 0
 	}
@@ -359,18 +357,19 @@ func resolveLockfile(args []string) (string, error) {
 }
 
 // renderRecheck produces the surfaced report. Regressed deps are the actionable
-// ask/notify signal; version-drift flagged updates are informational only.
+// blocking signal; version-drift flagged updates are informational only.
 func renderRecheck(lockfile string, report pkgxrayguard.RecheckReport, action pkgxrayguard.Action) string {
 	var b strings.Builder
 	if report.Err != nil {
 		b.WriteString("pkgxray recheck could not evaluate " + lockfile + ": " + report.Err.Error() + "\n")
-		if action == pkgxrayguard.Allow {
-			b.WriteString("(permissive policy: treated as non-blocking)\n")
-		}
+		b.WriteString("Blocked because checks did not complete; this is not a confirmed malware finding.\n")
 		return b.String()
 	}
 
 	if len(report.Regressed) == 0 && len(report.FlaggedUpdates) == 0 {
+		if action != pkgxrayguard.Allow {
+			return "pkgxray recheck blocked " + lockfile + ": the scanner did not authorize a clean result; checks may be incomplete or inconclusive.\n"
+		}
 		return "pkgxray recheck: no regressions in " + lockfile + " — nothing you already depend on became worse.\n"
 	}
 
@@ -420,7 +419,7 @@ func auditManifestEdit(cfg config, filePath string, edits []pkgxrayguard.FileEdi
 // decideMcpConfigEdit diffs an MCP-config edit for added/changed server
 // entries and runs each through the same gate as an `mcp add` command —
 // launcher packages get the static scan, http(s) URLs get the `pkgxray mcp`
-// probe, unreadable entries surface as review-worthy. An edit that adds no
+// probe, unreadable entries surface as unvettable and blocked. An edit that adds no
 // server (formatting, env tweak) triages nothing. Once the gate clears, the
 // vetted stdio entries are wrapped in place behind `pkgxray mcp-proxy` — a
 // config file is shared state the hook can rewrite, so the runtime gate is
@@ -436,16 +435,10 @@ func decideMcpConfigEdit(cfg config, filePath string, edits []pkgxrayguard.FileE
 			// to launch, not even behind the proxy.
 			return hookshot.FileEditBlock("pkgxray flagged an MCP server added to " + base + ":" + evidenceLines(results))
 		}
-		if action == pkgxrayguard.Ask {
-			return hookshot.FileEditBlock("pkgxray requires review before using an MCP server added to " + base + ":" + evidenceLines(results))
-		}
 	}
-	// No gate-able spec does NOT mean no wrap: a local binary or script
-	// launcher ("python3 server.py") yields nothing pkgxray can statically
-	// scan, which is exactly where the runtime gate matters most — mirror of
-	// the command-path wrap firing on spec-less `mcp add` registrations. An
-	// edit that added no stdio entry produces no wrap targets, so the call
-	// below is a no-op for formatting/env-only changes.
+	// Only vetted launchers reach this wrap step. Unsupported local launchers
+	// produce an unvettable sentinel above. Formatting/env-only edits produce
+	// no new wrap targets.
 	if cfg.mcpWrap {
 		switch wrapped, err := pkgxrayguard.WrapMcpConfigFile(filePath, edits, string(cfg.policy)); {
 		case err != nil:
@@ -464,16 +457,14 @@ func decideMcpConfigEdit(cfg config, filePath string, edits []pkgxrayguard.FileE
 
 // decideManifestSpecs guards the added deps and maps the worst decision onto a
 // file-edit outcome. A post-edit hook can't undo the write, so a Deny becomes
-// FileEditBlock (honored by supporting hosts). File edits have no approval
-// prompt, so REVIEW must also remain a block rather than becoming context.
+// FileEditBlock (honored by supporting hosts). Legacy REVIEW and incomplete
+// checks also block; no approval prompt is emitted.
 func decideManifestSpecs(cfg config, filePath string, specs []pkgxrayguard.InstallSpec) hookshot.FileEditDecision {
 	action, results := gateAddedSpecs(cfg, specs)
 	base := filepath.Base(filePath)
 	switch action {
 	case pkgxrayguard.Deny:
 		return hookshot.FileEditBlock("pkgxray flagged a dependency added to " + base + ":" + evidenceLines(results))
-	case pkgxrayguard.Ask:
-		return hookshot.FileEditBlock("pkgxray requires review before using a dependency added to " + base + ":" + evidenceLines(results))
 	default:
 		return hookshot.FileEditOK()
 	}
@@ -513,12 +504,11 @@ func joinNames(names []string) string {
 func evidenceLines(results []pkgxrayguard.Result) string {
 	var b strings.Builder
 	for _, r := range results {
-		switch r.Verdict {
-		case pkgxrayguard.Block, pkgxrayguard.Review, pkgxrayguard.Unknown:
+		if pkgxrayguard.DecideResult(pkgxrayguard.Balanced, r) != pkgxrayguard.Allow {
 			b.WriteString("\n  • ")
 			b.WriteString(r.Spec.Ref)
 			b.WriteString(" → ")
-			b.WriteString(string(r.Verdict))
+			b.WriteString(blockLabel(r))
 			if r.Summary != "" {
 				b.WriteString(" (" + r.Summary + ")")
 			}
@@ -539,9 +529,9 @@ func auditManifestFile(cfg config, filePath string) hookshot.FileEditDecision {
 	switch code {
 	case 2:
 		return hookshot.FileEditBlock("pkgxray flagged a dependency in " + filepath.Base(filePath) + ": " + summary)
-	case 3:
-		return hookshot.FileEditAddContext("pkgxray: review recommended for " + filepath.Base(filePath) + ": " + summary)
-	default:
+	case 0:
 		return hookshot.FileEditOK()
+	default:
+		return hookshot.FileEditBlock("pkgxray blocked use of dependencies in " + filepath.Base(filePath) + ": checks were incomplete or inconclusive; this is not a confirmed malware finding. " + summary)
 	}
 }

@@ -9,77 +9,42 @@ import (
 )
 
 func TestDecide(t *testing.T) {
-	cases := []struct {
-		policy Policy
-		v      Verdict
-		want   Action
-	}{
-		{Strict, Block, Deny},
-		{Strict, Review, Deny},
-		{Strict, Unknown, Deny},
-		{Strict, Safe, Allow},
-		{Balanced, Block, Deny},
-		{Balanced, Review, Ask},
-		{Balanced, Unknown, Deny},
-		{Balanced, Safe, Allow},
-		{Permissive, Block, Deny},
-		{Permissive, Review, Allow},
-		{Permissive, Unknown, Allow},
-		{Permissive, Safe, Allow},
-	}
-	for _, tc := range cases {
-		if got := Decide(tc.policy, tc.v); got != tc.want {
-			t.Errorf("Decide(%s, %s) = %s, want %s", tc.policy, tc.v, got, tc.want)
+	for _, policy := range []Policy{Strict, Balanced, Permissive, "unknown-policy"} {
+		for _, verdict := range []Verdict{Safe, Block, Review, Unknown, "future-verdict", ""} {
+			want := Deny
+			if verdict == Safe {
+				want = Allow
+			}
+			if got := Decide(policy, verdict); got != want {
+				t.Errorf("Decide(%s, %s) = %s, want %s", policy, verdict, got, want)
+			}
 		}
 	}
 }
 
 func TestDecideResultImmediateFailMode(t *testing.T) {
-	immediate := InstallSpec{Ref: "npm:x", Immediate: true}
-	persistent := InstallSpec{Ref: "npm:x", Immediate: false}
-	cases := []struct {
-		name   string
-		policy Policy
-		result Result
-		want   Action
-	}{
-		// Permissive would normally allow Unknown/Review — but not for an
-		// execute-immediately spec, which must at least ask.
-		{"permissive immediate unknown → ask", Permissive, Result{Spec: immediate, Verdict: Unknown}, Ask},
-		{"permissive immediate review → ask", Permissive, Result{Spec: immediate, Verdict: Review}, Ask},
-		{"permissive persistent unknown → allow", Permissive, Result{Spec: persistent, Verdict: Unknown}, Allow},
-		{"permissive persistent review → allow", Permissive, Result{Spec: persistent, Verdict: Review}, Allow},
-		{"permissive immediate safe → allow", Permissive, Result{Spec: immediate, Verdict: Safe}, Allow},
-		// Balanced already denies Unknown / asks on Review; the hardening is a no-op there.
-		{"balanced immediate unknown → deny", Balanced, Result{Spec: immediate, Verdict: Unknown}, Deny},
-		{"balanced immediate review → ask", Balanced, Result{Spec: immediate, Verdict: Review}, Ask},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := DecideResult(tc.policy, tc.result); got != tc.want {
-				t.Errorf("DecideResult(%s) = %s, want %s", tc.policy, got, tc.want)
+	for _, policy := range []Policy{Strict, Balanced, Permissive} {
+		for _, immediate := range []bool{false, true} {
+			for _, verdict := range []Verdict{Review, Unknown, Block} {
+				result := Result{Spec: InstallSpec{Ref: "npm:x", Immediate: immediate}, Verdict: verdict}
+				if got := DecideResult(policy, result); got != Deny {
+					t.Fatalf("%s immediate=%v verdict=%s: got %s", policy, immediate, verdict, got)
+				}
 			}
-		})
+		}
 	}
 }
 
 func TestDecideAllStrongestWins(t *testing.T) {
-	results := []Result{
-		{Spec: InstallSpec{Ref: "npm:a"}, Verdict: Safe},
-		{Spec: InstallSpec{Ref: "npm:b"}, Verdict: Review}, // balanced → ask
-		{Spec: InstallSpec{Ref: "npm:c"}, Verdict: Block},  // → deny (strongest)
-	}
-	if got := DecideAll(Balanced, results); got != Deny {
-		t.Fatalf("DecideAll = %s, want deny", got)
-	}
-	// Worst raw verdict is Review, but an immediate-exec Unknown forces Ask
-	// under permissive even though a persistent Unknown would allow.
-	mixed := []Result{
-		{Spec: InstallSpec{Ref: "npm:a"}, Verdict: Safe},
-		{Spec: InstallSpec{Ref: "npm:b", Immediate: true}, Verdict: Unknown},
-	}
-	if got := DecideAll(Permissive, mixed); got != Ask {
-		t.Fatalf("DecideAll = %s, want ask", got)
+	for _, policy := range []Policy{Strict, Balanced, Permissive} {
+		if DecideAll(policy, nil) != Allow || DecideAll(policy, []Result{{Verdict: Safe}}) != Allow {
+			t.Fatal("unrelated/SAFE commands must remain allowed")
+		}
+		for _, denied := range []Verdict{Review, Unknown, Block, "future-verdict"} {
+			if got := DecideAll(policy, []Result{{Verdict: Safe}, {Verdict: denied}}); got != Deny {
+				t.Fatalf("%s %s: got %s", policy, denied, got)
+			}
+		}
 	}
 }
 

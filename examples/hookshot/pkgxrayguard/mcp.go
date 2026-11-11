@@ -20,7 +20,7 @@ import (
 //     `--`): the launcher parses to a registry spec and takes the existing
 //     STATIC package scan — the hook never spawns the server itself
 //     (package-scan-first; connect-time enumeration is a follow-up step the
-//     deny/ask message points at).
+//     deny message points at).
 //   - streamable-HTTP URL: `pkgxray mcp <url>` performs a read-only
 //     handshake + tools/list and audits the manifest (injection, concealment,
 //     capability mismatch). Connecting to the URL is a network fetch the
@@ -120,7 +120,7 @@ func parseMcpAddJSON(args []string) []InstallSpec {
 		return mcpTargetSpecs([]string{cfg.URL}, cfg.Type)
 	}
 	if cfg.Command != "" {
-		return parseSegment(strings.Join(append([]string{cfg.Command}, cfg.Args...), " "))
+		return mcpTargetSpecs(append([]string{cfg.Command}, cfg.Args...), cfg.Type)
 	}
 	return nil
 }
@@ -137,12 +137,18 @@ func mcpTargetSpecs(target []string, transport string) []InstallSpec {
 	first := target[0]
 	if strings.HasPrefix(first, "http://") || strings.HasPrefix(first, "https://") {
 		kind := KindMcpHTTP
-		if strings.EqualFold(transport, "sse") {
+		if transport != "" && !strings.EqualFold(transport, "http") && !strings.EqualFold(transport, "streamable-http") {
 			kind = KindMcpSSE
 		}
 		return []InstallSpec{{Ref: first, Manager: "mcp", Raw: first, Kind: kind}}
 	}
-	return parseSegment(strings.Join(target, " "))
+	if specs := parseSegment(strings.Join(target, " ")); len(specs) > 0 {
+		return specs
+	}
+	// This is a recognized server registration, not an unrelated command.
+	// A local/unsupported launcher has no static authorization; wrapping it
+	// in the runtime proxy does not supply the missing pre-execution check.
+	return []InstallSpec{{Ref: "mcp-launcher", Manager: "mcp", Raw: clip(strings.Join(target, " "), 60), Kind: KindMcpSSE}}
 }
 
 // ---------------------------------------------------------------------------
@@ -176,21 +182,20 @@ type mcpJSON struct {
 
 // checkMcp audits one MCP spec. SSE (and any config we could not read) is
 // Review by construction; HTTP is probed with `pkgxray mcp`. Engine failure
-// yields Unknown, which the policy layer fails closed (deny under
-// strict/balanced) — same rule as everywhere else in the hook.
+// yields Unknown, which denies under every policy without an approval prompt.
 func (g Guard) checkMcp(ctx context.Context, spec InstallSpec) Result {
 	if spec.Kind == KindMcpSSE {
 		return Result{
 			Spec:    spec,
 			Verdict: Review,
-			Summary: "MCP server config the hook cannot probe (legacy SSE transport or unreadable JSON) — review the server manually before trusting its tools",
+			Summary: "blocked: MCP server configuration cannot be vetted (unsupported transport, launcher, or unreadable JSON); incomplete checks do not establish malware",
 		}
 	}
 	if g.DisableMcpProbe {
 		return Result{
 			Spec:    spec,
 			Verdict: Review,
-			Summary: "MCP manifest probe disabled (PKGXRAY_HOOK_MCP_PROBE=0) — server registered unvetted",
+			Summary: "blocked: MCP manifest probe disabled (PKGXRAY_HOOK_MCP_PROBE=0); server checks are incomplete",
 		}
 	}
 

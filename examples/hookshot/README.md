@@ -5,7 +5,7 @@ These setup commands target unpublished 2.0.0 candidate; use them after npm publ
 A [hookshot](https://github.com/CorridorSecurity/hookshot) hook binary that runs
 [pkgxray](https://github.com/adamsjack711-ux/pkgxray) supply-chain triage on
 recognized registry package-install commands before they run. It denies the
-command on a `BLOCK` verdict and hands pkgxray's cited evidence back to the
+command on findings, incomplete checks, or legacy `REVIEW` and hands pkgxray's cited evidence back to the
 agent. Conservative parsing has documented gaps; this is defense in depth, not
 proof that every install was intercepted.
 
@@ -22,7 +22,7 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
                        │  parse install targets
                        ▼
              pkgxray guard npm:evil-pkg@1.2.3 --format json
-                       │  SAFE / REVIEW / BLOCK  (+ cited findings)
+                       │  SAFE / BLOCK  (+ cited findings)
                        ▼
              BLOCK → DenyExecution("pkgxray blocked …: credential-access …")
 ```
@@ -44,9 +44,9 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
       tool descriptions, concealed instructions, capability-surface mismatch).
       Connecting is a network fetch the agent was about to make anyway — no
       local code executes. Disable with `PKGXRAY_HOOK_MCP_PROBE=0` (the add
-      then surfaces as **review**, not silently allowed);
+      then **blocks for incomplete checks**);
     - a legacy SSE transport (or unreadable `add-json` config) can't be
-      probed — surfaced as **review-worthy**.
+      probed — **blocked as unvettable**.
     - **Auto-wrap (default on):** a stdio registration that clears the gate is
       then *denied once* with the same command rewritten so the launcher runs
       behind **`pkgxray mcp-proxy`** — the per-call runtime gate (every
@@ -54,9 +54,8 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
       `tools/list_changed`, tool results screened for injection). Hookshot
       decisions can't modify a command in place, so the rewrite rides back as
       the deny reason and the agent re-runs it; the wrapped form is recognized,
-      its **inner launcher is still statically scanned**, and it passes. Works
-      for launchers the static scan can't vet at all (local binaries, python
-      servers) — the runtime gate matters most exactly there. Costs one extra
+      its **inner launcher is still statically scanned**, and it passes. Unsupported local launchers (local binaries, Python servers) stay blocked:
+      wrapping does not replace a completed static check. Costs one extra
       agent round-trip (plus a re-scan of the launcher, since each hook
       invocation is a fresh process — `PKGXRAY_CACHE_URL` softens that).
       Disable with `PKGXRAY_HOOK_MCP_WRAP=0`. Requires pkgxray ≥ 0.17 on PATH
@@ -64,7 +63,7 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
       auto-wrapped (the launcher lives inside quoted JSON; rebuilding it
       through a tokenizer risks quoting bugs).
   - Git / tarball / HTTP URL specs (`git+https://…`, `git@…`, `https://…​.tgz`)
-    can't be resolved by registry triage, so they're surfaced as **review-worthy**
+    can't be resolved by registry triage, so they're **blocked as unvettable**
     (never silently allowed).
   - Local paths (`./x`, `file:`, `link:`, `workspace:`) and bare `npm ci` /
     `npm install` are skipped — that code is already local/visible, or there's
@@ -76,10 +75,11 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
     `claude_desktop_config.json` directly and bypass the execution gate. The
     hook diffs the edit for **added/changed server entries** and gates each one
     exactly like an `mcp add`: launcher command → static package scan, http(s)
-    URL → `pkgxray mcp` probe, an entry it can't read → **review** (never a
-    silent allow). Env-only or formatting edits re-triage nothing. A post-edit
+    URL → `pkgxray mcp` probe; unreadable entries and unsupported launchers
+    **block for incomplete checks**. Env-only or formatting edits re-triage nothing. A post-edit
     hook can't undo the write, so a BLOCK becomes a file-edit block (honored by
-    supporting hosts) and REVIEW also remains a block pending human review.
+    supporting hosts). Incomplete checks and legacy REVIEW also block without a
+    manual approval prompt.
     The hook cannot undo a completed write; hosts that only report post-edit
     feedback still require execution-time enforcement. Once the gate clears, the
     vetted stdio entries are **auto-wrapped in place** to launch behind
@@ -90,15 +90,15 @@ agent runs:  npm install left-pad evil-pkg@1.2.3
     stdio servers already on disk — retrofitting the runtime gate onto servers
     registered before the hook was installed.
   - **Dependency manifests** *(opt-in)* — when the agent edits `package.json`
-    or a lockfile, checks it and feeds the verdict back as agent context (or a
-    block on Claude for a `BLOCK`). It diffs the edit hunks so it doesn't
+    or a lockfile, checks it and blocks findings or incomplete checks on hosts
+    that support file-edit blocks. It diffs the edit hunks so it doesn't
     re-triage the whole tree every time:
   - `package.json` — deep-guards **only the newly added/changed deps** (reusing
     the session cache); a formatting/script-only edit triages nothing. Falls
     back to a full-file audit if no added dep can be extracted, so it's never
     less safe than a blanket scan.
   - lockfiles — full-file `pkgxray audit`, which honors the sibling
-    `.pkgxray.lock` allow/block memory so already-approved deps don't re-prompt.
+    `.pkgxray.lock` dependency state. Failed scans and legacy exit 3 also block.
 
 The worst verdict across a multi-package command wins.
 
@@ -107,18 +107,18 @@ The worst verdict across a multi-package command wins.
 The hook shells out to the **pkgxray CLI** and depends on this contract:
 
 - `pkgxray guard <ref> --format json` emitting a top-level `decision`
-  (`allow`/`review`/`block`) and, for finding locations,
+  (`allow`/`block`; legacy `review` is denied) and, for finding locations,
   `report.findings[].file`;
 - `pkgxray mcp <url> --format json` (pkgxray ≥ 0.16.0) emitting a top-level
   `verdict`, `manifest.server`/`manifest.tools`, and
   `manifestAudit.findings[]` — used to probe HTTP MCP-server registrations;
-- exit codes `2`=block, `3`=review (denial-only fallback when the JSON
-  can't be parsed).
+- exit codes `0`=allow with a valid SAFE result and `2`=block. Legacy `3`
+  remains a denial-only fallback; exit 0 without a verdict never authorizes.
 
-Use **pkgxray 1.2.1 or newer** and verify it with `pkgxray --version`. The hook
+Use **pkgxray 2.0.0** after publication and verify it with `pkgxray --version`. The hook
 still **degrades safely** across output drift: a missing `file` omits only the
 location, while a missing, old, or erroring pkgxray yields `UNKNOWN`, which is
-denied under `strict`/`balanced` (never a false allow). Set
+denied under every policy (never a false allow). Set
 `PKGXRAY_HOOK_POLICY` deliberately.
 
 ## Install
@@ -166,7 +166,7 @@ All via environment variables (the hook reads them at startup):
 | `PKGXRAY_GUARD_ARGS` | — | Extra flags passed to `pkgxray guard`, e.g. `--no-github-diff`. |
 | `PKGXRAY_CACHE_URL` | — | Forwarded to pkgxray so registry/GitHub fetches route through a shared cache server across runs. |
 | `PKGXRAY_HOOK_CONCURRENCY` | `8` | Max packages guarded concurrently within one command. |
-| `PKGXRAY_HOOK_MCP_PROBE` | `1` | `0` skips the `pkgxray mcp <url>` probe on HTTP MCP-server adds; they then surface as **review** instead of being probed. |
+| `PKGXRAY_HOOK_MCP_PROBE` | `1` | `0` skips the `pkgxray mcp <url>` probe on HTTP MCP-server adds; they then block for incomplete checks. |
 | `PKGXRAY_HOOK_MCP_WRAP` | `1` | `0` stops auto-wrapping vetted stdio servers — both `mcp add` launchers and config-file entries — in `pkgxray mcp-proxy` (the per-call runtime gate). |
 
 When a single command installs several packages (`npm i a b c …`), they are
@@ -183,24 +183,25 @@ different version is always re-scanned.
 
 ### Policies
 
-| Verdict | `strict` | `balanced` (default) | `permissive` |
+All three accepted policy names have the same automatic authorization rule:
+
+| Result | `strict` | `balanced` (default) | `permissive` |
 |---|---|---|---|
-| `BLOCK`  | deny | deny | deny |
-| `REVIEW` | deny | **ask** | allow |
-| `UNKNOWN` (pkgxray failed to run) | deny | deny | allow |
-| `SAFE`   | allow | allow | allow |
+| `BLOCK` | deny | deny | deny |
+| Legacy `REVIEW` | deny | deny | deny |
+| `UNKNOWN`, scanner error, or missing checks | deny | deny | deny |
+| Completed `SAFE` | allow | allow | allow |
 
-**Execute-immediately fail-mode.** `npx` / `bunx` / `pnpm dlx` / `bun x` run
-package code the instant it resolves, with no persistent install to inspect
-afterwards. So even under `permissive`, an immediate-exec spec whose verdict is
-`UNKNOWN` (pkgxray errored) or `REVIEW` (e.g. an unvettable VCS/URL) is escalated
-to **ask** rather than allowed — it never fails open. A *persistent* install
-(`npm i …`) still follows the table above.
+The hook never emits an approval prompt, for either persistent installs or
+immediate execution (`npx`, `bunx`, `pnpm dlx`, `bun x`). It also denies SAFE
+results carrying errors or mandatory coverage holds. Incomplete checks explain
+why authorization is absent; they do not establish malware. Legacy policy names
+remain accepted for configuration compatibility and cannot override uncertainty.
 
-`balanced` never fails open on a broken pkgxray: if the CLI is missing or
-errors, the verdict is `UNKNOWN` and the install is denied. On OpenAI Codex,
-hookshot rewrites an `ask` decision to a deny (Codex has no approval prompt), so
-`REVIEW` under `balanced` blocks there too.
+pkgxray owns the bounded retry for eligible missing checks. The hook invokes
+each scan once, with its existing deadline, and never repeats an entire guard
+operation or asks a human to approve findings. Initial host permission to set up
+the MCP server or hook is separate from package decisions.
 
 ## Out-of-band recheck
 
@@ -220,16 +221,15 @@ lives in the engine — this is a thin orchestration layer) and surfaces the
 result through the **same policy and verdict vocabulary** as the gate:
 
 - **regressed** deps — a dependency you already have got worse since install →
-  folded through `DecideAll` exactly like a flagged install (block → deny/notify,
-  review → ask under balanced).
+  folded through `DecideAll` exactly like a flagged install; uncertainty and
+  legacy review results also deny without a prompt.
 - **version drift** (a newer-but-flagged version exists) — informational only;
   it never enters the fold or moves the exit code.
 
-Fail-mode is honoured: a recheck that can't reach the engine is `Unknown`, which
-denies under `strict`/`balanced` and is allowed only under `permissive` — never a
-silent "nothing regressed". `PKGXRAY_CACHE_URL` is forwarded so the recheck shares
-the gate's warm cache. Exit codes mirror the gate: `0` clean, `3` regressed to
-review, `2` regressed to block (or engine unreachable under a fail-closed policy).
+A recheck that cannot reach the engine is `Unknown` and denies under every
+policy. `PKGXRAY_CACHE_URL` is forwarded so the recheck shares the gate's warm
+cache. Exit codes are `0` for a completed check with no regression and `2` for
+regressions or incomplete checks, including legacy review/exit-3 responses.
 
 ## Layout
 
@@ -240,7 +240,7 @@ examples/pkgxray-guard/
 ├── pkgxrayguard/        pure, stdlib-only, unit-tested core
 │   ├── parse.go         shell command → []InstallSpec
 │   ├── guard.go         run `pkgxray guard`, map verdict + reasons
-│   ├── policy.go        verdict × policy → allow/ask/deny
+│   ├── policy.go        verdict + completeness → allow/deny
 │   ├── cache.go         per-session verdict memo (keyed by ref@version)
 │   ├── manifest.go      diff a package.json edit → added/changed deps
 │   ├── recheck.go       run `pkgxray recheck`, map drift → surfaced report
@@ -287,14 +287,13 @@ Two workflows in this repo's [`.github/workflows/`](../../.github/workflows/):
 
 ## Troubleshooting
 
-- Run `pkgxray --version`; use 1.2.1 or newer.
+- Run `pkgxray --version`; use the pinned 2.0.0 candidate after publication.
 - Set `PKGXRAY_BIN` to an absolute executable path because GUI agents often have
   a smaller PATH than an interactive shell.
 - Pipe a captured host event to the matching adapter command shown in
   [Try it](#try-it), and inspect stderr without adding secrets.
-- `UNKNOWN` means the scanner did not complete. Under strict/balanced this is a
-  denial, not a false positive.
-- A REVIEW may become deny on hosts without an interactive approval response.
+- `UNKNOWN` means the scanner did not complete and blocks under every policy.
+- Legacy REVIEW is denied on every host; no approval prompt is emitted.
 - Run `go test ./pkgxrayguard/...` after changing command parsing or policy.
 
 ## Security assumptions
@@ -308,8 +307,10 @@ package code safe to execute.
 
 ## Notes & limits
 
-- Only registry installs are triaged. Local/VCS installs are out of scope for
-  pre-install registry analysis and are allowed through.
+- Only registry installs receive package triage. Recognized VCS installs and
+  unsupported MCP launchers block. Local package paths (`file:`, `link:`,
+  `workspace:`, relative paths) and bare `npm ci` / `npm install` remain parser
+  exclusions; use a separate enforced project/lockfile check for those paths.
 - Command parsing is conservative: unusual shapes (deeply nested subshells,
   variable-expanded package names) may not be recognized. Unrecognized → allowed
   rather than wrongly blocked. Treat the hook as defense-in-depth, not a

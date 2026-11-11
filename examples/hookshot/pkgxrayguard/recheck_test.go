@@ -13,7 +13,7 @@ func fakeRecheck(t *testing.T, jsonOut string, exitCode int) string {
 }
 
 // A regressed dep must surface as a Block verdict that folds to Deny (a
-// notify/ask-level signal), NOT silence.
+// blocking signal), NOT silence.
 func TestRecheckRegressedSurfaces(t *testing.T) {
 	out := `{"worstRegression":"block","exitCode":2,"buckets":{"regressed":[` +
 		`{"name":"gonebad","version":"2.0.0","baseline":"safe","verdict":"block"}` +
@@ -36,8 +36,8 @@ func TestRecheckRegressedSurfaces(t *testing.T) {
 	}
 }
 
-// A regression only to review folds to Ask under balanced (notify), not Deny.
-func TestRecheckReviewRegressionAsks(t *testing.T) {
+// A legacy review regression blocks without asking under every policy.
+func TestRecheckReviewRegressionDenies(t *testing.T) {
 	out := `{"worstRegression":"review","exitCode":3,"buckets":{"regressed":[` +
 		`{"name":"soft","version":"1.0.0","baseline":"safe","verdict":"review"}` +
 		`]},"versionDrift":{"updateAvailableFlagged":[]}}`
@@ -46,8 +46,8 @@ func TestRecheckReviewRegressionAsks(t *testing.T) {
 	if report.Worst != Review {
 		t.Fatalf("worst = %s, want review", report.Worst)
 	}
-	if got := DecideAll(Balanced, report.AsResults()); got != Ask {
-		t.Fatalf("DecideAll = %s, want ask", got)
+	if got := DecideAll(Balanced, report.AsResults()); got != Deny {
+		t.Fatalf("DecideAll = %s, want deny", got)
 	}
 }
 
@@ -68,8 +68,7 @@ func TestRecheckCleanIsSilent(t *testing.T) {
 	}
 }
 
-// Engine unreachable → Unknown, never a false allow. Under fail-closed policies
-// it folds to Deny; under permissive it is allowed through.
+// Engine unreachable → Unknown, which denies under every policy.
 func TestRecheckEngineUnreachableIsUnknown(t *testing.T) {
 	rc := Rechecker{Bin: "/nonexistent/pkgxray-xyz"}
 	report := rc.Recheck(context.Background(), "package-lock.json")
@@ -79,8 +78,8 @@ func TestRecheckEngineUnreachableIsUnknown(t *testing.T) {
 	if got := DecideAll(Balanced, report.AsResults()); got != Deny {
 		t.Fatalf("balanced DecideAll = %s, want deny (fail-closed)", got)
 	}
-	if got := DecideAll(Permissive, report.AsResults()); got != Allow {
-		t.Fatalf("permissive DecideAll = %s, want allow", got)
+	if got := DecideAll(Permissive, report.AsResults()); got != Deny {
+		t.Fatalf("permissive DecideAll = %s, want deny", got)
 	}
 }
 
@@ -95,7 +94,7 @@ func TestRecheckUnparseableIsUnknown(t *testing.T) {
 
 // The fold keys off the worst REGRESSION, not the worst absolute verdict: a
 // still-block dep at install is not in the regressed bucket, so a review-only
-// regression yields Review (Ask), never Block (Deny).
+// regression retains Review evidence but still denies.
 func TestRecheckFoldsWorstRegressionNotAbsolute(t *testing.T) {
 	// The engine already excluded the pre-existing block from `regressed`; the
 	// hook must trust worstRegression + the bucket, not re-fold everything.

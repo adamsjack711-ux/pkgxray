@@ -22,10 +22,12 @@ package or MCP server:
 1. Call `guard_agent_extension_install` with an exact `npm:name@version`
    reference. For an MCP server package, scan the package before connecting.
 2. Proceed only on SAFE/allow.
-3. On REVIEW, stop and ask a human to inspect the cited evidence.
-4. On BLOCK, do not install or execute it.
-5. If pkgxray is unavailable or errors, report that the scan did not complete;
-   never describe an unscanned package as safe.
+3. On BLOCK, do not install, execute, or connect. Explain whether findings or
+   incomplete checks caused the block; uncertainty does not prove malware.
+4. Let pkgxray perform its bounded automatic retry for eligible missing checks.
+   Do not retry the entire guard call or ask for a manual override.
+5. If pkgxray is unavailable, errors, or a legacy scanner returns REVIEW, block
+   the action and report that checks did not complete; never call it safe.
 
 Do not weaken pkgxray policy, pass `force`, suppress findings, or edit its
 operator-controlled configuration unless the user explicitly asks.
@@ -59,12 +61,12 @@ Ask: `Use pkgxray to scan npm:express@4.21.0 before suggesting installation.`
 Confirm `/mcp verbose` lists the pkgxray tools and that the agent calls
 `guard_agent_extension_install`.
 
-### Blocking and review
+### Blocking and uncertainty
 
 The MCP server returns evidence, but `AGENTS.md` is advisory. It does not
 intercept a Codex shell command. Hookshot's Codex `PreToolUse` adapter can deny
-the command; under Hookshot's balanced policy, REVIEW is denied because Codex
-has no interactive hook approval response.
+the command. Every Hookshot policy denies findings, incomplete checks, and
+legacy REVIEW results without asking for approval.
 
 ### Removal, limitations, and troubleshooting
 
@@ -117,12 +119,12 @@ the user to approve project-scoped MCP servers before first use.
 Run `claude mcp list`, approve the project server interactively, then ask:
 `Scan npm:express@4.21.0 with pkgxray and explain the verdict.`
 
-### Blocking and review
+### Blocking and uncertainty
 
 The MCP and `CLAUDE.md` path is advisory. Claude Code can enforce command hooks,
 but writing a correct package-command parser is non-trivial; use the tested
-Hookshot adapter instead of a substring-matching shell hook. Hookshot maps BLOCK
-to deny and REVIEW according to its selected policy.
+Hookshot adapter instead of a substring-matching shell hook. Hookshot denies BLOCK, incomplete checks, and legacy REVIEW under every policy
+without asking for approval.
 
 ### Removal, limitations, and troubleshooting
 
@@ -182,11 +184,11 @@ policy documented in docs/integrations/coding-agents.md#shared-agent-policy.
 Open Cursor MCP settings and confirm pkgxray is connected. Ask:
 `Call pkgxray before adding express@4.21.0.`
 
-### Blocking and review
+### Blocking and uncertainty
 
 Cursor rules guide the agent but do not intercept every shell command. The
 Hookshot `beforeShellExecution` adapter is the enforcement option: it denies
-BLOCK and handles REVIEW according to policy.
+BLOCK, incomplete checks, and legacy REVIEW under every policy without a prompt.
 
 ### Removal, limitations, and troubleshooting
 
@@ -237,10 +239,10 @@ legacy fallback).
 Open Windsurf Settings → Cascade → MCP Servers, confirm pkgxray is connected,
 then ask: `Scan npm:express@4.21.0 before proposing an install command.`
 
-### Blocking and review
+### Blocking and uncertainty
 
 MCP plus a rule is advisory. Hookshot's `pre-run-command` adapter is the
-enforcement path and maps pkgxray verdicts through its selected policy.
+enforcement path. Every policy denies findings and uncertainty without a prompt.
 
 ### Removal, limitations, and troubleshooting
 
@@ -293,8 +295,8 @@ Call `tools/list`, then call `guard_agent_extension_install` with:
 
 ### Blocking, removal, limitations, and troubleshooting
 
-- Treat `decision: allow` as SAFE, `review` as human review, and `block` as
-  rejection. Transport errors are not SAFE.
+- Treat `decision: allow` as SAFE and `block` as rejection. Legacy `review`,
+  unknown decisions, missing checks, and transport errors block without a prompt.
 - Remove the server object to uninstall the integration; `npx` leaves only its
   normal temporary cache.
 - Verify newline-delimited stdio, Node 18+, and the exact launch command.
@@ -324,8 +326,9 @@ npx --yes pkgxray@2.0.0 guard npm:express@4.21.0 --format json
 
 ### Blocking, removal, limitations, and troubleshooting
 
-- Exit `0` permits, `3` requires review, and `2` blocks. Any other exit is a
-  scanner failure and must not be treated as SAFE.
+- Exit `0` with a valid SAFE/allow result permits; `2` blocks. Legacy exit `3`
+  also blocks. Any other exit or missing verdict is a scanner failure and blocks
+  without asking for a manual decision.
 - Remove the instruction and command permission to remove the integration.
 - Shell aliases and prompt instructions are advisory. Use Hookshot or an
   equivalent host execution hook for interception.
@@ -353,12 +356,14 @@ echo '{"tool_name":"Bash","tool_input":{"command":"npm install left-pad"}}' \
   | ./pkgxray-guard claude-pre-tool-use
 ```
 
-### Blocking and review
+### Blocking and uncertainty
 
-BLOCK is denied under every policy. REVIEW is denied under strict, asks under
-balanced when the host supports approval, and passes under permissive. Scanner
-failure is denied under strict/balanced. Immediate-execution commands never
-silently fail open.
+Every policy permits only a completed SAFE result. BLOCK, legacy REVIEW,
+scanner failures, unsupported MCP launchers/transports, and incomplete checks
+all deny without a prompt. The accepted `strict`, `balanced`, and `permissive`
+names provide no uncertainty bypass. The hook does not repeat guard scans;
+pkgxray owns bounded missing-check retries. An uncertainty block is not a
+confirmed malware finding.
 
 ### Removal, limitations, and troubleshooting
 
@@ -368,7 +373,9 @@ silently fail open.
   `PKGXRAY_BIN` to an absolute path when PATH differs inside the host.
 - Conservative parsing cannot recognize every shell/subshell/variable shape;
   this is defense in depth, not a complete sandbox.
-- Local and VCS package specs are not registry-triaged.
+- Recognized VCS package specs and unsupported MCP launchers block. Local
+  package paths and bare install commands remain parser exclusions; use a
+  separate enforced project/lockfile check for those commands.
 
 Security assumption: the hook config and binary are outside agent write access,
 the host honors deny responses, and the fail-open
