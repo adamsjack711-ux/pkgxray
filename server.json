@@ -8,7 +8,9 @@
     {
       "src": "https://pkgxray.ca/assets/favicon.svg",
       "mimeType": "image/svg+xml",
-      "sizes": ["any"]
+      "sizes": [
+        "any"
+      ]
     }
   ],
   "repository": {
@@ -16,7 +18,7 @@
     "source": "github",
     "id": "1276320499"
   },
-  "version": "1.2.2-registry.1",
+  "version": "1.3.0",
   "remotes": [
     {
       "type": "streamable-http",
@@ -28,7 +30,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "pkgxray",
-      "version": "1.2.1",
+      "version": "1.3.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

@@ -24,6 +24,9 @@ you submit is processed on Cloudflare; do not submit secrets. See the
 For the full local MCP, use the configuration below. The official Registry
 descriptor advertises both the hosted URL and the local npm package.
 
+The next release is prepared as `pkgxray@1.3.0`; the configuration below keeps
+the last verified published version until publication completes.
+
 Use an exact npm version from any MCP-capable agent:
 
 ```json

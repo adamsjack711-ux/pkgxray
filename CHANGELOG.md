@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — Compose integration
+## 1.3.0 (2026-11-10) — Compose, evidence review, and runtime guards
+
+- Add advisory, evidence-bound review plans to guard CLI and MCP output, with mandatory blockers and bounded retry guidance; plans never approve installation.
+- Compare fresh upgrade findings without hiding incomplete candidates or claiming absence when coverage is incomplete.
+- Add trusted-base, read-only Compose pull-request reports with bounded inputs and escaped findings.
+- Add opt-in `mcp-proxy --guard-secrets` to block later transfer of explicitly labelled credentials observed in the same proxy session, including URL/Base64 forms.
+- Preserve recognized source-check status in MCP responses while keeping raw source excerpts redacted.
+- Add real stdio MCP smoke checks and bounded concurrency validation; fixture throughput is not package-download throughput.
+
+### Compose integration
 
 - Import the JavaScript Compose Ray engine, history, tests, examples and research into `components/compose`.
 - Add `pkgxray compose` and `pkgxray-compose`, using the bundled scanner by default.
@@ -8,7 +17,7 @@
 - Preserve package blocks and explicit partial-coverage REVIEW results; no installation approvals are issued.
 - Include component runtime code in package archives/build identity and run its tests in the main CI matrix.
 
-## Unreleased — approval and shared-scan consolidation
+### Approval and shared-scan consolidation
 
 Reconciles the existing hardening work with main at `8d73ac3`, including
 the opt-in VM runner, read-only MCP guard and mandatory coverage/provenance holds.
