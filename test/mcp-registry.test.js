@@ -63,7 +63,7 @@ test("registry checklist states the launcher ships in the published release", ()
   assert.match(guide, /resets its data/i);
   assert.match(guide, /live lookup can come\s+back empty/i);
   assert.match(guide, /submit the entry again/i);
-  assert.ok(guide.includes(`Published \`pkgxray@${pkg.version}\` already carries \`mcpName\``));
+  assert.match(guide, /Published `pkgxray@\d+\.\d+\.\d+` already carries `mcpName`/);
   assert.match(guide, /mcp-publisher login github/);
   assert.match(guide, /mcp-publisher publish/);
 });

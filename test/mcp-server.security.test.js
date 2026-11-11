@@ -353,6 +353,50 @@ test("HIGH: MCP guard never returns raw local source or .env values", async () =
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
+test("MCP review guidance is advisory, redacted and present in JSON and Markdown", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-review-plan-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ name: "review-fixture", version: "1.0.0", main: "missing.js" }));
+  for (const outputFormat of ["json", "markdown"]) {
+    const { lines } = await driveServer(rpc(1, "tools/call", {
+      name: "guard_agent_extension_install",
+      arguments: { reference: root, vulnerabilityCheck: false, githubMetadata: false, githubDiff: false, outputFormat }
+    }), { env: { PKGXRAY_MCP_ALLOWED_ROOTS: root } });
+    const reply = lines.map(line => JSON.parse(line)).find(value => value.id === 1);
+    assert.ok(reply?.result, JSON.stringify(reply));
+    const result = reply.result.structuredContent;
+    assert.equal(result.allowed, false);
+    assert.equal(result.review.eligible, false);
+    assert.equal(result.reviewPlan.state, "checks-required");
+    assert.equal(result.assessment.checks.source, "partial");
+    assert.ok(result.reviewPlan.blockers.includes("complete-source-check"));
+    assert.equal(result.reviewPlan.escalation.to, "operator");
+    assert.equal(result.sourceEvidence.contentReturned, false);
+    assert.ok(!JSON.stringify(result.reviewPlan).includes(root));
+    if (outputFormat === "markdown") assert.match(reply.result.content[0].text, /Agent review guidance \(advisory; no approval authority\)/);
+    else assert.equal(JSON.parse(reply.result.content[0].text).reviewPlan.advisoryOnly, true);
+  }
+});
+
+test("guard redaction preserves only known source-check statuses at trusted paths", () => {
+  const { publicGuardResult } = require("../bin/mcp-server");
+  for (const status of ["completed", "partial", "disabled", "skipped", "failed", "not-requested"]) {
+    const result = publicGuardResult({
+      sourceFiles: { "index.js": "private source bytes" },
+      assessment: { checks: { source: status } }, approval: { checks: { source: status } },
+      report: { findings: [{ source: status, snippet: "private source bytes", checks: { source: status } }] }
+    });
+    assert.equal(result.assessment.checks.source, status);
+    assert.equal(result.approval.checks.source, status);
+    assert.equal(result.report.findings[0].source, "<redacted>");
+    assert.equal(result.report.findings[0].checks.source, "<redacted>");
+    assert.ok(!JSON.stringify(result).includes("private source bytes"));
+  }
+  const result = publicGuardResult({ assessment: { checks: { source: "private source bytes" } }, approval: { checks: { source: "private source bytes" } } });
+  assert.equal(result.assessment.checks.source, "<redacted>");
+  assert.equal(result.approval.checks.source, "<redacted>");
+});
+
 test("HIGH: MCP refuses ~ home-relative references", async () => {
   const { lines } = await driveServer(
     rpc(1, "tools/call", {

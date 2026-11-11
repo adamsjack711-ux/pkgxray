@@ -38,6 +38,7 @@
 
 const { spawn } = require("node:child_process");
 const { prepareMcpSandbox } = require("./mcp-sandbox");
+const { SessionSecrets } = require("./session-secrets");
 
 const { auditManifest, manifestEntries, scanResultText } = require("./mcp-audit");
 const { normalizeTool, validateToolsPage, scrubbedEnv, resolveCommand, isAllowedEnvOverride } = require("./mcp-client");
@@ -101,6 +102,7 @@ class McpGate {
     this.policy = options.policy || "balanced";
     if (!["strict", "balanced", "permissive"].includes(this.policy)) throw new Error("Invalid MCP runtime policy");
     this.scanResults = options.scanResults !== false;
+    this.sessionSecrets = options.guardSecrets === true ? new SessionSecrets() : null;
     this.recheck = options.recheck !== false;
     this.pin = options.pin === true;
     this.lockPath = options.lockPath;
@@ -150,6 +152,7 @@ class McpGate {
       held: 0,
       resultsScanned: 0,
       resultsBlocked: 0,
+      credentialTransfersDenied: 0,
       audits: 0,
       gateNs: [],
       auditNs: []
@@ -159,10 +162,12 @@ class McpGate {
   // ---- client → server ------------------------------------------------------
 
   onClientRaw(line) {
+    if (this.sessionSecrets) throw new Error("Credential-flow guard requires JSON-RPC frames");
     this.send("server", line);
   }
 
   async onClientMessage(message) {
+    if (this._denyCredentialTransfer(message, true)) return;
     const requests = (Array.isArray(message) ? message : [message]).filter(m => m && typeof m.method === "string");
     if (requests.some(m => m.method.length > 256 || (typeof m.params?.name === "string" && m.params.name.length > 256) || (m.id !== undefined &&
         !(typeof m.id === "number" && Number.isFinite(m.id)) && !(typeof m.id === "string" && m.id.length <= 128))) ||
@@ -261,6 +266,7 @@ class McpGate {
   // ---- server → client ------------------------------------------------------
 
   onServerRaw(line) {
+    if (this.sessionSecrets) throw new Error("Credential-flow guard requires JSON-RPC frames");
     this.send("client", line);
   }
 
@@ -463,6 +469,12 @@ class McpGate {
   // would deny calls to (so the model never even reads their descriptions —
   // the description IS the injection surface), forward the rest.
   async _onClientListResponse(message) {
+    const credentialHold = this.sessionSecrets?.observe(message);
+    if (credentialHold) {
+      this.stale = true;
+      this.stats.resultsBlocked += 1;
+      return this._withheldResult(message, `pkgxray credential-flow guard: ${credentialHold}`, "rpc");
+    }
     const tools =
       message.result && Array.isArray(message.result.tools) ? message.result.tools : null;
     if (!tools) {
@@ -540,6 +552,9 @@ class McpGate {
   }
 
   _decideAndRoute(message) {
+    // Held calls must be checked again: a response may have disclosed a
+    // credential since the call was queued for manifest re-verification.
+    if (this._denyCredentialTransfer(message)) return;
     const started = process.hrtime.bigint();
     const name =
       message.params && typeof message.params.name === "string" ? message.params.name : "";
@@ -578,10 +593,35 @@ class McpGate {
 
   // ---- result screening -------------------------------------------------------
 
+  _denyCredentialTransfer(message, countNewCalls = false) {
+    const reason = this.sessionSecrets?.check(message);
+    if (!reason) return false;
+    const frames = Array.isArray(message) ? message : [message];
+    // A response or notification cannot receive a JSON-RPC denial. Close the
+    // transport rather than leak it or invent a response with a null id.
+    if (frames.some(frame => !frame || typeof frame.method !== "string" || frame.id === undefined)) {
+      throw new Error(`pkgxray credential-flow guard: ${reason}`);
+    }
+    const errors = frames.map(frame => ({ jsonrpc: "2.0", id: frame.id,
+      error: { code: -32602, message: `pkgxray credential-flow guard: ${reason}` } }));
+    const toolCalls = frames.filter(frame => frame.method === "tools/call").length;
+    this.stats.denied += toolCalls;
+    if (countNewCalls) this.stats.calls += toolCalls;
+    this.stats.credentialTransfersDenied += frames.length;
+    this.log(`DENIED credential transfer — ${reason}`);
+    this.send("client", Array.isArray(message) ? errors : errors[0]);
+    return true;
+  }
+
   // Poisoned-output channel: a clean-manifest server can still steer the
   // model through injection-shaped text in a tool RESULT. Same doc-typed scan
   // as the manifest audit, bounded input; strict also withholds review results.
   _screenCallResult(name, message, responseKind = "tool") {
+    const credentialHold = this.sessionSecrets?.observe(message);
+    if (credentialHold) {
+      this.stats.resultsBlocked += 1;
+      return this._withheldResult(message, `pkgxray credential-flow guard: ${credentialHold}`, responseKind);
+    }
     if (!this.scanResults || (!message.error && !message.result)) return message;
 
     const parts = [];
@@ -772,6 +812,7 @@ class McpGate {
       held: this.stats.held,
       resultsScanned: this.stats.resultsScanned,
       resultsBlocked: this.stats.resultsBlocked,
+      credentialTransfersDenied: this.stats.credentialTransfersDenied,
       audits: this.stats.audits,
       gateMicros: {
         p50: quantile(gate, 0.5) / 1000,
@@ -877,6 +918,7 @@ function runMcpProxy(target, options = {}) {
     const gate = new McpGate({
       policy: options.policy,
       scanResults: options.scanResults,
+      guardSecrets: options.guardSecrets,
       recheck: options.recheck,
       pin: options.pin,
       lockPath: options.lockPath,

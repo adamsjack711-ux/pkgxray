@@ -129,9 +129,12 @@ Stage → vuln-check → audit a real package. Nests the full `audit` payload un
   "quarantinePath": "/…",        // private staging dir
   "stagedPath": "/…",
   "promotedPath": null,          // set when policy promoted the package
+  "reviewPlan": null,            // advisory investigation plan for review; otherwise null
   "report": { /* the full audit payload above */ }
 }
 ```
+
+For REVIEW, `reviewPlan.schemaVersion` is `1` and `advisoryOnly` is `true`. `state` is `checks-required`, `review-required`, or `decision-recorded`. `binding` contains the review ID and available artifact/policy/scanner/evidence hashes plus the requested action. `blockers` contains fixed remediation codes; `steps` contains fixed instructions, a kind (`inspect` or `rescan`), zero-based `findingIndices`, `findingCount`, and `referencesTruncated`. Evidence references address the same result's `report.findings`; each step lists at most 128 indices. `retry` describes a bounded advisory retry budget, and `escalation` identifies `operator`, `user`, or `none`. These fields confer no permission. See [the review contract](review-contract.md#agent-investigation-before-a-decision).
 
 ## `audit <lockfile>` — `audit_lockfile_supply_chain`
 

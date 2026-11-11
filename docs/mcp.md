@@ -24,6 +24,9 @@ you submit is processed on Cloudflare; do not submit secrets. See the
 For the full local MCP, use the configuration below. The official Registry
 descriptor advertises both the hosted URL and the local npm package.
 
+The configuration below targets release `pkgxray@1.3.0`; use it after npm
+publication completes.
+
 Use an exact npm version from any MCP-capable agent:
 
 ```json
@@ -34,7 +37,7 @@ Use an exact npm version from any MCP-capable agent:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.2.1",
+        "pkgxray@1.3.0",
         "pkgxray-mcp"
       ],
       "env": {
@@ -46,7 +49,7 @@ Use an exact npm version from any MCP-capable agent:
 ```
 
 If pkgxray is already installed, `"command": "pkgxray-mcp"` also works. The
-published `pkgxray@1.2.1` package also exposes `pkgxray mcp-server` — the same
+`pkgxray@1.3.0` package also exposes `pkgxray mcp-server` — the same
 stdio server, launched as a subcommand — which is the entry point the MCP
 Registry entry uses.
 
@@ -202,6 +205,44 @@ There is no automatic downgrade when sandbox startup fails. OS sandbox APIs and
 runtime layouts vary, so validate confinement on each deployment platform.
 
 Without `--sandbox`, the child retains the user's filesystem/network access.
+
+### Credential reuse across calls (opt-in)
+
+```bash
+pkgxray mcp-proxy --guard-secrets --sandbox --policy strict -- /absolute/path/to/node ./server.js
+```
+
+Run from a dedicated project directory. `--guard-secrets` remembers non-empty
+string values in explicitly credential-labelled fields in correlated responses:
+`password`, `passwd`, `apiKey`, `accessToken`, `refreshToken`, `clientSecret`,
+`privateKey`, and `authorization` (case, hyphens and underscores are ignored).
+Nested structured results and valid JSON text are inspected. Bearer/Basic header
+payloads are also retained. A later outbound frame containing a remembered value,
+one URL-encoding layer (including mixed-case escapes), or its standard
+Base64/Base64url representation is denied
+before forwarding. Held tool calls are rechecked after manifest verification.
+The guard applies even when injection-result scanning is disabled or the runtime
+policy is permissive; it never grants an approval. A rejected request gets a
+JSON-RPC error. An uninspectable raw frame, or a credential-bearing notification
+or response without a request to reject, closes the session.
+
+Values are kept only in the proxy's private memory, never in reports, logs, or a
+disk cache. Each proxy has independent state, discarded on exit. Inspection is
+bounded to 128 KiB of strings/keys, 10,000 values and 32 nesting levels per frame,
+with at most 128 credentials of 4 KiB each retained. Exceeding a limit withholds
+the response and holds later traffic until restart instead of forgetting old
+evidence. A malicious server can cause this denial of service; the guard does
+not silently resume with less protection.
+
+This is exact-value correlation within one proxied server session, not general
+cross-server data-flow tracking. It does not identify arbitrary personal data,
+unlabelled credentials in prose, binary attachments, split values, arbitrary
+encodings, or data sent before the response was observed. Even a short labelled
+password can match ordinary later text and cause a false positive. Review the
+workflow separately rather than treating the error as a package verdict. The
+server already possesses its own responses: direct server-side exfiltration is
+outside this check and requires OS network restrictions. `--sandbox` constrains
+the wrapped server and its descendants, not the coding agent or other servers.
 Even with it, explicitly readable directories may contain credentials and
 explicitly passed secrets remain available to the server. System/runtime read
 roots and granted paths are trusted capabilities, not a guarantee against kernel

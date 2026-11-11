@@ -71,6 +71,7 @@ function printUsage() {
       "                     [--sandbox] [--sandbox-read PATH] [--sandbox-write PATH] [--sandbox-network] # explicit OS grants",
       "                     [--env NAME]                                         #   explicitly pass a required environment variable (repeatable)",
       "                     [--no-scan-results] [--timing]                          #   and tool RESULTS are scanned for injection (use in host config)",
+      "                     [--guard-secrets]                                     #   block reuse of labelled credentials from prior responses in this session",
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
       "  pkgxray triage --resume                                                  #   resume interrupted triage",
       "  pkgxray mcp-server                                                        # run pkgxray ITSELF as a stdio MCP server (for MCP hosts /",
@@ -219,6 +220,8 @@ function parseArgs(argv) {
         options.lockPath = argv.shift();
       } else if (arg === "--no-recheck") {
         options.recheck = false;
+      } else if (arg === "--guard-secrets") {
+        options.guardSecrets = true;
       } else if (arg === "--no-scan-results") {
         options.scanResults = false;
       } else if (arg === "--timing") {
@@ -856,6 +859,7 @@ function renderGuardMarkdown(result) {
       ? `REVIEW: inspect the evidence below, then choose Proceed or Decline. Review ID: ${result.review.id}. Use --review-id <id> --review-choice Proceed (or Decline).`
       : 'REVIEW: required checks are incomplete; resolve them before use or promotion.', '');
   }
+  lines.push(...require("../src/review-plan").renderReviewPlan(result.reviewPlan));
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,

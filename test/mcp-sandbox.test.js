@@ -41,6 +41,11 @@ test('real OS sandbox blocks private files, symlink escapes, writes and network 
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   t.after(() => { server.close(); fs.rmSync(root, { recursive: true, force: true }); });
   const script = path.join(project, 'probe.js');
+  const descendant = `const fs=require('fs'),http=require('http');const r={};
+    try{fs.readFileSync(${JSON.stringify(secret)});r.privateRead=true}catch{r.privateRead=false}
+    try{fs.writeFileSync(${JSON.stringify(path.join(project, 'descendant-write'))},'no');r.writeProject=true}catch{r.writeProject=false}
+    const req=http.get('http://127.0.0.1:${server.address().port}',res=>{res.resume();r.network=true;console.log(JSON.stringify(r))});
+    req.on('error',()=>{r.network=false;console.log(JSON.stringify(r))});req.setTimeout(1000,()=>req.destroy());`;
   fs.writeFileSync(script, `
     const fs=require('fs'), http=require('http');
     const result={};
@@ -52,6 +57,8 @@ test('real OS sandbox blocks private files, symlink escapes, writes and network 
     attempt('writeGrant',()=>fs.writeFileSync(${JSON.stringify(path.join(grant, 'allowed'))},'ok'));
     attempt('writeHome',()=>fs.writeFileSync(process.env.HOME+'/scratch','ok'));
     result.spawnHelper=require('child_process').spawnSync('/usr/bin/true').status===0;
+    const child=require('child_process').spawnSync(process.execPath,['-e',${JSON.stringify(descendant)}],{encoding:'utf8',timeout:3000});
+    result.descendant=child.status===0?JSON.parse(child.stdout):{failed:true};
     result.freshHome=process.env.HOME!==${JSON.stringify(os.homedir())};
     const req=http.get('http://127.0.0.1:${server.address().port}',res=>{res.resume();result.network=true;console.log(JSON.stringify(result))});
     req.on('error',()=>{result.network=false;console.log(JSON.stringify(result))});
@@ -66,7 +73,8 @@ test('real OS sandbox blocks private files, symlink escapes, writes and network 
   const result = await run(launch);
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), { readProject: true, readSecret: false, symlinkEscape: false,
-    writeProject: false, writeGrant: true, writeHome: true, spawnHelper: true, freshHome: true, network: false });
+    writeProject: false, writeGrant: true, writeHome: true, spawnHelper: true,
+    descendant: { privateRead: false, writeProject: false, network: false }, freshHome: true, network: false });
   assert.equal(hits, 0);
   launch.cleanup();
   assert.equal(fs.existsSync(launch.scratchPath), false);

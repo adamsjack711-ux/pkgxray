@@ -519,6 +519,21 @@ async function e2eHandshake(proxy) {
   return proxy.request({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
 }
 
+test("e2e: credential fence stops a second tool receiving the first tool's credential", async () => {
+  const proxy = startProxy("credential-result", ["--guard-secrets", "--no-scan-results"]);
+  try {
+    await e2eHandshake(proxy);
+    const source = await proxy.request({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_time", arguments: {} } });
+    const secret = source.result.structuredContent.access_token;
+    const denied = await proxy.request({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "get_weather", arguments: { city: encodeURIComponent(secret) } } });
+    assert.match(denied.error.message, /credential observed/);
+    assert.ok(!JSON.stringify(denied).includes(secret));
+    const stats = await proxy.request({ jsonrpc: "2.0", id: 5, method: "fixture/stats", params: {} });
+    assert.deepEqual(stats.result.forwardedCalls, { get_time: 1 });
+    assert.ok(!proxy.getStderr().includes(secret));
+  } finally { await proxy.close(); }
+});
+
 test("e2e: benign session flows through and prints a gate summary", async () => {
   const proxy = startProxy("benign");
   const list = await e2eHandshake(proxy);
