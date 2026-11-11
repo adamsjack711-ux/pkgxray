@@ -54,7 +54,7 @@ test("both Compose entrypoints use bundled package checks without a scanner path
   const f = await fixture(t);
   for (const args of [["bin/audit.js", "compose"], ["bin/compose.js"]]) {
     const result = spawnSync(process.execPath, [...args, f.root, "--json"], { cwd: repo, encoding: "utf8" });
-    assert.equal(result.status, 3, result.stderr);
+    assert.equal(result.status, 2, result.stderr);
     const report = JSON.parse(result.stdout);
     assert.equal(report.tool, "pkgxray-compose");
     assert.equal(report.pkgxray.status, "completed");
@@ -62,10 +62,10 @@ test("both Compose entrypoints use bundled package checks without a scanner path
     assert.equal(report.authorization.installAllowed, false);
   }
 });
-test("bundled worker preserves package blocks and public controls remain review", async t => {
+test("bundled worker preserves package blocks and partial controls remain blocked", async t => {
   for (const kind of ["blocked", "public", "unsupported"]) {
     const f = await fixture(t, kind), { report } = await scanComposition(fs.realpathSync(f.root));
-    assert.equal(report.decision, kind === "blocked" ? "block" : "review");
+    assert.equal(report.decision, "block");
     assert.equal(report.authorization.installAllowed, false);
     assert.equal(report.pkgxray.status, "completed");
     if (kind === "unsupported") assert.equal(report.execution, "partial");
@@ -82,6 +82,9 @@ test("enabled Compose MCP retains findings and enforces paths and argument autho
   const response = await s.scan({ projectPath: f.root, outputFormat: "json" });
   const report = response.result.structuredContent;
   assert.equal(report.pkgxray.status, "completed");
+  assert.equal(report.decision, "block");
+  assert.equal(report.compose.analysisStatus, "flow-found");
+  assert.equal(Object.hasOwn(report.compose, "verdict"), false);
   assert.ok(report.compose.findings.length);
   assert.equal(report.authorization.installAllowed, false);
   for (const args of [{}, { projectPath: os.tmpdir() }, { projectPath: f.root, scannerRoot: f.root },
@@ -114,7 +117,7 @@ test("Compose treats target code as data and rejects source links", async t => {
 test("worker deadlines and cancellation never produce a passing result", async t => {
   const f = await fixture(t);
   const result = await scanComposition(fs.realpathSync(f.root), { timeoutMs: 1 });
-  assert.equal(result.decision, "review");
+  assert.equal(result.decision, "block");
   assert.equal(result.authorization.installAllowed, false);
   const controller = new AbortController();
   const promise = scanComposition(fs.realpathSync(f.root), { signal: controller.signal });

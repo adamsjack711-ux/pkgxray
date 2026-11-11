@@ -26,7 +26,7 @@ test('Python module behavioral coverage stays REVIEW under allow-review and mute
   assert.ok(report.findings.some(f => f.category === 'unsupported-behavior'));
   const config = {...cfg.DEFAULTS, mute:[{check:'unsupported-behavior',scope:'*'}]};
   const adjusted = cfg.applyConfig(report,{config});
-  assert.equal(cfg.guardDecision(adjusted,{policy:'allow-review',config}),'review');
+  assert.equal(cfg.guardDecision(adjusted,{policy:'allow-review',config}),'block');
 });
 
 // A JavaScript token-exfil shape: bulk env read + POST to a known exfil domain.

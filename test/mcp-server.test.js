@@ -207,7 +207,7 @@ test("MCP audit_lockfile_supply_chain returns a structured result", async () => 
 
     assert.ok(res.result, `expected result, got ${JSON.stringify(res)}`);
     const structured = res.result.structuredContent;
-    assert.equal(structured.schemaVersion, 1);
+    assert.equal(structured.schemaVersion, 2);
     assert.equal(structured.totalDeps, 2);
     assert.equal(structured.format, "npm");
     assert.ok(Array.isArray(structured.results));
@@ -346,7 +346,7 @@ test("MCP audit_agent_extension_supply_chain accepts provenanceAttestation", asy
       }
     });
     assert.ok(res.result, `expected result, got ${JSON.stringify(res)}`);
-    assert.equal(res.result.structuredContent.schemaVersion, 1);
+    assert.equal(res.result.structuredContent.schemaVersion, 2);
   } finally {
     await server.stop();
   }

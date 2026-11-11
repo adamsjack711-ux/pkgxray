@@ -37,20 +37,15 @@ function check(name, classification, observed, assertion) {
     const { withReceipt } = await imp('examples/pkgxray-proxy/test/receipt-helper.js');
     const artifact = require(path.join(copy, 'src/artifact.js'));
     const policy = require(path.join(copy, 'src/config.js'));
-    const reviews = require(path.join(copy, 'src/review.js'));
     const file = path.join(dir, 'inert.tgz');
     const bytes = Buffer.from('inert audit fixture; never executed or extracted');
     await fs.writeFile(file, bytes);
     const snapshot = { file, sha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex') };
     const config = loadConfig({ verdictStorePath: path.join(dir, 'verdicts.json') }, {});
     const store = new VerdictStore(config.verdictStorePath);
-    const decisions = new reviews.ReviewDecisions();
     let scans = 0;
-    const runGuard = withReceipt(async () => { scans++; return { decision: 'review', findings: [{ reason: 'inert fixture review' }] }; });
-    const gate = () => gateArtifact({ config, store, name: 'audit-fixture', version: '1.0.0', snapshot, runGuard, sharedPolicy: policy.DEFAULTS, scope: 'A', decisions });
-    const pending = await gate();
-    assert.equal(pending.serve, false);
-    decisions.choose('A', pending.review.id, 'Proceed');
+    const runGuard = withReceipt(async () => { scans++; return { decision: 'allow', findings: [] }; });
+    const gate = () => gateArtifact({ config, store, name: 'audit-fixture', version: '1.0.0', snapshot, runGuard, sharedPolicy: policy.DEFAULTS });
     assert.equal((await gate()).serve, true);
     const recheck = await adminRecheck({ config, store, runGuard: async () => ({ decision: 'block', findings: [{ reason: 'new blocking evidence' }] }) });
     const afterRecheck = await gate();
@@ -59,10 +54,7 @@ function check(name, classification, observed, assertion) {
       () => assert.equal(afterRecheck.serve, false, 'a new block must invalidate cached delivery approval'));
     // Isolate build drift from the preceding admin-recheck observation.
     const driftStore = new VerdictStore(path.join(dir, 'drift-verdicts.json'));
-    const driftDecisions = new reviews.ReviewDecisions();
-    const driftGate = () => gateArtifact({ config, store: driftStore, name: 'audit-fixture', version: '1.0.0', snapshot, runGuard, sharedPolicy: policy.DEFAULTS, scope: 'A', decisions: driftDecisions });
-    const driftPending = await driftGate();
-    driftDecisions.choose('A', driftPending.review.id, 'Proceed');
+    const driftGate = () => gateArtifact({ config, store: driftStore, name: 'audit-fixture', version: '1.0.0', snapshot, runGuard, sharedPolicy: policy.DEFAULTS });
     assert.equal((await driftGate()).serve, true);
     const scansBeforeChange = scans;
     await fs.appendFile(path.join(copy, 'src/config.js'), '\n// Simulated scanner/rules build update in disposable copy.\n');

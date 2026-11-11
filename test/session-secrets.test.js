@@ -77,7 +77,7 @@ test("inspection and retention limits hold the session instead of losing evidenc
 
 function runtime(enabled = true) {
   const sent = [], logs = [];
-  const gate = new McpGate({ guardSecrets: enabled, recheck: false, scanResults: false,
+  const gate = new McpGate({ guardSecrets: enabled, recheck: false, scanResults: true,
     send: (to, message) => sent.push({ to, message }), log: text => logs.push(text),
     audit: () => ({ verdict: "safe", findings: [] }) });
   return { gate, sent, logs };
@@ -151,7 +151,7 @@ test("batches, notifications, response frames and raw frames cannot bypass opted
   assert.throws(() => gate.onServerRaw("opaque output"), /requires JSON-RPC/);
 });
 
-test("opt-in is independent of output injection scan; default compatibility is unchanged", async () => {
+test("credential opt-in remains independent of mandatory output injection screening", async () => {
   const { gate, sent } = runtime(false);
   await ready(gate); await disclose(gate);
   await gate.onClientMessage(call(2, "send_record", { text: SECRET }));

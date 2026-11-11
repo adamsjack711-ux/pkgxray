@@ -353,7 +353,7 @@ test("HIGH: MCP guard never returns raw local source or .env values", async () =
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
-test("MCP review guidance is advisory, redacted and present in JSON and Markdown", async t => {
+test("MCP blocks incomplete checks automatically with redacted reasons in JSON and Markdown", async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-review-plan-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ name: "review-fixture", version: "1.0.0", main: "missing.js" }));
@@ -366,15 +366,16 @@ test("MCP review guidance is advisory, redacted and present in JSON and Markdown
     assert.ok(reply?.result, JSON.stringify(reply));
     const result = reply.result.structuredContent;
     assert.equal(result.allowed, false);
-    assert.equal(result.review.eligible, false);
-    assert.equal(result.reviewPlan.state, "checks-required");
+    assert.equal(result.decision, "block");
+    assert.equal(Object.hasOwn(result, "review"), false);
+    assert.equal(Object.hasOwn(result, "reviewPlan"), false);
     assert.equal(result.assessment.checks.source, "partial");
-    assert.ok(result.reviewPlan.blockers.includes("complete-source-check"));
-    assert.equal(result.reviewPlan.escalation.to, "operator");
+    assert.ok(result.resolution.reasonCodes.length > 0);
     assert.equal(result.sourceEvidence.contentReturned, false);
-    assert.ok(!JSON.stringify(result.reviewPlan).includes(root));
-    if (outputFormat === "markdown") assert.match(reply.result.content[0].text, /Agent review guidance \(advisory; no approval authority\)/);
-    else assert.equal(JSON.parse(reply.result.content[0].text).reviewPlan.advisoryOnly, true);
+    assert.ok(!JSON.stringify(result.resolution).includes(root));
+    assert.doesNotMatch(reply.result.content[0].text, /Proceed|Decline|Pending decision|reviewPlan/);
+    if (outputFormat === "markdown") assert.match(reply.result.content[0].text, /Decision: \*\*BLOCK\*\*/);
+    else assert.equal(JSON.parse(reply.result.content[0].text).decision, "block");
   }
 });
 

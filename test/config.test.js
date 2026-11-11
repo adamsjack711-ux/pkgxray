@@ -120,10 +120,10 @@ test("invalid enum values fall back to the safe default with a warning", () => {
   assert.equal(warnings.length, 2);
 });
 
-test("policy allow-review explains the explicit decision requirement", () => {
+test("legacy allow-review is deprecated and does not permit uncertainty", () => {
   const warnings = [];
   validateConfig({ policy: "allow-review" }, warnings);
-  assert.ok(warnings.some((w) => /no longer approves REVIEW/.test(w)));
+  assert.ok(warnings.some((w) => /does not permit uncertain packages/.test(w)));
 });
 
 // --- applyConfig: mutes ----------------------------------------------------

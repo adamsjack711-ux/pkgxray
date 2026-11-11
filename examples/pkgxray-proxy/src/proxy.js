@@ -7,7 +7,6 @@
 import http from 'node:http';
 import https from 'node:https';
 import crypto from 'node:crypto';
-import reviews from '../../../src/review.js';
 import { createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { acquireArtifact, gateArtifact, assertArtifactCurrent } from './artifact-gate.js';
@@ -84,12 +83,9 @@ function endToEndHeaders(headers) {
  *   source:string, findings:Array, cached:boolean, note?:string}>}
  */
 export async function gate({ config, store, name, version, runGuard = defaultRunGuard, log, sharedPolicy }) {
-  // 1. Admin allow/denylist short-circuits — never scanned.
+  // 1. An admin denylist can block before scanning.
   if (listMatches(config.denylist, name, version)) {
     return plan(false, 403, 'block', 'denylist', [{ reason: 'denylisted by admin' }], false);
-  }
-  if (listMatches(config.allowlist, name, version)) {
-    return plan(true, 200, 'allow', 'allowlist', [], false, 'pinned by admin allowlist');
   }
 
   // 2. Verdict cache — but only a FRESH one. A cached verdict older than
@@ -102,7 +98,7 @@ export async function gate({ config, store, name, version, runGuard = defaultRun
   }
 
   // 3. Cache miss or stale entry — (re)scan. `prev` is the stale entry, if any,
-  // so a failed refresh can fall back to it instead of overwriting a good verdict.
+  // for recording transitions; a failed refresh still blocks this request.
   return scanAndDecide({ config, store, name, version, runGuard, log, prev: cached || null, sharedPolicy });
 }
 
@@ -111,9 +107,7 @@ export async function gate({ config, store, name, version, runGuard = defaultRun
  * path and the stale-refresh path so both obey the same rules:
  *   - a real verdict change (allow->block etc.) is logged as a transition and
  *     persisted, so subsequent requests are gated on the new verdict;
- *   - a failed scan NEVER overwrites a good stored verdict — on refresh it falls
- *     back to serving the prior cached verdict; on a true miss it follows
- *     scanErrorPolicy.
+ *   - a failed scan blocks this request while preserving the historical record.
  */
 async function scanAndDecide({ config, store, name, version, runGuard, log, prev, sharedPolicy }) {
   let result;
@@ -123,23 +117,11 @@ async function scanAndDecide({ config, store, name, version, runGuard, log, prev
       cacheUrl: config.cacheUrl,
     });
   } catch (err) {
-    if (prev) {
-      // Stale refresh failed — keep the last good verdict rather than degrade to
-      // a scan-error/403. The entry is untouched (still cacheable), just not fresh.
-      logSafe(log, { event: 'refresh-error', name, version, message: err.message, keeping: prev.decision });
-      return fromDecision(config, prev.decision, prev.findings, 'cache', true, `stale refresh failed: ${err.message}`);
-    }
-    // Scan-error handling. PRECEDENCE: the shared `.pkgxray.json`
-    // scanErrorPolicy wins when present — it is the one policy the whole team
-    // shares across CLI/MCP/proxy, and this example server's own
-    // config.scanErrorPolicy is only a fallback for a proxy run without a shared
-    // file. verdictForScanError() maps fail-closed -> "review", fail-open ->
-    // "safe"; anything that isn't an explicit fail-open serves closed (403).
-    const errPolicy = errorPolicy(config, sharedPolicy);
-    if (errPolicy === 'fail-open') {
-      return plan(true, 200, 'scan-error', 'scan', findingsFromError(err), false, `${err.message} (scanErrorPolicy=fail-open)`);
-    }
-    return plan(false, 403, 'scan-error', 'scan', findingsFromError(err), false, `${err.message} (scanErrorPolicy=fail-closed)`);
+    // No immutable snapshot is held in this diagnostic path. Do not retry or
+    // reuse a stale allow: the guard owns bounded retries for actual artifacts.
+    logSafe(log, { event: 'scan-error', name, version, message: err.message });
+    return plan(false, 403, 'block', 'scan', findingsFromError(err), false,
+      'Blocked because required scan checks did not complete; no malware claim is made');
   }
 
   // Layer the shared team policy on top of the raw scan verdict: a pinned+sha256
@@ -167,21 +149,6 @@ async function scanAndDecide({ config, store, name, version, runGuard, log, prev
     });
   }
   return fromDecision(config, decision, findings, 'scan', false, undefined, applied.configEffects);
-}
-
-/**
- * Reconcile the shared scanErrorPolicy with the proxy's own. The shared team
- * policy (from `.pkgxray.json`) takes precedence when it is present; the proxy's
- * server-level `config.scanErrorPolicy` is the fallback. Both express the same
- * fail-closed/fail-open choice, so when they conflict we defer to the shared one
- * — one policy file for the whole team beats a per-proxy override.
- */
-function errorPolicy(config, sharedPolicy) {
-  if (sharedPolicy) {
-    // "safe" => serve (fail-open); "review" => gate closed (fail-closed).
-    return pkgxrayConfig.verdictForScanError(sharedPolicy) === 'safe' ? 'fail-open' : 'fail-closed';
-  }
-  return config.scanErrorPolicy;
 }
 
 /**
@@ -220,11 +187,10 @@ function applySharedPolicy(sharedPolicy, { decision, findings, name, version, sh
   const touched = effects && (effects.allowlisted || effects.mutedCount > 0 || (effects.notices && effects.notices.length));
   if (!touched) return { decision, findings, configEffects: null };
 
-  // Map the re-folded shared verdict back to a proxy decision. A pinned allow
-  // forces "safe" -> the proxy serves it as "allow"; muting can drop a package
-  // from block/review down as findings disappear.
+  // This diagnostic path has no bound approval receipt. Only the guard may
+  // clear a denial using pinned policy after checking mandatory evidence.
   return {
-    decision: sharedToProxy(adjusted.verdict, decision),
+    decision: decision === 'allow' ? sharedToProxy(adjusted.verdict, decision) : decision,
     findings: adjusted.findings,
     configEffects: effects,
   };
@@ -245,7 +211,7 @@ function sharedToProxy(verdict, fallback) {
  * Re-scan every cached name@version and update the store — the "force refresh
  * after a big advisory drop" path behind an admin endpoint. A regressed verdict
  * (allow -> review/block) updates the store and is logged as a transition; a
- * failed re-scan is recorded but NEVER overwrites the existing good verdict.
+ * failed re-scan revokes prior clearance until a complete check succeeds.
  *
  * @returns {Promise<{total:number, changed:Array, errors:Array, unchanged:number}>}
  */
@@ -265,9 +231,11 @@ export async function adminRecheck({ config, store, runGuard = defaultRunGuard, 
         ? scanCoordinator.run(`admin:${e.name}@${e.version}`, scan)
         : scan());
     } catch (err) {
-      // Never overwrite a good stored verdict with an error state.
+      // A failed required recheck invalidates old delivery approval. This is
+      // uncertainty, not a malware finding; a later successful recheck can clear it.
+      store.recordRecheck(e.name, e.version, 'block', [{ category: 'scan-incomplete', reason: 'Required administrator recheck did not complete' }]);
       errors.push({ name: e.name, version: e.version, message: err.message });
-      logSafe(log, { event: 'refresh-error', name: e.name, version: e.version, message: err.message, keeping: e.decision });
+      logSafe(log, { event: 'refresh-error', name: e.name, version: e.version, message: err.message, decision: 'block' });
       continue;
     }
     if (result.decision !== e.decision) {
@@ -280,7 +248,7 @@ export async function adminRecheck({ config, store, runGuard = defaultRunGuard, 
       });
       changed.push({ name: e.name, version: e.version, from: e.decision, to: result.decision });
     } else {
-      // Refresh artifact evidence; changed findings also revoke review choices.
+      // Refresh artifact evidence; changed findings invalidate cached approvals.
       store.recordRecheck(e.name, e.version, result.decision, result.findings);
       unchanged += 1;
     }
@@ -296,12 +264,12 @@ function logSafe(log, entry) {
   }
 }
 
-/** Map a real decision (allow|block|review) + review policy to a plan. */
+/** Map raw scanner decisions to a binary delivery plan. */
 function fromDecision(config, decision, findings, source, cached, note, configEffects) {
   if (decision === 'allow') return plan(true, 200, 'allow', source, findings, cached, note, configEffects);
   if (decision === 'block') return plan(false, 403, 'block', source, findings, cached, note, configEffects);
   if (decision === 'review') {
-    return plan(false, 409, 'review', source, findings, cached, note || 'Pending: choose Proceed or Decline for this artifact in your session', configEffects);
+    return plan(false, 403, 'block', source, findings, cached, note || 'Blocked because scanner uncertainty remains unresolved; this is not a finding of confirmed malware', configEffects);
   }
   // Shouldn't happen (store only holds cacheable decisions), but fail safe.
   return plan(false, 403, 'block', source, findings, cached, note || `unknown decision: ${decision}`, configEffects);
@@ -312,7 +280,7 @@ function plan(serve, status, decision, source, findings, cached, note, configEff
   // never invisible — carried on the plan and logged/served with the decision.
   const effectLines = configEffects ? pkgxrayConfig.renderConfigEffects(configEffects) : [];
   return {
-    serve, status, decision, source,
+    serve, allowed: serve, outcome: serve ? 'SAFE' : 'UNSAFE', status, decision, source,
     findings: findings || [],
     cached: Boolean(cached),
     ...(note ? { note } : {}),
@@ -425,23 +393,6 @@ export function createServer(config, store, deps = {}) {
     ? deps.sharedPolicy
     : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
 
-  const decisions = new reviews.ReviewDecisions();
-  const sessions = new Map();
-  function session(req, res) {
-    const token = req.headers['x-pkgxray-session'];
-    if (typeof token === 'string' && sessions.has(token) && Date.now() - sessions.get(token) <= 86400000) return token;
-    const fresh = crypto.randomBytes(32).toString('hex');
-    sessions.set(fresh, Date.now());
-    // Bound memory and lifetime; expiry deliberately requires another review.
-    for (const [key, created] of sessions) {
-      if (Date.now() - created > 86400000 || sessions.size > 10000) {
-        sessions.delete(key); decisions.scopes.delete(key);
-      }
-    }
-    res.setHeader('x-pkgxray-session', fresh);
-    return fresh;
-  }
-
   const server = http.createServer((req, res) => {
     handle(req, res).catch((err) => {
       log({ event: 'error', message: err && err.message, path: req.url });
@@ -469,41 +420,9 @@ export function createServer(config, store, deps = {}) {
     if (opaque) return handleOpaqueArtifact(req, res, opaque[1], opaque[2]);
 
     if (pathname === '/-/pkgxray/review') {
-      if (req.method !== 'POST') return sendJson(res, 405, { error: 'method_not_allowed' });
-      const scope = req.headers['x-pkgxray-session'];
-      if (!sessions.has(scope) || Date.now() - sessions.get(scope) > 86400000) return sendJson(res, 401, { error: 'review_session_required' });
-      try {
-        const body = await new Promise((resolve, reject) => {
-          const chunks = []; let bytes = 0, settled = false;
-          const finish = (error) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            req.removeListener('data', data); req.removeListener('end', end);
-            req.removeListener('aborted', aborted);
-            // Keep the error guard for a late socket error after timeout/abort.
-            if (error) { req.pause(); reject(error); }
-            else resolve(Buffer.concat(chunks).toString('utf8'));
-          };
-          const data = chunk => {
-            bytes += chunk.length;
-            if (bytes > 4096) finish(Object.assign(new Error('Review body exceeds 4096 bytes'), { status: 413 }));
-            else chunks.push(chunk);
-          };
-          const end = () => finish();
-          const aborted = () => finish(new Error('Review request aborted'));
-          const failed = error => finish(error);
-          const timer = setTimeout(() => finish(Object.assign(new Error('Review request deadline exceeded'), { status: 408 })), transportTimeoutMs);
-          timer.unref();
-          req.on('data', data); req.once('end', end); req.once('aborted', aborted); req.once('error', failed);
-        });
-        const { reviewId, choice } = JSON.parse(body);
-        decisions.choose(scope, reviewId, choice);
-        return sendJson(res, 200, { reviewId, choice });
-      } catch (error) {
-        if (!req.complete) res.shouldKeepAlive = false;
-        return sendJson(res, error.status || 400, { error: 'invalid_review', message: error.message });
-      }
+      res.shouldKeepAlive = false;
+      return sendJson(res, 410, { error: 'review_endpoint_removed', outcome: 'UNSAFE', decision: 'block',
+        message: 'Manual review decisions are no longer accepted. Unresolved checks block artifact delivery.' });
     }
     const parsed = parsePath(req.url);
 
@@ -712,8 +631,9 @@ export function createServer(config, store, deps = {}) {
     }
     catch (error) { return sendJson(res, 502, { error: 'artifact_download_failed', message: error.message }); }
     try {
-      const currentPolicy = deps.sharedPolicy !== undefined ? sharedPolicy : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
-      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy: currentPolicy, scanCoordinator, scope: session(req, res), decisions, signal: abortController.signal });
+      // Disk policy is read and bound by the gate, then revalidated at delivery.
+      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard,
+        ...(deps.sharedPolicy !== undefined ? { sharedPolicy } : {}), scanCoordinator, signal: abortController.signal });
 
       log({
         event: 'decision',
@@ -728,14 +648,14 @@ export function createServer(config, store, deps = {}) {
       });
 
       if (!decision.serve) {
-        res.setHeader(HEADER_VERDICT, decision.outcome || 'PENDING');
+        res.setHeader(HEADER_VERDICT, decision.outcome || 'UNSAFE');
         res.setHeader(HEADER_SOURCE, decision.source);
         return sendJson(res, decision.status, {
           error: 'blocked_by_pkgxray',
           package: `${name}@${version}`,
           decision: decision.decision,
           outcome: decision.outcome,
-          review: decision.review,
+          reasonCode: decision.reasonCode,
           source: decision.source,
           findings: decision.findings,
           ...(decision.note ? { note: decision.note } : {}),
@@ -746,7 +666,7 @@ export function createServer(config, store, deps = {}) {
       // Recheck at the delivery commit point after awaiting the gate and logging.
       try {
         abortController.signal.throwIfAborted();
-        assertArtifactCurrent(store, name, version, decision.recheckRevision);
+        assertArtifactCurrent(store, name, version, decision.recheckRevision, decision.policyBinding);
       }
       catch (error) {
         res.setHeader(HEADER_VERDICT, 'UNSAFE');

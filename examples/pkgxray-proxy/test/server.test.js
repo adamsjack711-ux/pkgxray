@@ -418,19 +418,19 @@ test('second request for the same tarball is served from cache (no rescan)', asy
   } finally { await p.close(); }
 });
 
-test('default policy withholds reviewed archives on fresh and cached decisions', async () => {
+test('default policy blocks uncertain archives on fresh and cached decisions', async () => {
   let scans = 0;
   const p = await startProxy({ runGuard: async () => { scans++; return { decision: 'review', findings: [{ reason: 'manual review required' }] }; } });
   try {
     for (const source of ['scan', 'cache']) {
       const res = await get(`${p.url}/demo/-/demo-1.0.0.tgz`);
-      assert.equal(res.status, 409);
+      assert.equal(res.status, 403);
       assert.equal(res.headers['x-pkgxray-source'], source);
-      assert.equal(res.headers['x-pkgxray-verdict'], 'PENDING');
+      assert.equal(res.headers['x-pkgxray-verdict'], 'UNSAFE');
       assert.ok(!res.body.includes(tarballBytes));
       const body = JSON.parse(res.body);
-      assert.equal(body.review.state, 'pending');
-      assert.deepEqual(body.review.actions, ['Proceed', 'Decline']);
+      assert.equal(body.review, undefined);
+      assert.equal(body.decision, 'block');
       assert.equal(body.findings[0].reason, 'manual review required');
     }
     assert.equal(scans, 1);
@@ -454,7 +454,7 @@ test('permissive review policy still withholds cached incomplete receipts and pr
       assert.equal(res.status, 403);
       assert.equal(res.headers['x-pkgxray-source'], source);
       assert.equal(res.headers['x-pkgxray-verdict'], 'UNSAFE');
-      assert.equal(JSON.parse(res.body).decision, 'unbound');
+      assert.equal(JSON.parse(res.body).decision, 'block');
       assert.ok(!res.body.includes(tarballBytes));
       assert.equal(JSON.parse(res.body).findings[0].category, 'incomplete-source-scan');
     }
@@ -594,7 +594,8 @@ test('review session tokens never reach metadata or registry passthrough routes'
   const p = await startProxy({ runGuard: async () => ({ decision: 'review', findings: [] }) });
   try {
     const pending = await get(`${p.url}/demo/-/demo-1.0.0.tgz`);
-    const token = pending.headers['x-pkgxray-session']; assert.ok(token);
+    assert.equal(pending.headers['x-pkgxray-session'], undefined);
+    const token = 'legacy-token-must-not-forward';
     for (const route of ['/headers', '/-/headers']) {
       assert.equal((await get(p.url + route, { headers: { 'x-pkgxray-session': token } })).status, 200);
       assert.equal(lastHeaders['x-pkgxray-session'], undefined);
@@ -607,7 +608,7 @@ test('review request bodies have byte and total-time limits without changing app
   try {
     const url = `${p.url}/demo/-/demo-1.0.0.tgz`;
     const pending = await get(url);
-    const token = pending.headers['x-pkgxray-session'];
+    const token = 'legacy-session';
     for (const mode of ['oversize', 'drip']) {
       const status = await new Promise((resolve, reject) => {
         let interval;
@@ -619,42 +620,33 @@ test('review request bodies have byte and total-time limits without changing app
         if (mode === 'oversize') req.end('é'.repeat(3000));
         else { req.write('{'); interval = setInterval(() => req.write(' '), 20); }
       });
-      assert.equal(status, mode === 'oversize' ? 413 : 408);
-      assert.equal((await get(url, { headers: { 'x-pkgxray-session': token } })).status, 409);
+      assert.equal(status, 410);
+      assert.equal((await get(url, { headers: { 'x-pkgxray-session': token } })).status, 403);
     }
   } finally { await p.close(); }
 });
 
-test('HTTP review requires evidence and a session-scoped explicit choice before delivery', async () => {
+test('removed review endpoint cannot approve an uncertain artifact', async () => {
   let scans = 0;
   const proxy = await startProxy({ reviewPolicy: 'allow', runGuard: async () => {
-    scans++; return { decision: 'review', findings: [{ reason: 'inspect this behavior' }] };
+    scans++; return { decision: 'review', findings: [{ reason: 'uncertain behavior' }] };
   } });
-  async function choose(session, reviewId, choice) {
-    const res = await fetch(`${proxy.url}/-/pkgxray/review`, { method: 'POST',
-      headers: { 'x-pkgxray-session': session, 'content-type': 'application/json' },
-      body: JSON.stringify({ reviewId, choice }) });
-    return res.status;
-  }
   try {
     const url = `${proxy.url}/demo/-/demo-1.0.0.tgz`;
-    const first = await get(url), second = await get(url);
-    assert.equal(first.status, 409); assert.equal(second.status, 409);
-    assert.equal(first.headers['x-pkgxray-verdict'], 'PENDING');
-    const evidence = JSON.parse(first.body);
-    assert.equal(evidence.outcome, null);
-    assert.equal(evidence.findings[0].reason, 'inspect this behavior');
-    const a = first.headers['x-pkgxray-session'], b = second.headers['x-pkgxray-session'];
-    assert.notEqual(a, b);
-    assert.equal(await choose('unknown', evidence.review.id, 'Proceed'), 401);
-    assert.equal(await choose(a, 'wrong-review', 'Proceed'), 400);
-    assert.equal(await choose(a, evidence.review.id, 'Proceed'), 200);
-    assert.equal((await get(url, { headers: { 'x-pkgxray-session': a } })).status, 200);
-    assert.equal((await get(url, { headers: { 'x-pkgxray-session': a } })).status, 200);
-    assert.equal((await get(url, { headers: { 'x-pkgxray-session': b } })).status, 409);
-    assert.equal(await choose(b, evidence.review.id, 'Decline'), 200);
-    assert.equal((await get(url, { headers: { 'x-pkgxray-session': b } })).status, 403);
-    assert.equal(scans, 1);
-    assert.equal(lastHeaders['x-pkgxray-session'], undefined);
+    for (const choice of ['Proceed', 'Decline']) {
+      const denied = await get(url);
+      assert.equal(denied.status, 403);
+      assert.equal(denied.headers['x-pkgxray-session'], undefined);
+      const evidence = JSON.parse(denied.body);
+      assert.equal(evidence.outcome, 'UNSAFE');
+      assert.equal(evidence.review, undefined);
+      assert.equal(evidence.findings[0].reason, 'uncertain behavior');
+      const reply = await fetch(`${proxy.url}/-/pkgxray/review`, { method: 'POST',
+        headers: { 'x-pkgxray-session': 'legacy-session', 'content-type': 'application/json' },
+        body: JSON.stringify({ reviewId: 'legacy-review', choice }) });
+      assert.equal(reply.status, 410);
+      assert.equal((await get(url, { headers: { 'x-pkgxray-session': 'legacy-session' } })).status, 403);
+    }
+    assert.equal(scans, 1, 'finding-bearing uncertainty is cached denial, never re-prompted or retried');
   } finally { await proxy.close(); }
 });

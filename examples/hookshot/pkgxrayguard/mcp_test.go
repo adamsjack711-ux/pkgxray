@@ -57,10 +57,10 @@ func TestParseMcpAddFlagValuesDoNotBecomePositionals(t *testing.T) {
 	}
 }
 
-func TestParseMcpAddLocalCommandYieldsNothing(t *testing.T) {
-	// A local binary path is already-visible code — same rule as local installs.
-	if specs := ParseInstalls("claude mcp add local -- /usr/local/bin/my-server --flag"); len(specs) != 0 {
-		t.Fatalf("got %+v, want none", specs)
+func TestParseMcpAddLocalCommandIsUnvettable(t *testing.T) {
+	// Recognized MCP registrations require an actual completed scan.
+	if specs := ParseInstalls("claude mcp add local -- /usr/local/bin/my-server --flag"); len(specs) != 1 || specs[0].Kind != KindMcpSSE {
+		t.Fatalf("got %+v, want unvettable sentinel", specs)
 	}
 }
 

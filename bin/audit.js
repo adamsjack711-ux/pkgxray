@@ -14,11 +14,12 @@ const { runCanarySandbox } = require("../src/sandbox");
 const { scanInVm, exactVmReference } = require("../src/vm-scan");
 const cfg = require("../src/config");
 const { version: PACKAGE_VERSION } = require("../package.json");
+const { toBinaryResult } = require("../src/automatic-flow");
 
-// Preserve REVIEW as a pending decision regardless of legacy policy settings.
+// Inconclusive evidence cannot authorize an action in the automatic flow.
 function promoteVerdict(verdict, policy) {
   if (verdict === "block") return "block";
-  if (verdict === "review") return "review";
+  if (verdict === "review") return "block";
   return verdict; // safe / allow pass through
 }
 
@@ -38,15 +39,15 @@ function printUsage() {
       "  pkgxray install [project-dir] [--format json]  # install approved npm lockfile archives offline; lifecycle scripts disabled",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json> [--deep|--deep-all]  # OSV; --deep scans blocked deps, --deep-all scans all resolved deps",
       "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
-      "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
+      "                     [--package <ref>] [--no-package-scan]                #   package-scan-first: guard the ref BEFORE connecting; block halts",
       "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
       "                     [--sandbox] [--sandbox-read PATH] [--sandbox-write PATH] [--sandbox-network] # stdio only; explicit OS grants",
       "                     [--pin] [--recheck] [--lock <path>]                     #   pin the approved manifest / diff live manifest vs. the pin (rug-pull)",
       "  pkgxray recheck <lockfile> [--verbose] [--no-write]                      # re-evaluate pinned deps; diff verdict vs. stored baseline",
       "                     [--no-version-drift] [--fail-on-available-updates]     #   + pre-vet newer versions (informational unless --fail-on-...)",
       "",
-      "  REVIEW: inspect evidence, then --review-id <id> --review-choice Proceed|Decline.",
-      "  Exit codes: 0 safe/allow · 2 block · 3 review.",
+      "  Guard/install: allow or block. Missing transient intelligence is retried once; unresolved uncertainty blocks.",
+      "  Exit codes: 0 safe/allow · 2 block (including incomplete checks).",
       "",
       "Evidence in / out (no acquisition, just render a verdict):",
       "  pkgxray < evidence.json",
@@ -70,7 +71,7 @@ function printUsage() {
       "                     [--pin] [--lock <path>] [--no-recheck]                  #   tools/list_changed, drifted tools are denied until re-pinned,",
       "                     [--sandbox] [--sandbox-read PATH] [--sandbox-write PATH] [--sandbox-network] # explicit OS grants",
       "                     [--env NAME]                                         #   explicitly pass a required environment variable (repeatable)",
-      "                     [--no-scan-results] [--timing]                          #   and tool RESULTS are scanned for injection (use in host config)",
+      "                     [--timing]                                            #   tool RESULTS are always scanned for injection (use in host config)",
       "                     [--guard-secrets]                                     #   block reuse of labelled credentials from prior responses in this session",
       "  pkgxray triage <lockfile> [--include-safe] [--auto allow|block]          # interactive allow/block walkthrough",
       "  pkgxray triage --resume                                                  #   resume interrupted triage",
@@ -153,7 +154,7 @@ function parseArgs(argv) {
       } else if (arg === "--no-write") {
         options.write = false;
       } else if (arg === "--force") {
-        options.force = true;
+        throw new Error("--force has been removed; blocked scans cannot authorize a connection.");
       } else if (arg === "--sandbox") {
         options.sandbox = true;
       } else if (arg === "--sandbox-network") {
@@ -223,7 +224,7 @@ function parseArgs(argv) {
       } else if (arg === "--guard-secrets") {
         options.guardSecrets = true;
       } else if (arg === "--no-scan-results") {
-        options.scanResults = false;
+        throw new Error("--no-scan-results has been removed; runtime result screening is mandatory.");
       } else if (arg === "--timing") {
         options.timing = true;
       } else if (arg === "--help" || arg === "-h") {
@@ -268,15 +269,13 @@ function parseArgs(argv) {
       options.quarantineRoot = argv[++i];
     } else if (arg === "--promote-to") {
       options.promoteTo = argv[++i];
-    } else if (arg === "--review-for-install") {
-      options.reviewAction = "install";
-    } else if (arg === "--review-id") {
-      options.reviewId = argv[++i];
-    } else if (arg === "--review-choice") {
-      options.reviewChoice = argv[++i];
+    } else if (["--review-for-install", "--review-id", "--review-choice"].includes(arg) || /^--review-(?:for-install|id|choice)=/.test(arg)) {
+      throw new Error("Manual REVIEW flags have been removed; uncertain packages are retried automatically or blocked.");
     } else if (arg === "--policy") {
       options.policy = argv[++i];
     } else if (arg === "--force") {
+      // This replaces an existing promotion destination after authorization;
+      // it never overrides a scan decision. MCP's connection override is gone.
       options.force = true;
     } else if (arg === "--no-source-scan") {
       options.sourceScan = false;
@@ -398,15 +397,15 @@ async function main() {
     return;
   }
   if (options.command === "vm-scan") {
-    const result = await scanInVm(options.reference, {
+    const result = toBinaryResult(await scanInVm(options.reference, {
       ...options, profile: options.vmProfile,
       allowExecution: options.allowExecution === true || process.env.PKGXRAY_ALLOW_EXECUTION === "1"
-    });
+    }));
     if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     else process.stdout.write(`VM scan: ${result.verdict.toUpperCase()}\n${result.summary}\n` +
       `${result.behavioral.findings.map(f => `${f.severity}: ${f.category}${f.target ? ` — ${sanitizeForTerminal(f.target)}` : ""}`).join("\n")}\n` +
       `Timing: ${JSON.stringify(result.behavioral.timings)}\n`);
-    process.exitCode = result.verdict === "block" ? 2 : 3;
+    process.exitCode = result.verdict === "safe" && result.allowed === true ? 0 : 2;
     return;
   }
 
@@ -418,10 +417,19 @@ async function main() {
   // vocabulary from package approval (safe-only/allow-review). Do not validate
   // a runtime mode as a package policy or overwrite it with the package default.
   const runtimeProxy = options.command === "mcpProxy";
-  const { config, warnings } = cfg.loadConfig({
+  const policyLoadOptions = {
     cwd: options.command === "install" ? require("node:path").resolve(options.project) : process.cwd(),
     overrides: options.policy && !runtimeProxy ? { policy: options.policy } : {}
-  });
+  };
+  const loadedPolicy = cfg.loadConfig(policyLoadOptions);
+  const { config, warnings } = loadedPolicy;
+  const fingerprint = require("../src/artifact").fingerprint;
+  const initialPolicy = fingerprint(loadedPolicy);
+  const validatePolicy = () => {
+    if (fingerprint(cfg.loadConfig(policyLoadOptions)) !== initialPolicy) {
+      throw new Error("Policy changed during scan; no action authorized");
+    }
+  };
   for (const warning of warnings) {
     process.stderr.write(`pkgxray: ${warning}\n`);
   }
@@ -436,12 +444,12 @@ async function main() {
 
   if (options.command === "install") {
     let result;
-    try { result = await require("../src/install").installProject(options.project, { reviewScope: 'local-user', reviewDecisions: new (require('../src/review').LocalReviewDecisions)(require('node:path').join(require('node:os').homedir(), '.local', 'state', 'pkgxray', 'reviews.json')) }); }
-    catch (error) { result = { decision: "review", installed: false, error: error.message }; }
-    if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    try { result = await require("../src/install").installProject(options.project, { config, validatePolicy }); }
+    catch (error) { result = { decision: "block", outcome: "UNSAFE", allowed: false, installed: false, error: error.message }; }
+    if (options.format === "json") process.stdout.write(`${JSON.stringify(toBinaryResult({ schemaVersion: 2, ...result }), null, 2)}\n`);
     else if (result.error) process.stderr.write(`Installation refused: ${result.error}\n`);
     else process.stdout.write(`Installed ${result.installed} approved packages; lifecycle scripts disabled.\nReceipt: ${result.receiptPath}\n${result.backupPath ? `Previous node_modules: ${result.backupPath}\n` : ""}`);
-    process.exitCode = result.decision === "allow" ? 0 : 3;
+    process.exitCode = result.decision === "allow" ? 0 : 2;
     return;
   }
 
@@ -450,34 +458,36 @@ async function main() {
       throw new Error("guard requires an extension reference");
     }
     if (options.artifact && (!options.artifact.archivePath || !options.artifact.integrity)) throw new Error("--archive and --integrity must be supplied together");
-    // Keep the staging tree so the user can inspect / promote it from the
-    // printed Quarantine path; non-interactive callers reap it by default.
+    // Promotion uses the held staging tree before cleanup. Automatic callers
+    // receive evidence without leaving unrequested quarantine copies behind.
     let result;
     try {
       result = await guardExtension(options.reference, {
         ...options,
         config,
         scanErrorPolicy: config.scanErrorPolicy,
-        keepStaging: !options.artifact,
-        reviewScope: 'local-user',
-        reviewDecisions: new (require('../src/review').LocalReviewDecisions)(require('node:path').join(require('node:os').homedir(), '.local', 'state', 'pkgxray', 'reviews.json'))
+        validatePolicy,
+        keepStaging: false
       });
     } catch (error) {
       // A guard that crashes / times out must not exit to an unclear state.
-      // Route it through the config's scan-error policy (fail-closed → review),
-      // never a bare crash-to-1-or-silent-safe.
-      const verdict = cfg.verdictForScanError(config);
+      // Execution authority fails closed even if a diagnostic scan-error or
+      // CI threshold option would otherwise permit a successful process exit.
+      const verdict = "block";
       process.stderr.write(`pkgxray: guard failed to complete (${error.message}); treating as ${verdict}\n`);
       // Under --format json, a JSON consumer must still receive a parseable
-      // verdict on stdout — otherwise the degraded review is indistinguishable
+      // decision on stdout — otherwise an incomplete scan is indistinguishable
       // from a silent crash (empty stdout), which is exactly what batch scanners
       // record as a "scan error". Emit a minimal, schema-tagged object.
       if (options.format === "json") {
         process.stdout.write(
           `${JSON.stringify(
             {
-              schemaVersion: 1,
+              schemaVersion: 2,
               decision: verdict,
+              outcome: "UNSAFE",
+              allowed: false,
+              resolution: { reasonCodes: ["scan-unavailable"], retry: { attempted: false, attempts: 0, check: null } },
               reference: options.reference,
               scanError: error.message
             },
@@ -486,20 +496,20 @@ async function main() {
           )}\n`
         );
       }
-      process.exitCode = cfg.exitCodeForVerdict(verdict, config);
+      process.exitCode = 2;
       return;
     }
 
     const adjusted = result.report;
-    const finalVerdict = result.allowed ? 'allow' : result.outcome === 'UNSAFE' ? 'block' : result.decision;
+    const finalVerdict = result.allowed === true && result.decision === "allow" ? "allow" : "block";
 
     if (options.format === "json") {
-      process.stdout.write(`${JSON.stringify(options.receiptOnly ? { ...result, sourceFiles: undefined } : result, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify(toBinaryResult(options.receiptOnly ? { ...result, sourceFiles: undefined } : result), null, 2)}\n`);
     } else {
       const lines = [renderGuardMarkdown(result), ...cfg.renderConfigEffects(adjusted.configEffects)];
       process.stdout.write(`${lines.join("\n")}\n`);
     }
-    process.exitCode = cfg.exitCodeForVerdict(finalVerdict, config);
+    process.exitCode = finalVerdict === "allow" ? 0 : 2;
     return;
   }
 
@@ -538,7 +548,7 @@ async function main() {
       importPhase: options.importPhase
     });
     if (options.format === "json") {
-      process.stdout.write(`${JSON.stringify({ static: staged.report, behavioral }, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify(toBinaryResult({ static: staged.report, behavioral }), null, 2)}\n`);
     } else {
       process.stdout.write(`${renderCanaryMarkdown(staged, behavioral)}\n`);
     }
@@ -548,7 +558,7 @@ async function main() {
         : behavioral.verdict === "review" || staged.decision === "review"
           ? "review"
           : "safe";
-    process.exitCode = worst === "block" ? 2 : worst === "review" ? 3 : 0;
+    process.exitCode = ["safe", "allow"].includes(worst) ? 0 : 2;
     return;
   }
 
@@ -570,7 +580,7 @@ async function main() {
     if (options.pin && options.recheck) {
       throw new Error("--pin and --recheck are mutually exclusive (pin re-approves, recheck compares)");
     }
-    const result = await inspectMcpServer(options.mcpTarget, options);
+    const result = toBinaryResult(await inspectMcpServer(options.mcpTarget, options));
 
     if (!result.halted && options.pin) {
       result.pin = await pinMcpManifest({
@@ -597,7 +607,8 @@ async function main() {
     // plain audit and pin gate on the absolute verdict.
     process.exitCode = result.recheck
       ? result.recheck.exitCode
-      : result.verdict === "block" ? 2 : result.verdict === "review" ? 3 : 0;
+      : result.verdict === "safe" ? 0 : 2;
+    if (process.exitCode === 3) process.exitCode = 2;
     return;
   }
 
@@ -645,7 +656,7 @@ async function main() {
     }
     // Exit code reflects the worst *regression*, never the worst absolute
     // verdict — a still-block dep that was already block is not a new exposure.
-    process.exitCode = result.exitCode;
+    process.exitCode = result.exitCode === 3 ? 2 : result.exitCode;
     return;
   }
 
@@ -653,7 +664,7 @@ async function main() {
     if (!options.lockfilePath) {
       throw new Error("audit requires a lockfile path (package-lock.json | yarn.lock | pnpm-lock.yaml | package.json)");
     }
-    const result = await auditLockfile(options.lockfilePath, options);
+    const result = toBinaryResult(await auditLockfile(options.lockfilePath, options));
     if (options.format === "json") {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else {
@@ -664,7 +675,7 @@ async function main() {
     // this batch path, so per-dep allow/mute wiring is a deliberate follow-up.
     // worstDecision uses {block, review, allow/safe}; exitCodeForVerdict ranks
     // allow/safe as 0, so the default config reproduces today's codes.
-    process.exitCode = cfg.exitCodeForVerdict(result.worstDecision, config);
+    process.exitCode = ["safe", "allow"].includes(result.worstDecision) ? 0 : 2;
     return;
   }
 
@@ -702,14 +713,16 @@ async function main() {
     dependencyAudit: evidence.dependencyAudit, vulnerabilityScanError: evidence.vulnerabilityScanError
   });
 
+  const publicReport = toBinaryResult(adjusted);
+  if (finalVerdict !== "allow") publicReport.verdict = "block";
   if (options.format === "json") {
-    process.stdout.write(`${JSON.stringify(adjusted, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(publicReport, null, 2)}\n`);
   } else {
-    const lines = [renderMarkdown(adjusted), ...cfg.renderConfigEffects(adjusted.configEffects)];
+    const lines = [renderMarkdown(publicReport), publicReport.resolution?.explanation || "", ...cfg.renderConfigEffects(publicReport.configEffects)];
     process.stdout.write(`${lines.join("\n")}\n`);
   }
 
-  process.exitCode = cfg.exitCodeForVerdict(finalVerdict, config);
+  process.exitCode = finalVerdict === "allow" ? 0 : 2;
 }
 
 // Every string in the manifest is attacker-controlled (a hostile server names
@@ -725,7 +738,7 @@ function renderMcpMarkdown(result) {
   if (result.halted) {
     lines.push(
       "",
-      "Enumeration halted: the package scan says **BLOCK**. Pass --force to connect anyway (not recommended)."
+      "Enumeration halted: the package scan returned **BLOCK**. The server was not started."
     );
     return lines.join("\n");
   }
@@ -847,19 +860,18 @@ function renderCanaryMarkdown(staged, behavioral) {
 }
 
 function renderGuardMarkdown(result) {
+  result = toBinaryResult(result);
   const lines = [
-    `Outcome: **${result.outcome || (result.decision === "review" ? "Pending decision" : result.decision === "allow" ? "SAFE" : "UNSAFE")}**`,
+    `Outcome: **${result.allowed === true && result.decision === "allow" ? "SAFE" : "UNSAFE"}**`,
     `Reference: \`${sanitizeForTerminal(result.reference)}\``,
     `Quarantine: \`${sanitizeForTerminal(result.quarantinePath)}\``,
     ""
   ];
 
-  if (result.review) {
-    lines.push(result.review.choice ? `REVIEW: ${result.review.choice} remembered for this developer.` : result.review.eligible
-      ? `REVIEW: inspect the evidence below, then choose Proceed or Decline. Review ID: ${result.review.id}. Use --review-id <id> --review-choice Proceed (or Decline).`
-      : 'REVIEW: required checks are incomplete; resolve them before use or promotion.', '');
+  if (result.resolution?.reasonCodes?.length) {
+    lines.push(`Blocked: ${result.resolution.reasonCodes.join(", ")}. Unverified evidence is not a finding of maliciousness.`, "");
   }
-  lines.push(...require("../src/review-plan").renderReviewPlan(result.reviewPlan));
+  if (result.resolution?.retry?.attempted) lines.push("Retried the vulnerability check once using the same resolved package identity.", "");
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,

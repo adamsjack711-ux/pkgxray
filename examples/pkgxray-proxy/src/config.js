@@ -18,9 +18,9 @@ export const DEFAULTS = Object.freeze({
   scanTimeoutMs: 20000,
   scanConcurrency: 4,
   maxPendingScans: 64,
-  // block | warn | allow  — what to do with a "review" verdict.
+  // Legacy names accepted for migration; all uncertainty is now blocked.
   reviewPolicy: 'block',
-  // fail-closed | fail-open — what to do when a scan errors or times out.
+  // Legacy fail-open values normalize to fail-closed.
   scanErrorPolicy: 'fail-closed',
   allowlist: [],
   denylist: [],
@@ -166,6 +166,9 @@ function validate(cfg) {
   if (cfg.adminToken !== undefined && (typeof cfg.adminToken !== 'string' || cfg.adminToken.length === 0)) {
     throw new Error('Invalid adminToken: expected a non-empty string');
   }
+  // Retain old config input names without retaining a fail-open behavior.
+  cfg.reviewPolicy = 'block';
+  cfg.scanErrorPolicy = 'fail-closed';
   // Normalize: strip trailing slash from upstream so path joins are clean.
   cfg.upstream = cfg.upstream.replace(/\/+$/, '');
   cfg.logDecisions = Boolean(cfg.logDecisions);

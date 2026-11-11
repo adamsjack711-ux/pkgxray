@@ -104,6 +104,7 @@ const TEXT_FILE_PATTERNS = [
 ];
 
 async function guardExtension(reference, options = {}) {
+  require("./review").rejectManualReviewOptions(options);
   options.signal?.throwIfAborted();
   if (!reference) {
     throw new Error("Missing extension reference");
@@ -176,10 +177,12 @@ async function guardExtension(reference, options = {}) {
   // evidence and re-applied as a verdict floor once the report exists.
   let vulnerabilities = [];
   let vulnerabilityScanError = null;
+  const retry = { attempted: false, attempts: 0, check: null };
   if (options.vulnerabilityCheck !== false) {
     try {
-      vulnerabilities = await precheckVulnerabilities(resolved, stagedPath);
+      vulnerabilities = await precheckVulnerabilities(resolved, stagedPath, { retry, signal: options.signal });
     } catch (error) {
+      options.signal?.throwIfAborted();
       vulnerabilityScanError = error.message;
     }
   }
@@ -306,10 +309,15 @@ async function guardExtension(reference, options = {}) {
   timings.auditMs = elapsed(auditStart);
   // A missing CVE check can't clear a package, but it must not un-block one
   // either — static evidence stands on its own. See floorVerdictForScanGap.
-  const decision = cfg.guardDecision(report, {
-    policy: options.policy || config.policy, config,
-    vulnerabilityScanError, sourceCoverage, dependencyAudit
-  });
+  const checks = {
+    source: options.sourceScan === false ? "disabled" : vulnerabilities.length ? "skipped" : sourceCoverage.complete ? "completed" : "partial",
+    vulnerabilities: options.vulnerabilityCheck === false ? "disabled" : vulnerabilityScanError ? "failed" : "completed",
+    directDependencies: !options.scanDependencies ? "not-requested" : !dependencyAudit ? "skipped" : dependencyAudit.error ? "failed" : dependencyAudit.complete ? "completed" : "partial",
+    provenance: provenanceAttestation?.verification?.status || "not-requested"
+  };
+  const decisionOptions = { vulnerabilityScanError, sourceCoverage, dependencyAudit, checks,
+    sourceScan: options.sourceScan, vulnerabilityCheck: options.vulnerabilityCheck, requireProvenance };
+  const decision = cfg.guardDecision(report, decisionOptions);
 
   const result = {
     schemaVersion: 1,
@@ -325,12 +333,7 @@ async function guardExtension(reference, options = {}) {
         origin: resolved.type, resolved: resolved.tarballUrl || null, integrity: resolved.integrity || null, sha256: resolved.sha256 || null },
       effectivePolicy: options.policy || config.policy,
       policySha256: artifact.fingerprint({ ...config, policy: options.policy || config.policy }),
-      checks: {
-        source: options.sourceScan === false ? "disabled" : vulnerabilities.length ? "skipped" : sourceCoverage.complete ? "completed" : "partial",
-        vulnerabilities: options.vulnerabilityCheck === false ? "disabled" : vulnerabilityScanError ? "failed" : "completed",
-        directDependencies: !options.scanDependencies ? "not-requested" : !dependencyAudit ? "skipped" : dependencyAudit.error ? "failed" : dependencyAudit.complete ? "completed" : "partial",
-        provenance: provenanceAttestation?.verification?.status || "not-requested"
-      },
+      checks,
       rawVerdict: rawReport.verdict,
       authorization: require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit }),
       decision
@@ -370,19 +373,9 @@ async function guardExtension(reference, options = {}) {
   if (dependencyAudit) result.dependencyAudit = dependencyAudit;
 
   options.validatePolicy?.();
-  const reviews = require("./review");
-  const reviewId = reviews.reviewIdentity(result.approval, { action: options.promoteTo ? 'promote' : options.reviewAction || 'use', target: options.promoteTo ? path.resolve(options.promoteTo) : null });
-  const eligible = require("./approval-policy").receiptAuthorizes(result.approval, { allowReview: true });
-  if (options.reviewChoice && eligible && decision === 'review') {
-    if (options.reviewId !== reviewId) throw new Error('Artifact, policy or scanner changed; inspect the fresh REVIEW before choosing');
-    options.reviewDecisions?.choose(options.reviewScope, reviewId, options.reviewChoice);
-  }
-  Object.assign(result, reviews.reviewOutcome(decision, {
-    reviewId, scope: options.reviewScope, decisions: options.reviewDecisions, eligible
-  }));
-  result.reviewPlan = require("./review-plan").buildReviewPlan(result, {
-    action: options.promoteTo ? "promote" : options.reviewAction || "use"
-  });
+  Object.assign(result, require("./review").reviewOutcome(decision));
+  result.reviewPlan = null;
+  result.resolution = { reasonCodes: cfg.guardBlockReasons(report, decisionOptions), retry };
 
   options.signal?.throwIfAborted();
   if (options.promoteTo && result.allowed) {
@@ -1170,25 +1163,26 @@ function fetchJson(url) {
   return require("./http-client").requestJson(url, { headers: { "user-agent": USER_AGENT }, agent: HTTPS_AGENT });
 }
 
-async function precheckVulnerabilities(resolved, stagedPath) {
-  if (Array.isArray(resolved.precheckedVulnerabilities)) {
-    return resolved.precheckedVulnerabilities;
+async function precheckVulnerabilities(resolved, stagedPath, { retry, signal } = {}) {
+  if (Array.isArray(resolved.precheckedVulnerabilities)) return resolved.precheckedVulnerabilities;
+  // Resolve once. A retry repeats the check for this identity; it never
+  // resolves a moving registry tag, acquires new bytes, or rereads a manifest.
+  const registryIdentity = ["npm", "pypi"].includes(resolved.type) && resolved.packageName && resolved.version;
+  const identity = registryIdentity ? { name: resolved.packageName, version: resolved.version } : await readPackageIdentity(stagedPath);
+  if (!identity?.name || !identity?.version) throw new Error("Package identity unavailable for vulnerability check");
+  const ecosystem = resolved.type === "pypi" ? "PyPI" : "npm";
+  // Both attempts share the existing single-request deadline. A full timeout
+  // cannot double the budget; cancellation stops before an additional attempt.
+  const deadline = Date.now() + 15000;
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+    try { return await queryOsvPackage(identity.name, identity.version, ecosystem, { signal, deadline }); }
+    catch (error) {
+      signal?.throwIfAborted();
+      if (attempt || !require("./check-retry").isTransientCheckFailure(error) || Date.now() >= deadline) throw error;
+      if (retry) Object.assign(retry, { attempted: true, attempts: 1, check: "vulnerabilities" });
+    }
   }
-
-  if (resolved.type === "npm" && resolved.packageName && resolved.version) {
-    return queryOsvPackage(resolved.packageName, resolved.version, "npm");
-  }
-
-  if (resolved.type === "pypi" && resolved.packageName && resolved.version) {
-    return queryOsvPackage(resolved.packageName, resolved.version, "PyPI");
-  }
-
-  const identity = await readPackageIdentity(stagedPath);
-  if (!identity || !identity.name || !identity.version) {
-    return [];
-  }
-
-  return queryOsvPackage(identity.name, identity.version, "npm");
 }
 
 // Direct-dependency checking intentionally requires exact pins. A range is
@@ -1242,7 +1236,7 @@ async function readPackageIdentity(stagedPath) {
   }
 }
 
-async function queryOsvPackage(name, version, ecosystem) {
+async function queryOsvPackage(name, version, ecosystem, requestOptions = {}) {
   const payload = {
     package: {
       name,
@@ -1250,7 +1244,7 @@ async function queryOsvPackage(name, version, ecosystem) {
     },
     version
   };
-  const response = await postJson("https://api.osv.dev/v1/query", payload);
+  const response = await postJson("https://api.osv.dev/v1/query", payload, requestOptions);
   if (!response || typeof response !== "object" || Array.isArray(response) ||
       (response.vulns !== undefined && !Array.isArray(response.vulns))) {
     throw new Error("OSV returned an invalid vulnerability response");
@@ -1258,9 +1252,9 @@ async function queryOsvPackage(name, version, ecosystem) {
   return response.vulns || [];
 }
 
-function postJson(url, payload) {
+function postJson(url, payload, requestOptions = {}) {
   const body = JSON.stringify(payload);
-  return require("./http-client").requestJson(url, { body, agent: HTTPS_AGENT,
+  return require("./http-client").requestJson(url, { ...requestOptions, body, agent: HTTPS_AGENT,
     headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "user-agent": USER_AGENT } });
 }
 
@@ -1691,13 +1685,7 @@ async function startsWithShebang(fullPath) {
 }
 
 function decisionForReport(report, policy) {
-  if (report.verdict === "block") {
-    return "block";
-  }
-  if (report.verdict === "review") {
-    return "review";
-  }
-  return "allow";
+  return cfg.guardDecision(report, { policy });
 }
 
 function shouldPromote(decision) {

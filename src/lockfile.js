@@ -540,7 +540,7 @@ const https = require("node:https");
 // second + third chunks reuse the first chunk's TLS session.
 const OSV_AGENT = new https.Agent({ keepAlive: true, maxSockets: 10 });
 
-function batchOsvQuery(deps, ecosystem = "npm", { signal } = {}) {
+function batchOsvQuery(deps, ecosystem = "npm", { signal, onRetry } = {}) {
   signal?.throwIfAborted();
   // Unresolved specs (workspace/catalog/url/git/alias-without-pin) carry a raw
   // spec in `version` that OSV cannot resolve — querying them would come back
@@ -559,15 +559,27 @@ function batchOsvQuery(deps, ecosystem = "npm", { signal } = {}) {
   for (let i = 0; i < queries.length; i += 1000) {
     chunks.push(queries.slice(i, i + 1000));
   }
-  return Promise.all(chunks.map(queries => postBatch(queries, signal))).then((results) => results.flat());
+  return Promise.all(chunks.map(queries => postBatch(queries, signal, onRetry))).then((results) => results.flat());
 }
 
-async function postBatch(queries, signal) {
+async function postBatch(queries, signal, onRetry) {
   const body = JSON.stringify({ queries });
-  const parsed = await require("./http-client").requestJson("https://api.osv.dev/v1/querybatch", {
-    body, agent: OSV_AGENT, signal,
-    headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "user-agent": USER_AGENT }
-  });
+  const deadline = Date.now() + 15000;
+  let parsed;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    signal?.throwIfAborted();
+    try {
+      parsed = await require("./http-client").requestJson("https://api.osv.dev/v1/querybatch", {
+        body, agent: OSV_AGENT, signal, deadline,
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "user-agent": USER_AGENT }
+      });
+      break;
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (attempt || Date.now() >= deadline || !require("./check-retry").isTransientCheckFailure(error)) throw error;
+      onRetry?.();
+    }
+  }
   if (!Array.isArray(parsed.results) || parsed.results.length !== queries.length ||
       parsed.results.some(r => !r || typeof r !== "object" || Array.isArray(r) || (r.vulns !== undefined && !Array.isArray(r.vulns)))) {
     throw new Error("OSV returned incomplete or invalid batch results");
@@ -590,15 +602,24 @@ async function auditLockfile(filePath, options = {}) {
   const queries = Array.from(deps.values());
 
   let osvResults = [];
+  let osvError = null;
+  const retry = { attempted: false, attempts: 0, check: "vulnerabilities" };
   if (Array.isArray(options.osvResults)) {
     // Test/injection hook: pre-computed OSV results, index-aligned with the
     // RESOLVED (non-unresolved) deps, in dep-map order. Lets callers exercise
     // the vuln/triage decision logic without hitting the network.
     osvResults = options.osvResults;
   } else if (options.vulnerabilityCheck !== false) {
-    osvResults = await batchOsvQuery(deps, ecosystem.osv, { signal: options.signal });
+    try {
+      osvResults = await batchOsvQuery(deps, ecosystem.osv, { signal: options.signal,
+        onRetry() { retry.attempted = true; retry.attempts += 1; } });
+    } catch (error) { options.signal?.throwIfAborted(); osvError = error.message; }
   }
   options.signal?.throwIfAborted();
+  const resolvedCount = queries.filter(dep => !dep.unresolved).length;
+  const osvComplete = !osvError && (Array.isArray(options.osvResults) || options.vulnerabilityCheck !== false) &&
+    osvResults.length === resolvedCount && osvResults.every(r => r && typeof r === "object" &&
+      !Array.isArray(r) && (r.vulns === undefined || Array.isArray(r.vulns)));
   const osvMs = Date.now() - start;
 
   // Triage decisions can be passed in explicitly or implicitly loaded from
@@ -630,7 +651,8 @@ async function auditLockfile(filePath, options = {}) {
         name: dep.name,
         version: dep.version,
         paths: dep.paths.slice(0, 3),
-        decision: "review",
+        decision: "block",
+        resolution: { reasonCodes: ["unresolved-package-identity"], explanation: "Blocked because the package version could not be verified." },
         vulnerabilities: [],
         unresolved: true,
         unresolvedKind: dep.unresolvedKind || "unresolved",
@@ -644,7 +666,7 @@ async function auditLockfile(filePath, options = {}) {
     osvIndex += 1;
     const vulns = Array.isArray(osv.vulns) ? osv.vulns : [];
     const osvBlocked = vulns.length > 0;
-    let decision = osvBlocked ? "block" : "safe";
+    let decision = osvBlocked || !osvComplete ? "block" : "safe";
     let triaged = false;
     const triageKey = `${dep.name}@${dep.version}`;
     const triageEntry = triageDecisions && triageDecisions.get
@@ -657,7 +679,7 @@ async function auditLockfile(filePath, options = {}) {
         // suppress a FRESH known-vulnerability finding from OSV. Otherwise
         // anyone who can commit .pkgxray.lock could drop an `allow` and neuter
         // the scan. OSV block wins; only when OSV is clean does the allow hold.
-        decision = osvBlocked ? "block" : "safe";
+        decision = osvBlocked || !osvComplete ? "block" : "safe";
       } else if (triageEntry.decision === "block") {
         // Block stays block; if OSV said safe, still surface as block.
         decision = "block";
@@ -669,6 +691,8 @@ async function auditLockfile(filePath, options = {}) {
       artifacts: dep.artifacts || [],
       paths: dep.paths.slice(0, 3),
       decision,
+      ...(!osvComplete ? { resolution: { reasonCodes: [options.vulnerabilityCheck === false ? "vulnerability-check-disabled" : "vulnerability-check-incomplete"],
+        explanation: "Blocked because the vulnerability check did not complete. This is not a confirmed malware finding.", retry, ...(osvError ? { error: osvError } : {}) } } : {}),
       vulnerabilities: vulns.map((v) => ({ id: v.id, aliases: v.aliases || [] })),
       deep: null,
       triaged
@@ -692,12 +716,13 @@ async function auditLockfile(filePath, options = {}) {
   // Re-tally after possible upgrades from deep mode (e.g. OSV missed it but
   // static heuristics fired).
   let blocked = 0;
-  let reviewed = 0;
+  let inconclusive = 0;
   let safe = 0;
-  for (const r of results) {
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i] = require("./automatic-flow").toBinaryResult(results[i]);
     if (r.decision === "block") blocked += 1;
-    else if (r.decision === "review") reviewed += 1;
     else safe += 1;
+    if (r.resolution?.reasonCodes?.some(code => /incomplete|uncertain|unresolved|disabled|failed|missing/.test(code))) inconclusive += 1;
   }
 
   return {
@@ -707,13 +732,14 @@ async function auditLockfile(filePath, options = {}) {
     totalDeps: queries.length,
     uniqueDeps: queries.length,
     timings: { osvMs, deepMs, totalMs: Date.now() - start },
-    summary: { safe, reviewed, blocked },
+    summary: { safe, blocked, inconclusive },
+    resolution: { retry },
     coverage: { vulnerabilityCheck: options.vulnerabilityCheck !== false,
       vulnerabilities: { enabled: options.vulnerabilityCheck !== false,
-        completed: options.vulnerabilityCheck !== false && !Array.isArray(options.osvResults),
+        completed: osvComplete && !Array.isArray(options.osvResults),
         evidenceOrigin: Array.isArray(options.osvResults) ? "caller-supplied" : options.vulnerabilityCheck === false ? "none" : "OSV" },
       sourceScan: options.deepAll ? "all-resolved" : options.deep ? "blocked-only" : "none", deepFailures: results.filter(r => r.deep && r.deep.error).length },
-    worstDecision: blocked > 0 ? "block" : reviewed > 0 ? "review" : "safe",
+    worstDecision: blocked > 0 ? "block" : "safe",
     results
   };
 }
@@ -732,7 +758,7 @@ async function runDeep(results, options, scheme = "npm") {
       }
       const result = await guardExtension(`${scheme}:${r.name}@${r.version}`, {
         artifact: scheme === "npm" ? identities[0] : undefined,
-        vulnerabilityCheck: false, // already done by the lockfile pass
+        vulnerabilityCheck: true, // a guard receipt must carry its own completed check
         githubMetadata: options.githubMetadata !== false,
         githubDiff: false, // diff is the slow path; skip in deep-mode aggregate
         quarantineRoot: options.quarantineRoot,
@@ -747,8 +773,9 @@ async function runDeep(results, options, scheme = "npm") {
         riskBands: result.report.riskBands || []
       };
       // Upgrade the decision if deep found something worse than OSV did.
-      if (result.report.verdict === "block" && r.decision !== "block") {
+      if (result.decision === "block" || result.report.verdict === "block") {
         r.decision = "block";
+        if (result.resolution) r.resolution = result.resolution;
       } else if (result.report.verdict === "review" && r.decision === "safe") {
         r.decision = "review";
       }
@@ -781,13 +808,14 @@ function sanitizeForTerminal(value) {
 }
 
 function renderLockfileMarkdown(result) {
+  result = require("./automatic-flow").toBinaryResult(result);
   const lines = [];
   lines.push(`Lockfile: \`${sanitizeForTerminal(result.file)}\` (${result.format})`);
   lines.push(`Total deps: ${result.totalDeps}  ·  scan time: ${result.timings.totalMs} ms`);
   lines.push("");
   if (result.coverage) lines.push(`Source scan: ${result.coverage.sourceScan}; failed deep scans: ${result.coverage.deepFailures}`);
   lines.push(`Decision: **${result.worstDecision.toUpperCase()}**`);
-  lines.push(`  safe: ${result.summary.safe}  ·  review: ${result.summary.reviewed}  ·  block: ${result.summary.blocked}`);
+  lines.push(`  safe: ${result.summary.safe}  ·  block: ${result.summary.blocked}  ·  inconclusive: ${result.summary.inconclusive || 0}`);
   lines.push("");
   const blocked = result.results.filter((r) => r.decision === "block");
   if (blocked.length > 0) {
@@ -797,7 +825,7 @@ function renderLockfileMarkdown(result) {
       const triagedTag = r.triaged ? " _(triaged)_" : "";
       const name = sanitizeForTerminal(r.name);
       const version = sanitizeForTerminal(r.version);
-      lines.push(`- **${name}@${version}**${triagedTag} — ${vulnIds || "OSV vulnerabilities"}`);
+      lines.push(`- **${name}@${version}**${triagedTag} — ${vulnIds || sanitizeForTerminal(r.resolution?.explanation) || "Blocked by findings or policy"}`);
       if (r.paths.length > 0) {
         lines.push(`  pulled in by: ${sanitizeForTerminal(r.paths[0])}`);
       }
@@ -816,7 +844,7 @@ function renderLockfileMarkdown(result) {
     lines.push("No blocked packages.");
   }
   for (const r of result.results.filter(r => r.deep && r.deep.error)) {
-    lines.push(`- REVIEW ${sanitizeForTerminal(r.name)}@${sanitizeForTerminal(r.version)}: deep scan failed — ${sanitizeForTerminal(r.deep.error)}`);
+    lines.push(`- BLOCK ${sanitizeForTerminal(r.name)}@${sanitizeForTerminal(r.version)}: deep scan failed — ${sanitizeForTerminal(r.deep.error)}`);
   }
   if (result.timings.deepMs > 0) {
     lines.push("");

@@ -16,7 +16,7 @@ const { recheckJson } = require("../src/recheck");
 // The CLI emits auditEvidence() run through applyConfig() (which attaches the
 // configEffects audit trail) — mirror that so the test guards the real payload.
 function auditCliShape(input) {
-  return applyConfig(auditEvidence(input));
+  return require("../src/automatic-flow").toBinaryResult(applyConfig(auditEvidence(input)));
 }
 
 function assertHasKeys(obj, keys, label) {
@@ -27,7 +27,7 @@ function assertHasKeys(obj, keys, label) {
 
 test("audit (evidence) JSON keeps its documented top-level shape", () => {
   const report = auditCliShape({ packageName: "example", sourceFiles: { "index.js": "module.exports = 1;", "package.json": '{"name":"example"}' } });
-  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.schemaVersion, 2);
   assertHasKeys(
     report,
     [
@@ -88,7 +88,7 @@ test("recheck JSON keeps its documented top-level shape", () => {
     versionDrift: { available: [], flagged: [], unknown: [] },
   };
   const out = recheckJson(synthetic);
-  assert.equal(out.schemaVersion, 1);
+  assert.equal(out.schemaVersion, 2);
   assertHasKeys(
     out,
     [

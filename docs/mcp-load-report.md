@@ -1,8 +1,22 @@
 # Measured MCP shared-analysis and runtime load
 
-## Runtime validation on 2026-11-10
+This is a historical measurement record under the earlier manual-review
+contract. The numeric results below are unchanged and do not benchmark the
+unpublished breaking 2.0 candidate. The 1.3 work remains a separate held PR.
 
-The new review/upgrade workflow was exercised through real newline-delimited
+In the candidate, gates run without prompts: eligible transient required checks
+retry once within their shared deadline against the same immutable evidence;
+unresolved uncertainty blocks with reasons. Guard/batch OSV checks and narrowly
+eligible supplied-evidence worker failures own their retries. Disabled or malformed
+checks, heuristic findings, unsupported coverage and permission gaps do not retry.
+Proceed/Decline, session approval endpoints and optional result screening are
+removed. Receipt reuse remains artifact/policy/build bound; cold first use still
+waits for clearance. Daily re-audits, cache warming and agent recovery are planned,
+not implemented. See [the candidate contract](review-contract.md).
+
+## Historical runtime validation on 2026-11-10
+
+The then-current review/upgrade workflow was exercised through real newline-delimited
 stdio MCP on this Mac Studio. `node scripts/check-mcp-runtime.js` runs inert
 source, shared-cache, 25-caller, review-plan, path-denial, and Compose probes.
 Add `--live` to fetch and inspect pinned `npm:ms@2.1.3` with npm/OSV checks;
@@ -40,15 +54,15 @@ covered by `test/session-secrets.test.js` and the real-proxy test in
 
 These measurements were captured locally using inert fixtures. No production services were used. They predate the follow-up audit fixes below and are not fresh performance measurements of those fixes.
 
-## Verification
+## Historical verification
 
 Consolidation validation (2026-11-10, base `8d73ac3`): **1,005 tests; 1,000 passed, 5 skipped, 0 failed**, plus **18 VM unit tests and 7 folder-report CLI tests passed**. Lint and browser/website engine parity checks pass. This preserves the newer VM opt-in, read-only MCP guard, mandatory provenance/coverage holds and total transport deadlines while adding caller-specific reviews and shared-snapshot lifetime handling. No real VM guest execution or Socket comparison was performed in this validation. The five skips cover a live registry download, published-package documentation smoke test, Windows-only installer rejection, and two real Sigstore/archive verification cases.
 
 The calibration corpus retains 36/36 malicious BLOCK results and zero false blocks across 48 benign cases; 22 benign cases still require REVIEW. The 180-case synthetic adversarial baseline has zero SAFE misses and zero false blocks. The 20-case synthetic holdout still places all 10 malicious cases in REVIEW rather than BLOCK. These are regression checks, not independent real-world accuracy estimates.
 
-Next engineering priority: build a detection-quality workbench around these existing runners, with versioned case manifests, independently reviewed labels, per-rule review-burden reporting and reproducible before/after comparisons. Use those measurements to improve cross-file and obfuscated flows before adding more runtime features. Later modules can cover package-version behavior diffs and cross-tool agent sequences, sharing the same evidence and policy contracts.
+At the time, the next engineering priority was: build a detection-quality workbench around these existing runners, with versioned case manifests, independently reviewed labels, per-rule review-burden reporting and reproducible before/after comparisons. Use those measurements to improve cross-file and obfuscated flows before adding more runtime features. Later modules can cover package-version behavior diffs and cross-tool agent sequences, sharing the same evidence and policy contracts.
 
-Follow-up audit validation: **885 tests; 883 passed, 2 skipped, 0 failed**, plus **7 folder-report CLI tests passed**. Four reproductions now verify administrator-recheck revocation, scanner-build drift rejection, cancellation before triage writes, and escaped CLI errors. Additional regressions cover in-flight scans, persisted recheck blocks, unchanged reviews, session isolation and temporary-file cleanup. Re-run `npm test` and `node --test examples/folder-report/checks/cli.test.cjs` for the current checkout.
+Follow-up audit validation: **885 tests; 883 passed, 2 skipped, 0 failed**, plus **7 folder-report CLI tests passed**. Four reproductions now verify administrator-recheck revocation, scanner-build drift rejection, cancellation before triage writes, and escaped CLI errors. Additional regressions cover in-flight scans, persisted recheck blocks, unchanged reviews, session isolation and temporary-file cleanup. Run `npm test` and `node --test examples/folder-report/checks/cli.test.cjs` for current validation; these recorded counts describe the older contract.
 
 Original benchmark-run validation:
 

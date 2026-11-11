@@ -100,7 +100,7 @@ test('fresh and restarted mandatory holds never become discretionary reviews', a
     const store = new VerdictStore(config.verdictStorePath);
     const valid = withReceipt(async () => ({ decision: 'review', findings: [] }));
     const check = runGuard => gateArtifact({ config, store, name: 'demo', version: '1.0.0', snapshot, runGuard });
-    assert.equal((await check(valid)).serve, false, 'ordinary review requires a caller decision under every policy');
+    assert.equal((await check(valid)).serve, false, 'uncertainty is blocked under every policy');
     for (const category of MANDATORY_CATEGORIES) {
       const config = loadConfig({ reviewPolicy, verdictStorePath: join(dir, `${reviewPolicy}-${category}.json`) }, {});
       let store = new VerdictStore(config.verdictStorePath);
@@ -120,7 +120,7 @@ test('fresh and restarted mandatory holds never become discretionary reviews', a
       for (const source of ['scan', 'cache']) {
         const result = await check(freshHold);
         assert.equal(result.serve, false);
-        assert.equal(result.decision, 'unbound');
+        assert.equal(result.decision, 'block');
         assert.equal(result.source, source);
         assert.deepEqual(result.findings, [{ category }]);
         assert.equal(store.get('demo', '1.0.0'), undefined, 'hold retires old approval');
@@ -193,7 +193,8 @@ test('scanner failures back off, then retry without falling back to stale approv
     const result = await f.check({ runGuard: fail });
     assert.equal(result.serve, false);
     assert.equal(result.source, source);
-    assert.equal(result.decision, 'scan-error');
+    assert.equal(result.decision, 'block');
+    assert.equal(result.reasonCode, 'scan-error');
   }
   assert.equal(failures, 1);
   assert.equal(f.args.store.get('demo', '1.0.0'), undefined);
@@ -240,7 +241,7 @@ test('admin refresh includes held packages and successful recheck requires a new
   const failed = await adminRecheck({ ...f.args, runGuard: async () => { throw new Error('offline'); } });
   assert.equal(failed.total, 1);
   assert.equal(failed.errors.length, 1);
-  assert.equal((await f.check()).source, 'cache');
+  assert.equal((await f.check()).decision, 'block');
   const refreshed = await adminRecheck({ ...f.args, runGuard: async () => ({ decision: 'allow', findings: [] }) });
   assert.equal(refreshed.total, 1);
   assert.equal(f.args.store.getHold('demo', '1.0.0'), undefined);
@@ -284,6 +285,6 @@ test('unknown scanner decisions never release bytes even with an otherwise valid
     };
     const result = await f.check({ runGuard });
     assert.equal(result.serve, false);
-    assert.equal(result.decision, 'unbound');
+    assert.equal(result.decision, 'block');
   }
 });

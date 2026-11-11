@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict');
 const { SharedScans, analyzeShared } = require('../src/shared-scans');
-const { ReviewDecisions, reviewIdentity, reviewOutcome } = require('../src/review');
+const { reviewIdentity, reviewOutcome } = require('../src/review');
 const { start, evidence, call } = require('./helpers/mcp-load-client');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
@@ -86,18 +86,14 @@ test('analysis inputs, ruleset and TTL invalidate immutable evidence independent
   assert.equal(service.metrics.scans, 4);
 });
 
-test('approval is bound to caller, exact bytes, analysis, policy, action and destination; Decline never authorizes', () => {
-  const decisions = new ReviewDecisions();
+test('evidence identities remain bound but old review choices never authorize', () => {
   const receipt = { artifactSha256: 'a', policySha256: 'p', scannerBuildId: 's', analysisSha256: 'config', evidenceSha256: 'findings' };
   const id = reviewIdentity(receipt, { action: 'promote', target: '/a' });
-  const outcome = (scope, reviewId = id) => reviewOutcome('review', { scope, reviewId, decisions });
-  assert.equal(outcome('A').allowed, false); assert.equal(outcome('B').allowed, false);
-  decisions.choose('A', id, 'Proceed'); decisions.choose('B', id, 'Decline');
-  assert.equal(outcome('A').allowed, true); assert.equal(outcome('B').allowed, false);
   for (const field of ['artifactSha256','policySha256','scannerBuildId','analysisSha256','evidenceSha256']) {
-    assert.equal(outcome('A', reviewIdentity({ ...receipt, [field]: 'changed' }, { action: 'promote', target: '/a' })).allowed, false);
+    assert.notEqual(reviewIdentity({ ...receipt, [field]: 'changed' }, { action: 'promote', target: '/a' }), id);
   }
-  for (const action of [{ action: 'use' }, { action: 'promote', target: '/b' }]) assert.equal(outcome('A', reviewIdentity(receipt, action)).allowed, false);
+  assert.deepEqual(reviewOutcome('review', { scope: 'A', decisions: { present: () => 'Proceed' } }),
+    { allowed: false, outcome: 'UNSAFE', review: null });
 });
 
 test('real worker timeout and last-caller cancellation release all capacity', async t => {
@@ -152,7 +148,10 @@ test('100 guard requests through MCP share static analysis but never share stagi
   for (const response of responses) {
     assert.ok(response.result, JSON.stringify(response));
     const scan = response.result.structuredContent;
-    assert.equal(scan.allowed, false); assert.equal(scan.review.state, 'pending');
+    assert.equal(scan.allowed, false); assert.equal(scan.decision, 'block');
+    assert.equal(Object.hasOwn(scan, 'review'), false);
+    assert.equal(Object.hasOwn(scan, 'reviewPlan'), false);
+    assert.ok(scan.resolution.reasonCodes.includes('vulnerability-check-disabled'));
     for (const key of ['promotedPath', 'stagedPath', 'quarantinePath', 'sourceFiles']) assert.equal(Object.hasOwn(scan, key), false);
   }
   const stats = await client.stats();

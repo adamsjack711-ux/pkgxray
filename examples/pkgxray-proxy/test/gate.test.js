@@ -76,53 +76,53 @@ test('denylist short-circuits to 403 without scanning', async () => {
   } finally { cleanup(); }
 });
 
-test('allowlist short-circuits to 200 without scanning', async () => {
+test('allowlist cannot bypass missing scan evidence', async () => {
   const { config, store, cleanup } = fixture({ allowlist: ['internal-pkg'] });
   try {
     const spy = [];
     const runGuard = runnerReturning(new ScanError('should not run'), spy);
     const d = await gate({ config, store, name: 'internal-pkg', version: '1.0.0', runGuard });
-    assert.equal(d.serve, true);
-    assert.equal(d.source, 'allowlist');
-    assert.equal(spy.length, 0);
+    assert.equal(d.serve, false);
+    assert.equal(d.source, 'scan');
+    assert.equal(spy.length, 1);
   } finally { cleanup(); }
 });
 
-test('allowlist supports name@version pinning', async () => {
+test('name/version allowlist does not override scanner denial', async () => {
   const { config, store, cleanup } = fixture({ allowlist: ['pkg@1.2.3'] });
   try {
     const runGuard = runnerReturning({ decision: 'block', findings: [] });
     const pinned = await gate({ config, store, name: 'pkg', version: '1.2.3', runGuard });
-    assert.equal(pinned.serve, true);
+    assert.equal(pinned.serve, false);
     // A different version is NOT pinned and still gets scanned/blocked.
     const other = await gate({ config, store, name: 'pkg', version: '2.0.0', runGuard });
     assert.equal(other.serve, false);
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=block remains pending', async () => {
+test('review + reviewPolicy=block blocks immediately', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'block' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [{ reason: 'obfuscated' }] });
     const d = await gate({ config, store, name: 'sketchy', version: '1.0.0', runGuard });
     assert.equal(d.serve, false);
-    assert.equal(d.status, 409);
+    assert.equal(d.status, 403);
     assert.equal(store.get('sketchy', '1.0.0').decision, 'review'); // still cached
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=warn remains pending with a note', async () => {
+test('review + reviewPolicy=warn blocks with an uncertainty note', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'warn' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [] });
     const d = await gate({ config, store, name: 'sketchy', version: '1.0.0', runGuard });
     assert.equal(d.serve, false);
-    assert.equal(d.decision, 'review');
-    assert.match(d.note, /Pending/);
+    assert.equal(d.decision, 'block');
+    assert.match(d.note, /uncertainty remains unresolved/);
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=allow remains pending', async () => {
+test('review + reviewPolicy=allow blocks immediately', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'allow' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [] });
@@ -138,18 +138,18 @@ test('scan error + fail-closed returns 403 and does NOT cache', async () => {
     const d = await gate({ config, store, name: 'x', version: '1.0.0', runGuard });
     assert.equal(d.serve, false);
     assert.equal(d.status, 403);
-    assert.equal(d.decision, 'scan-error');
+    assert.equal(d.decision, 'block');
     assert.equal(store.has('x', '1.0.0'), false);
   } finally { cleanup(); }
 });
 
-test('scan error + fail-open serves 200 and does NOT cache', async () => {
+test('legacy fail-open setting still blocks scan failure', async () => {
   const { config, store, cleanup } = fixture({ scanErrorPolicy: 'fail-open' });
   try {
     const runGuard = runnerReturning(new ScanError('spawn failed'));
     const d = await gate({ config, store, name: 'x', version: '1.0.0', runGuard });
-    assert.equal(d.serve, true);
-    assert.equal(d.decision, 'scan-error');
+    assert.equal(d.serve, false);
+    assert.equal(d.decision, 'block');
     assert.equal(store.has('x', '1.0.0'), false);
   } finally { cleanup(); }
 });

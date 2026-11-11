@@ -1,5 +1,10 @@
 # pkgxray reference
 
+Active commands describe the **unpublished breaking 2.0 candidate**. The 1.3
+work remains a separate held PR. The explicitly labeled 1.2.1 example below is
+historical. Candidate public gates use binary decisions and exit codes `0`/`2`;
+blocked uncertainty is not a claim of confirmed malware.
+
 Detailed reference material split out of the [README](../README.md) to keep the
 landing page focused. Covers the severity policy, `recheck` monitoring,
 performance numbers, JSON output shapes, the browser extension, and the
@@ -47,20 +52,32 @@ pkgxray recheck package-lock.json                      # scheduled: non-zero onl
 
 `audit` checks resolved dependencies against OSV. `--deep` adds source scans for
 blocked dependencies; `--deep-all` requests source scans for all resolved dependencies.
-Failed deep scans and incomplete source collection return REVIEW unless already BLOCK.
+Failed deep scans and incomplete source collection block with coverage reasons.
 `guard --deps` includes direct-dependency findings in its decision; only exact pins
-are checked, with ranges and other unresolved sources left at REVIEW. Guard output
+are checked, with ranges and other unresolved sources blocked as inconclusive. Guard output
 lists completed, partial, disabled and failed checks so a passing verdict does not
 imply checks that never ran.
 PyPI scans cover source-distribution manifests, vulnerability metadata, and text-level
 injection checks; they do not provide full Python module behavioral analysis or wheel inspection.
-Python source adds an `unsupported-behavior` REVIEW finding. Behavioral coverage gaps
-cannot be muted or promoted with `allow-review`; a pinned artifact approval remains
-an explicit operator override. Archives containing links or special files are rejected.
+Python source adds an `unsupported-behavior` uncertainty finding. Behavioral
+coverage gaps block and cannot be cleared by muting, a manual choice or a pinned
+operator exception. Archives containing links or special files are rejected.
+
+Eligible transient OSV failures retry once for the same resolved identity within
+the original shared deadline. No replacement bytes are acquired for that check;
+disabled or malformed checks, heuristic findings and permission gaps do not retry.
+Persistent uncertainty blocks without a prompt. Review flags and Proceed/Decline
+flows are removed. MCP `--force` is rejected, and `--no-scan-results` is removed.
+Explicit user-invoked triage policy writes and canary/VM opt-ins remain separate.
 
 Policy configuration is documented in [configuration.md](configuration.md).
 
 ## Severity policy (what lands in block / review / info)
+
+The labels below describe raw evidence severity. Internal `review` means
+uncertainty; public gates map it to block with reasons. It is neither a pending
+user decision nor proof of malware. Explicit digest-pinned declarative policy
+may affect discretionary findings, but cannot override mandatory missing checks.
 
 **block** (HIGH). Any one of these:
 
@@ -150,8 +167,8 @@ pkgxray recheck package-lock.json --no-write    # don't update stored baselines
 pkgxray recheck package-lock.json --format json # machine-readable diff
 ```
 
-Exit codes key off the worst *regression*: `0` nothing regressed, `2`
-regressed to **block**, `3` regressed to **review**. A dep that was already
+Decision exit codes key off the worst *regression*: `0` nothing regressed, `2`
+for a blocking regression, including unresolved uncertainty. A dep that was already
 `block` at install is not a new regression. Set `PKGXRAY_CACHE_URL` so a large
 tree shares `guard`'s warm cache.
 
@@ -161,12 +178,12 @@ This is informational (never changes the exit code) unless you pass
 `--fail-on-available-updates`; `--no-version-drift` skips the registry pass.
 An incomplete candidate check or registry failure appears under **UPDATE CHECK
 INCOMPLETE**. A clean same-major candidate does not clear an unscanned latest
-release. With `--fail-on-available-updates`, incomplete checks return `3`;
-a known blocked candidate still takes precedence with `2`.
+release. With `--fail-on-available-updates`, incomplete checks return `2`
+with reasons distinguishing missing evidence from observed blocking findings.
 
 Each candidate's JSON includes `securityChanges`, comparing findings against
 the fresh scan of the pinned version. This exposes new evidence even when both
-versions remain REVIEW. No additional package scan is needed. Text output shows
+versions remain blocked for uncertainty. No additional package scan is needed. Text output shows
 new findings; `--verbose` also includes empty or unavailable comparisons.
 See [upgrade comparisons](upgrade-comparisons.md) for matching, coverage limits,
 and the reproducible regression corpus.
@@ -181,6 +198,9 @@ code handling.
 ---
 
 ## Performance
+
+These historical measurements predate the 2.0 candidate; they do not measure
+its automatic retries or changed decision contract.
 
 Local static analysis is ~25 ms; almost all of `guard`'s wall-clock is network
 round-trips (registry, OSV, GitHub, provenance). Measured on an Apple M1
@@ -206,15 +226,22 @@ result scan ~0.06 ms for a typical 2 KB result, ~13 ms worst-case at the
 
 ## JSON output
 
-All JSON carries `schemaVersion: 1`; within `0.x` fields are additive only. Run
-any command with `--format json`. Top-level fields:
+Public decision JSON uses `schemaVersion: 2`; fields remain additive within that
+contract. Internal raw reports and configuration/receipt persistence formats
+retain their own versions. Use `--format json` where supported. Top-level fields:
 
 - **audit / `--file`** — `verdict`, `grade`, `score`, `parameters`, `summary`,
   `riskBands[]`, `findings[]`
 - **guard** — `decision`, `resolved`, `githubMetadata`, `npmVsGithubDiff`,
-  `vulnerabilityPrecheck`, `timings`, `quarantinePath`, `promotedPath`, `report`
+  `vulnerabilityPrecheck`, `timings`, `quarantinePath`, `promotedPath`, `report`,
+  `resolution.reasonCodes`, `resolution.retry`
 - **audit `<lockfile>`** — `file`, `format`, `totalDeps`, `uniqueDeps`,
-  `summary`, `worstDecision`, `results[]`
+  `summary` (`safe`, `blocked`, `inconclusive`), `worstDecision`, `results[]`,
+  `resolution.retry`
+
+`inconclusive` is a subset of blocked results, not a third decision. Retry counts
+record additional attempts: guard vulnerability checks have at most one; lockfile
+batch counts aggregate across separately bounded chunks. See [JSON schema](json-schema.md).
 
 ---
 
@@ -256,6 +283,6 @@ interface with `--host 0.0.0.0` (or `PKGXRAY_CACHE_HOST`) as shown above.
 
 The `approval` record includes `artifactSha256`, `name`, `version`, `scannerBuildId`, `policySha256`, `checks`, `sourceComplete`, `decision` and `issuedAt`. Consumers must validate all required fields and completion states, not merely the presence of a receipt. Receipts are unsigned local records, not remote attestations.
 
-Npm package-lock/shrinkwrap deep scans retain and verify the locked URL and SRI digest. Missing or conflicting identities remain REVIEW. Other npm manifest/lock formats currently lack this binding and therefore cannot receive a successful deep artifact approval; their version-based vulnerability audit still works. PyPI deep scans do not yet bind to lockfile artifact hashes.
+Npm package-lock/shrinkwrap deep scans retain and verify the locked URL and SRI digest. Missing or conflicting identities block with an incomplete-identity reason. Other npm manifest/lock formats currently lack this binding and therefore cannot receive a successful deep artifact approval; their version-based vulnerability audit still works. PyPI deep scans do not yet bind to lockfile artifact hashes.
 
 The example proxy scans and serves the same held archive and requires completed source/vulnerability checks. Use [`pkgxray install`](enforced-install.md) to install a supported npm lockfile from approved local archives. The install hook remains a preflight assessment: it does not force npm to consume an approved snapshot, prevent direct-registry bypasses, or cover install-time downloads. See `examples/pkgxray-proxy/README.md` for enforcement boundaries.

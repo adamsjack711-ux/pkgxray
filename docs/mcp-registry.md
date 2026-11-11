@@ -17,7 +17,7 @@ local or uses `npx` does not depend on the Registry at all.
 
 ## Prepared metadata
 
-The next package and Registry descriptor are prepared for **1.3.0**. Publication
+The next package and Registry descriptor are prepared for the **unpublished 2.0.0 candidate**. Publication
 must be verified separately; the status above records the last confirmed release.
 
 - Registry name: `io.github.adamsjack711-ux/pkgxray`

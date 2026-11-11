@@ -15,10 +15,10 @@ import (
 // bypass the execution gate entirely. OnAfterFileEdit closes that path: the
 // edit hunks are diffed for added/changed server entries and each one takes
 // the same gate as an `mcp add` would — launcher command → static package
-// scan, http(s) URL → `pkgxray mcp` probe, unreadable → Review.
+// scan, http(s) URL → `pkgxray mcp` probe, unreadable → inconclusive and denied.
 //
 // Same honesty rule as the package.json diff: extraction is best-effort, and
-// when the hunks clearly define a server we could NOT read, a review-worthy
+// when the hunks clearly define a server we could NOT read, a blocking
 // sentinel is returned rather than silently allowing it.
 
 // mcpConfigFiles are the config basenames that register MCP servers across
@@ -69,7 +69,7 @@ var serverKeyRE = regexp.MustCompile(`"(?:command|url)"\s*:`)
 // added/changed server entry. A server present identically in the old text is
 // unchanged and yields nothing (formatting/env-only edits re-triage nothing).
 // When the new text plainly defines a server (a "command"/"url" key) that
-// extraction could not read, a review-worthy sentinel spec is returned.
+// extraction could not read, a blocking sentinel spec is returned.
 func McpConfigAddedSpecs(edits []FileEdit) []InstallSpec {
 	var out []InstallSpec
 	seen := make(map[string]bool)
@@ -105,7 +105,7 @@ func McpConfigAddedSpecs(edits []FileEdit) []InstallSpec {
 				Ref:     "mcp-config",
 				Manager: "mcp",
 				Raw:     clip(e.NewString, 60),
-				Kind:    KindMcpSSE, // unreadable → Review, without shelling out
+				Kind:    KindMcpSSE, // unreadable → inconclusive and denied, without shelling out
 			})
 		}
 	}
@@ -114,7 +114,7 @@ func McpConfigAddedSpecs(edits []FileEdit) []InstallSpec {
 
 // mcpServerSpecs maps one server entry onto gate specs, reusing the exact
 // `mcp add` classification: url → probe/SSE spec, command → the normal
-// launcher parse (npx → registry spec, local path → nothing to gate).
+// launcher parse (npx → registry spec, unsupported local path → unvettable).
 func mcpServerSpecs(c mcpServerConfig) []InstallSpec {
 	if c.URL != "" {
 		transport := c.Type
@@ -123,7 +123,7 @@ func mcpServerSpecs(c mcpServerConfig) []InstallSpec {
 		}
 		return mcpTargetSpecs([]string{c.URL}, transport)
 	}
-	return parseSegment(strings.Join(append([]string{c.Command}, c.Args...), " "))
+	return mcpTargetSpecs(append([]string{c.Command}, c.Args...), c.Type)
 }
 
 // extractMcpServers pulls every server-shaped object out of a JSON fragment.

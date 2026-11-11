@@ -454,7 +454,7 @@ test("auditLockfile honors a pre-existing .pkgxray.lock (allowed not blocked)", 
   });
 
   const result = await auditLockfile(lockfile, {
-    vulnerabilityCheck: false,
+    osvResults: [{}, {}],
     triageDecisions
   });
 

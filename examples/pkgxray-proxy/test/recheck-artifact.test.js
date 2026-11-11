@@ -9,7 +9,6 @@ import { adminRecheck } from '../src/proxy.js';
 import { VerdictStore } from '../src/verdict-store.js';
 import { loadConfig } from '../src/config.js';
 import { withReceipt } from './receipt-helper.js';
-import reviews from '../../../src/review.js';
 import policy from '../../../src/config.js';
 
 async function setup(t) {
@@ -19,16 +18,15 @@ async function setup(t) {
   await writeFile(file, 'inert artifact');
   const snapshot = { file, sha256: crypto.createHash('sha256').update('inert artifact').digest('hex') };
   const config = loadConfig({ verdictStorePath: join(dir, 'store.json') }, {});
-  const store = new VerdictStore(config.verdictStorePath), decisions = new reviews.ReviewDecisions();
-  const runGuard = withReceipt(async () => ({ decision: 'review', findings: [] }));
+  const store = new VerdictStore(config.verdictStorePath);
+  const runGuard = withReceipt(async () => ({ decision: 'allow', findings: [] }));
   const check = (opts = {}) => gateArtifact({ config, store, name: 'demo', version: '1.0.0', snapshot, runGuard,
-    sharedPolicy: policy.DEFAULTS, scope: 'A', decisions, ...opts });
-  return { config, store, decisions, check };
+    sharedPolicy: policy.DEFAULTS, ...opts });
+  return { config, store, check };
 }
 
 test('admin BLOCK revokes cached approval, survives restart, and needs a later recheck to clear', async t => {
-  const { config, store, decisions, check } = await setup(t);
-  const initial = await check(); decisions.choose('A', initial.review.id, 'Proceed');
+  const { config, store, check } = await setup(t);
   const approved = await check(); assert.equal(approved.serve, true);
   await adminRecheck({ config, store, runGuard: async () => ({ decision: 'block', findings: [{ reason: 'new evidence' }] }) });
   for (const cache of [store, new VerdictStore(config.verdictStorePath)]) {
@@ -36,24 +34,19 @@ test('admin BLOCK revokes cached approval, survives restart, and needs a later r
   }
   assert.throws(() => assertArtifactCurrent(store, 'demo', '1.0.0', approved.recheckRevision), { code: 'RECHECK_CHANGED' });
   await adminRecheck({ config, store, runGuard: async () => ({ decision: 'allow', findings: [] }) });
-  const fresh = await check(); assert.equal(fresh.serve, false); assert.equal(fresh.review.state, 'pending');
-  assert.notEqual(fresh.review.id, initial.review.id);
+  const fresh = await check(); assert.equal(fresh.serve, true); assert.equal(fresh.source, 'scan');
 });
 
-test('unchanged recheck preserves the choice; changed findings require a fresh session-scoped decision', async t => {
-  const { config, store, decisions, check } = await setup(t);
-  const old = await check(); decisions.choose('A', old.review.id, 'Proceed');
+test('recheck findings invalidate approvals without any manual session decision', async t => {
+  const { config, store, check } = await setup(t);
   assert.equal((await check()).serve, true);
-  await adminRecheck({ config, store, runGuard: async () => ({ decision: 'review', findings: [] }) });
-  const unchanged = await check(); assert.equal(unchanged.serve, true); assert.equal(unchanged.review.id, old.review.id);
-  assert.equal((await check({ scope: 'B' })).serve, false);
-  await adminRecheck({ config, store, runGuard: async () => ({ decision: 'review', findings: [{ reason: 'new evidence' }] }) });
-  const fresh = await check(); assert.equal(fresh.serve, false); assert.notEqual(fresh.review.id, old.review.id);
-  assert.equal((await check({ store: new VerdictStore(config.verdictStorePath) })).review.id, fresh.review.id);
-  decisions.choose('A', fresh.review.id, 'Proceed');
-  assert.equal((await check()).serve, true);
-  const b = await check({ scope: 'B' }); assert.equal(b.serve, false);
-  decisions.choose('B', b.review.id, 'Decline'); assert.equal((await check({ scope: 'B' })).outcome, 'UNSAFE');
+  await adminRecheck({ config, store, runGuard: async () => ({ decision: 'allow', findings: [] }) });
+  const unchanged = await check(); assert.equal(unchanged.serve, true); assert.equal(unchanged.source, 'scan');
+  await adminRecheck({ config, store, runGuard: async () => ({ decision: 'block', findings: [{ reason: 'unresolved uncertainty' }] }) });
+  for (const cache of [store, new VerdictStore(config.verdictStorePath)]) {
+    const denied = await check({ store: cache });
+    assert.equal(denied.serve, false); assert.equal(denied.outcome, 'UNSAFE'); assert.equal(denied.review, undefined);
+  }
 });
 
 test('a scan started before recheck cannot refill the cache or authorize delivery', async t => {
@@ -84,5 +77,5 @@ test('cancelling the first proxy waiter does not cancel evidence needed by anoth
   release();
   const pendingB = await b;
   assert.equal(scans, 1);
-  assert.equal(pendingB.decision, 'review'); assert.equal(pendingB.review.state, 'pending'); assert.equal(pendingB.serve, false);
+  assert.equal(pendingB.decision, 'block'); assert.equal(pendingB.review, undefined); assert.equal(pendingB.serve, false);
 });

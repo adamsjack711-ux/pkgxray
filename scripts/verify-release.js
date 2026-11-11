@@ -12,8 +12,15 @@ function verifyReleaseScan(scan, expectedSha256) {
       !Array.isArray(check.vulnerabilities) || check.vulnerabilities.length) {
     throw new Error("Release requires a completed, clean OSV check");
   }
+  // The scanner's own signature catalogue is deliberately not source-scanned
+  // by this release-specific gate. The normal guard still blocks it; only this
+  // pre-existing, narrow release omission is accepted after all other gates.
+  const sourceOnlyBlock = scan.decision === "block" &&
+    scan.resolution?.reasonCodes?.includes("source-check-disabled") &&
+    scan.resolution.reasonCodes.every(reason => ["source-check-disabled", "incomplete-source-scan", "uncertain-findings"].includes(reason)) &&
+    (scan.assessment?.authorization?.mandatoryHoldReasons || []).every(reason => reason === "incomplete-source-scan");
   if (scan.assessment?.checks?.source !== "disabled" || !scan.report || !Array.isArray(scan.report.findings) ||
-      !["allow", "review"].includes(scan.decision) || scan.report.verdict === "block" ||
+      !(scan.decision === "allow" || sourceOnlyBlock) || scan.report.verdict === "block" ||
       scan.report.findings.some(f => f.category !== "incomplete-source-scan" && ["high", "medium"].includes(f.severity)) ||
       scan.assessment.authorization?.explicitOverride === true) {
     throw new Error("Unexpected release review/block or check configuration");

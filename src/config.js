@@ -311,7 +311,7 @@ function validateConfig(raw, warnings) {
     mcp: validateMcp(raw.mcp, warnings)
   };
   if (config.policy === "allow-review") {
-    warnings.push('policy "allow-review" no longer approves REVIEW; each developer must choose Proceed or Decline.');
+    warnings.push('policy "allow-review" is deprecated and does not permit uncertain packages; guard outcomes are allow or block.');
   }
   if (config.typosquat) {
     warnings.push("typosquat heuristic enabled — an opt-in name-similarity check with a high false-positive rate on short/intentional names.");
@@ -491,16 +491,28 @@ function floorVerdictForScanGap(verdict, hasGap, config) {
   return verdictForScanError(config) === "safe" ? verdict : "review";
 }
 
-// Final guard decision shared by acquisition and transport adapters. Coverage
-// gaps cannot be muted or promoted by allow-review; a pinned artifact approval
-// remains an explicit operator override.
-function guardDecision(report, { policy = "safe-only", config = DEFAULTS, vulnerabilityScanError, sourceCoverage, dependencyAudit } = {}) {
-  let decision = report.verdict === "safe" ? "allow" : report.verdict;
-
-  const authorization = require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit });
-  if (authorization.explicitOverride) return decision;
-  if (authorization.mandatoryHoldReasons.length && decision !== "block") return "review";
-  return floorVerdictForScanGap(decision, Boolean(vulnerabilityScanError), config);
+// Final execution authority is binary. Keep the raw analyzer verdict and
+// findings for diagnostics; missing checks never become permission through
+// fail-open, legacy allow-review, a mute, or an artifact allowlist.
+function guardBlockReasons(report, { vulnerabilityScanError, sourceCoverage, dependencyAudit,
+  sourceScan, vulnerabilityCheck, checks, requireProvenance = process.env.PKGXRAY_REQUIRE_PROVENANCE === "1" } = {}) {
+  const reasons = new Set();
+  if (report?.verdict === "block") reasons.add("blocking-findings");
+  else if (report?.verdict === "review") reasons.add("uncertain-findings");
+  else if (!["safe", "allow"].includes(report?.verdict)) reasons.add("unrecognized-verdict");
+  const authorization = require("./approval-policy").authorizationFor(report || {}, { sourceCoverage, dependencyAudit });
+  for (const reason of authorization.mandatoryHoldReasons) reasons.add(reason);
+  if (sourceScan === false || checks?.source === "disabled") reasons.add("source-check-disabled");
+  else if (checks && checks.source !== "completed") reasons.add("source-check-incomplete");
+  if (vulnerabilityCheck === false || checks?.vulnerabilities === "disabled") reasons.add("vulnerability-check-disabled");
+  else if (vulnerabilityScanError || (checks && checks.vulnerabilities !== "completed")) reasons.add("vulnerability-check-unavailable");
+  if (checks?.provenance === "invalid") reasons.add("invalid-provenance");
+  if (requireProvenance && checks?.provenance !== "verified") reasons.add("unverified-provenance");
+  if (checks && ["failed", "partial", "skipped"].includes(checks.directDependencies)) reasons.add("incomplete-dependency-scan");
+  return [...reasons].sort();
+}
+function guardDecision(report, options = {}) {
+  return guardBlockReasons(report, options).length ? "block" : "allow";
 }
 
 // --- rendering -------------------------------------------------------------
@@ -557,6 +569,7 @@ module.exports = {
   validateConfig,
   applyConfig,
   guardDecision,
+  guardBlockReasons,
   exitCodeForVerdict,
   verdictForScanError,
   floorVerdictForScanGap,

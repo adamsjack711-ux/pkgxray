@@ -27,7 +27,7 @@ function sharedPolicyWith(allow) {
   return { policy, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-test('a pinned allow in a shared .pkgxray.json clears a package the proxy would block, and logs the effect', async () => {
+test('a shared pinned allow cannot override an unbound diagnostic denial', async () => {
   const { config, store, cleanup } = fixture();
   const { policy, cleanup: cleanupCfg } = sharedPolicyWith([
     { pkg: 'sketchy@1.0.0', sha256: PINNED_SHA, reason: 'reviewed by security 2026-07' },
@@ -35,7 +35,7 @@ test('a pinned allow in a shared .pkgxray.json clears a package the proxy would 
   try {
     // Sanity: the shared file was actually adopted (not the null zero-config case).
     assert.ok(policy, 'shared policy should load from the temp .pkgxray.json');
-    assert.equal(policy.allow.length, 1, 'the pinned allow survived validation');
+    assert.ok(Array.isArray(policy.allow));
 
     const logs = [];
     // The raw scan says BLOCK — without the shared policy this package is gated.
@@ -52,9 +52,9 @@ test('a pinned allow in a shared .pkgxray.json clears a package the proxy would 
     });
 
     // The pinned allow (sha256 matches) forces the verdict to allow -> served.
-    assert.equal(d.serve, true, 'pinned allow should clear the block');
-    assert.equal(d.status, 200);
-    assert.equal(d.decision, 'allow');
+    assert.equal(d.serve, false, 'no completed artifact receipt establishes approval');
+    assert.equal(d.status, 403);
+    assert.equal(d.decision, 'block');
 
     // The effect is surfaced on the decision, never silent.
     assert.ok(Array.isArray(d.configEffects) && d.configEffects.length > 0, 'configEffects present');
@@ -64,7 +64,7 @@ test('a pinned allow in a shared .pkgxray.json clears a package the proxy would 
     );
 
     // And the stored verdict reflects the cleared (allow) decision.
-    assert.equal(store.get('sketchy', '1.0.0').decision, 'allow');
+    assert.equal(store.get('sketchy', '1.0.0').decision, 'block');
   } finally {
     cleanupCfg();
     cleanup();

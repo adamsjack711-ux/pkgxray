@@ -105,13 +105,13 @@ func TestMcpConfigSSETransportIsUnvettable(t *testing.T) {
 	}
 }
 
-func TestMcpConfigLocalCommandYieldsNothing(t *testing.T) {
+func TestMcpConfigLocalCommandIsUnvettable(t *testing.T) {
 	specs := McpConfigAddedSpecs([]FileEdit{{
 		OldString: "",
 		NewString: `{"local": {"command": "/usr/local/bin/my-server", "args": ["--flag"]}}`,
 	}})
-	if len(specs) != 0 {
-		t.Fatalf("local command gated: %v", cfgSpecRefs(specs))
+	if len(specs) != 1 || specs[0].Kind != KindMcpSSE {
+		t.Fatalf("local command missing unvettable sentinel: %v", cfgSpecRefs(specs))
 	}
 }
 

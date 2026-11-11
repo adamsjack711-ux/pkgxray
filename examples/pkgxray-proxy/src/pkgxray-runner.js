@@ -6,7 +6,7 @@
 // is killed if it exceeds scanTimeoutMs.
 //
 // Verdict is read from the JSON on stdout. Exit codes are a fallback if the
-// JSON can't be parsed: 0 = safe/allow, 2 = block, 3 = review.
+// JSON can't be parsed: 0 = safe/allow, 2 or 3 = block.
 
 import { spawn } from 'node:child_process';
 
@@ -18,7 +18,7 @@ export class ScanError extends Error {
   }
 }
 
-const EXIT_DECISION = { 0: 'allow', 2: 'block', 3: 'review' };
+const EXIT_DECISION = { 0: 'allow', 2: 'block', 3: 'block' };
 
 /**
  * Run the pkgxray guard on a single package reference.
@@ -30,7 +30,7 @@ const EXIT_DECISION = { 0: 'allow', 2: 'block', 3: 'review' };
  * @param {string} [opts.cacheUrl] forwarded as PKGXRAY_CACHE_URL to the child
  * @param {object} [opts.env] base environment (defaults to process.env)
  * @param {Function} [opts.spawnFn] injectable spawn for tests
- * @returns {Promise<{decision:'allow'|'block'|'review', findings:Array, raw?:object}>}
+ * @returns {Promise<{decision:'allow'|'block', findings:Array, raw?:object}>}
  * @throws {ScanError} on timeout, spawn failure, or an unmappable result
  */
 export function runGuard(bin, ref, opts = {}) {
@@ -162,7 +162,7 @@ function normalizeDecision(value) {
   const v = value.trim().toLowerCase();
   if (v === 'allow' || v === 'safe' || v === 'pass' || v === 'ok') return 'allow';
   if (v === 'block' || v === 'blocked' || v === 'deny' || v === 'fail' || v === 'malicious') return 'block';
-  if (v === 'review' || v === 'warn' || v === 'suspicious') return 'review';
+  if (v === 'review' || v === 'warn' || v === 'suspicious') return 'block';
   return null;
 }
 

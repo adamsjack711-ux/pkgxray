@@ -113,7 +113,7 @@ test('a regression on refresh flips subsequent decisions to block and logs the t
   } finally { cleanup(); }
 });
 
-test('a failed refresh leaves the prior good verdict intact and serves it', async () => {
+test('a failed refresh preserves historical evidence but blocks current use', async () => {
   const { config, store, clock, cleanup } = fixture({ verdictTtlMs: 500 });
   try {
     clock.t = 1000;
@@ -123,9 +123,9 @@ test('a failed refresh leaves the prior good verdict intact and serves it', asyn
       config, store, name: 'y', version: '1.0.0',
       runGuard: runner(new ScanError('registry 503')),
     });
-    assert.equal(d.serve, true, 'served rather than degraded to a 403');
-    assert.equal(d.decision, 'allow');
-    assert.equal(d.source, 'cache');
+    assert.equal(d.serve, false);
+    assert.equal(d.decision, 'block');
+    assert.equal(d.source, 'scan');
     const entry = store.get('y', '1.0.0');
     assert.equal(entry.decision, 'allow', 'stored verdict untouched');
     assert.equal(entry.ts, 1000, 'ts not advanced by a failed refresh');
@@ -157,7 +157,7 @@ test('adminRecheck flips changed verdicts, keeps unchanged, never overwrites on 
     assert.equal(summary.errors[0].name, 'c');
 
     assert.equal(store.get('a', '1.0.0').decision, 'block', 'regressed verdict persisted');
-    assert.equal(store.get('c', '1.0.0').decision, 'allow', 'errored re-scan left good verdict intact');
+    assert.equal(store.get('c', '1.0.0').decision, 'block', 'errored re-scan left good verdict intact');
     assert.ok(logs.some((e) => e.event === 'verdict-transition' && e.reason === 'admin-recheck'));
   } finally { cleanup(); }
 });

@@ -50,11 +50,11 @@ test('parses block verdict with findings', async () => {
   assert.equal(res.findings[0].reason, 'exfil');
 });
 
-test('parses review verdict', async () => {
+test('maps legacy review verdict to immediate block', async () => {
   const res = await runGuard('pkgxray', 'meh@1.0.0', {
     spawnFn: fakeSpawn({ stdout: JSON.stringify({ verdict: 'review', issues: [{ x: 1 }] }) }),
   });
-  assert.equal(res.decision, 'review');
+  assert.equal(res.decision, 'block');
   assert.equal(res.findings.length, 1);
 });
 

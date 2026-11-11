@@ -79,7 +79,7 @@ test("documented onboarding fixture is inert evidence that produces BLOCK", () =
   );
   assert.equal(result.status, 2, result.stderr || result.stdout);
   const report = JSON.parse(result.stdout);
-  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.schemaVersion, 2);
   assert.equal(report.verdict, "block");
   assert.ok(report.findings.some((finding) => finding.category === "credential-access"));
 });
@@ -168,21 +168,21 @@ test("documented entry points remain present in CLI help", () => {
   assert.match(help, /EXECUTES untrusted package code/);
 });
 
-test("CLI exit-code contract stays SAFE=0, REVIEW=3, BLOCK=2", () => {
+test("CLI blocks incomplete scans with exit 2", () => {
   const { exitCodeForVerdict } = require(resolve(ROOT, "src", "config.js"));
   assert.equal(exitCodeForVerdict("safe", {}), 0);
   assert.equal(exitCodeForVerdict("allow", {}), 0);
   assert.equal(exitCodeForVerdict("review", {}), 3);
   assert.equal(exitCodeForVerdict("block", {}), 2);
 
-  // End-to-end: incomplete evidence fails closed to REVIEW (exit 3), never safe.
+  // End-to-end: incomplete evidence blocks (exit 2), never safe.
   const review = spawnSync(process.execPath, [CLI, "--format", "json"], {
     cwd: ROOT,
     encoding: "utf8",
     input: JSON.stringify({ packageName: "exit-code-probe", sourceFiles: [] }),
   });
-  assert.equal(review.status, 3, review.stderr || review.stdout);
-  assert.equal(JSON.parse(review.stdout).verdict, "review");
+  assert.equal(review.status, 2, review.stderr || review.stdout);
+  assert.equal(JSON.parse(review.stdout).verdict, "block");
 });
 
 test("pkgxray --version reports the package version", () => {

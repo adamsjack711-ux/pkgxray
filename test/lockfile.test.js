@@ -79,7 +79,7 @@ test("auditLockfile completes on a workspace lockfile (no fail-closed crash)", a
       "node_modules/lodash": { version: "4.17.21" }
     }
   }));
-  const result = await auditLockfile(lock, { vulnerabilityCheck: false, triageDecisions: false });
+  const result = await auditLockfile(lock, { osvResults: [{}], triageDecisions: false });
   assert.equal(result.worstDecision, "safe");
   assert.equal(result.totalDeps, 1, "only the registry dep is audited");
   assert.equal(result.results[0].name, "lodash");
@@ -228,7 +228,7 @@ test("package.json url/workspace specs are surfaced unresolved, not false-safe",
   assert.deepEqual(names, ["cat-lib", "git-lib", "tgz-lib", "ws-lib"]);
 });
 
-test("unresolved package.json specs audit as review, not safe", async () => {
+test("unresolved package.json specs block without a manual decision", async () => {
   const pkg = await tmpFile("package.json", JSON.stringify({
     name: "demo",
     dependencies: { "ws-lib": "workspace:*" }
@@ -237,7 +237,7 @@ test("unresolved package.json specs audit as review, not safe", async () => {
   // silently counted clean.
   const result = await auditLockfile(pkg, { vulnerabilityCheck: false, triageDecisions: false });
   const ws = result.results.find((r) => r.name === "ws-lib");
-  assert.equal(ws.decision, "review");
+  assert.equal(ws.decision, "block");
   assert.equal(ws.unresolved, true);
   assert.equal(result.summary.safe, 0);
 });

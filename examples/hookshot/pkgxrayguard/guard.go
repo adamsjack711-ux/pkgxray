@@ -15,8 +15,8 @@ type Verdict string
 
 const (
 	Safe    Verdict = "safe"    // pkgxray decision "allow"/"safe", exit 0
-	Review  Verdict = "review"  // exit 3 — a human should look
-	Block   Verdict = "block"   // exit 2 — high-severity supply-chain risk
+	Review  Verdict = "review"  // legacy exit 3 — inconclusive, always denied
+	Block   Verdict = "block"   // exit 2 — findings or incomplete checks
 	Unknown Verdict = "unknown" // pkgxray could not run / produced no verdict
 )
 
@@ -46,12 +46,12 @@ type Guard struct {
 //   - process exit code 2=block, 3=review (denial-only fallback when JSON
 //     can't be parsed; exit 0 alone cannot establish an approval)
 //   - `report.summary` and `report.findings[].{severity,category,rationale,file}`
-//     (`file` drives the location shown in a deny/ask message)
+//     (`file` drives the location shown in a deny message)
 //
 // This shape remains available in pkgxray 1.x. The hook degrades safely against
 // drift: a missing `file` just omits the path, and if `decision` is absent it
 // retains denial exit codes — so an older or erroring pkgxray fails toward
-// UNKNOWN (denied under strict/balanced), never a false allow. The hook does not
+// UNKNOWN (denied under every policy), never a false allow. The hook does not
 // invoke pkgxray's `--version` command at runtime; the operator verifies the
 // pinned CLI during installation. See the README "Requirements" section.
 type guardJSON struct {
@@ -66,7 +66,6 @@ type guardJSON struct {
 		Authorization struct {
 			MandatoryHoldReasons []string `json:"mandatoryHoldReasons"`
 			BehavioralCoverage   string   `json:"behavioralCoverage"`
-			ExplicitOverride     bool     `json:"explicitOverride"`
 		} `json:"authorization"`
 	} `json:"approval"`
 	Report struct {
@@ -84,7 +83,7 @@ type guardJSON struct {
 // the verdict from the JSON decision, retaining denial process exit codes
 // (2=block, 3=review) so a truncated/unparsable payload still fails in
 // the correct direction. Any execution error yields Verdict=Unknown with Err
-// set, leaving the fail-open/closed choice to the policy layer.
+// set; every policy denies it.
 func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
 	// MCP server registrations take the manifest-probe path (see mcp.go).
 	if spec.Kind == KindMcpHTTP || spec.Kind == KindMcpSSE {
@@ -92,13 +91,13 @@ func (g Guard) Check(ctx context.Context, spec InstallSpec) Result {
 	}
 
 	// A git/tarball/HTTP URL can't be resolved by pre-install registry triage —
-	// pkgxray has no registry ref to fetch. Surface it as review-worthy rather
+	// pkgxray has no registry ref to fetch. Classify it as unvettable rather
 	// than shelling out (which would just error) or silently allowing it.
 	if spec.Kind == KindVCS {
 		return Result{
 			Spec:    spec,
 			Verdict: Review,
-			Summary: "unvettable git/URL install spec — pkgxray cannot triage an arbitrary VCS or remote tarball; review the source manually",
+			Summary: "blocked: pkgxray cannot vet an arbitrary VCS or remote tarball; incomplete checks do not establish malware",
 		}
 	}
 
@@ -189,9 +188,6 @@ func mandatoryHold(p guardJSON) bool {
 		return true
 	}
 	hold = hold || len(a.Authorization.MandatoryHoldReasons) != 0 || a.Authorization.BehavioralCoverage != "completed"
-	if hold && a.Authorization.ExplicitOverride && verdictFromDecision(p.Decision) == Safe {
-		return false
-	}
 	return hold
 }
 

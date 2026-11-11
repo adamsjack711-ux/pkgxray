@@ -21,7 +21,7 @@ const manifest = JSON.stringify({ name: "demo", version: "1.0.0", main: "z.js" }
 test("unread files force review and cannot promote under allow-review", async t => {
   const { source, root } = await fixture(t, { "package.json": manifest, "z.js": "require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');" });
   const result = await guardExtension(source, { ...offline, maxFiles: 1, policy: "allow-review", promoteTo: path.join(root, "out") });
-  assert.equal(result.decision, "review");
+  assert.equal(result.decision, "block");
   assert.equal(result.sourceCoverage.skippedFiles, 1);
   assert.equal(result.sourceCoverage.complete, false);
   assert.equal(result.promotedPath, null);
@@ -29,7 +29,7 @@ test("unread files force review and cannot promote under allow-review", async t 
     ...DEFAULTS, policy: "allow-review", mute: [{ check: "incomplete-source-scan", scope: "*" }]
   } });
   assert.equal(muted.report.verdict, "review");
-  assert.equal(muted.decision, "review");
+  assert.equal(muted.decision, "block");
   assert.ok(result.report.findings.some(f => f.category === "incomplete-source-scan"));
   const full = await guardExtension(source, offline);
   assert.equal(full.decision, "block");
@@ -39,7 +39,7 @@ test("truncated files and exhausted byte budgets cannot clear a package", async 
   const { source } = await fixture(t, { "package.json": manifest, "z.js": " ".repeat(6 * 1024 * 1024) });
   for (const limits of [{}, { maxTotalScanBytes: Buffer.byteLength(manifest) }]) {
     const result = await guardExtension(source, { ...offline, ...limits });
-    assert.equal(result.decision, "review");
+    assert.equal(result.decision, "block");
     assert.equal(result.sourceCoverage.complete, false);
   }
 });
@@ -53,23 +53,24 @@ test("promotion uses config-adjusted verdict before copying", async t => {
     ...DEFAULTS, mute: [{ check: "install-hook", scope: "*", reason: "reviewed setup" }]
   } });
   assert.equal(result.report.verdict, "safe");
-  assert.equal(result.decision, "allow");
-  assert.ok(result.promotedPath);
-  assert.equal(await fs.readFile(path.join(result.promotedPath, "z.js"), "utf8"), "console.log('setup');");
+  assert.equal(result.decision, "block", "muting a finding cannot replace a disabled mandatory check");
+  assert.equal(result.promotedPath, null);
+  assert.ok(result.resolution.reasonCodes.includes("vulnerability-check-disabled"));
 });
 
-test("deep scan failure changes safe to review and preserves an existing block", async t => {
+test("deep scan failure blocks unverified packages and preserves existing vulnerability findings", async t => {
   const q = require("../src/quarantine");
   const original = q.guardExtension;
   q.guardExtension = async () => { throw new Error("download unavailable"); };
   t.after(() => { q.guardExtension = original; });
   const { source } = await fixture(t, { "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/demo": { version: "1.0.0", resolved: "https://registry.npmjs.org/demo/-/demo-1.0.0.tgz", integrity: "sha256-" + Buffer.alloc(32).toString("base64") } } }) });
   const { auditLockfile } = require("../src/lockfile");
-  for (const [osv, expected] of [[{}, "review"], [{ vulns: [{ id: "TEST-1" }] }, "block"]]) {
+  for (const [osv, expected] of [[{}, "block"], [{ vulns: [{ id: "TEST-1" }] }, "block"]]) {
     const r = await auditLockfile(path.join(source, "package-lock.json"), { osvResults: [osv], deepAll: true, triageDecisions: false });
     assert.equal(r.worstDecision, expected);
     assert.equal(r.coverage.deepFailures, 1);
     assert.equal(r.results[0].deep.error, "download unavailable");
+    if (osv.vulns) assert.equal(r.results[0].vulnerabilities[0].id, "TEST-1");
   }
 });
 
@@ -103,7 +104,7 @@ test("missing, escaped and binary runtime targets remain review under allow-revi
   for (const [main, extra] of [["missing.dat", {}], ["../outside.js", {}], ["native.node", { "native.node": "\0binary" }]]) {
     const { source, root } = await fixture(t, { "package.json": JSON.stringify({ name: "demo", version: "1.0.0", main }), ...extra });
     const result = await guardExtension(source, { ...offline, policy: "allow-review", promoteTo: path.join(root, "out") });
-    assert.equal(result.decision, "review", main);
+    assert.equal(result.decision, "block", main);
     assert.equal(result.sourceCoverage.complete, false);
     assert.equal(result.promotedPath, null);
   }
@@ -169,14 +170,17 @@ test("dependency findings and failures affect the decision before promotion", as
   const lock = require("../src/lockfile");
   const original = lock.batchOsvQuery;
   t.after(() => { lock.batchOsvQuery = original; });
-  for (const [mode, expected] of [["vulnerable", "block"], ["offline", "review"], ["incomplete", "review"], ["clean", "allow"]]) {
+  const transport = require("../src/http-client"), originalRequest = transport.requestJson;
+  transport.requestJson = async () => ({});
+  t.after(() => { transport.requestJson = originalRequest; });
+  for (const [mode, expected] of [["vulnerable", "block"], ["offline", "block"], ["incomplete", "block"], ["clean", "allow"]]) {
     lock.batchOsvQuery = async () => {
       if (mode === "offline") throw new Error("OSV unavailable");
       if (mode === "incomplete") return [];
       return [mode === "vulnerable" ? { vulns: [{ id: "LOCAL-TEST-VULN" }] } : {}];
     };
     const { source, root } = await fixture(t, { "package.json": JSON.stringify({ name: "demo", version: "1.0.0", dependencies: { dep: "1.0.0" } }) });
-    const result = await guardExtension(source, { ...offline, scanDependencies: true, policy: "allow-review", promoteTo: path.join(root, "out") });
+    const result = await guardExtension(source, { ...offline, vulnerabilityCheck: true, scanDependencies: true, policy: "allow-review", promoteTo: path.join(root, "out") });
     assert.equal(result.decision, expected, mode);
     assert.equal(Boolean(result.promotedPath), mode === "clean");
     if (mode === "vulnerable") assert.ok(result.report.findings.some(f => f.category === "known-vulnerability"));
@@ -188,7 +192,7 @@ test("ranges and non-registry dependencies cannot be cleared by stripping their 
   const result = await guardExtension(source, { ...offline, scanDependencies: true, policy: "allow-review" });
   assert.equal(result.dependencyAudit.scanned, 0);
   assert.equal(result.dependencyAudit.unresolved.length, 2);
-  assert.equal(result.decision, "review");
+  assert.equal(result.decision, "block");
   assert.equal(result.assessment.checks.directDependencies, "partial");
 });
 

@@ -1,0 +1,122 @@
+{
+  "measuredAt": "2026-11-11T04:59:24.583Z",
+  "transport": "real stdio MCP",
+  "realNetwork": true,
+  "fixtureExecution": false,
+  "checks": [
+    {
+      "label": "tool discovery",
+      "tools": [
+        "audit_agent_extension_supply_chain",
+        "guard_agent_extension_install",
+        "audit_lockfile_supply_chain",
+        "triage_lockfile_supply_chain",
+        "analyze_package_composition"
+      ]
+    },
+    {
+      "label": "benign source and repeated cache",
+      "ms": 60.36,
+      "verdict": "safe",
+      "repeatedSource": "cache"
+    },
+    {
+      "label": "inert credential exfiltration evidence",
+      "ms": 43.85,
+      "verdict": "block",
+      "categories": [
+        "credential-access"
+      ]
+    },
+    {
+      "label": "25 concurrent identical source audits",
+      "ms": 57.06,
+      "responses": 25,
+      "sources": [
+        "scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan"
+      ]
+    },
+    {
+      "label": "guard automatically blocks incomplete checks without executing or prompting",
+      "ms": 56.04,
+      "decision": "block",
+      "allowed": false,
+      "reasonCodes": [
+        "uncertain-findings",
+        "vulnerability-check-disabled",
+        "incomplete-checks"
+      ],
+      "retry": {
+        "attempted": false,
+        "attempts": 0,
+        "check": null
+      },
+      "buildId": "8ab5b4f1121f86e4c43c4c427a0b3de93d9859ae8a3bc0637768761b8deeb6e9"
+    },
+    {
+      "label": "forbidden promotion and out-of-root input",
+      "ms": 0.53,
+      "denied": 2
+    },
+    {
+      "label": "Compose MCP analyzes inert local source",
+      "ms": 53.02,
+      "decision": "block",
+      "execution": "completed",
+      "installAllowed": false
+    },
+    {
+      "label": "real npm and OSV guard for ms@2.1.3",
+      "ms": 764.98,
+      "decision": "allow",
+      "allowed": true,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "reasonCodes": [],
+      "retry": {
+        "attempted": false,
+        "attempts": 0,
+        "check": null
+      },
+      "buildId": "8ab5b4f1121f86e4c43c4c427a0b3de93d9859ae8a3bc0637768761b8deeb6e9",
+      "timings": {
+        "stageMs": 62,
+        "vulnerabilityPrecheckMs": 269,
+        "downloadMs": 16,
+        "sourceCollectionMs": 3,
+        "githubMetadataMs": 290,
+        "provenanceMs": 1,
+        "diffMs": 348,
+        "auditMs": 60
+      }
+    }
+  ]
+}

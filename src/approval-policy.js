@@ -17,18 +17,19 @@ function authorizationFor(report, { sourceCoverage, dependencyAudit } = {}) {
     explicitOverride: Boolean(report.configEffects?.allowlisted)
   };
 }
-function receiptAuthorizes(receipt, { allowReview = false, requireProvenance = process.env.PKGXRAY_REQUIRE_PROVENANCE === "1" } = {}) {
+function receiptAuthorizes(receipt, { requireProvenance = process.env.PKGXRAY_REQUIRE_PROVENANCE === "1" } = {}) {
   const a = receipt?.authorization;
   if (receipt?.schemaVersion !== 2 || !a || !Array.isArray(a.mandatoryHoldReasons) ||
       a.mandatoryHoldReasons.some(r => typeof r !== "string" || !r) || typeof a.explicitOverride !== "boolean" ||
       !["completed", "partial"].includes(a.behavioralCoverage) ||
       receipt.sourceComplete !== true || receipt.checks?.source !== "completed" ||
       receipt.checks?.vulnerabilities !== "completed") return false;
+  if (["failed", "partial", "skipped"].includes(receipt.checks?.directDependencies)) return false;
   if (receipt.checks?.provenance === "invalid") return false;
   if (requireProvenance && receipt.checks?.provenance !== "verified") return false;
-  if (receipt.decision !== "allow" && !(allowReview && receipt.decision === "review")) return false;
+  if (receipt.decision !== "allow") return false;
   if (a.mandatoryHoldReasons.length || a.behavioralCoverage !== "completed") {
-    return a.explicitOverride && receipt.decision === "allow";
+    return false;
   }
   return true;
 }

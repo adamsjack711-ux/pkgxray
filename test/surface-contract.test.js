@@ -25,7 +25,7 @@ function usageText() {
 test("pkgxray mcp keeps its documented Stable flag surface", () => {
   const u = usageText();
   assert.match(u, /pkgxray mcp\b/);
-  for (const flag of ["--package", "--no-package-scan", "--force", "--pin", "--recheck"]) {
+  for (const flag of ["--package", "--no-package-scan", "--pin", "--recheck"]) {
     assert.ok(u.includes(flag), `mcp usage missing ${flag}`);
   }
 });
@@ -33,7 +33,7 @@ test("pkgxray mcp keeps its documented Stable flag surface", () => {
 test("pkgxray mcp-proxy keeps its documented Stable flag surface", () => {
   const u = usageText();
   assert.match(u, /pkgxray mcp-proxy\b/);
-  for (const flag of ["--policy strict|balanced|permissive", "--pin", "--no-recheck", "--no-scan-results", "--sandbox-network"]) {
+  for (const flag of ["--policy strict|balanced|permissive", "--pin", "--no-recheck", "--sandbox-network"]) {
     assert.ok(u.includes(flag), `mcp-proxy usage missing ${flag}`);
   }
 });

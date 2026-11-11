@@ -22,9 +22,16 @@ async function fixture(t, metadata = {}) {
   execFileSync('tar', ['-czf', file, '-C', dir, 'package']);
   return { dir, file, bytes: await fs.readFile(file) };
 }
-test('archive receipt binds actual bytes, identity, build, policy and disabled checks', async t => {
+test('archive receipt binds actual bytes, identity, build, policy and completed checks', async t => {
   const { file, bytes } = await fixture(t);
-  const result = await guardExtension('npm:demo@1.0.0', { ...offline, artifact: { archivePath: file, integrity: sri(bytes) } });
+  const transport = require('../src/http-client');
+  const original = transport.requestJson;
+  transport.requestJson = async url => {
+    assert.equal(url, 'https://api.osv.dev/v1/query');
+    return { vulns: [] };
+  };
+  t.after(() => { transport.requestJson = original; });
+  const result = await guardExtension('npm:demo@1.0.0', { ...offline, vulnerabilityCheck: true, artifact: { archivePath: file, integrity: sri(bytes) } });
   assert.equal(result.decision, 'allow');
   assert.equal(result.approval.artifactSha256, crypto.createHash('sha256').update(bytes).digest('hex'));
   assert.equal(result.approval.scannerBuildId, artifact.BUILD_ID);
@@ -33,7 +40,12 @@ test('archive receipt binds actual bytes, identity, build, policy and disabled c
   assert.equal(result.approval.version, '1.0.0');
   assert.equal(result.approval.sourceComplete, true);
   assert.equal(result.approval.checks.source, 'completed');
-  assert.equal(result.approval.checks.vulnerabilities, 'disabled');
+  assert.equal(result.approval.checks.vulnerabilities, 'completed');
+  assert.equal(require('../src/approval-policy').receiptAuthorizes(result.approval), true);
+  const disabled = await guardExtension('npm:demo@1.0.0', { ...offline, artifact: { archivePath: file, integrity: sri(bytes) } });
+  assert.equal(disabled.decision, 'block');
+  assert.equal(disabled.approval.checks.vulnerabilities, 'disabled');
+  assert.equal(require('../src/approval-policy').receiptAuthorizes(disabled.approval), false);
 });
 test('archive rejects changed bytes, mismatched identity and unpinned versions', async t => {
   const { file, bytes } = await fixture(t);
@@ -74,7 +86,7 @@ test('npm lock retains exact artifacts and refuses missing or conflicting identi
   ]) {
     await fs.writeFile(file, JSON.stringify({ lockfileVersion: 3, packages }));
     const result = await auditLockfile(file, { osvResults: [{}], deepAll: true, triageDecisions: false });
-    assert.equal(result.worstDecision, 'review');
+    assert.equal(result.worstDecision, 'block');
     assert.match(result.results[0].deep.error, /artifact identity unavailable or conflicting/);
   }
 });
@@ -134,10 +146,14 @@ test('malformed vulnerability responses cannot count as completed checks', async
   const original = transport.requestJson;
   t.after(() => { transport.requestJson = original; });
   for (const response of [null, [], { vulns: 'unknown' }]) {
-    transport.requestJson = async () => response;
+    let attempts = 0;
+    transport.requestJson = async () => { attempts++; return response; };
     const result = await guardExtension('npm:demo@1.0.0', { githubMetadata: false, githubDiff: false, provenance: false,
       artifact: { archivePath: file, integrity: sri(bytes) } });
-    assert.equal(result.decision, 'review');
+    assert.equal(result.decision, 'block');
+    assert.equal(result.allowed, false);
+    assert.equal(attempts, 1, 'malformed responses are not transient transport failures');
+    assert.equal(require('../src/approval-policy').receiptAuthorizes(result.approval), false);
     assert.equal(result.approval.checks.vulnerabilities, 'failed');
   }
 });

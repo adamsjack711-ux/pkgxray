@@ -21,8 +21,7 @@
 // (auditManifest — pure regex/text analysis, no network) runs only when the
 // manifest actually changes: at the first tools/list, and again after a
 // tools/list_changed notification. Tool-RESULT scanning (the poisoned-output
-// channel) is a bounded doc-typed text scan per call — milliseconds, and can
-// be switched off with --no-scan-results.
+// channel) is a mandatory bounded doc-typed text scan per call — milliseconds.
 //
 // Child environments use the connect-time allowlist. Required credentials must
 // be explicitly selected with --env NAME; the proxy is not an OS sandbox.
@@ -31,9 +30,9 @@
 //   - a call to a tool that is not in the verified manifest is denied;
 //   - a call while the manifest is stale is HELD until re-verification
 //     completes (and denied if the server won't answer the re-list);
-//   - block verdicts deny under every policy; review denies under strict;
+//   - uncertainty and block verdicts deny under every policy;
 //   - after --pin, an unapproved manifest change denies the drifted tools
-//     under strict AND balanced (a proxy cannot "ask"; silent-allow would
+//     under every policy (a proxy cannot "ask"; silent-allow would
 //     defeat the pin) — re-approve with `pkgxray mcp <target> --pin`.
 
 const { spawn } = require("node:child_process");
@@ -101,7 +100,8 @@ class McpGate {
     this.send = options.send;
     this.policy = options.policy || "balanced";
     if (!["strict", "balanced", "permissive"].includes(this.policy)) throw new Error("Invalid MCP runtime policy");
-    this.scanResults = options.scanResults !== false;
+    if (options.scanResults === false) throw new Error("MCP result screening cannot be disabled");
+    this.scanResults = true;
     this.sessionSecrets = options.guardSecrets === true ? new SessionSecrets() : null;
     this.recheck = options.recheck !== false;
     this.pin = options.pin === true;
@@ -137,7 +137,6 @@ class McpGate {
     this.clientToolNames = new Set();
     this.expectedClientCursor = null;
     this.proxyListBytes = 0;
-    this.reviewWarned = new Set();
 
     this.revalidating = false;
     this.proxyListIds = new Set();
@@ -405,6 +404,11 @@ class McpGate {
       }
     }
 
+    const folded = [...status.values()].reduce((verdict, entry) => worstOf(verdict, entry.verdict), serverVerdict);
+    if (VERDICT_RANK[audit.verdict] > VERDICT_RANK[folded]) {
+      serverVerdict = worstOf(serverVerdict, audit.verdict);
+      serverReasons.push("manifest evidence did not establish a safe result");
+    }
     this.stats.audits += 1;
     timingSample(this.stats.auditNs, Number(process.hrtime.bigint() - started));
     return { manifest, audit, status, serverVerdict, serverReasons };
@@ -415,7 +419,6 @@ class McpGate {
   async _finishVerify(tools) {
     const { manifest, audit, status, serverVerdict, serverReasons } = this._auditTools(tools);
     this.toolStatus = status;
-    this.reviewWarned.clear();
     this.serverVerdict = serverVerdict;
     this.serverReasons = serverReasons;
     this.verified = true;
@@ -455,7 +458,7 @@ class McpGate {
           this.log(
             `MANIFEST DRIFT vs pinned approval — added: [${rc.manifestDrift.added.join(", ")}] ` +
               `changed: [${rc.manifestDrift.changed.join(", ")}] removed: [${rc.manifestDrift.removed.join(", ")}]. ` +
-              `Drifted tools are denied under strict/balanced until re-approved with \`pkgxray mcp --pin\`.`
+              `Drifted tools are denied under every policy until the trusted pin is updated with \`pkgxray mcp --pin\`.`
           );
         }
       }
@@ -523,7 +526,7 @@ class McpGate {
 
   // The hot path: pure in-memory verdict fold. No IO of any kind.
   _decision(entry) {
-    if (this.pinHold && this.policy !== "permissive") return { allow: false, reason: this.pinHold };
+    if (this.pinHold) return { allow: false, reason: this.pinHold };
     const toolVerdict = entry ? entry.verdict : "block";
     const effective = worstOf(toolVerdict, this.serverVerdict);
     if (!entry) {
@@ -535,20 +538,17 @@ class McpGate {
     if (effective === "block") {
       return { allow: false, reason: entry.reasons[0] || this.serverReasons[0] || "block verdict" };
     }
-    if (entry.drifted && this.policy !== "permissive") {
+    if (entry.drifted) {
       return {
         allow: false,
         reason:
           "tool changed since the pinned approval — re-approve with `pkgxray mcp <target> --pin`"
       };
     }
-    if (effective === "review" && this.policy === "strict") {
-      return { allow: false, reason: entry.reasons[0] || this.serverReasons[0] || "review verdict" };
+    if (effective === "review") {
+      return { allow: false, reason: `unresolved uncertainty: ${entry.reasons[0] || this.serverReasons[0] || "manifest evidence is incomplete"}` };
     }
-    return {
-      allow: true,
-      warn: effective === "review" ? entry.reasons[0] || this.serverReasons[0] : null
-    };
+    return { allow: true };
   }
 
   _decideAndRoute(message) {
@@ -578,10 +578,6 @@ class McpGate {
         }
       });
       return;
-    }
-    if (decision.warn && !this.reviewWarned.has(name)) {
-      this.reviewWarned.add(name);
-      this.log(`review-verdict tool "${name}" allowed under ${this.policy} — ${decision.warn}`);
     }
     if (this.timing) {
       const ns = this.stats.gateNs[this.stats.gateNs.length - 1];
@@ -615,14 +611,14 @@ class McpGate {
 
   // Poisoned-output channel: a clean-manifest server can still steer the
   // model through injection-shaped text in a tool RESULT. Same doc-typed scan
-  // as the manifest audit, bounded input; strict also withholds review results.
+  // as the manifest audit, bounded input; every policy withholds uncertainty.
   _screenCallResult(name, message, responseKind = "tool") {
     const credentialHold = this.sessionSecrets?.observe(message);
     if (credentialHold) {
       this.stats.resultsBlocked += 1;
       return this._withheldResult(message, `pkgxray credential-flow guard: ${credentialHold}`, responseKind);
     }
-    if (!this.scanResults || (!message.error && !message.result)) return message;
+    if (!message.error && !message.result) return message;
 
     const parts = [];
     let bytes = 0;
@@ -687,16 +683,12 @@ class McpGate {
     if (this.timing) this.log(`result scan "${name}" in ${(scanNs / 1e6).toFixed(1)}ms`);
 
     const worst = findings.reduce((acc, f) => worstOf(acc, severityVerdict(f.severity)), "safe");
-    if ((worst === "block" && this.policy !== "permissive") || (worst === "review" && this.policy === "strict")) {
+    if (worst !== "safe") {
       this.stats.resultsBlocked += 1;
       const first = findings.find((f) => severityVerdict(f.severity) === worst);
       this.log(`BLOCKED result of "${name}" — ${first.category}: ${first.rationale}`);
       return this._withheldResult(message,
-        `pkgxray mcp-proxy blocked the result of "${name}": ${first.category} — ${first.rationale}`, responseKind);
-    }
-    if (worst !== "safe") {
-      const first = findings[0];
-      this.log(`suspicious result from "${name}" (${worst}) — ${first.category}: ${first.rationale}`);
+        `pkgxray mcp-proxy blocked the result of "${name}": ${worst === "review" ? "unresolved uncertainty — " : ""}${first.category} — ${first.rationale}`, responseKind);
     }
     return message;
   }
@@ -872,6 +864,7 @@ function makeLineFeeder({ cap, onLine, onOversize, warn }) {
 // child. Resolves with the child's exit code once the session ends.
 function runMcpProxy(target, options = {}) {
   return new Promise((resolve) => {
+    if (options.scanResults === false) throw new Error("MCP result screening cannot be disabled");
     const logStream = options.logStream || process.stderr;
     const log = (line) => {
       if (logStream.writableLength <= 1024 * 1024 || logStream.writableLength === undefined) logStream.write(`pkgxray-proxy: ${line}\n`);
