@@ -24,8 +24,8 @@ you submit is processed on Cloudflare; do not submit secrets. See the
 For the full local MCP, use the configuration below. The official Registry
 descriptor advertises both the hosted URL and the local npm package.
 
-The next release is prepared as `pkgxray@1.3.0`; the configuration below keeps
-the last verified published version until publication completes.
+The configuration below targets release `pkgxray@1.3.0`; use it after npm
+publication completes.
 
 Use an exact npm version from any MCP-capable agent:
 
@@ -37,7 +37,7 @@ Use an exact npm version from any MCP-capable agent:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.2.1",
+        "pkgxray@1.3.0",
         "pkgxray-mcp"
       ],
       "env": {
@@ -49,7 +49,7 @@ Use an exact npm version from any MCP-capable agent:
 ```
 
 If pkgxray is already installed, `"command": "pkgxray-mcp"` also works. The
-published `pkgxray@1.2.1` package also exposes `pkgxray mcp-server` — the same
+`pkgxray@1.3.0` package also exposes `pkgxray mcp-server` — the same
 stdio server, launched as a subcommand — which is the entry point the MCP
 Registry entry uses.
 
