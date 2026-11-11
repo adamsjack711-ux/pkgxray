@@ -1,0 +1,46 @@
+{
+  "measuredAt": "2026-11-11T14:26:08.564Z",
+  "scannerBuildId": "be36d40917916ba700df5ea2ff124c71a9eaf0bb3152538a60d7108eee7e0b5e",
+  "scope": "Lexical private-field identity prerequisite; no getter clearance.",
+  "regressionCycle": "Previously failing public/private-name collision controls, lexical Symbol identity, independent review, focused/full suite, corpus and real MCP.",
+  "focused": {
+    "total": 50,
+    "passed": 50
+  },
+  "fullSuite": {
+    "total": 1315,
+    "passed": 1310,
+    "skipped": 5,
+    "failed": 0
+  },
+  "lint": "passed including rebuilt browser and website parity",
+  "authoredAutomaticTotals": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "mcpChecks": 7,
+  "liveControls": {
+    "counts": {
+      "allow": 3,
+      "block": 1,
+      "error": 0
+    },
+    "measurementValid": true,
+    "allControlsAllowed": false
+  },
+  "limitations": [
+    "Getter and unresolved linked-list field-state gaps remain; this prerequisite does not reach four live allows.",
+    "Small selected controls are not a production accuracy estimate.",
+    "No target package execution, local MCP activation or release."
+  ]
+}

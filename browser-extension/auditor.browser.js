@@ -6422,6 +6422,9 @@ const acorn = require("./vendor/acorn/acorn");
 // Bounded abstract interpretation. These values describe source; they never
 // execute it. REVIEW means a modeled sensitive value reaches an outbound sink.
 const SECRET = 1, REMOTE = 2, ENV = 4;
+// This key cannot collide with an inspected program binding. Private names
+// resolve to lexical Symbols, never public strings such as "value" or "#value".
+const PRIVATE_NAMES = Symbol("private names");
 const clean = () => ({ bits: 0 });
 const tagged = kind => ({ bits: 0, kind });
 const literal = value => ({ bits: 0, value });
@@ -6966,11 +6969,30 @@ function createFlowAnalysis(files) {
       }
       return false;
     }
+    function memberKey(node, scope) {
+      if (node.property?.type === 'PrivateIdentifier' || node.key?.type === 'PrivateIdentifier') {
+        const name = (node.property || node.key).name;
+        const key = scope.get(PRIVATE_NAMES)?.props?.get(name)?.value;
+        if (typeof key !== 'symbol') throw new Error('unresolved lexical private field');
+        return key;
+      }
+      const key = node.property || node.key;
+      return node.computed ? expr(key, scope).value : key.name ?? key.value;
+    }
     function classValue(node, scope) {
       expr(node.superClass, scope);
       if (node.superClass) gap(); // inheritance and constructor effects need review
       const value = { bits: 0, kind: 'class', props: new Map() };
       const local = new Scope(scope);
+      const names = new Map(scope.get(PRIVATE_NAMES)?.props || []);
+      const ownNames = new Set();
+      for (const member of node.body.body) {
+        if (member.key?.type === 'PrivateIdentifier' && !ownNames.has(member.key.name)) {
+          ownNames.add(member.key.name);
+          names.set(member.key.name, literal(Symbol(member.key.name)));
+        }
+      }
+      local.set(PRIVATE_NAMES, { bits: 0, props: names }, true);
       if (node.id) local.set(node.id.name, value, true);
       local.set('this', value, true);
       for (const member of node.body.body) {
@@ -7001,7 +7023,7 @@ function createFlowAnalysis(files) {
           }
         }
         if (member.type === 'StaticBlock') { statements(member.body, local); continue; }
-        const key = member.computed ? expr(member.key, local).value : member.key.name ?? member.key.value;
+        const key = memberKey(member, local);
         const v = expr(member.value, local);
         value.props.set(key, v);
         value.bits |= v.bits;
@@ -7069,7 +7091,7 @@ function createFlowAnalysis(files) {
           }
           case 'MemberExpression': {
             const object = expr(node.object, scope);
-            const key = node.computed ? expr(node.property, scope).value : node.property.name;
+            const key = memberKey(node, scope);
             return readProperty(object, key);
           }
           case 'ObjectExpression': {
@@ -7099,7 +7121,7 @@ function createFlowAnalysis(files) {
           case 'AssignmentExpression': {
             const v = node.operator === '=' ? expr(node.right, scope) : merge(expr(node.left, scope), expr(node.right, scope));
             if (node.left.type === 'MemberExpression') {
-              const key = node.left.computed ? expr(node.left.property, scope).value : node.left.property.name;
+              const key = memberKey(node.left, scope);
               const obj = node.left.object;
               if (obj.type === 'Identifier' && obj.name === 'module' && key === 'exports' && !scope.get('module')) {
                 if (lexicalFile !== file) gap('foreign module export mutation is not modeled', node);
