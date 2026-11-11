@@ -39,6 +39,24 @@ function verdictRank(verdict) {
     : -1;
 }
 
+// A summary SAFE string cannot clear an explicitly incomplete guard assessment.
+// Older injected evaluators may return only a verdict; when assessment metadata
+// is supplied, its mandatory coverage fields must agree with that verdict.
+function evaluatedVerdict(outcome) {
+  const verdict = verdictRank(outcome?.verdict) >= 0 ? outcome.verdict : "unknown";
+  if (verdict !== "safe" || outcome.assessment == null) return { verdict, error: null };
+  const { checks, authorization } = outcome.assessment;
+  const reasons = [];
+  if (checks?.source !== "completed") reasons.push("source-check-incomplete");
+  if (checks?.vulnerabilities !== "completed") reasons.push("vulnerability-check-incomplete");
+  if (authorization?.behavioralCoverage !== "completed") reasons.push("behavioral-coverage-incomplete");
+  if (!Array.isArray(authorization?.mandatoryHoldReasons) || authorization.mandatoryHoldReasons.length) reasons.push("mandatory-review-hold");
+  if (checks?.provenance === "invalid") reasons.push("invalid-provenance");
+  return reasons.length
+    ? { verdict: "unknown", error: `SAFE verdict conflicts with guard assessment: ${reasons.join(", ")}` }
+    : { verdict, error: null };
+}
+
 // Fold a list of verdicts to the worst (order-independent).
 function worstVerdict(verdicts) {
   let worst = "safe";
@@ -122,7 +140,7 @@ async function versionDriftPass(depList, evaluate, options, eco = { scheme: "npm
       let outcome = null;
       try {
         outcome = await evaluate({ name: dep.name, version: candidate, paths: [] }, { versionDrift: true });
-        verdict = verdictRank(outcome?.verdict) >= 0 ? outcome.verdict : "unknown";
+        ({ verdict, error } = evaluatedVerdict(outcome));
       } catch (err) {
         error = err && err.message ? err.message : String(err);
       }
@@ -207,7 +225,7 @@ async function recheckLockfile(lockfilePath, options = {}) {
     let assessment = null;
     try {
       const outcome = await evaluate(dep, { record });
-      fresh = verdictRank(outcome?.verdict) >= 0 ? outcome.verdict : "unknown";
+      ({ verdict: fresh, error } = evaluatedVerdict(outcome));
       report = outcome ? outcome.report || null : null;
       assessment = outcome ? outcome.assessment || null : null;
     } catch (err) {

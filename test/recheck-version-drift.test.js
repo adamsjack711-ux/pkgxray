@@ -260,3 +260,47 @@ test("invalid evaluator verdict cannot replace the pinned verdict baseline", asy
   assert.equal(result.updated, 0);
   assert.equal(await fs.readFile(lockPath, "utf8"), before);
 });
+
+test("SAFE cannot contradict mandatory assessment coverage for candidates or pinned baselines", async t => {
+  const lockfilePath = await project([["widget", "1.0.0"]], [{ name: "widget", version: "1.0.0", verdict: "safe" }]);
+  t.after(() => fs.rm(path.dirname(lockfilePath), { recursive: true, force: true }));
+  const complete = {
+    checks: { source: "completed", vulnerabilities: "completed", provenance: "absent" },
+    authorization: { behavioralCoverage: "completed", mandatoryHoldReasons: [], explicitOverride: false }
+  };
+  const variants = [
+    { ...complete, checks: { ...complete.checks, source: "partial" } },
+    { ...complete, checks: { ...complete.checks, source: "disabled" } },
+    { ...complete, checks: { ...complete.checks, vulnerabilities: "failed" } },
+    { ...complete, checks: { ...complete.checks, provenance: "invalid" } },
+    { ...complete, authorization: { ...complete.authorization, behavioralCoverage: "partial" } },
+    { ...complete, authorization: { ...complete.authorization, mandatoryHoldReasons: ["flow-analysis-gap"], explicitOverride: true } },
+    {}
+  ];
+  for (const assessment of variants) {
+    const result = await recheckLockfile(lockfilePath, {
+      write: false, failOnAvailableUpdates: true,
+      listVersions: listVersionsFrom({ widget: ["1.0.0", "1.1.0"] }),
+      evaluate: async dep => ({ verdict: "safe", assessment: dep.version === "1.0.0" ? complete : assessment })
+    });
+    assert.equal(result.counts.updateAvailableSafe, 0);
+    assert.equal(result.versionDrift.unknown.length, 1);
+    assert.equal(result.versionDrift.unknown[0].candidates[0].verdict, "unknown");
+    assert.match(result.versionDrift.unknown[0].candidates[0].error, /conflicts with guard assessment/);
+    assert.equal(result.exitCode, 3);
+
+    const lockPath = lockPathForLockfile(lockfilePath);
+    const before = await fs.readFile(lockPath, "utf8");
+    const pinned = await recheckLockfile(lockfilePath, { versionDrift: false, evaluate: async () => ({ verdict: "safe", assessment }) });
+    assert.equal(pinned.buckets.unknown[0].verdict, "unknown");
+    assert.equal(pinned.updated, 0);
+    assert.equal(await fs.readFile(lockPath, "utf8"), before);
+  }
+  const clean = await recheckLockfile(lockfilePath, {
+    write: false, failOnAvailableUpdates: true,
+    listVersions: listVersionsFrom({ widget: ["1.0.0", "1.1.0"] }),
+    evaluate: async () => ({ verdict: "safe", assessment: complete })
+  });
+  assert.equal(clean.counts.updateAvailableSafe, 1);
+  assert.equal(clean.exitCode, 0);
+});

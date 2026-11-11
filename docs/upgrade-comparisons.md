@@ -51,6 +51,11 @@ fails to scan. Mixed SAFE and unknown candidates are reported as incomplete,
 not as an all-clean upgrade. `--fail-on-available-updates` returns REVIEW/exit 3
 for incomplete vetting and BLOCK/exit 2 when any candidate is known blocked.
 Without that option, upgrade vetting remains informational.
+If a SAFE summary contradicts supplied guard assessment metadata (incomplete
+mandatory checks, a behavioral hold, or invalid provenance), recheck reports it
+as unknown instead of a clean candidate or a fresh stored baseline. Legacy
+programmatic evaluators that supply only a verdict remain supported; their
+finding comparison cannot claim complete coverage.
 
 ## Regression calibration
 
