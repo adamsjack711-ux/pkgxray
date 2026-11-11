@@ -12,9 +12,14 @@ function fixture(change = () => {}) {
     async request(method, params) {
       calls.push({ method, params });
       const control = BENIGN_CONTROLS[calls.length - 1];
+      const checks = { source: 'completed', vulnerabilities: 'completed', directDependencies: 'not-requested', provenance: 'not-requested' };
+      const authorization = { behavioralCoverage: 'completed', mandatoryHoldReasons: [], explicitOverride: false };
       const result = { decision: 'allow', allowed: true, resolved: { sha256: control.artifactSha256 },
-        assessment: { engine: { buildId: BUILD_ID }, policySha256: 'a'.repeat(64), checks: { source: 'completed', vulnerabilities: 'completed' } },
-        sourceCoverage: { complete: true }, report: { findings: [] } };
+        assessment: { engine: { buildId: BUILD_ID }, artifact: { sha256: control.artifactSha256 },
+          policySha256: 'a'.repeat(64), decision: 'allow', checks: structuredClone(checks), authorization: structuredClone(authorization) },
+        sourceCoverage: { complete: true }, report: { verdict: 'safe', findings: [] },
+        approval: { schemaVersion: 2, artifactSha256: control.artifactSha256, scannerBuildId: BUILD_ID,
+          policySha256: 'a'.repeat(64), decision: 'allow', sourceComplete: true, checks, authorization } };
       change(result, calls.length);
       return { result: { structuredContent: result } };
     },
@@ -88,4 +93,53 @@ test('initialization failure accounts for every selected control and closes the 
   assert.equal(closed, true);
   assert.deepEqual(result.counts, { allow: 0, block: 0, error: 4 });
   assert.equal(result.measurementValid, false);
+});
+
+test('actual authorization and receipt failures cannot become all controls allowed', async () => {
+  for (const change of [
+    r => { r.assessment.authorization.behavioralCoverage = 'partial'; r.assessment.authorization.mandatoryHoldReasons = ['unsupported-behavior']; },
+    r => { r.assessment.checks.directDependencies = 'failed'; },
+    r => { r.assessment.checks.provenance = 'invalid'; },
+    r => { delete r.assessment.authorization; },
+    r => { r.approval.authorization.behavioralCoverage = 'partial'; },
+    r => { r.approval.authorization.mandatoryHoldReasons = ['flow-analysis-gap']; },
+    r => { r.approval.authorization.explicitOverride = 'yes'; },
+    r => { delete r.approval; },
+    r => { r.approval.schemaVersion = 1; },
+    r => { r.approval.checks.vulnerabilities = 'failed'; },
+    r => { r.approval.checks.directDependencies = 'partial'; },
+    r => { r.approval.checks.provenance = 'invalid'; },
+    r => { r.approval.sourceComplete = false; },
+    r => { r.approval.decision = 'block'; },
+    r => { r.assessment.decision = 'block'; },
+    r => { r.approval.artifactSha256 = 'b'.repeat(64); },
+    r => { r.assessment.artifact.sha256 = 'b'.repeat(64); },
+    r => { r.approval.scannerBuildId = 'b'.repeat(64); },
+    r => { r.approval.policySha256 = 'b'.repeat(64); },
+    r => { r.approval.authorization.explicitOverride = true; },
+    r => { r.report.verdict = 'block'; },
+    r => { delete r.report; }
+  ]) {
+    const f = fixture((r, n) => { if (n === 1) change(r); });
+    const result = await runLiveControls({ createClient: f.createClient });
+    assert.equal(result.allControlsAllowed, false, change.toString());
+    assert.equal(result.measurementValid, false, change.toString());
+    assert.deepEqual(result.counts, { allow: 3, block: 0, error: 1 });
+    assert.equal(result.cases.length, 4); assert.equal(f.closed, 1);
+  }
+});
+
+test('valid explicit overrides remain visible and do not bypass mandatory checks', async () => {
+  const f = fixture(r => { r.approval.authorization.explicitOverride = true; r.assessment.authorization.explicitOverride = true; });
+  const result = await runLiveControls({ createClient: f.createClient });
+  assert.equal(result.measurementValid, true);
+  assert.equal(result.allControlsAllowed, true);
+  assert.ok(result.cases.every(c => c.authorization.behavioralCoverage === 'completed' && c.explicitOverride === true));
+  const held = fixture(r => {
+    r.approval.authorization.explicitOverride = true; r.assessment.authorization.explicitOverride = true;
+    r.approval.authorization.mandatoryHoldReasons = ['unsupported-behavior'];
+    r.assessment.authorization.mandatoryHoldReasons = ['unsupported-behavior'];
+  });
+  const stopped = await runLiveControls({ createClient: held.createClient });
+  assert.equal(stopped.allControlsAllowed, false); assert.equal(stopped.counts.error, 4);
 });

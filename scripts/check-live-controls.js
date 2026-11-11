@@ -3,6 +3,8 @@
 const { start } = require('../test/helpers/mcp-load-client');
 const { BENIGN_CONTROLS } = require('./validate-external-corpus');
 const { BUILD_ID } = require('../src/artifact');
+const { receiptAuthorizes } = require('../src/approval-policy');
+const { isDeepStrictEqual } = require('node:util');
 
 async function runLiveControls({ createClient } = {}) {
   const injected = Boolean(createClient);
@@ -32,8 +34,23 @@ async function runLiveControls({ createClient } = {}) {
       if (typeof policy !== 'string' || !/^[a-f0-9]{64}$/.test(policy)) { entry.error = 'invalid-policy-identity'; continue; }
       policies.add(policy);
       const checks = result.assessment?.checks;
-      if (result.allowed && (checks?.source !== 'completed' || checks?.vulnerabilities !== 'completed' || result.sourceCoverage?.complete !== true)) {
-        entry.error = 'incomplete-allow'; continue;
+      if (result.allowed) {
+        const receipt = result.approval;
+        if (!receipt || receipt.artifactSha256 !== control.artifactSha256 ||
+            result.assessment?.artifact?.sha256 !== control.artifactSha256 ||
+            receipt.scannerBuildId !== BUILD_ID || receipt.policySha256 !== policy) {
+          entry.error = 'approval-identity-mismatch'; continue;
+        }
+        // The canonical receipt predicate includes behavioral coverage,
+        // dependency/provenance failures and mandatory holds. Independently
+        // reject a receipt that contradicts the public assessment or verdict.
+        if (!receiptAuthorizes(receipt) || result.assessment.decision !== 'allow' ||
+            result.report?.verdict !== 'safe' || !Array.isArray(result.report.findings) ||
+            result.sourceCoverage?.complete !== receipt.sourceComplete ||
+            !isDeepStrictEqual(checks, receipt.checks) ||
+            !isDeepStrictEqual(result.assessment.authorization, receipt.authorization)) {
+          entry.error = 'invalid-allow-authorization'; continue;
+        }
       }
       entry.status = result.decision;
       entry.artifactSha256 = result.resolved.sha256;
@@ -41,6 +58,8 @@ async function runLiveControls({ createClient } = {}) {
       entry.policySha256 = policy;
       entry.checks = checks;
       entry.sourceComplete = result.sourceCoverage?.complete === true;
+      entry.authorization = result.assessment.authorization || null;
+      entry.explicitOverride = result.assessment.authorization?.explicitOverride ?? null;
       const findings = Array.isArray(result.report?.findings) ? result.report.findings : [];
       entry.categories = [...new Set(findings.filter(f => f && ['medium', 'high'].includes(f.severity)).map(f => f.category))];
       entry.informationalCategories = [...new Set(findings.filter(f => f?.severity === 'info').map(f => f.category))];
