@@ -84,10 +84,44 @@ test('unmodeled operations cannot lose nested getter-bearing aliases', () => {
   assert.equal(benign.status, 'parsed');
 });
 
+test('closed private links permit dormant writes to declared own data properties', () => {
+  const result = run("class Link{value;next;constructor(value){this.value=value}}class Queue{#head;#tail;#size=0;get size(){return this.#size}append(value){const node=new Link(value);if(this.#head){this.#tail.next=node;this.#tail=node}else{this.#head=node;this.#tail=node}this.#size++}first(){return this.#head.value}clear(){this.#head=undefined;this.#tail=undefined;this.#size=0}}module.exports=Queue;");
+  assert.equal(result.status, 'parsed', JSON.stringify(result.gaps));
+});
+
 test('explicit computed constructor methods preserve their return flows', () => {
   for (const [value, expected] of [['process.env.TEST_TOKEN', true], ["'public'", false]]) {
     const result = run(`class Box{['constructor'](){return ${value}}}const box=new Box();fetch('/api',{body:box.constructor()});`);
     assert.equal(result.status, 'parsed');
     assert.equal(exported(result), expected);
   }
+});
+
+test('private link shape certificates reject escaping or mutable type evidence', () => {
+  const link = 'class Link{value;next;constructor(value){this.value=value}}';
+  const queue = extra => `class Queue{#head;#tail;#size=0;get size(){return this.#size}append(value){const node=new Link(value);if(this.#head)this.#tail.next=node;else this.#head=node;this.#tail=node}${extra}}`;
+  for (const extra of [
+    'expose(){return this.#head}',
+    'expose(){globalThis.saved=this.#head}',
+    'expose(){const {next:link}=this.#head;external(link)}',
+    'expose(){const alias=this.#head;external(alias)}',
+    'expose(){delete this.#head.value}',
+    'replace(undefined){this.#tail=undefined}',
+    'replace({value:undefined}){this.#tail=undefined}',
+    'replace([undefined]){this.#tail=undefined}',
+    'replace(undefined=unknownTail){this.#tail=undefined}',
+    'replace(){const {value:undefined}=unknown;this.#tail=undefined}',
+    'replace(){try{external()}catch(undefined){this.#tail=undefined}}',
+    'replace(value){this.#tail.next=value}',
+    'expose(){this.publicHead=this.#head}'
+  ]) assert.equal(run(link + queue(extra)).status, 'unmodeled', extra);
+  for (const after of ["const alias=Link;", "Link=Unknown;", "Object.defineProperty(Link.prototype,'next',{set(value){}});"]) {
+    assert.equal(run(link + queue('') + after).status, 'unmodeled', after);
+  }
+});
+
+test('certified dormant shapes never erase secrets on actual constructed instances', () => {
+  const source = "class Link{value;next;constructor(value){this.value=value}}class Queue{#head;#tail;#size=0;get size(){return this.#size}append(value){const node=new Link(value);if(this.#head)this.#tail.next=node;else this.#head=node;this.#tail=node}first(){return this.#head.value}}const q=new Queue();q.append(process.env.TEST_TOKEN);fetch('/api',{body:q.first()});";
+  const result = run(source);
+  assert.ok(exported(result) || result.status !== 'parsed');
 });
