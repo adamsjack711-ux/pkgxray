@@ -1,6 +1,6 @@
 # pkgxray × hookshot — guard installs before they run
 
-These setup commands target release 1.3.0; use them after npm publication completes.
+These setup commands target unpublished 2.0.0 candidate; use them after npm publication completes.
 
 A [hookshot](https://github.com/CorridorSecurity/hookshot) hook binary that runs
 [pkgxray](https://github.com/adamsjack711-ux/pkgxray) supply-chain triage on
@@ -136,7 +136,7 @@ cd examples/pkgxray-guard
 go build -o pkgxray-guard .
 
 # 3. Install an exact pkgxray version for the long-lived hook process.
-npm install --global pkgxray@1.3.0
+npm install --global pkgxray@2.0.0
 pkgxray --version
 
 # 4. From the Hookshot repository root, build its installer and merge hooks.

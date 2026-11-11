@@ -29,7 +29,7 @@ test('behavioral gaps stop both guard promotion and evidence CLI approval', asyn
   const cli = spawnSync(process.execPath,[path.resolve(__dirname,'../bin/audit.js'),'--file',evidencePath,
     '--policy','allow-review','--format','json'],{cwd:root,encoding:'utf8',timeout:10000});
   assert.equal(cli.status,2,cli.stderr);
-  assert.equal(JSON.parse(cli.stdout).verdict,'review');
+  assert.equal(JSON.parse(cli.stdout).verdict,'block');
   const report = auditEvidence(evidence);
   const adjusted = cfg.applyConfig(report,{config:{...config,mute:[{check:'flow-analysis-gap',scope:'*'}]}});
   assert.ok(adjusted.findings.some(f => f.category === 'flow-analysis-gap' && !f.muted));

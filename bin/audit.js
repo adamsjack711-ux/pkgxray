@@ -471,7 +471,7 @@ async function main() {
         process.stdout.write(
           `${JSON.stringify(
             {
-              schemaVersion: 1,
+              schemaVersion: 2,
               decision: verdict,
               outcome: "UNSAFE",
               allowed: false,
@@ -859,7 +859,7 @@ function renderGuardMarkdown(result) {
   if (result.resolution?.reasonCodes?.length) {
     lines.push(`Blocked: ${result.resolution.reasonCodes.join(", ")}. Unverified evidence is not a finding of maliciousness.`, "");
   }
-  if (result.resolution?.retry.attempted) lines.push("Retried the vulnerability check once using the same resolved package identity.", "");
+  if (result.resolution?.retry?.attempted) lines.push("Retried the vulnerability check once using the same resolved package identity.", "");
   if (result.assessment) {
     const checks = result.assessment.checks;
     lines.push(`Checks: source ${checks.source}; vulnerabilities ${checks.vulnerabilities}; direct dependencies ${checks.directDependencies}.`,

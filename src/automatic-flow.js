@@ -58,6 +58,9 @@ function toBinaryResult(value) {
         ? "Blocked because required checks could not complete. This is not a confirmed malware finding."
         : "Blocked because the evidence remains inconclusive. This is not a confirmed malware finding."
     };
+    // Replace scanner-authored legacy instructions; original finding evidence
+    // remains untouched and cannot become a request for operator approval.
+    if (typeof result.summary === "string") result.summary = result.resolution.explanation;
   }
   return result;
 }

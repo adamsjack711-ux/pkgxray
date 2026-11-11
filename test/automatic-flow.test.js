@@ -44,3 +44,11 @@ test("supplied evidence cannot be rewritten or treated as an approval", () => {
   assert.notEqual(result.sourceFiles, sourceFiles);
   assert.equal(result.verdict, "safe");
 });
+
+test("public schema migration removes old instructions while preserving manifest bytes", () => {
+  const manifest = { schemaVersion: 1, review: "literal metadata", decision: "review" };
+  const report = toBinaryResult({ schemaVersion: 1, verdict: "review", summary: "Manual review required", manifest });
+  assert.equal(report.schemaVersion, 2);
+  assert.doesNotMatch(report.summary, /Manual review|Proceed|Decline/);
+  assert.deepEqual(report.manifest, manifest);
+});

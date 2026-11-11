@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — 2.0 automatic background gate candidate
+
+- Remove manual Proceed/Decline prompts, decision storage, and approval endpoints. Existing local choice files are ignored.
+- Emit schema 2 binary allow/block decisions and exit 0/2 from public CLI and MCP boundaries; retain findings and explicit incomplete-check reasons.
+- Retry transient advisory and supplied-evidence worker failures once against the same identity/input within existing deadlines. Disabled checks, malformed evidence and heuristic uncertainty stop without approval.
+- Require runtime result scanning and prevent legacy force, permissive review settings, stale decisions and old receipts from authorizing unresolved evidence.
+- Keep cold first-use scans and shared immutable scan caches. Daily re-audits, proactive cache warming and automatic alternative selection remain future work.
+
+This candidate is not published. The prepared 1.3 changes below remain a separate held PR.
+
 ## 1.3.0 (2026-11-10) — Compose, evidence review, and runtime guards
 
 - Add advisory, evidence-bound review plans to guard CLI and MCP output, with mandatory blockers and bounded retry guidance; plans never approve installation.

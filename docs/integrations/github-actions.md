@@ -1,6 +1,6 @@
 # GitHub Actions
 
-Explicit 1.3.0 commands below target the upcoming release; use them after npm publication completes.
+Explicit 2.0.0 commands below target the unpublished candidate; use them after npm publication completes.
 
 The lowest-maintenance integration is to run a version-pinned pkgxray release
 directly with `npx`. It needs no secret and no write permission. A reusable
@@ -64,12 +64,12 @@ Dependabot pull requests. Do not replace them with mutable `@main`, `@v4`, or
 
 | What to scan | Command |
 |---|---|
-| npm lockfile | `npx --yes pkgxray@1.3.0 audit package-lock.json` |
-| npm shrinkwrap | `npx --yes pkgxray@1.3.0 audit npm-shrinkwrap.json` |
-| pnpm lockfile | `npx --yes pkgxray@1.3.0 audit pnpm-lock.yaml` |
-| Yarn lockfile | `npx --yes pkgxray@1.3.0 audit yarn.lock` |
-| package manifest | `npx --yes pkgxray@1.3.0 audit package.json` |
-| one exact npm package | `npx --yes pkgxray@1.3.0 guard npm:express@4.21.0` |
+| npm lockfile | `npx --yes pkgxray@2.0.0 audit package-lock.json` |
+| npm shrinkwrap | `npx --yes pkgxray@2.0.0 audit npm-shrinkwrap.json` |
+| pnpm lockfile | `npx --yes pkgxray@2.0.0 audit pnpm-lock.yaml` |
+| Yarn lockfile | `npx --yes pkgxray@2.0.0 audit yarn.lock` |
+| package manifest | `npx --yes pkgxray@2.0.0 audit package.json` |
+| one exact npm package | `npx --yes pkgxray@2.0.0 guard npm:express@4.21.0` |
 
 Prefer a lockfile when one exists: it contains resolved versions. A
 `package.json` range cannot prove which version is installed, so incomplete
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
-      - run: npx --yes pkgxray@1.3.0 recheck package-lock.json --format json
+      - run: npx --yes pkgxray@2.0.0 recheck package-lock.json --format json
 ```
 
 ## Reusable workflow
