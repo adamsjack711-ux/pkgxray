@@ -274,7 +274,9 @@ function parseArgs(argv) {
     } else if (arg === "--policy") {
       options.policy = argv[++i];
     } else if (arg === "--force") {
-      throw new Error("--force has been removed; blocked scans cannot authorize a connection.");
+      // This replaces an existing promotion destination after authorization;
+      // it never overrides a scan decision. MCP's connection override is gone.
+      options.force = true;
     } else if (arg === "--no-source-scan") {
       options.sourceScan = false;
     } else if (arg === "--typosquat") {
@@ -415,10 +417,19 @@ async function main() {
   // vocabulary from package approval (safe-only/allow-review). Do not validate
   // a runtime mode as a package policy or overwrite it with the package default.
   const runtimeProxy = options.command === "mcpProxy";
-  const { config, warnings } = cfg.loadConfig({
+  const policyLoadOptions = {
     cwd: options.command === "install" ? require("node:path").resolve(options.project) : process.cwd(),
     overrides: options.policy && !runtimeProxy ? { policy: options.policy } : {}
-  });
+  };
+  const loadedPolicy = cfg.loadConfig(policyLoadOptions);
+  const { config, warnings } = loadedPolicy;
+  const fingerprint = require("../src/artifact").fingerprint;
+  const initialPolicy = fingerprint(loadedPolicy);
+  const validatePolicy = () => {
+    if (fingerprint(cfg.loadConfig(policyLoadOptions)) !== initialPolicy) {
+      throw new Error("Policy changed during scan; no action authorized");
+    }
+  };
   for (const warning of warnings) {
     process.stderr.write(`pkgxray: ${warning}\n`);
   }
@@ -447,15 +458,16 @@ async function main() {
       throw new Error("guard requires an extension reference");
     }
     if (options.artifact && (!options.artifact.archivePath || !options.artifact.integrity)) throw new Error("--archive and --integrity must be supplied together");
-    // Keep the staging tree so the user can inspect / promote it from the
-    // printed Quarantine path; non-interactive callers reap it by default.
+    // Promotion uses the held staging tree before cleanup. Automatic callers
+    // receive evidence without leaving unrequested quarantine copies behind.
     let result;
     try {
       result = await guardExtension(options.reference, {
         ...options,
         config,
         scanErrorPolicy: config.scanErrorPolicy,
-        keepStaging: !options.artifact
+        validatePolicy,
+        keepStaging: false
       });
     } catch (error) {
       // A guard that crashes / times out must not exit to an unclear state.
