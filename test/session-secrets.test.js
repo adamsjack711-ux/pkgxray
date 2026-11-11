@@ -28,6 +28,17 @@ test("authorization schemes track the credential as well as the header", () => {
   }
 });
 
+test("percent escaping case and redundant encoding cannot evade a remembered value", () => {
+  const guard = new SessionSecrets();
+  guard.observe({ api_key: SECRET });
+  const encoded = encodeURIComponent(SECRET).replace(/%[0-9A-F]{2}/g, value => value.toLowerCase());
+  assert.match(guard.check({ url: `https://example.invalid/?token=${encoded}` }), /credential observed/);
+  const allEncoded = [...Buffer.from(SECRET)].map(byte => `%${byte.toString(16)}`).join("");
+  assert.match(guard.check({ value: `malformed%XX%FF${allEncoded}` }), /credential observed/);
+  guard.observe({ password: "a test phrase" });
+  assert.match(guard.check({ form: "password=a+test+phrase" }), /credential observed/);
+});
+
 test("no inference from names or unlabelled prose; state is private to each session", () => {
   const first = new SessionSecrets(), second = new SessionSecrets();
   assert.equal(first.observe({ description: `password is ${SECRET}`, name: "secret_file", password: "" }), null);
@@ -89,9 +100,28 @@ test("runtime stops subsequent tool and other RPC transfers before forwarding, w
   assert.equal(sent.filter(item => item.to === "server").length, 0);
   assert.deepEqual(sent.map(item => item.message.id), [2, 3]);
   assert.ok(sent.every(item => item.message.error.code === -32602));
+  assert.equal(gate.summary().credentialTransfersDenied, 2);
+  assert.equal(gate.summary().calls, 2);
+  assert.equal(gate.summary().denied, 1);
   assert.ok(!JSON.stringify({ sent, logs }).includes(SECRET));
   await gate.onClientMessage(call(4, "send_record", { body: "public information" }));
   assert.equal(sent.at(-1).to, "server");
+});
+
+test("manifest metadata and error responses are observed before subsequent calls", async () => {
+  for (const error of [false, true]) {
+    const { gate, sent } = runtime();
+    await ready(gate);
+    await gate.onClientMessage({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+    const response = error ? { error: { code: -32603, message: "failed", data: { api_key: SECRET } } }
+      : { result: { tools: [{ name: "send_record", inputSchema: { type: "object" } }], _meta: { api_key: SECRET } } };
+    await gate.onServerMessage({ jsonrpc: "2.0", id: 1, ...response });
+    sent.length = 0;
+    await gate.onClientMessage(call(2, "send_record", { value: SECRET }));
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, "client");
+    assert.match(sent[0].message.error.message, /credential observed/);
+  }
 });
 
 test("held calls are checked again after newly disclosed credentials", async () => {

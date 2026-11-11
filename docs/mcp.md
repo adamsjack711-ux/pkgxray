@@ -215,7 +215,8 @@ string values in explicitly credential-labelled fields in correlated responses:
 `privateKey`, and `authorization` (case, hyphens and underscores are ignored).
 Nested structured results and valid JSON text are inspected. Bearer/Basic header
 payloads are also retained. A later outbound frame containing a remembered value,
-its URL-encoded representation, or its Base64/Base64url representation is denied
+one URL-encoding layer (including mixed-case escapes), or its standard
+Base64/Base64url representation is denied
 before forwarding. Held tool calls are rechecked after manifest verification.
 The guard applies even when injection-result scanning is disabled or the runtime
 policy is permissive; it never grants an approval. A rejected request gets a

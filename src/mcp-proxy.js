@@ -152,6 +152,7 @@ class McpGate {
       held: 0,
       resultsScanned: 0,
       resultsBlocked: 0,
+      credentialTransfersDenied: 0,
       audits: 0,
       gateNs: [],
       auditNs: []
@@ -166,7 +167,7 @@ class McpGate {
   }
 
   async onClientMessage(message) {
-    if (this._denyCredentialTransfer(message)) return;
+    if (this._denyCredentialTransfer(message, true)) return;
     const requests = (Array.isArray(message) ? message : [message]).filter(m => m && typeof m.method === "string");
     if (requests.some(m => m.method.length > 256 || (typeof m.params?.name === "string" && m.params.name.length > 256) || (m.id !== undefined &&
         !(typeof m.id === "number" && Number.isFinite(m.id)) && !(typeof m.id === "string" && m.id.length <= 128))) ||
@@ -468,6 +469,12 @@ class McpGate {
   // would deny calls to (so the model never even reads their descriptions —
   // the description IS the injection surface), forward the rest.
   async _onClientListResponse(message) {
+    const credentialHold = this.sessionSecrets?.observe(message);
+    if (credentialHold) {
+      this.stale = true;
+      this.stats.resultsBlocked += 1;
+      return this._withheldResult(message, `pkgxray credential-flow guard: ${credentialHold}`, "rpc");
+    }
     const tools =
       message.result && Array.isArray(message.result.tools) ? message.result.tools : null;
     if (!tools) {
@@ -586,7 +593,7 @@ class McpGate {
 
   // ---- result screening -------------------------------------------------------
 
-  _denyCredentialTransfer(message) {
+  _denyCredentialTransfer(message, countNewCalls = false) {
     const reason = this.sessionSecrets?.check(message);
     if (!reason) return false;
     const frames = Array.isArray(message) ? message : [message];
@@ -597,7 +604,10 @@ class McpGate {
     }
     const errors = frames.map(frame => ({ jsonrpc: "2.0", id: frame.id,
       error: { code: -32602, message: `pkgxray credential-flow guard: ${reason}` } }));
-    this.stats.denied += frames.length;
+    const toolCalls = frames.filter(frame => frame.method === "tools/call").length;
+    this.stats.denied += toolCalls;
+    if (countNewCalls) this.stats.calls += toolCalls;
+    this.stats.credentialTransfersDenied += frames.length;
     this.log(`DENIED credential transfer — ${reason}`);
     this.send("client", Array.isArray(message) ? errors : errors[0]);
     return true;
@@ -802,6 +812,7 @@ class McpGate {
       held: this.stats.held,
       resultsScanned: this.stats.resultsScanned,
       resultsBlocked: this.stats.resultsBlocked,
+      credentialTransfersDenied: this.stats.credentialTransfersDenied,
       audits: this.stats.audits,
       gateMicros: {
         p50: quantile(gate, 0.5) / 1000,

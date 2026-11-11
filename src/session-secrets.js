@@ -11,6 +11,14 @@ const MAX_VALUE_BYTES = 4096;
 const LIMIT_REASON = "credential-flow inspection limit reached; restart the proxy with smaller results";
 const MATCH_REASON = "call contains a credential observed in an earlier response; remove the credential or use a separately reviewed workflow";
 
+function decodePercent(text) {
+  // Decode each run independently so a malformed escape elsewhere cannot
+  // disable inspection. Buffer handles invalid UTF-8 with replacement while
+  // preserving valid adjacent bytes. Only one URL-encoding layer is modeled.
+  return text.replace(/(?:%[0-9a-f]{2})+/gi, encoded =>
+    Buffer.from(encoded.match(/[0-9a-f]{2}/gi).map(byte => parseInt(byte, 16))).toString("utf8"));
+}
+
 class SessionSecrets {
   #values = new Set();
   #credentials = new Set();
@@ -84,8 +92,10 @@ class SessionSecrets {
     let matched = false;
     try {
       this.#walk(request, text => {
+        const decoded = decodePercent(text);
+        const candidates = [text, decoded, decoded.replace(/\+/g, " ")];
         for (const value of this.#values) {
-          if (text.includes(value)) { matched = true; break; }
+          if (candidates.some(candidate => candidate.includes(value))) { matched = true; break; }
         }
       });
       return matched ? MATCH_REASON : null;
