@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export LC_ALL=C
 
 # The hosted runner's mirror+file list can stall on its Azure mirror. Use
 # direct official repositories for this installation only, retaining Ubuntu
@@ -38,5 +39,27 @@ apt_options=(
   -o Acquire::AllowInsecureRepositories=false
   -o APT::Get::AllowUnauthenticated=false
 )
-timeout --signal=TERM --kill-after=10s 120s apt-get "${apt_options[@]}" update
+if timeout --signal=TERM --kill-after=10s 120s apt-get "${apt_options[@]}" update 2>&1 | tee "$apt_workspace/update.log"; then
+  :
+else
+  update_status=$?
+  # Retry only the observed DNS failure. Authentication, policy denials and
+  # other failures must remain failures, including mixed DNS/auth failures.
+  unexpected_errors=$(grep '^E:' "$apt_workspace/update.log" | grep -Ev "^E: Failed to fetch https://(archive|security)\\.ubuntu\\.com/[^ ]+ +Temporary failure resolving '(archive|security)\\.ubuntu\\.com'$|^E: Some index files failed to download\\. They have been ignored, or old ones used instead\\.$" || true)
+  if [[ $update_status -ne 100 || -n $unexpected_errors ]] ||
+      ! grep -q '^E: Failed to fetch .*Temporary failure resolving' "$apt_workspace/update.log" ||
+      grep -Eiq 'denied|forbidden|unauthorized|policy' "$apt_workspace/update.log"; then
+    exit "$update_status"
+  fi
+  # Ubuntu's python-apt-common mirror list identifies the kernel.org mirror
+  # operator. Its current HTTPS endpoint is documented by mirrors.kernel.org.
+  # Ubuntu signatures remain the authority; no mirror signing key is added.
+  echo 'Primary Ubuntu DNS lookup failed; trying the kernel.org Ubuntu mirror.'
+  sed -i -e 's|https://archive.ubuntu.com/ubuntu|https://mirrors.edge.kernel.org/ubuntu|g' \
+    -e 's|https://security.ubuntu.com/ubuntu|https://mirrors.edge.kernel.org/ubuntu|g' "$apt_workspace/sources.list"
+  rm -rf -- "$apt_workspace/lists"
+  mkdir "$apt_workspace/lists"
+  chmod 755 "$apt_workspace/lists"
+  timeout --signal=TERM --kill-after=10s 120s apt-get "${apt_options[@]}" update
+fi
 DEBIAN_FRONTEND=noninteractive timeout --signal=TERM --kill-after=10s 120s apt-get "${apt_options[@]}" install -y bubblewrap iproute2
