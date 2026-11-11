@@ -217,8 +217,10 @@ function createFlowAnalysis(files) {
       const key = `${node.start}:${kind}`;
       if (!seen.has(key) && result.hints.length < 8) { seen.add(key); result.hints.push({ index: node.start, kind }); }
     };
-    function load(raw, origin = lexicalFile) {
-      if (typeof raw !== 'string') return clean();
+    function load(raw, origin = lexicalFile, specifierBits = 0) {
+      if (typeof raw !== 'string') {
+        gap('unresolved module specifier'); return { bits: specifierBits };
+      }
       if (!raw.startsWith('.')) {
         const name = raw.replace(/^node:/, '');
         return tagged(name === 'http' ? 'https' : name);
@@ -411,8 +413,8 @@ function createFlowAnalysis(files) {
       }
       if (inspectingGetterState && (value.bits & (SECRET | ENV | REMOTE))) gap('unresolved dormant cross-method getter state', node);
       if (['object-values', 'object-entries'].includes(callee.kind) && args.some(hasGetter)) gap('getter-bearing object enumeration is not modeled', node);
-      if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null);
-      if (callee.kind === 'builtin-loader') return load(args[0]?.value, null);
+      if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null, args[0]?.bits || 0);
+      if (callee.kind === 'builtin-loader') return load(args[0]?.value, null, args[0]?.bits || 0);
       if (callee.kind === 'require-factory') return tagged('require');
       if (callee.kind === 'reflect-get') return readProperty(args[0] || clean(), args[1]?.value, args.length > 2 ? args[2] : undefined);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
