@@ -43,8 +43,8 @@
       "notObserved": []
     },
     {
-      "name": "new-install-hook",
-      "label": "risk-change",
+      "name": "new-literal-install-hook",
+      "label": "benign",
       "before": {
         "packageName": "upgrade-fixture",
         "sourceFiles": {
@@ -60,9 +60,7 @@
           "setup.js": "console.log('rebuilding native module');"
         }
       },
-      "added": [
-        "install-hook"
-      ],
+      "added": [],
       "notObserved": []
     },
     {
@@ -156,8 +154,8 @@
       "notObserved": []
     },
     {
-      "name": "install-hook-removed",
-      "label": "risk-change",
+      "name": "literal-install-hook-removed",
+      "label": "benign",
       "before": {
         "packageName": "upgrade-fixture",
         "sourceFiles": {
@@ -174,9 +172,7 @@
         }
       },
       "added": [],
-      "notObserved": [
-        "install-hook"
-      ]
+      "notObserved": []
     },
     {
       "name": "comment-lookalike",
@@ -219,6 +215,52 @@
         "remote-code-load"
       ],
       "notObserved": []
+    },
+    {
+      "name": "new-unproven-install-hook",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "module.exports = n => n + 1;",
+          "setup.js": "console.log('rebuilding for', process.platform);"
+        }
+      },
+      "added": [
+        "install-hook"
+      ],
+      "notObserved": []
+    },
+    {
+      "name": "unproven-install-hook-removed",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "module.exports = n => n + 1;",
+          "setup.js": "console.log('rebuilding for', process.platform);"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "added": [],
+      "notObserved": [
+        "install-hook"
+      ]
     }
   ]
 }

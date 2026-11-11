@@ -27,7 +27,7 @@ test("blocks environment exfiltration patterns", () => {
   assert.ok(report.findings.some((finding) => finding.category === "network-exfil-or-loader"));
 });
 
-test("sends install hooks to manual review without high evidence", () => {
+test("retains raw uncertainty for install scripts outside the literal proof", () => {
   const report = auditEvidence({
     sourceFiles: {
       "package.json": JSON.stringify({
@@ -36,7 +36,7 @@ test("sends install hooks to manual review without high evidence", () => {
           postinstall: "node setup.js"
         }
       }),
-      "setup.js": "console.log('setup')"
+      "setup.js": "console.log('setup', process.platform)"
     }
   });
 

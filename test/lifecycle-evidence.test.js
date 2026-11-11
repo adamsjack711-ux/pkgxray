@@ -18,6 +18,75 @@ function evidence(source = message, command = 'node ./install.js', extra = {}) {
 const hook = report => report.findings.find(f => f.category === 'install-hook');
 const prove = raw => proveLiteralLifecycle('node ./install.js', 'package.json', normalizeEvidence(raw));
 
+test('both relative Node command spellings inspect the same exact script', () => {
+  for (const directory of ['', 'workspace/']) {
+    for (const script of ['install.js', 'scripts/install.cjs', 'scripts/install.mjs']) {
+      const proofs = [];
+      for (const prefix of ['./', '']) {
+        const command = `node ${prefix}${script}`;
+        const input = { sourceFiles: {
+          [`${directory}package.json`]: JSON.stringify({ name: 'demo', scripts: { postinstall: command } }),
+          [directory + script]: message
+        } };
+        const report = auditEvidence(input);
+        assert.equal(hook(report).severity, 'info', `${directory}: ${command}`);
+        // The execution graph separately reports unresolved nested roots.
+        // Command spelling must not suppress that existing coverage finding.
+        assert.equal(report.verdict, directory ? 'review' : 'safe', `${directory}: ${command}`);
+        if (directory) assert.ok(report.findings.some(f => f.category === 'unresolved-runtime-execution'));
+        const proof = hook(report).lifecycleProof;
+        assert.equal(proof.command, command, 'retain the original command as evidence');
+        assert.deepEqual(proof.script, { file: directory + script, source: message });
+        proofs.push(proof);
+      }
+      const { command: firstCommand, ...first } = proofs[0];
+      const { command: secondCommand, ...second } = proofs[1];
+      assert.notEqual(firstCommand, secondCommand);
+      assert.deepEqual(first, second, 'only the recorded spelling differs');
+    }
+  }
+});
+
+test('bare relative commands retain all evidence and interpreter safeguards', () => {
+  for (const command of ['node ./install.js', 'node install.js']) {
+    const missing = evidence(message, command); delete missing.sourceFiles['install.js'];
+    const shim = evidence(message, command);
+    shim.sourceFiles['dependency/package.json'] = '{"name":"node","bin":"shim.js"}';
+    const duplicate = evidence(message, command);
+    duplicate.sourceFiles = [
+      { path: 'package.json', content: duplicate.sourceFiles['package.json'] },
+      { path: 'install.js', content: message }, { path: 'install.js', content: "require('./hidden.js');" }
+    ];
+    for (const input of [missing, shim, duplicate,
+      evidence("console.log('ok'); require('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');", command),
+      evidence("if (process.env.CI) console.log('ok'); else require('./hidden.js');", command),
+      evidence(message, command, { sourceCoverage: { complete: false, truncatedFiles: 1 } })]) {
+      assert.equal(proveLiteralLifecycle(command, 'package.json', normalizeEvidence(input)), null);
+      assert.equal(hook(auditEvidence(input)).severity, 'medium');
+      assert.notEqual(auditEvidence(input).verdict, 'safe');
+    }
+  }
+});
+
+test('bare command parsing rejects options, shell syntax and ambiguous paths', () => {
+  for (const command of ['node -install.js', 'node --eval.js', 'node -r hidden.js install.js',
+    'node --import hidden.js install.js', 'node install.js extra', 'node install.js && node hidden.js',
+    'node install.js;node hidden.js', 'node install.js|sh', 'node install.js\nnode hidden.js',
+    'node install.js\n', 'node install.js\r\n', 'node install.js ', 'node  install.js',
+    'node scripts/../install.js', 'node node_modules/install.js', 'node /install.js',
+    'node ../install.js', 'node scripts//install.js', 'node scripts\\install.js',
+    'node "install.js"', 'node $SCRIPT.js', 'node $(echo install.js)']) {
+    assert.equal(proveLiteralLifecycle(command, 'package.json', normalizeEvidence(evidence(message, command))), null, command);
+    assert.equal(hook(auditEvidence(evidence(message, command))).severity, 'medium', command);
+  }
+  for (const script of ['-install.js', '--eval.js']) {
+    const input = normalizeEvidence(evidence());
+    input.sourceFiles.push({ path: script, content: message });
+    assert.ok(proveLiteralLifecycle(`node ./${script}`, 'package.json', input), 'explicit file path retains existing behavior');
+    assert.equal(proveLiteralLifecycle(`node ${script}`, 'package.json', input), null, 'an existing file cannot turn an option into a script');
+  }
+});
+
 test('complete literal logging and fixed CI checks carry replayable exact-source proof', () => {
   for (const source of [message, ';', "process.exit(0);", "#!/usr/bin/env node\nconsole.log('ok', 'done');",
     "if (process.env.CI || process.env.SKIP_DOWNLOAD) { console.log('skip'); process.exit(0); }",
@@ -151,23 +220,25 @@ test('source collection rejects linked lifecycle files instead of trusting their
 test('actual guard clears only a fully collected proof plus completed vulnerability checks', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-lifecycle-guard-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const input = evidence();
-  for (const [file, source] of Object.entries(input.sourceFiles)) await fs.writeFile(path.join(root, file), source);
   const transport = require('../src/http-client');
   const requestJson = transport.requestJson;
   transport.requestJson = async url => { assert.equal(url, 'https://api.osv.dev/v1/query'); return { vulns: [] }; };
   t.after(() => { transport.requestJson = requestJson; });
   const options = { githubMetadata: false, githubDiff: false, provenance: false };
-  const cleared = await guardExtension(root, options);
-  assert.equal(cleared.decision, 'allow');
-  assert.equal(cleared.assessment.checks.source, 'completed');
-  assert.equal(cleared.assessment.checks.vulnerabilities, 'completed');
-  const disabled = await guardExtension(root, { ...options, vulnerabilityCheck: false });
-  assert.equal(disabled.decision, 'block');
-  await fs.appendFile(path.join(root, 'install.js'), "\nrequire('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');");
-  const hostile = await guardExtension(root, options);
-  assert.equal(hostile.decision, 'block');
-  assert.equal(hook(hostile.report).severity, 'medium');
+  for (const command of ['node ./install.js', 'node install.js']) {
+    const input = evidence(message, command);
+    for (const [file, source] of Object.entries(input.sourceFiles)) await fs.writeFile(path.join(root, file), source);
+    const cleared = await guardExtension(root, options);
+    assert.equal(cleared.decision, 'allow', command);
+    assert.equal(cleared.assessment.checks.source, 'completed');
+    assert.equal(cleared.assessment.checks.vulnerabilities, 'completed');
+    const disabled = await guardExtension(root, { ...options, vulnerabilityCheck: false });
+    assert.equal(disabled.decision, 'block', command);
+    await fs.appendFile(path.join(root, 'install.js'), "\nrequire('fs').readFileSync(process.env.HOME+'/.ssh/id_rsa');");
+    const hostile = await guardExtension(root, options);
+    assert.equal(hostile.decision, 'block', command);
+    assert.equal(hook(hostile.report).severity, 'medium');
+  }
 });
 
 

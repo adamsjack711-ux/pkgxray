@@ -7942,9 +7942,13 @@ function interpreterUnshadowed(files) {
 
 function proveLiteralLifecycle(command, manifestPath, evidence) {
   if (typeof command !== "string" || command.length > 520 ||
-      !/^node \.\/[A-Za-z0-9_/-][A-Za-z0-9_./-]*\.(?:js|cjs|mjs)$/.test(command) ||
       !canonicalPath(manifestPath) || manifestPath.split("/").at(-1) !== "package.json") return null;
-  const relative = command.slice("node ./".length);
+  const match = /^node (\.\/)?([A-Za-z0-9_/-][A-Za-z0-9_./-]*\.(?:js|cjs|mjs))$/.exec(command);
+  // Both forms resolve the supplied file relative to the manifest. A bare
+  // leading dash is a Node option; a trailing newline is shell syntax, even
+  // though JavaScript's $ anchor also matches before a final line terminator.
+  if (!match || match[0] !== command || (!match[1] && match[2].startsWith("-"))) return null;
+  const relative = match[2];
   if (!canonicalPath(relative)) return null;
   const directory = manifestPath.slice(0, -"package.json".length);
   const scriptPath = directory + relative;

@@ -1,0 +1,50 @@
+{
+  "measuredAt": "2026-11-11T05:32:26.512Z",
+  "scannerBuildId": "96666b9adc46d56332a34f5650283a0504b1fe87be5e566e2019e3372bcbcedc",
+  "baselineCommit": "ed4175b3971bdfc92a5ab65ee46bf68d64589b1c",
+  "change": "Accept bare relative Node lifecycle script paths under the existing bounded proof; reject leading options and shell syntax.",
+  "regressionBeforeFix": "New command-equivalence test failed: node install.js returned review rather than safe.",
+  "tests": {
+    "focused": 144,
+    "full": {
+      "total": 1229,
+      "passed": 1224,
+      "skipped": 5,
+      "failed": 0
+    }
+  },
+  "corpusEvidenceSha256": "a8752d7c40dd8b4ffdb3e99f37e75442867015811ba477fb6167ad91fb683223",
+  "automaticFlow": {
+    "benign": {
+      "total": 48,
+      "safe": 28,
+      "block": 20,
+      "internallyInconclusive": 20
+    },
+    "malicious": {
+      "total": 36,
+      "safe": 0,
+      "block": 36,
+      "internallyInconclusive": 0
+    }
+  },
+  "upgradeCalibration": {
+    "passed": 12,
+    "total": 12,
+    "missedAddedSignals": 0,
+    "unexpectedAddedSignals": 0
+  },
+  "mcpSmoke": {
+    "transport": "real stdio",
+    "checks": 7,
+    "fixtureExecution": false,
+    "realNetwork": false
+  },
+  "limitations": [
+    "Authored fixtures; not a production error-rate estimate.",
+    "Main 84-case corpus inputs are unchanged; no additional stop reduction on this corpus.",
+    "Upgrade corpus retains the two literal-message inputs as benign and adds two unproven-hook counterparts.",
+    "Nested-manifest execution-coverage uncertainty remains unchanged.",
+    "Remote CI is tracked on PR #110 separately from this local validation record."
+  ]
+}
