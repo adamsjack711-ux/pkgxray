@@ -23,6 +23,14 @@ Every selected name remains in the manifest. An acquisition failure retains any 
 
 Use the checked-in manifest for scans. Its `latest-at-acquisition` label records how the frozen version was selected; it is not an instruction to resolve latest again. Record the SHA256 of the exact manifest bytes alongside scanner build and policy identities in every measurement. Keep transport errors, acquisition errors, incomplete checks, valid blocks, and allows distinct.
 
+Run the fixed broader cohort through the real stdio MCP guard:
+
+```sh
+node scripts/check-broad-controls.js --live
+```
+
+The runner accepts no alternative manifest or tool-policy flags. It exits nonzero for an invalid or incomplete measurement; valid blocks are reported without failing the measurement. Direct dependency and provenance scans are not requested, and their actual check states remain visible. `rawVerdict` records what the public MCP surface exposes, which can describe uncertainty as `inconclusive`. Per-request wall time includes registry/OSV network and MCP processing, excludes identity acquisition and session initialization, and is not a performance benchmark.
+
 To reproduce the acquisition procedure as a **new dated cohort**, run:
 
 ```sh
