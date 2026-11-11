@@ -1252,20 +1252,18 @@ function inspectMetadataObject(label, metadata, findings) {
 }
 
 function findPackageJson(files) {
-  for (const file of files) {
-    if (file.path.endsWith("package.json")) {
-      try {
-        return { path: file.path, json: JSON.parse(file.content) };
-      } catch (error) {
-        return {
-          path: file.path,
-          json: null,
-          parseError: error
-        };
-      }
-    }
+  const manifestPath = file => String(file.path).replace(/\\/g, "/").replace(/^\.\//, "");
+  // Artifact source order must not let a dependency or filename lookalike
+  // replace the root manifest. A malformed root remains authoritative evidence
+  // of a metadata gap; do not fall back to a valid nested manifest in that case.
+  const file = files.find(file => manifestPath(file) === "package.json") ||
+    files.find(file => manifestPath(file).endsWith("/package.json"));
+  if (!file) return null;
+  try {
+    return { path: file.path, json: JSON.parse(file.content) };
+  } catch (error) {
+    return { path: file.path, json: null, parseError: error };
   }
-  return null;
 }
 
 function inspectPackageJson(path, json, findings, evidence) {
