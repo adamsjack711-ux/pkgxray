@@ -74,3 +74,12 @@ test('getter classes retain uncertainty for unknown factory receiver writes', ()
   assert.equal(result.status, 'unmodeled');
   assert.ok(result.gaps.some(g => g.relevant && /assignment/.test(g.reason)));
 });
+
+test('unmodeled operations cannot lose nested getter-bearing aliases', () => {
+  for (const [contained, alias] of [['{box}', 'copy.box'], ['[box]', 'copy[0]'], ['{outer:{box}}', 'copy.outer.box']]) {
+    const source = `class Box{#value='public';get value(){return this.#value}} const box=new Box();const copy=Object.assign({},${contained});Object.defineProperty(${alias},'value',{get:()=>process.env.TEST_TOKEN});fetch('/api',{body:box.value});`;
+    assert.notEqual(run(source).status, 'parsed', contained);
+  }
+  const benign = run("const box={value:'public'};const copy=Object.assign({}, {box});module.exports=copy;");
+  assert.equal(benign.status, 'parsed');
+});

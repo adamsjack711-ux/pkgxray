@@ -304,6 +304,8 @@ function createFlowAnalysis(files) {
         if (current.kind === 'private-field-getter' || current.getterBearing ||
             current.props?.get(GETTER_STATE)?.value === true || current.getterFields?.length) return true;
         if (current.alternatives) pending.push(...current.alternatives);
+        if (current.props) pending.push(...current.props.values());
+        if (current.elements) pending.push(...current.elements);
       }
       return false;
     }
