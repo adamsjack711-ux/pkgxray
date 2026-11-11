@@ -6634,8 +6634,10 @@ function createFlowAnalysis(files) {
       const key = `${node.start}:${kind}`;
       if (!seen.has(key) && result.hints.length < 8) { seen.add(key); result.hints.push({ index: node.start, kind }); }
     };
-    function load(raw, origin = lexicalFile) {
-      if (typeof raw !== 'string') return clean();
+    function load(raw, origin = lexicalFile, specifierBits = 0) {
+      if (typeof raw !== 'string') {
+        gap('unresolved module specifier'); return { bits: specifierBits };
+      }
       if (!raw.startsWith('.')) {
         const name = raw.replace(/^node:/, '');
         return tagged(name === 'http' ? 'https' : name);
@@ -6828,8 +6830,8 @@ function createFlowAnalysis(files) {
       }
       if (inspectingGetterState && (value.bits & (SECRET | ENV | REMOTE))) gap('unresolved dormant cross-method getter state', node);
       if (['object-values', 'object-entries'].includes(callee.kind) && args.some(hasGetter)) gap('getter-bearing object enumeration is not modeled', node);
-      if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null);
-      if (callee.kind === 'builtin-loader') return load(args[0]?.value, null);
+      if (callee.kind === 'require') return load(args[0]?.value, callee.sourceFile ?? null, args[0]?.bits || 0);
+      if (callee.kind === 'builtin-loader') return load(args[0]?.value, null, args[0]?.bits || 0);
       if (callee.kind === 'require-factory') return tagged('require');
       if (callee.kind === 'reflect-get') return readProperty(args[0] || clean(), args[1]?.value, args.length > 2 ? args[2] : undefined);
       if (['reflect-apply', 'reflect-construct'].includes(callee.kind)) {
@@ -7809,7 +7811,7 @@ const acorn = require('./vendor/acorn/acorn');
 // process.cwd() is deliberately unknown, not assumed to be the package root.
 const ROOT = '/<artifact>/';
 const UNKNOWN = Object.freeze({});
-const MODULES = new Set(['child_process', 'path', 'process']);
+const MODULES = new Set(['child_process', 'path', 'process', 'vm']);
 const EXTENSIONS = ['', '.js', '.cjs', '.mjs', '.json', '/index.js', '/index.cjs', '/index.mjs'];
 const value = (literal, artifact = false) => ({ literal, artifact });
 const tag = kind => ({ kind });
@@ -7846,22 +7848,121 @@ function analyzeExecutionFile(file, source) {
   }
   let ast;
   try { ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, allowHashBang: true }); }
-  catch { result.status = 'unsupported'; return result; }
+  catch {
+    // JSON data can be a package export or a required file. Its strings never
+    // create executable imports. Do not apply this exception to a budget stop.
+    try { JSON.parse(source); return result; } catch { /* not JSON data */ }
+    result.status = 'unsupported'; diagnostic(null, 'unsupported runtime syntax'); return result;
+  }
   const dirname = ROOT + (file.includes('/') ? file.slice(0, file.lastIndexOf('/') + 1) : '');
   let work = 0, depth = 0;
   const features = { stringTables: 0, rotations: 0, computedAccesses: 0, dynamicLoads: 0, flattenedSwitches: 0 };
+  // Syntax values are immutable after construction (writes never mutate their
+  // props/items). Cache capability summaries so joins do not repeatedly walk
+  // large inert containers and consume the existing graph work budget.
+  const evaluatorCache = new WeakMap();
+  function hasEvaluator(input) {
+    if (!input) return false;
+    if (evaluatorCache.has(input)) return evaluatorCache.get(input);
+    if (!input.props && !input.items) return ['dynamic-code', 'dynamic-code-bind', 'global-factory'].includes(input.kind);
+    const pending = [input], seen = new Set();
+    while (pending.length) {
+      if (++work > 200000) throw new Error('execution graph work/depth limit');
+      const v = pending.pop();
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      if (['dynamic-code', 'dynamic-code-bind', 'global-factory'].includes(v.kind)) { evaluatorCache.set(input, true); return true; }
+      if (v.props) pending.push(...v.props.values());
+      if (v.items) pending.push(...v.items);
+    }
+    evaluatorCache.set(input, false);
+    return false;
+  }
+  // A deliberately small syntax proof for literal development wrappers.
+  // No recursive interpretation, calls, imports, member reads, coercion, or
+  // parameter source is accepted. Everything outside this grammar keeps a gap.
+  function inertLiteral(node, kind) {
+    if (node?.type !== 'Literal' || typeof node.value !== 'string' || node.value.length > 4096) return null;
+    let parsed;
+    try { parsed = acorn.parse(node.value, { ecmaVersion: 'latest', allowReturnOutsideFunction: true }); }
+    catch { return null; }
+    if (kind === 'Function') return parsed.body.length === 1 && parsed.body[0].type === 'ReturnStatement' &&
+      parsed.body[0].argument?.type === 'ThisExpression' ? tag('global-factory') : null;
+    if (kind === 'vm-arithmetic') {
+      if (parsed.body.length !== 1 || parsed.body[0].type !== 'ExpressionStatement') return null;
+      const pending = [parsed.body[0].expression];
+      let nodes = 0;
+      while (pending.length) {
+        if (++work > 200000) throw new Error('execution graph work/depth limit');
+        if (++nodes > 64) return null;
+        const expression = pending.pop();
+        if (expression.type === 'Literal' && typeof expression.value === 'number' && Number.isFinite(expression.value)) continue;
+        if (expression.type === 'UnaryExpression' && ['+', '-'].includes(expression.operator)) pending.push(expression.argument);
+        else if (expression.type === 'BinaryExpression' && ['+', '-', '*', '/', '%', '**'].includes(expression.operator)) pending.push(expression.left, expression.right);
+        else return null;
+      }
+      return UNKNOWN;
+    }
+    if (kind !== 'eval' || parsed.body.length > 32) return null;
+    const locals = new Set();
+    const primitive = n => n?.type === 'Literal' && (n.value === null || ['string', 'number', 'boolean'].includes(typeof n.value)) && !n.regex;
+    const scalar = n => primitive(n) || n?.type === 'Identifier' && locals.has(n.name);
+    for (const statement of parsed.body) {
+      if (++work > 200000) throw new Error('execution graph work/depth limit');
+      if (statement.type === 'EmptyStatement') continue;
+      if (statement.type === 'VariableDeclaration') {
+        for (const declaration of statement.declarations) {
+          if (declaration.id.type !== 'Identifier' || !primitive(declaration.init)) return null;
+          locals.add(declaration.id.name);
+        }
+        continue;
+      }
+      const expression = statement.type === 'ExpressionStatement' && statement.expression;
+      if (primitive(expression)) continue;
+      const lhs = expression?.left;
+      if (expression?.type !== 'AssignmentExpression' || expression.operator !== '=' ||
+          lhs.type !== 'MemberExpression' || lhs.computed || lhs.object.type !== 'Identifier' ||
+          lhs.object.name !== 'module' || lhs.property.name !== 'exports' || !scalar(expression.right)) return null;
+    }
+    return UNKNOWN;
+  }
   function key(node) { return node?.type === 'Identifier' ? node.name : node?.type === 'Literal' ? node.value : undefined; }
   function bind(node, v, scope) {
     if (!node) return;
     if (node.type === 'Identifier') scope.set(node.name, v, true);
-    else if (node.type === 'AssignmentPattern') { bind(node.left, UNKNOWN, scope); walk(node.right, scope); }
+    else if (node.type === 'AssignmentPattern') {
+      const fallback = walk(node.right, scope);
+      bind(node.left, hasEvaluator(fallback) ? fallback : UNKNOWN, scope);
+    }
     else if (node.type === 'ObjectPattern') for (const p of node.properties) {
+      if (p.type === 'RestElement' && hasEvaluator(v)) diagnostic(p, 'dynamic code execution alias escapes runtime graph');
       bind(p.value || p.argument, p.type === 'RestElement' ? UNKNOWN : property(v, p.computed ? walk(p.key, scope).literal : key(p.key)), scope);
     }
-    else if (node.type === 'ArrayPattern') node.elements.forEach((p, i) => bind(p, v.items?.[i] || UNKNOWN, scope));
+    else if (node.type === 'ArrayPattern') {
+      if (node.elements.some(p => p?.type === 'RestElement') && hasEvaluator(v)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+      node.elements.forEach((p, i) => bind(p, v.items?.[i] || UNKNOWN, scope));
+    }
     else if (node.type === 'RestElement') bind(node.argument, UNKNOWN, scope);
   }
   function property(v, k) {
+    // An unresolved computed global property can name an evaluator. Retain
+    // that possibility rather than treating an unknown function as inert.
+    if (v.kind === 'global' && (k === undefined || ['eval', 'Function'].includes(k))) return tag('dynamic-code');
+    if (['function', 'dynamic-code', 'global-factory'].includes(v.kind) && k === 'constructor') return tag('dynamic-code');
+    if (k === 'constructor') {
+      if (v.props?.has(k)) return v.props.get(k);
+      // Plain values inherit their type constructor; its constructor is
+      // Function. An unresolved receiver may already be a function (for
+      // example [].filter), so retain evaluator capability conservatively.
+      return v.props || v.items || Object.hasOwn(v, 'literal') ? tag('function') : tag('dynamic-code');
+    }
+    if (v.kind === 'vm' && ['Script', 'SourceTextModule', 'compileFunction', 'runInContext', 'runInNewContext', 'runInThisContext'].includes(k)) {
+      return { kind: 'dynamic-code', evaluator: ['runInContext', 'runInNewContext', 'runInThisContext'].includes(k) ? 'vm-arithmetic' : null };
+    }
+    // call/apply shift the code argument, so they must not inherit a direct
+    // evaluator's literal-source exception.
+    if (['dynamic-code', 'global-factory'].includes(v.kind) && ['call', 'apply'].includes(k)) return tag(v.kind);
+    if (['dynamic-code', 'global-factory'].includes(v.kind) && k === 'bind') return tag('dynamic-code-bind');
     if (v.kind === 'child_process' && ['spawn', 'spawnSync', 'execFile', 'execFileSync', 'fork'].includes(k)) return { kind: 'subprocess', method: k };
     if (v.kind === 'path' && ['join', 'resolve'].includes(k)) return { kind: 'path-call', method: k };
     if (v.kind === 'path' && k === 'posix') return v;
@@ -7877,7 +7978,11 @@ function analyzeExecutionFile(file, source) {
     for (; dest; dest = dest.parent, a = a.parent, b = b.parent) {
       for (const name of new Set([...a.bindings.keys(), ...b.bindings.keys()])) {
         const x = a.get(name) || UNKNOWN, y = b.get(name) || UNKNOWN;
-        dest.bindings.set(name, x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN);
+        if (x === y) { dest.bindings.set(name, x); continue; }
+        const evaluator = hasEvaluator(x) || hasEvaluator(y);
+        if (evaluator) diagnostic(null, 'dynamic code execution alias escapes runtime graph');
+        dest.bindings.set(name, evaluator ? tag('dynamic-code') :
+          x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN);
       }
     }
   }
@@ -7885,7 +7990,7 @@ function analyzeExecutionFile(file, source) {
     // Lexical declarations shadow globals even before initialization.
     for (const n of nodes) {
       if (n.type === 'VariableDeclaration') for (const d of n.declarations) bind(d.id, UNKNOWN, scope);
-      if (['FunctionDeclaration', 'ClassDeclaration'].includes(n.type) && n.id) scope.set(n.id.name, UNKNOWN, true);
+      if (['FunctionDeclaration', 'ClassDeclaration'].includes(n.type) && n.id) scope.set(n.id.name, tag('function'), true);
       if (n.type === 'ImportDeclaration') for (const s of n.specifiers) scope.set(s.local.name, UNKNOWN, true);
     }
     for (const n of nodes) walk(n, scope, loops);
@@ -7899,11 +8004,14 @@ function analyzeExecutionFile(file, source) {
     if (!fork && list?.length === 1 && ['--version', '-v', '--help', '-h'].includes(list[0]?.literal)) return UNKNOWN;
     let target = fork ? args[0] : null;
     if (!fork && list) {
-      // Inline eval is handled by the existing detector; do not call its text
-      // a filename. Unknown flags/arguments remain an unresolved edge.
+      // Inline eval is executable text, not a filename. Its nested runtime
+      // imports are not modeled; retain an explicit coverage gap.
       for (const arg of list) {
         if (target) break;
-        if (isString(arg) && ['-e', '--eval', '-p', '--print'].includes(arg.literal)) return UNKNOWN;
+        if (isString(arg) && ['-e', '--eval', '-p', '--print'].includes(arg.literal)) {
+          diagnostic(node, 'dynamic code execution in inline Node source is not modeled in runtime graph');
+          return UNKNOWN;
+        }
         if (!target && isString(arg) && /^--(?:no-warnings|enable-source-maps)$/.test(arg.literal)) continue;
         if (!target) target = isString(arg) && !arg.literal.startsWith('-') ? arg : UNKNOWN;
       }
@@ -7931,15 +8039,29 @@ function analyzeExecutionFile(file, source) {
     try {
       switch (node.type) {
         case 'Literal': return value(node.value);
-        case 'Identifier': return scope.get(node.name) || ({ require: tag('require'), process: tag('process'), __dirname: value(dirname, true), __filename: value(ROOT + file, true) }[node.name]) || UNKNOWN;
+        case 'Identifier': return scope.get(node.name) || ({ require: tag('require'), process: tag('process'),
+          eval: tag('dynamic-code'), Function: tag('dynamic-code'), globalThis: tag('global'), global: tag('global'), window: tag('global'),
+          __dirname: value(dirname, true), __filename: value(ROOT + file, true) }[node.name]) || UNKNOWN;
         case 'Program': return sequence(node.body, scope, loops);
         case 'BlockStatement': return sequence(node.body, new Scope(scope), loops);
+        case 'SequenceExpression': {
+          let last = UNKNOWN;
+          for (const expression of node.expressions) last = walk(expression, scope, loops);
+          return last;
+        }
+        case 'ReturnStatement': {
+          const returned = walk(node.argument, scope, loops);
+          if (hasEvaluator(returned)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          return returned;
+        }
         case 'VariableDeclaration': for (const d of node.declarations) bind(d.id, walk(d.init, scope, loops), scope); return UNKNOWN;
         case 'FunctionDeclaration': case 'FunctionExpression': case 'ArrowFunctionExpression': {
           const local = new Scope(scope.clone());
-          if (node.id) local.set(node.id.name, UNKNOWN, true);
+          if (node.id) local.set(node.id.name, tag('function'), true);
           for (const p of node.params) bind(p, UNKNOWN, local);
-          walk(node.body, local, 0); return UNKNOWN;
+          const returned = walk(node.body, local, 0);
+          if (node.type === 'ArrowFunctionExpression' && node.expression && hasEvaluator(returned)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          return tag('function');
         }
         case 'ImportDeclaration': {
           const raw = node.source.value, mod = moduleValue(raw);
@@ -7961,16 +8083,31 @@ function analyzeExecutionFile(file, source) {
           return node.operator === '+' && isString(a) && isString(b) ? value(a.literal + b.literal, a.artifact) : UNKNOWN;
         }
         case 'LogicalExpression': case 'ConditionalExpression': {
-          walk(node.test || node.left, scope, loops);
+          const left = walk(node.test || node.left, scope, loops);
           const a = scope.clone(), b = scope.clone();
-          const x = node.consequent ? walk(node.consequent, a, loops) : UNKNOWN;
+          const x = node.consequent ? walk(node.consequent, a, loops) : left;
           const y = walk(node.alternate || node.right, b, loops);
-          joinScopes(scope, a, b); return x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN;
+          joinScopes(scope, a, b);
+          // Evaluator functions are truthy. Reading their name through an AND
+          // expression returns the right operand, not the capability itself.
+          if (node.type === 'LogicalExpression' && ['dynamic-code', 'dynamic-code-bind', 'global-factory'].includes(left.kind)) {
+            return node.operator === '&&' ? y : left;
+          }
+          if (hasEvaluator(x) || hasEvaluator(y)) {
+            diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+            return tag('dynamic-code');
+          }
+          return x === y || (Object.hasOwn(x, 'literal') && x.literal === y.literal && x.artifact === y.artifact) ? x : UNKNOWN;
         }
         case 'IfStatement': {
           walk(node.test, scope, loops);
           const a = scope.clone(), b = scope.clone();
           walk(node.consequent, a, loops); walk(node.alternate, b, loops); joinScopes(scope, a, b); return UNKNOWN;
+        }
+        case 'SpreadElement': {
+          const spread = walk(node.argument, scope, loops);
+          if (hasEvaluator(spread)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          return UNKNOWN;
         }
         case 'ArrayExpression': {
           if (node.elements.length >= 8 && node.elements.every(n => n?.type === 'Literal' && typeof n.value === 'string')) features.stringTables++;
@@ -7992,8 +8129,11 @@ function analyzeExecutionFile(file, source) {
         }
         case 'AssignmentExpression': {
           const v = walk(node.right, scope, loops);
-          if (node.left.type === 'Identifier') scope.set(node.left.name, node.operator === '=' ? v : UNKNOWN);
-          else walk(node.left, scope, loops);
+          if (node.left.type === 'Identifier') scope.set(node.left.name, node.operator === '=' || hasEvaluator(v) ? v : UNKNOWN);
+          else {
+            if (hasEvaluator(v)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+            walk(node.left, scope, loops);
+          }
           return v;
         }
         case 'CallExpression': case 'NewExpression': {
@@ -8003,10 +8143,31 @@ function analyzeExecutionFile(file, source) {
               inner.callee.type === 'MemberExpression' && key(inner.callee.property) === 'shift' &&
               c.object.type === 'Identifier' && inner.callee.object.type === 'Identifier' && c.object.name === inner.callee.object.name) features.rotations++;
           const fn = walk(c, scope, loops), args = node.arguments.map(n => walk(n, scope, loops));
-          if (fn.kind === 'require') {
-            if (!isString(args[0])) features.dynamicLoads++;
+          if (args.some(hasEvaluator)) diagnostic(node, 'dynamic code execution alias escapes runtime graph');
+          // Literal source passed to an evaluator is not ordinary example
+          // text. Its imports depend on evaluation scope, which this bounded
+          // graph does not model. Keep a coverage gap instead of silently
+          // losing the nested executable source when ignoring string literals.
+          const evaluatorSyntax = c.type === 'Identifier' && ['eval', 'Function'].includes(c.name);
+          if (fn.kind === 'global-factory') return tag('global');
+          if (fn.kind === 'dynamic-code' || fn.kind === 'dynamic-code-bind' || evaluatorSyntax) {
+            const inert = evaluatorSyntax && fn.kind === 'dynamic-code' && node.arguments.length === 1
+              ? inertLiteral(node.arguments[0], c.name)
+              : fn.evaluator === 'vm-arithmetic' ? inertLiteral(node.arguments[0], fn.evaluator) : null;
+            if (inert) return inert;
+            diagnostic(node, 'dynamic code execution is not modeled in runtime graph');
+            return fn.kind === 'dynamic-code-bind' ? tag('dynamic-code') : UNKNOWN;
+          }
+          // Preserve literal require-shaped calls even when receiver/binding
+          // inference is ambiguous (for example a branch reassigns require).
+          // This remains conservative for locally defined require methods;
+          // unlike a text search it cannot match examples inside literals.
+          const requireSyntax = (c.type === 'Identifier' && c.name === 'require') ||
+            (c.type === 'MemberExpression' && !c.computed && key(c.property) === 'require');
+          if (fn.kind === 'require' || requireSyntax) {
+            if (!isString(args[0])) { features.dynamicLoads++; diagnostic(node, 'computed module specifier'); }
             if (args[0]?.literal?.startsWith?.('.')) result.imports.push(args[0].literal);
-            return moduleValue(args[0]?.literal);
+            if (fn.kind === 'require') return moduleValue(args[0]?.literal);
           }
           if (fn.kind === 'path-call' && args.length && args.every(isString)) {
             const parts = args.map(v => v.literal);
@@ -8022,7 +8183,7 @@ function analyzeExecutionFile(file, source) {
         case 'ImportExpression': {
           const v = walk(node.source, scope, loops);
           if (isString(v) && v.literal.startsWith('.')) result.imports.push(v.literal);
-          else if (!isString(v)) features.dynamicLoads++;
+          else if (!isString(v)) { features.dynamicLoads++; diagnostic(node, 'computed module specifier'); }
           return UNKNOWN;
         }
         default: {
@@ -8033,7 +8194,7 @@ function analyzeExecutionFile(file, source) {
             if (Array.isArray(child)) { for (const n of child) if (n?.type) walk(n, scope, loops + Number(looping)); }
             else if (child?.type) walk(child, scope, loops + Number(looping));
           }
-          return UNKNOWN;
+          return ['ClassDeclaration', 'ClassExpression'].includes(node.type) ? tag('function') : UNKNOWN;
         }
       }
     } finally { depth--; }

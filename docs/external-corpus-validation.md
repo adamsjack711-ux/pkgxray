@@ -170,3 +170,19 @@ experiment. That guard count must not be presented as 32 confirmed detections or
 observation, with the other 29 still uncertain. These results prioritize better
 behavioral evidence and independent malicious-family coverage alongside the
 benign-flow gaps in the broader live cohort.
+
+### Follow-up detector cycle
+
+`benchmark/broad-malicious-cycle2-2026-11-11.json` reruns the unchanged frozen
+32-case manifest on build
+`55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40`.
+All raw verdicts are unchanged: **3 BLOCK, 29 REVIEW, zero SAFE and zero errors**.
+Source coverage is now incomplete for seven cases instead of four; the added
+cases are `@rspack/cli`, `@rspack/core` and `qwant-extension`. Policy and archive
+identities are unchanged, and the same disabled-CVE limitation applies.
+
+The improvement established by this cycle is the reduced false-SAFE regression
+in [the bounded evidence investigation](broad-malware-evidence.md), not a higher
+positive-detection count in the external corpus. The complete validation summary
+is `benchmark/broad-cycle2-validation-2026-11-11.json`; prior measurements remain
+unchanged historical records.

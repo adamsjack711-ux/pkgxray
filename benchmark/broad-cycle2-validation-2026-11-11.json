@@ -1,0 +1,199 @@
+{
+  "measuredAt": "2026-11-11T16:04:48.959Z",
+  "scannerBuildId": "55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40",
+  "baselineScannerBuildId": "6ef8d992d9e1790b67edbe16cf8fa73384a04e24343ce7067509e52b238c5a7a",
+  "scope": "Bounded syntax-based runtime collection and explicit uncertainty for unresolved module identities; readonly arguments experiment excluded.",
+  "validation": {
+    "fullSuite": {
+      "total": 1432,
+      "passed": 1427,
+      "failed": 0,
+      "skipped": 5
+    },
+    "lint": "passed including regenerated browser/website parity",
+    "initialFullRun": {
+      "total": 1430,
+      "passed": 1424,
+      "failed": 1,
+      "skipped": 5,
+      "failure": "Frozen adversarial baseline identified three benign numeric VM arithmetic cases newly held.",
+      "resolution": "Bounded numeric-only syntax proof restored all three; no baseline, labels, budgets or mandatory-check policy changed."
+    },
+    "calibration": {
+      "cohort": "all",
+      "total": 84,
+      "malicious": 36,
+      "benign": 48,
+      "correct": 74,
+      "falseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 36,
+      "blockRecallFloor": 23,
+      "recallFloorMet": true,
+      "blockPrecision": 1,
+      "blockRecall": 1,
+      "blockF1": 1,
+      "matrix": {
+        "safe": {
+          "safe": 27,
+          "review": 9,
+          "block": 0
+        },
+        "review": {
+          "safe": 1,
+          "review": 11,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 0,
+          "block": 36
+        }
+      }
+    },
+    "authoredAutomatic": {
+      "benign": {
+        "total": 48,
+        "safe": 28,
+        "block": 20,
+        "internallyInconclusive": 20
+      },
+      "malicious": {
+        "total": 36,
+        "safe": 0,
+        "block": 36,
+        "internallyInconclusive": 0
+      }
+    },
+    "adversarial": {
+      "MISS": 0,
+      "FALSE_BLOCK": 0,
+      "REVIEW": 69,
+      "BLOCK": 33,
+      "CLEAR": 78
+    },
+    "holdout": {
+      "MISS": 0,
+      "FALSE_BLOCK": 0,
+      "REVIEW": 10,
+      "BLOCK": 0,
+      "CLEAR": 10
+    },
+    "upgrades": {
+      "total": 12,
+      "passed": 12
+    },
+    "mcpChecks": 7
+  },
+  "live": {
+    "report": "broad-live-cycle2-2026-11-11.json",
+    "manifestSha256": "7919f44ea4828890c2181f39cf64b919877245714dcc5554b716431b5fe4f46b",
+    "counts": {
+      "allow": 11,
+      "block": 21,
+      "error": 0
+    },
+    "previousCounts": {
+      "allow": 11,
+      "block": 21,
+      "error": 0
+    },
+    "originalFourAllowed": true,
+    "decisionChanges": [],
+    "sourceCoverageChanges": [
+      {
+        "packageName": "fast-deep-equal",
+        "previousComplete": true,
+        "complete": false
+      },
+      {
+        "packageName": "chalk",
+        "previousComplete": true,
+        "complete": false
+      },
+      {
+        "packageName": "commander",
+        "previousComplete": true,
+        "complete": false
+      },
+      {
+        "packageName": "uuid",
+        "previousComplete": true,
+        "complete": false
+      },
+      {
+        "packageName": "react",
+        "previousComplete": false,
+        "complete": true
+      },
+      {
+        "packageName": "express",
+        "previousComplete": true,
+        "complete": false
+      },
+      {
+        "packageName": "axios",
+        "previousComplete": true,
+        "complete": false
+      },
+      {
+        "packageName": "sharp",
+        "previousComplete": true,
+        "complete": false
+      }
+    ],
+    "partialSourceCases": 15,
+    "previousPartialSourceCases": 9
+  },
+  "malicious": {
+    "report": "broad-malicious-cycle2-2026-11-11.json",
+    "manifestSha256": "791725e1440e716e55809b15785866162fc2a3d67829bc6f74a319fe0798004a",
+    "counts": {
+      "selected": 32,
+      "rawBlock": 3,
+      "rawUncertainty": 29,
+      "rawSafe": 0,
+      "errors": 0,
+      "frozenAcquisitionErrors": 0,
+      "completed": 32
+    },
+    "previousCounts": {
+      "selected": 32,
+      "rawBlock": 3,
+      "rawUncertainty": 29,
+      "rawSafe": 0,
+      "errors": 0,
+      "frozenAcquisitionErrors": 0,
+      "completed": 32
+    },
+    "sourceCoverage": {
+      "complete": 25,
+      "incomplete": 7,
+      "unknown": 0
+    },
+    "previousSourceCoverage": {
+      "complete": 28,
+      "incomplete": 4,
+      "unknown": 0
+    },
+    "rawVerdictChanges": []
+  },
+  "demonstratedChanges": [
+    "Reduced rotating-table credential-upload fixture no longer silently returns SAFE when module identities are unresolved.",
+    "React diagnostic import example no longer creates a missing runtime path."
+  ],
+  "deferred": {
+    "arguments": "Isolated prototype does not clear once and adds a debug hold; not integrated.",
+    "detection": "General rotation/string-table decoding and positive detection of unresolved compromised samples remain unimplemented."
+  },
+  "limitations": [
+    "No measured approval-rate or raw malicious BLOCK-count improvement in these frozen cohorts.",
+    "Additional partial-source diagnostics include declaration/README runtime classification still requiring investigation.",
+    "Selected cohorts are not representative accuracy or independent-family recall measurements.",
+    "Static malicious scans disable CVE/enrichment; guard blocks are not confirmed detections.",
+    "No target package execution, policy relaxation, package exception, production deployment or local MCP activation."
+  ]
+}

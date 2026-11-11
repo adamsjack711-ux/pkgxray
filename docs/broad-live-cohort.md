@@ -82,3 +82,50 @@ varying package sizes, and MCP processing, and exclude session initialization
 and cohort acquisition. This single sequential run is not a production latency
 benchmark. Direct dependency scanning was not requested, and provenance status
 varied, so the result does not establish complete dependency-closure verification.
+
+## Follow-up source and flow corrections
+
+The runtime source planner now follows parsed import syntax instead of treating
+every import-shaped string or comment as executable. This removes React's
+diagnostic `MyComponent` example from its required files. Genuine imports,
+subprocess targets, missing install/prepare scripts, escaping paths, parser
+failures and budget limits remain coverage obligations. Explicit nested type
+conditions stay separate from runtime exports; declaration-looking filenames
+can still contain executable code and are not exempt by extension.
+
+Ignoring string literals requires separate accounting for string execution.
+Evaluator aliases, reflective handoffs, constructor chains, VM source and inline
+Node source retain explicit uncertainty unless a bounded syntax proof establishes
+inert source. The proof parses source text without running it, accepts a small
+grammar and retains existing size/work limits. Paired tests keep passive examples
+and supported inert probes clear while holding nested executable loads.
+
+An unresolved module specifier now produces a flow-analysis gap and preserves
+its taint. This closes the reduced false-SAFE path documented in
+[the malware evidence investigation](broad-malware-evidence.md). Unknown plugin
+targets remain uncertainty, not positive malware findings.
+
+A separate readonly-arguments experiment was **not integrated**: it did not
+clear `once` and introduced a new hold in the pinned `debug` control. Class-model,
+accessor and work-budget gaps in `chalk` and `semver`, and general string-table
+decoding, remain further work. No policy threshold, package exception or increased
+resource limit was used to improve the cohort score.
+
+### Follow-up live measurement
+
+`benchmark/broad-live-cycle2-2026-11-11.json` reruns the same frozen manifest on
+build `55657cd98d98382d629627c8a4c6703f0a1a778c84d56f94d9f916dff8bf4f40`.
+Every case retains its artifact identity and prior allow/block decision:
+**11 allow, 21 block, zero errors**. All four original controls still allow, all
+32 vulnerability checks complete with zero reported vulnerabilities, and the
+effective policy remains unchanged. No explicit override is used.
+
+React's source coverage becomes complete, while its separate flow-analysis gap
+still blocks approval. Seven already-blocked packages move from complete to
+partial source coverage: fast-deep-equal, chalk, commander, uuid, express, axios
+and sharp. The net source-partial count rises from nine to 15. Diagnostics include
+computed module/execution targets, evaluator uncertainty, and declaration or
+README files currently selected as runtime targets. The latter expose remaining
+classification work; this run does not establish that those data files execute.
+Flow-analysis gaps remain on 20 packages. The result demonstrates a corrected
+React path and more explicit coverage limits, **not an improved approval rate**.
