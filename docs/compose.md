@@ -100,3 +100,79 @@ prototype context. All new issues and security reports belong to Package Xray.
 includes component changes across the supported Node and OS matrix. No standalone
 Compose release or workflow is required. Distribution checks include the vendored
 parser and bind Compose runtime files into Package Xray's build identity.
+
+## Pull-request evidence reports
+
+The **Compose PR evidence** workflow compares a pull request's immutable base
+and head snapshots when JavaScript, package manifests, npm lockfiles or report
+configuration changes. The job summary shows newly observed dataflow routes,
+high/medium package finding signatures, comparable absence counts, and analysis
+gaps for both revisions. The `compose-pr-evidence` artifact retains JSON and
+Markdown for seven days, including selected-file hashes and scanner identity.
+Source snippets are not included in this condensed report.
+
+This is an advisory job, not an installation or merge-approval gate. Findings
+do not make the job fail; setup failures do. A green job means the reporting
+process ran, not that the PR is safe. The headline retains BLOCK evidence;
+otherwise it remains REVIEW, because coverage is partial. If either analysis is
+incomplete or its evidence truncated, absence comparisons are **unavailable**
+(`noLongerObserved: null` in JSON). Newly observed evidence may reflect a baseline
+gap rather than introduced behavior. Complete, untruncated selected-source scans
+can report **no longer observed** signatures; that still never proves a fix.
+Flow signatures compare route labels, package paths, source files and network
+destinations; line-number-only shifts do not create new flows. Package finding
+signatures include a hash of exact snippet evidence without exposing the snippet,
+so changing a risky command in the same file is visible. These are
+diagnostic comparisons, not a complete semantic or version-diff analysis.
+
+The scanner, script and `.github/compose-report.json` configuration all come
+from the **base SHA**. The head checkout is source data only. No PR dependencies,
+lifecycle scripts or target modules are installed or executed. The workflow
+uses a read-only repository token, persists no Git credentials, posts no PR
+comments and does not use `pull_request_target`. Keep the workflow and base
+branch under normal repository review protections: a changed workflow itself
+can change job behavior. A PR introducing the reporter gets an explicit
+unavailable notice until the trusted base contains the reviewed implementation.
+
+The base configuration selects up to four source roots and entrypoints:
+
+```json
+{
+  "schemaVersion": 1,
+  "targets": [
+    { "root": ".", "entry": "bin/audit.js", "allowRootOnly": true }
+  ]
+}
+```
+
+Changes to this configuration take effect only after they reach the base
+branch. The initial targets are Package Xray's CLI and the Compose CLI. If a
+target lacks a committed npm lockfile and `allowRootOnly` is true, the reporter
+creates an isolated root-identity-only lockfile. It reports the
+`root-only-source` gap: dependencies have **not** been inventoried, downloaded or
+verified. Any unresolved imports still produce gaps. A present but invalid
+lockfile is never replaced. Set `allowRootOnly` to false when a real lockfile
+and checked-in dependency source snapshot are required.
+
+Each temporary snapshot contains JavaScript and JSON files only, with a
+4,096-entry, 16 MiB total and 2 MiB per-file preparation limit. Links and special
+files are omitted with an explicit gap. Each scan retains the analyzer's own
+smaller source budgets, a 30-second deadline and a 256 MiB worker heap limit.
+Use stable checkouts; this is not filesystem isolation against concurrent
+hostile writers. Missing sources, unsupported semantics, limits and worker
+failures remain incomplete REVIEW evidence unless the scan reports BLOCK.
+Summary sections and JSON evidence are capped and disclose truncation.
+
+To reproduce with trusted scanner code and stable base/head checkouts:
+
+```sh
+node /trusted/pkgxray/scripts/compose-pr-report.js \
+  --base /snapshots/base --head /snapshots/head \
+  --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" \
+  --output /tmp/new-compose-pr-report
+```
+
+Use the matching full Git commit IDs. The CLI labels the report with the supplied
+IDs; CI obtains them from the pull-request event and checks out those exact
+commits. The output must be outside both inputs and must not already contain
+`report.json` or `summary.md`. Inputs remain unchanged.
