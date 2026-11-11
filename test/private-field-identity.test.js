@@ -44,7 +44,8 @@ test('private and public fields remain separate in the benign direction', () => 
   assert.equal(result.exports.bits, 0);
 });
 
-test('getter uncertainty remains until descriptor and instance semantics are implemented', () => {
+test('private getter descriptors resolve the private field rather than the public spelling', () => {
   const result = analyze('class Box{#value=1;get value(){return this.#value}} module.exports=new Box().value;');
-  assert.equal(result.status, 'unmodeled');
+  assert.equal(result.status, 'parsed');
+  assert.equal(result.exports.value, 1);
 });
