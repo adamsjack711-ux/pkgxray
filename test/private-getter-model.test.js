@@ -83,3 +83,11 @@ test('unmodeled operations cannot lose nested getter-bearing aliases', () => {
   const benign = run("const box={value:'public'};const copy=Object.assign({}, {box});module.exports=copy;");
   assert.equal(benign.status, 'parsed');
 });
+
+test('explicit computed constructor methods preserve their return flows', () => {
+  for (const [value, expected] of [['process.env.TEST_TOKEN', true], ["'public'", false]]) {
+    const result = run(`class Box{['constructor'](){return ${value}}}const box=new Box();fetch('/api',{body:box.constructor()});`);
+    assert.equal(result.status, 'parsed');
+    assert.equal(exported(result), expected);
+  }
+});

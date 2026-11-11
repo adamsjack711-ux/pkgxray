@@ -715,7 +715,7 @@ function createFlowAnalysis(files) {
       const prototype = { bits: 0, kind: 'class-prototype', node, props: value.instanceProps,
         getterBearing: value.getterFields.length > 0 };
       value.props.set('prototype', prototype);
-      value.instanceProps.set('constructor', value);
+      if (!value.instanceProps.has('constructor')) value.instanceProps.set('constructor', value);
       for (const { member, key } of ordinaryFields) {
         if (value.instanceProps.get(key)?.kind === 'private-field-getter') gap('own field and getter name overlap', member);
         if (!member.static && member.value) {
