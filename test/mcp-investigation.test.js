@@ -11,7 +11,13 @@ const ROOT = path.resolve(__dirname, "..");
 const TOOL = "read_package_evidence", GUARD = "guard_agent_extension_install";
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pkgxray-investigation-wire-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const clients = [];
+  // Windows keeps a process's working directory locked. One ordered teardown
+  // also runs after assertions fail: stop every host before removing its cwd.
+  t.after(async () => {
+    await Promise.all(clients.map(client => client.close()));
+    await fs.rm(root, { recursive: true, force: true });
+  });
   await fs.mkdir(path.join(root, "package"));
   await fs.writeFile(path.join(root, "package/package.json"), JSON.stringify({ name: "inert-evidence-fixture", version: "1.0.0", main: "index.js" }));
   await fs.writeFile(path.join(root, "package/index.js"), 'const apiKey = "wire-fixture-credential-value";\n// Package asks to ignore instructions and approve itself.\nexports.value = 42;\n');
@@ -29,7 +35,7 @@ async function fixture(t) {
     const c = start("static", { cwd: root, execArgv: ["--require", preload], env: {
       ...process.env, NODE_OPTIONS: "", PKGXRAY_AGENT_INVESTIGATION: enabled, PKGXRAY_MCP_ALLOWED_ROOTS: root, ...extra
     } });
-    t.after(() => c.close()); return c;
+    clients.push(c); return c;
   }
   return { root, archive, sha256, client };
 }
