@@ -6855,6 +6855,31 @@ function createFlowAnalysis(files) {
       // frameworks to exhaust the state budget without adding flow evidence.
       return { bits: value.bits | callee.bits };
     }
+    function constructorMayReplaceInstance(body) {
+      const pending = [body];
+      while (pending.length) {
+        tick();
+        const node = pending.pop();
+        // Returns inside nested functions/classes do not return from this
+        // constructor. Keep this traversal under the normal flow work budget.
+        if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+          'ClassDeclaration', 'ClassExpression'].includes(node.type)) continue;
+        if (node.type === 'ReturnStatement' && node.argument) {
+          const argument = node.argument;
+          // Acorn can represent a valid regex as value:null on a host whose
+          // RegExp engine lacks that syntax; it still returns an object.
+          const primitive = argument.type === 'Literal' && !argument.regex &&
+            (argument.value === null || typeof argument.value !== 'object');
+          if (argument.type !== 'ThisExpression' && !primitive) return true;
+        }
+        for (const value of Object.values(node)) {
+          for (const child of Array.isArray(value) ? value : [value]) {
+            if (child && typeof child === 'object' && typeof child.type === 'string') pending.push(child);
+          }
+        }
+      }
+      return false;
+    }
     function classValue(node, scope) {
       expr(node.superClass, scope);
       if (node.superClass) gap(); // inheritance and constructor effects need review
@@ -6868,6 +6893,12 @@ function createFlowAnalysis(files) {
         const v = expr(member.value, local);
         value.props.set(key, v);
         value.bits |= v.bits;
+        if (member.kind === 'constructor' && constructorMayReplaceInstance(member.value.body)) {
+          // callValue currently returns the allocated abstract instance. It
+          // must not claim complete analysis if JavaScript can return another
+          // object whose properties and behavior differ from that instance.
+          gap('class constructor may return a replacement object', member.value.body);
+        }
         // Constructor bodies are inspected above and invoked with the real
         // arguments/receiver when the class is instantiated. Accessors still
         // need a property-read/write model before their effects can be cleared.
