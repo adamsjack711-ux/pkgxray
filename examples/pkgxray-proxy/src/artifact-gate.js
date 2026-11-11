@@ -11,9 +11,12 @@ import approvalPolicy from '../../../src/approval-policy.js';
 import sharing from '../../../src/shared-scans.js';
 const coordinators = new WeakMap();
 
-export function assertArtifactCurrent(store, name, version, revision) {
+export function assertArtifactCurrent(store, name, version, revision, policyBinding) {
   sharing.assertCurrentBuild();
   if (store.recheckRevision(name, version) !== revision) throw sharing.failure('RECHECK_CHANGED', 'Evidence changed during scan; retry for fresh evidence');
+  if (policyBinding && artifact.fingerprint(policyBinding.read()) !== policyBinding.fingerprint) {
+    throw sharing.failure('POLICY_CHANGED', 'Policy changed during authorization; retry under the current policy');
+  }
 }
 
 // Hold the download in a private file. No upstream byte reaches the installer
@@ -74,18 +77,34 @@ export async function acquireArtifact(request, target, headers = {}, signal) {
 }
 
 export async function gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy, scanCoordinator, signal }) {
-  try { sharing.assertCurrentBuild(); signal?.throwIfAborted(); }
+  // Include validated policy plus load diagnostics/source identity: deletion or
+  // malformed replacement must invalidate approval even if defaults coincide.
+  // Explicit injected policy remains a trusted test/embedding seam.
+  const readPolicy = () => ({
+    shared: sharedPolicy === undefined
+      ? policy.loadConfig({ cwd: config.policyCwd || process.cwd() })
+      : { config: sharedPolicy || policy.DEFAULTS },
+    proxy: config,
+    requireProvenance: process.env.PKGXRAY_REQUIRE_PROVENANCE === '1',
+    sigstoreModule: process.env.PKGXRAY_SIGSTORE_MODULE || null
+  });
+  let policyState, policyBinding;
+  try {
+    sharing.assertCurrentBuild(); signal?.throwIfAborted();
+    policyState = readPolicy();
+    policyBinding = { read: readPolicy, fingerprint: artifact.fingerprint(policyState) };
+  }
   catch (error) { return denied(error.code || 'scan-error', error.message); }
   const revision = store.recheckRevision(name, version);
   const index = store.get(name, version);
   if (index?.rechecked && index.decision === 'block') return denied('block', 'Blocked by administrator recheck', index.findings);
-  const context = artifact.fingerprint({ cacheSchema: 4, scannerBuildId: artifact.BUILD_ID, upstream: config.upstream,
+  const context = artifact.fingerprint({ cacheSchema: 5, scannerBuildId: artifact.BUILD_ID, upstream: config.upstream,
     pkgxrayBin: config.pkgxrayBin, scanTimeoutMs: config.scanTimeoutMs, cacheUrl: config.cacheUrl,
-    policy: sharedPolicy || policy.DEFAULTS, reviewPolicy: config.reviewPolicy,
+    policy: policyBinding.fingerprint, reviewPolicy: config.reviewPolicy,
     requireProvenance: process.env.PKGXRAY_REQUIRE_PROVENANCE === '1',
     sigstoreModule: process.env.PKGXRAY_SIGSTORE_MODULE || null,
     allowlist: config.allowlist, denylist: config.denylist, reviewRevision: store.reviewRevision(name, version) });
-  const expectedPolicy = artifact.fingerprint(sharedPolicy || policy.DEFAULTS);
+  const expectedPolicy = artifact.fingerprint(policyState.shared.config);
   function bound(a, decision) {
     return approvalPolicy.receiptAuthorizes(a) && a.artifactSha256 === snapshot.sha256 && a.name === name && a.version === version &&
       a.scannerBuildId === artifact.BUILD_ID && a.policySha256 === expectedPolicy && a.decision === decision &&
@@ -124,7 +143,7 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
     const busy = ['SCAN_OVERLOADED', 'PKGXRAY_SCAN_BUSY'].includes(error.code);
     if (busy) return { ...denied(error.code, error.message), status: 503 };
     // Cancellation or a recheck is not evidence about a package.
-    if (['SCAN_CANCELLED', 'RECHECK_CHANGED', 'SCANNER_CHANGED'].includes(error.code) || signal?.aborted) {
+    if (['SCAN_CANCELLED', 'RECHECK_CHANGED', 'SCANNER_CHANGED', 'POLICY_CHANGED'].includes(error.code) || signal?.aborted) {
       return denied(error.code || 'scan-error', error.message);
     }
     try { assertFresh(); } catch (stale) { return denied(stale.code || 'scan-error', stale.message); }
@@ -156,10 +175,10 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
     try { assertFresh(); } catch (error) { return denied(error.code || 'scan-error', error.message); }
     if (decision !== 'allow') return denied('uncertain', 'Artifact was not cleared by completed checks', findings);
     return { serve: true, allowed: true, outcome: 'SAFE', status: 200, decision: 'allow',
-      findings: findings || [], source, cached, recheckRevision: revision };
+      findings: findings || [], source, cached, recheckRevision: revision, policyBinding };
   }
   function assertFresh(checkSignal = signal) {
-    assertArtifactCurrent(store, name, version, revision); checkSignal?.throwIfAborted();
+    assertArtifactCurrent(store, name, version, revision, policyBinding); checkSignal?.throwIfAborted();
   }
   function denied(decision, note, findings = []) {
     return { serve: false, allowed: false, outcome: 'UNSAFE', status: 403, decision: 'block', reasonCode: decision, note, findings, source: 'scan', cached: false };

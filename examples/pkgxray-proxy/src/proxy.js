@@ -631,8 +631,9 @@ export function createServer(config, store, deps = {}) {
     }
     catch (error) { return sendJson(res, 502, { error: 'artifact_download_failed', message: error.message }); }
     try {
-      const currentPolicy = deps.sharedPolicy !== undefined ? sharedPolicy : loadSharedPolicy({ cwd: config.policyCwd || process.cwd(), log });
-      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard, sharedPolicy: currentPolicy, scanCoordinator, signal: abortController.signal });
+      // Disk policy is read and bound by the gate, then revalidated at delivery.
+      const decision = await gateArtifact({ config, store, name, version, snapshot, runGuard,
+        ...(deps.sharedPolicy !== undefined ? { sharedPolicy } : {}), scanCoordinator, signal: abortController.signal });
 
       log({
         event: 'decision',
@@ -665,7 +666,7 @@ export function createServer(config, store, deps = {}) {
       // Recheck at the delivery commit point after awaiting the gate and logging.
       try {
         abortController.signal.throwIfAborted();
-        assertArtifactCurrent(store, name, version, decision.recheckRevision);
+        assertArtifactCurrent(store, name, version, decision.recheckRevision, decision.policyBinding);
       }
       catch (error) {
         res.setHeader(HEADER_VERDICT, 'UNSAFE');
