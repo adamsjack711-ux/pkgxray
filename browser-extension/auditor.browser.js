@@ -6434,8 +6434,22 @@ function stateTick(context, depth) {
 // closure environments and cycles within a snapshot, never across branches.
 function copyState(value, context = stateContext(), depth = 0) {
   if (!value || typeof value !== 'object') return value;
-  if (context.copies.has(value)) return context.copies.get(value);
+  const previous = context.copies.get(value);
+  if (previous !== undefined) return previous;
   stateTick(context, depth);
+  // Most nodes in a captured scope are unbound closures or scalar flow
+  // values. Copy those records directly, retaining the shared memo for cycles.
+  if (value.kind === 'function' && value.node && value.scope && Object.keys(value).length === 4) {
+    const out = { bits: value.bits, kind: 'function', node: value.node, scope: null };
+    context.copies.set(value, out);
+    out.scope = copyState(value.scope, context, depth + 1);
+    return out;
+  }
+  if (value.bits !== undefined && Object.keys(value).length === 1) {
+    const out = { bits: value.bits };
+    context.copies.set(value, out);
+    return out;
+  }
   const out = value instanceof Scope ? new Scope() : Array.isArray(value) ? [] : value instanceof Map ? new Map() : {};
   context.copies.set(value, out);
   if (value instanceof Map) for (const [key, item] of value) out.set(key, copyState(item, context, depth + 1));
