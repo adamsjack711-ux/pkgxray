@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-18T03:42:17.827Z",
+  "runtimeCommit": "fa646a9a7b9f406fae4afa0970231f8494ad44db",
+  "buildId": "7a4742ea997eb0b8368042ad67436e7783e6e807ed4fdb3f1977e8c98e3c9fc0",
+  "environment": {
+    "arch": "arm64",
+    "platform": "darwin",
+    "cpu": "Apple M1 Max",
+    "node": "v26.8.2"
+  },
+  "method": "Frozen source snapshots and measure.cjs from 1.3-performance-2026-11-17.json. Each sample used a fresh Node process and the production analysis worker. Three sequential rounds preceded three rounds with both package workers running concurrently in independent processes. Worker deadline 30000 ms.",
+  "packages": [
+    {
+      "name": "lodash",
+      "inputSha256": "856232f92b0e548280055bf76f29a30b1a890a036552c0466ca5d9b08ee4abc8",
+      "beforeCommit": "f7de2a5",
+      "beforeMs": 23072.792459,
+      "reportSha256": "3b37f2c620a0862a956dd957f347cdedde1e362728820e403c547f24c07a682b",
+      "verdict": "review",
+      "findings": 603,
+      "soloMs": [
+        22053,
+        22659,
+        22990
+      ],
+      "pairMs": [
+        22639,
+        23317,
+        22673
+      ]
+    },
+    {
+      "name": "zod",
+      "inputSha256": "1001b8958d9f250386f85cb421da9fff46a6b1ea0c8289355705679c48bee30e",
+      "beforeCommit": "f7de2a5",
+      "beforeMs": 27747.930791,
+      "reportSha256": "f64ae6abad35032fc42aae79e710cd205cca180dd5e17efc037dd140f74c2c61",
+      "verdict": "review",
+      "findings": 469,
+      "soloMs": [
+        23336,
+        23272,
+        23264
+      ],
+      "pairMs": [
+        23639,
+        24154,
+        23406
+      ]
+    }
+  ]
+}

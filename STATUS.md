@@ -1,5 +1,31 @@
 # 1.3 release readiness
 
+## Candidate under review
+
+[Release PR #111](https://github.com/adamsjack711-ux/pkgxray/pull/111) targets
+`main`. Runtime commit `fa646a9` reduces the cost of copying closures and
+scalar values during flow analysis. The [worker measurements](benchmark/1.3-worker-reliability-2026-11-18.json)
+record three individual and three concurrent runs per frozen package on macOS
+arm64 with Node 26.8.2. All 12 reports matched the earlier candidate byte for
+byte. Lodash finished in 22.1–23.3 seconds and Zod in 23.3–24.2 seconds under
+the 30-second worker deadline. Slower hosts can still reach that deadline.
+
+The [11-package MCP trial](benchmark/1.3-package-results-worker-followup-2026-11-18.json)
+returned three allow and eight review decisions. The six mandatory coverage
+holds, artifact hashes, finding counts by category and severity, and review
+plans all matched the preceding trial. The [release dry run](https://github.com/adamsjack711-ux/pkgxray/actions/runs/44232030290)
+validated the packed build and verified its transfer digest.
+
+An independent agent tested the local archive with SHA-256
+`b0bfe8d307a381fabcbe8911db1431b96acb5e94147b7ff7a3cb844a51117ab3`.
+The CLI allowed `ms@2.1.3` and returned an eligible review for
+`picocolors@1.1.1`. Its feedback about locating cited findings in JSON led to
+a [tested report-reading example](docs/testing-1.3.md). Human usability feedback,
+maintainer review, merge and publication remain open. VM execution remains
+experimental, with Linux and Windows guest validation outstanding.
+
+## Earlier candidate at f7de2a5
+
 Observed 2026-11-17. Local implementation and release validation; no publication or deployment.
 
 ## Canonical candidate
@@ -44,7 +70,7 @@ The controlled comparison changed only flow-analysis.js on identical frozen sour
 
 Full direct reports differ only in flow-gap citations (one Lodash, 17 Zod); non-flow findings are identical and mandatory coverage holds remain. No deadline, source-file cap, or policy gate was relaxed. The remaining measured cost is repeated copying/joining of large captured abstract-state graphs. The next bounded engineering step is to reduce that cost with regression-preserving analysis changes and repeated production-worker checks before claiming reliable large-package support.
 
-## Remaining release gates
+## Release gates recorded at f7de2a5
 
 - Resolve the large-package worker reliability limitation, rerun the same frozen cases on the final candidate, and integrate reviewed changes into main through the existing protected release process.
 - Obtain independent tester feedback on setup, actionable findings and review friction. Convenience package controls do not establish real-world accuracy or user acceptance.

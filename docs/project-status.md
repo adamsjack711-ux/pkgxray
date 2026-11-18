@@ -26,11 +26,11 @@ and unsupported runtime syntax still require operator investigation, even in
 familiar packages. See the [package trial](1.3-package-trial.md) for the frozen
 inputs, measured outcomes and remaining usability limits.
 
-The final local 11-package cohort returned three allow and eight review results;
-six reviews retained mandatory coverage holds. Large packages still reach file
-and analysis limits, and a separate controlled Zod worker run still timed out.
-Completing that cohort does not establish reliable latency or external tester
-acceptance.
+The latest local 11-package cohort returned three allow and eight review
+decisions, including six mandatory coverage holds. The frozen Lodash and Zod
+inputs completed in all 12 follow-up worker runs on macOS arm64, both alone
+and when running together. The slowest took 24.2 seconds with a 30-second
+deadline. [Worker measurements](../benchmark/1.3-worker-reliability-2026-11-18.json)
 
 ## Supported core surfaces
 

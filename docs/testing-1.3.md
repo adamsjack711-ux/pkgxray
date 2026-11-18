@@ -46,6 +46,26 @@ under the selected policy, `3` means review, and `2` means block. Read the repor
 even when the command exits nonzero. Neither an allow decision nor popularity
 proves a package harmless.
 
+For a review decision, print the checks, review eligibility and the finding
+behind each suggested step from the saved CLI report:
+
+```sh
+node - "$candidate_test_dir/scan.json" <<'JS'
+const fs = require('node:fs');
+const scan = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+console.log(scan.decision, scan.approval?.checks, { eligible: scan.review?.eligible });
+for (const step of scan.reviewPlan?.steps || []) {
+  console.log(step.instruction);
+  for (const index of step.findingIndices || []) console.log(scan.report.findings[index]);
+}
+JS
+```
+
+For example, the candidate trial of `picocolors@1.1.1` cited finding 0 for a
+single-maintainer package. The step asks the reviewer to compare the exact
+artifact and manifest with the claimed identity and available provenance. An
+eligible review still requires a user decision.
+
 For a 15-minute trial, use one or two exact package versions you know well.
 Report:
 
