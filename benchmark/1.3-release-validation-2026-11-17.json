@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-17T19:25:49.575568+00:00",
+  "candidate": {
+    "baseCommit": "50865008115f799629f3df580965b825a7218cf2",
+    "branch": "polish/1.3-release",
+    "uncommittedChanges": true,
+    "buildId": "01dbc36c2b9d5197cbc995ddccb1e57225cf9bb86cca52225e4d6b9f1cafdea2"
+  },
+  "environment": {
+    "node": "v26.0.0",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "fullSuite": {
+    "total": 1166,
+    "passed": 1161,
+    "skipped": 5,
+    "failed": 0,
+    "durationMs": 24864.975583,
+    "includes": "Core, proxy, Compose and documentation tests; local fixture servers enabled"
+  },
+  "lint": {
+    "passed": true,
+    "scope": "Syntax, runtime dependencies, version sync, browser parity"
+  },
+  "website": {
+    "passed": true,
+    "htmlPages": 8,
+    "calibrationRuns": 4
+  },
+  "syntheticGates": {
+    "calibrationCases": 84,
+    "calibrationHardFailures": 0,
+    "adversarialBaselinePassed": true,
+    "holdoutBaselinePassed": true,
+    "upgradeComparisonsPassed": 10,
+    "realWorldAccuracyClaim": false
+  },
+  "publicWorker": {
+    "unitPassed": 23,
+    "localHttpChecksPassed": 12,
+    "typesGenerated": true,
+    "deployDryRunPassed": true,
+    "deployed": false,
+    "scannerVersion": "1.3.0",
+    "publishedCliSuggestion": "1.2.1"
+  },
+  "archive": {
+    "path": ".pack/pkgxray-1.3.0.tgz",
+    "sha256": "b34e2b6bdbe96bfe4dd60887ff55625feb7d0529622b419d502c674e3dd5fc97",
+    "compressedBytes": 458359,
+    "files": 78,
+    "unexpectedFixtureOrEnvPaths": [],
+    "packedSmoke": {
+      "version": "1.3.0",
+      "compose": "review-without-installation-approval",
+      "launchers": [
+        {
+          "entry": "./bin/mcp-server.js",
+          "args": [],
+          "version": "1.3.0",
+          "tools": [
+            "audit_agent_extension_supply_chain",
+            "guard_agent_extension_install",
+            "audit_lockfile_supply_chain",
+            "triage_lockfile_supply_chain",
+            "analyze_package_composition"
+          ],
+          "inertVerdicts": [
+            "safe",
+            "block"
+          ]
+        },
+        {
+          "entry": "./bin/audit.js",
+          "args": [
+            "mcp-server"
+          ],
+          "version": "1.3.0",
+          "tools": [
+            "audit_agent_extension_supply_chain",
+            "guard_agent_extension_install",
+            "audit_lockfile_supply_chain",
+            "triage_lockfile_supply_chain",
+            "analyze_package_composition"
+          ],
+          "inertVerdicts": [
+            "safe",
+            "block"
+          ]
+        }
+      ]
+    },
+    "releaseSelfGuard": {
+      "verified": true,
+      "sha256": "b34e2b6bdbe96bfe4dd60887ff55625feb7d0529622b419d502c674e3dd5fc97",
+      "vulnerabilities": "completed",
+      "source": "intentionally-disabled"
+    },
+    "buildId": "01dbc36c2b9d5197cbc995ddccb1e57225cf9bb86cca52225e4d6b9f1cafdea2",
+    "packedBuildMatchesCheckout": true
+  },
+  "stdioRuntime": {
+    "measuredAt": "2026-11-17T19:25:00.128Z",
+    "transport": "real stdio MCP",
+    "realNetwork": true,
+    "fixtureExecution": false,
+    "checks": [
+      {
+        "label": "tool discovery",
+        "tools": [
+          "audit_agent_extension_supply_chain",
+          "guard_agent_extension_install",
+          "audit_lockfile_supply_chain",
+          "triage_lockfile_supply_chain",
+          "analyze_package_composition"
+        ]
+      },
+      {
+        "label": "benign source and repeated cache",
+        "ms": 67.68,
+        "verdict": "safe",
+        "repeatedSource": "cache"
+      },
+      {
+        "label": "inert credential exfiltration evidence",
+        "ms": 49.05,
+        "verdict": "block",
+        "categories": [
+          "credential-access"
+        ]
+      },
+      {
+        "label": "25 concurrent identical source audits",
+        "ms": 63.24,
+        "responses": 25,
+        "sources": [
+          "scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan",
+          "shared-scan"
+        ]
+      },
+      {
+        "label": "guard review plan, no execution, no approval",
+        "ms": 66.52,
+        "decision": "review",
+        "allowed": false,
+        "planState": "checks-required",
+        "blockers": [
+          "complete-vulnerability-check",
+          "obtain-bound-evidence"
+        ],
+        "buildId": "01dbc36c2b9d5197cbc995ddccb1e57225cf9bb86cca52225e4d6b9f1cafdea2"
+      },
+      {
+        "label": "forbidden promotion and out-of-root input",
+        "ms": 0.84,
+        "denied": 2
+      },
+      {
+        "label": "Compose MCP analyzes inert local source",
+        "ms": 66,
+        "decision": "review",
+        "execution": "completed",
+        "installAllowed": false
+      },
+      {
+        "label": "real npm and OSV guard for ms@2.1.3",
+        "ms": 799.25,
+        "decision": "allow",
+        "allowed": true,
+        "checks": {
+          "source": "completed",
+          "vulnerabilities": "completed",
+          "directDependencies": "not-requested",
+          "provenance": "absent"
+        },
+        "planState": null,
+        "buildId": "01dbc36c2b9d5197cbc995ddccb1e57225cf9bb86cca52225e4d6b9f1cafdea2",
+        "timings": {
+          "stageMs": 132,
+          "vulnerabilityPrecheckMs": 212,
+          "downloadMs": 20,
+          "sourceCollectionMs": 4,
+          "githubMetadataMs": 238,
+          "provenanceMs": 2,
+          "diffMs": 357,
+          "auditMs": 67
+        }
+      }
+    ]
+  },
+  "packageTrial": {
+    "report": "benchmark/1.3-package-results-followup2-2026-11-17.json",
+    "total": 11,
+    "reports": 11,
+    "allow": 3,
+    "review": 8,
+    "block": 0,
+    "errors": 0,
+    "allArchiveAndPolicyIdentitiesMatched": true,
+    "completedCleanOSV": 11,
+    "overrides": 0,
+    "targetCodeExecuted": false,
+    "limits": "Convenience controls; all review findings/coverage holds retained. Not independent benign adjudication or real-world accuracy."
+  },
+  "limits": [
+    "No new remote CI matrix, publication, deployment or external tester acceptance.",
+    "No fresh real-guest VM execution; Linux/Windows guest checks remain outstanding.",
+    "Controlled large-package worker tests still show Zod timeout and narrow Lodash headroom; successful single cohort runs do not resolve reproducibility."
+  ],
+  "temporaryRawLogs": "/private/tmp/pkgxray-1.3-verified",
+  "releaseReady": false,
+  "finalDocumentationChecks": {
+    "smokePassed": 10,
+    "smokeSkipped": 1,
+    "integrationDocsPassed": 5,
+    "performedBy": "documentation agent after final trial documentation"
+  }
+}

@@ -2,6 +2,8 @@
 
 These setup commands target release 1.3.0; use them after npm publication completes.
 
+For testing before publication, use the [packed candidate instructions](../../docs/testing-1.3.md). The published npm version remains 1.2.1.
+
 A [hookshot](https://github.com/CorridorSecurity/hookshot) hook binary that runs
 [pkgxray](https://github.com/adamsjack711-ux/pkgxray) supply-chain triage on
 recognized registry package-install commands before they run. It denies the

@@ -38,7 +38,7 @@ The gate, in order:
 2. Download the canonical tarball into a private temporary file (64 MiB / 30 second limits), computing SHA-256. Client range and conditional headers are excluded; partial, redirected and encoded responses are rejected.
 3. Reuse a fresh, matching deny-only hold to refuse delivery, or a bound approval to release the archive. Artifact digest, scanner build and policy context must match. Legacy name/version cache entries cannot authorize delivery. Both cache paths bypass the scan queue.
 4. Otherwise join an identical in-flight scan or queue a bounded scan using `pkgxray guard npm:<name>@<version> --archive <snapshot> --integrity <SRI> --receipt-only --format json`. The scanner verifies integrity and the archive's manifest identity before analysis. Queue overflow or expiry refuses delivery; it never authorizes a package.
-5. Require a matching receipt with completed source and vulnerability checks. A block, scan failure, missing receipt or incomplete scan returns `403`. A complete review is also withheld by default; explicit `reviewPolicy` overrides can permit discretionary reviews. Persist the approval or a separate deny-only hold.
+5. Require a matching receipt with completed source and vulnerability checks. A block, scan failure, missing receipt or incomplete scan returns `403`. Under default `reviewPolicy: block`, a complete ordinary review returns `409` with a session-bound review ID; an explicit Proceed/Decline can resolve it. Explicit `warn`/`allow` policy settings can permit complete discretionary reviews without that exchange. Persist the approval or a separate deny-only hold.
 6. Serve the held snapshot and remove it after the response. No second upstream fetch occurs after approval.
 
 Served responses carry `x-pkgxray-verdict`, `x-pkgxray-source` and `x-pkgxray-sha256`. Block responses include the reason. Name-only `allowlist` entries no longer bypass scanning; use the shared policy's digest-pinned exceptions when appropriate.
@@ -115,9 +115,16 @@ Point `PKGXRAY_PROXY_CONFIG` at a JSON file for the file layer.
 | `logDecisions` | `PKGXRAY_PROXY_LOG_DECISIONS` | `true` | Structured JSON decision logs to stdout. |
 
 `reviewPolicy` — what to do with a `review` verdict:
-- `block` — withhold the archive (`403`, default); resolve the reported findings before retrying.
-- `warn` — **serve** the tarball but annotate the response (explicit opt-in).
-- `allow` — serve silently.
+- `block` — withhold an eligible ordinary review (`409`, default) until an explicit session-bound Proceed/Decline; mandatory holds stay denied.
+- `warn` — serve a complete bound ordinary-review artifact under the explicit operator policy, retaining the review decision and policy note in decision logs. Successful tarball responses carry verdict/source/digest headers, not the review JSON or policy note.
+- `allow` — permit the same complete ordinary-review artifacts without an interactive choice.
+
+Both permissive settings preserve required checks and artifact/receipt binding.
+They return gate outcome `SAFE` while retaining the underlying `review` decision;
+the header describes permission under policy, not proof of harmlessness. See the
+[review contract](../../docs/review-contract.md) for the session exchange and
+`SAFE`/`UNSAFE`/`PENDING` headers. A bare npm client cannot conduct the default
+review exchange.
 
 Artifact delivery always fails closed on errors, including failed refreshes. `scanErrorPolicy` remains available to legacy diagnostic helpers, but cannot authorize unverified bytes.
 

@@ -6,6 +6,7 @@ const { createExecutionGraph } = require("./execution-graph");
 const { compareProvenanceToRepository } = require("./attestation");
 const { SUSPICIOUS_READ_TARGETS, AGENT_CONFIG_READ_TARGETS } = require("./credential-targets");
 const { inspectRuntimeLoaders } = require("./runtime-loaders");
+const { withoutBlockListData } = require("./ip-policy-data");
 
 const VERDICT_ORDER = {
   safe: 0,
@@ -3174,6 +3175,7 @@ function dwordToDottedQuad(value) {
 }
 
 function findPublicIpInCode(content) {
+  content = withoutBlockListData(content);
   // (a) full URL form: http://1.2.3.4 or https://1.2.3.4
   const urlIp = content.match(PUBLIC_URL_IP_REGEX);
   if (urlIp && !isPrivateIp(urlIp[1])) return urlIp[0];

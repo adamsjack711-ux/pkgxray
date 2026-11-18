@@ -2,6 +2,8 @@
 
 Explicit 1.3.0 commands below target the upcoming release; use them after npm publication completes.
 
+For testing before publication, use the [packed candidate instructions](../testing-1.3.md). The published npm version remains 1.2.1.
+
 The lowest-maintenance integration is to run a version-pinned pkgxray release
 directly with `npx`. It needs no secret and no write permission. A reusable
 workflow is also available for teams that prefer central configuration.

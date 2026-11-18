@@ -1,8 +1,26 @@
 # REVIEW decisions and shared scans
 
-Final gate outcomes are `SAFE` and `UNSAFE`. `REVIEW` is pending: `outcome: null`, `review.state: "pending"`, evidence in `findings` (proxy) or `report.findings` (guard), and no use or promotion. Proceed resolves to SAFE for that caller; Decline resolves to UNSAFE. Proceed records acceptance of the evidence, not a new scanner finding. Internal scan decisions remain `allow`, `review`, and `block` for compatibility and are never rewritten by a developer decision.
+Under the default guard `safe-only` and proxy `reviewPolicy: block`, an ordinary
+`REVIEW` is pending: `outcome: null`, `review.state: "pending"`, evidence in
+`findings` (proxy) or `report.findings` (guard), and no use or promotion. Eligible
+reviews can be resolved with an explicit Proceed or Decline. Final gate outcomes
+are `SAFE` and `UNSAFE`; those names describe the gate decision, not proof of
+harmlessness. Proceed records acceptance of the evidence for that caller; it
+does not rewrite the scanner findings or the internal `review` decision.
 
-The legacy `allow-review` CLI policy and proxy `warn`/`allow` review settings no longer authorize use. Incomplete mandatory checks remain closed and cannot be cleared through an ordinary Proceed.
+The existing explicit `allow-review` policy remains supported in 1.x: it
+permits ordinary review findings, producing a guard `decision: "allow"` while
+the underlying report remains `review`. Proxy `reviewPolicy: warn` or `allow`
+likewise permits ordinary reviews only with complete, matching artifact-bound
+receipts. These operator policy choices do not require a new interactive choice.
+Mandatory source, dependency, behavioural, vulnerability and required provenance
+checks remain enforced. An `allow-review` setting or ordinary Proceed cannot clear an
+incomplete mandatory check.
+
+The per-caller Proceed/Decline flow is an additive option for eligible reviews
+that remain held under the configured policy. Keep `safe-only` (and proxy
+`reviewPolicy: block`) to require that decision instead of permitting ordinary
+reviews through policy.
 
 ## Shared proxy
 
@@ -16,11 +34,11 @@ A pending tarball request returns HTTP 409, evidence, `review.id`, and a cryptog
 
 Use `x-pkgxray-session` on that POST. The other choice is `Decline`. Only reviews already presented in that session can be decided. Retry the tarball request with the same session token; unchanged choices do not prompt again. Another session remains pending. Tokens expire after 24 hours or server restart; the server caps retained sessions at 10,000. Treat tokens as private bearer capabilities and use TLS when accessing a remote proxy. Tokens are not sent to the upstream registry.
 
-HTTP verdict headers are `SAFE`, `UNSAFE`, or `PENDING`. The response JSON retains the internal scan decision plus the final outcome and review state. Clients such as npm that cannot conduct this exchange need a client adapter; a bare npm request stays blocked on REVIEW.
+HTTP verdict headers are `SAFE`, `UNSAFE`, or `PENDING`. The response JSON retains the internal scan decision plus the final outcome and review state. Under `reviewPolicy: block`, clients such as npm that cannot conduct this exchange need a client adapter; a bare npm request stays blocked on REVIEW. Explicit `warn`/`allow` policy handling does not require that exchange, but still requires a complete bound receipt.
 
 ## Guard, CLI, and MCP
 
-CLI: inspect `pkgxray guard npm:name@version` evidence, then repeat with `--review-id <exact ID> --review-choice Proceed` (or `Decline`). For promotion, include the same `--promote-to <directory>` on both the evidence request and the decision request: a use approval cannot authorize promotion. For enforced installation, review with `--review-for-install` before choosing Proceed; ordinary use/promotion decisions do not authorize install. Choices are private to the local OS user at `~/.local/state/pkgxray/reviews.json` with mode 0600. Enforced `pkgxray install` consumes local install-action choices while still verifying the complete receipt and archive bytes. An artifact without an immutable receipt cannot receive a remembered Proceed.
+CLI: inspect `pkgxray guard npm:name@version` evidence, then repeat with `--review-id <exact ID> --review-choice Proceed` (or `Decline`). For promotion, include the same `--promote-to <directory>` on both the evidence request and the decision request: a use approval cannot authorize promotion. For enforced installation, run both guard calls from the target project's directory using the same policy and `--review-for-install --no-github-diff` before choosing Proceed; ordinary use/promotion decisions do not authorize install. See the [installation review example](enforced-install.md). Choices are private to the local OS user at `~/.local/state/pkgxray/reviews.json` with mode 0600. Enforced `pkgxray install` consumes local install-action choices while still verifying the complete receipt and archive bytes. An artifact without an immutable receipt cannot receive a remembered Proceed.
 
 MCP guard remains read-only: it rejects promotion arguments and redacts package source and staging paths. It accepts `reviewId` and `reviewChoice` after the user has seen the evidence; a session choice does not grant filesystem write authority. Decisions belong to that stdio server session. Library callers pass their own `ReviewDecisions` and trusted `reviewScope`; they must not derive identity from an unauthenticated developer-name header. Shared receipts never contain Proceed/Decline decisions.
 

@@ -17,9 +17,14 @@ REVIEW under `allow-review`; a parent artifact allowlist cannot clear that gap.
 an explicit artifact allowlist can override them. Python modules receive
 `unsupported-behavior` until Python behavioral analysis is available.
 
-`allow-review` still permits ordinary reviewed findings, including findings
-downgraded in compiled output. Keep `safe-only`, `failOn: review` and
-`scanErrorPolicy: fail-closed` when reviews must stop installation.
+`allow-review` still permits ordinary review findings, including findings
+downgraded in compiled output. The guard decision may become `allow` while the
+report verdict remains `review`; this is an explicit operator policy choice, not
+a new clean finding. Keep `safe-only`, `failOn: review` and
+`scanErrorPolicy: fail-closed` when reviews must stop installation. In 1.3, an
+eligible review held by `safe-only` can instead receive an explicit, bound
+Proceed/Decline choice. See the [review contract](review-contract.md); mandatory
+holds are not eligible for ordinary Proceed.
 
 ### Provenance verification
 

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-17T18:47:50.130Z",
+  "baselineResult": "1.3-package-results-2026-11-17.json",
+  "package": "@modelcontextprotocol/server-everything@2.3.0",
+  "artifactSha256": "1b53c9faaca471a6432f7c707666ad2f5e8b520865b4ebf73caa0cfa7b6fd239",
+  "file": "dist/tools/gzip-file-as-resource.js",
+  "sourceSha256": "4ee83ccade5db0db74c6c25b57c925105ba92e30d2be4869243c4c3ec7842a3d",
+  "auditorSourceSha256": "30467ccccb9a4c79b0fe97a0d42b74b0ef5210eacad5be1a9ac56e54b78e3659",
+  "targetExecuted": false,
+  "finding": {
+    "category": "network-exfil-or-loader",
+    "severity": "high",
+    "snippet": "\"100.64.0.0\""
+  },
+  "adjudication": "False destination inference: subnet appears in the non-public-address BlockList, not as an outbound target. This does not establish package safety or resolve other coverage findings.",
+  "controls": [
+    {
+      "label": "denylist-data",
+      "source": "const {BlockList}=require('node:net'); const deny=new BlockList(); deny.addSubnet('100.64.0.0',10,'ipv4'); exports.load=url=>fetch(url);",
+      "observed": "block",
+      "finding": "network-exfil-or-loader"
+    },
+    {
+      "label": "literal-network-destination",
+      "source": "exports.load=()=>fetch('http://100.64.0.1/data');",
+      "observed": "block",
+      "finding": "network-exfil-or-loader"
+    },
+    {
+      "label": "literal-subnet-table-loop",
+      "source": "import { BlockList } from \"node:net\";\nconst deny = new BlockList();\nfor (const [network, prefix] of [[\"100.64.0.0\", 10], [\"192.0.2.0\", 24]]) { deny.addSubnet(network, prefix, \"ipv4\"); }\nexport const blocked = address => deny.check(address, \"ipv4\");\nexport const load = url => fetch(url);",
+      "observed": "block",
+      "finding": "network-exfil-or-loader"
+    }
+  ]
+}

@@ -199,7 +199,7 @@ function guardToolDefinition() {
     name: GUARD_TOOL_NAME,
     title: "Guard a package before installation",
     description:
-      "Fetch and inspect one package reference, then return a redacted SAFE or UNSAFE report, or a pending REVIEW with advisory reviewPlan investigation steps and an explicit user Proceed or Decline when eligible. The plan never authorizes use or clears mandatory holds. Never runs package code or writes package files outside temporary quarantine. Local references are confined to operator-approved roots.",
+      "Fetch and inspect one package reference, then return a redacted SAFE, REVIEW, or BLOCK scan report and policy decision. Under safe-only, eligible pending reviews include advisory reviewPlan steps and optional explicit user Proceed or Decline; allow-review permits ordinary review findings under operator policy. The plan never authorizes use or clears mandatory holds. Never runs package code or writes package files outside temporary quarantine. Local references are confined to operator-approved roots.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,

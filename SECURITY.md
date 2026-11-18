@@ -31,12 +31,24 @@ Normal `guard`, `audit`, and evidence scans run locally and have no
 dependencies. They do not execute audited package code, run lifecycle scripts,
 or perform `npm install`.
 
-Two surfaces do execute child code, and both are opt-in:
+The following explicitly invoked surfaces execute child code:
 
 - `pkgxray canary --yes-run-untrusted-code` runs lifecycle scripts inside the
   documented OS sandbox. Use it only on a host you can throw away.
 - `pkgxray mcp` (after its package-scan-first gate) and `pkgxray mcp-proxy`
   spawn the configured MCP server to inspect or proxy its protocol.
+- The experimental 1.3 `pkgxray vm-scan --yes-run-untrusted-code` executes a
+  package inside a local QEMU VM. The MCP equivalent is exposed only when the
+  operator sets `PKGXRAY_VM_TESTS=1`; enabling it lets connected clients request
+  these bounded execution scans. See the [VM runbook](services/local-vm/README.md).
+  A quiet VM result never approves installation or clears static findings.
+- `pkgxray install` explicitly runs a trusted npm executable against approved
+  archives with lifecycle scripts disabled. Its [installation boundaries](docs/enforced-install.md)
+  apply; later execution of installed code is outside that transaction.
+
+Compose inspects selected source as data and does not execute target code. Its
+partial analysis never issues installation approval. The public hosted MCP
+service and website do not expose VM execution.
 
 Their threat models and any containment failure are in security scope. Reports
 we especially want:

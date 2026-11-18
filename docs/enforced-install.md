@@ -15,7 +15,7 @@ The project must already contain consistent `package.json` and npm `package-lock
 ## What the command enforces
 
 1. Validate all locked paths, registry URLs, exact versions and integrity hashes, including transitive dependencies.
-2. Download and scan each locked archive. Require a matching ALLOW receipt for its identity, digest, scanner build and policy, with completed source and vulnerability checks. Re-verify archive integrity after scanning.
+2. Download and scan each locked archive. Require a matching ALLOW receipt, or an eligible REVIEW receipt with an explicit install-action-scoped Proceed, for its identity, digest, scanner build and policy, with completed source and vulnerability checks. Re-verify archive integrity after scanning.
 3. Create a private staging project with lockfile URLs rewritten to the approved local archives. Run `npm ci --offline --ignore-scripts --no-audit --no-fund` using a fresh cache, empty user/global npm configuration and a restricted child environment. The child launches npm beside the current Node installation through that same Node executable; project-local PATH shims are not used. Project `.npmrc`, npm environment overrides and Node preload settings do not reach this child. POSIX archive inspection uses system tar with a restricted environment that excludes `TAR_OPTIONS` and project executable paths. These flags follow npm's documented [ci behavior](https://docs.npmjs.com/cli/v11/commands/npm-ci/).
 4. Compare every installed package file against the approved extracted contents. Executable links must stay within the approved tree; executable declarations come from the scanned manifest. Reject unexpected, missing or changed files.
 5. Recheck the original manifest, lockfile and on-disk policy before promotion. Preserve the old `node_modules` under the reported `.pkgxray-previous-node_modules-<id>` path, then rename the completed tree into place. Failed scans and failed installs leave the old tree in place; a failed final rename restores it.
@@ -23,6 +23,24 @@ The project must already contain consistent `package.json` and npm `package-lock
 Lifecycle scripts stay disabled, including root-project scripts. Packages requiring native compilation or install-time setup may therefore be unusable. Running `npm rebuild` afterward is a separate execution outside this command's protection.
 
 The command preserves the project's manifest and lockfile. It writes `node_modules/.pkgxray-install.json`, containing their hashes, scanner/policy fingerprints, per-package approval records and installed/skipped paths. Platform-incompatible optional dependencies may be skipped by npm; they are still scanned beforehand. Receipts are local unsigned records, not remote attestations or guarantees of harmless behavior.
+
+For ordinary review findings, an explicit configured `allow-review` policy can
+produce an ALLOW receipt. Under `safe-only`, run both review commands from the
+target project's directory, with the same policy that installation will use.
+Use `--no-github-diff` to match the installer's assessment options, and repeat
+the relevant options when recording the returned review ID:
+
+```bash
+cd /path/to/project
+pkgxray guard npm:package-name@1.2.3 --review-for-install --no-github-diff --format json
+pkgxray guard npm:package-name@1.2.3 --review-for-install --no-github-diff --format json --review-id RETURNED_ID --review-choice Proceed
+pkgxray install . --format json
+```
+
+Replace the example with the exact locked package requiring review. A use or
+promotion choice cannot authorize installation; changed evidence, build or policy
+requires a new review. Incomplete mandatory checks cannot be cleared by that
+choice. See the [review contract](review-contract.md).
 
 ## Current supported scope
 

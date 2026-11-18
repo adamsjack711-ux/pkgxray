@@ -627,7 +627,7 @@ test('review request bodies have byte and total-time limits without changing app
 
 test('HTTP review requires evidence and a session-scoped explicit choice before delivery', async () => {
   let scans = 0;
-  const proxy = await startProxy({ reviewPolicy: 'allow', runGuard: async () => {
+  const proxy = await startProxy({ reviewPolicy: 'block', runGuard: async () => {
     scans++; return { decision: 'review', findings: [{ reason: 'inspect this behavior' }] };
   } });
   async function choose(session, reviewId, choice) {
@@ -656,5 +656,21 @@ test('HTTP review requires evidence and a session-scoped explicit choice before 
     assert.equal((await get(url, { headers: { 'x-pkgxray-session': b } })).status, 403);
     assert.equal(scans, 1);
     assert.equal(lastHeaders['x-pkgxray-session'], undefined);
+  } finally { await proxy.close(); }
+});
+
+for (const reviewPolicy of ['warn', 'allow']) test(`HTTP ${reviewPolicy} policy serves only bound ordinary review evidence`, async () => {
+  let scans = 0;
+  const proxy = await startProxy({ reviewPolicy, runGuard: async () => {
+    scans++; return { decision: 'review', findings: [{ reason: 'ordinary review fixture' }] };
+  } });
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await get(`${proxy.url}/demo/-/demo-1.0.0.tgz`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers['x-pkgxray-verdict'], 'SAFE');
+      assert.equal(response.body.toString(), tarballBytes);
+    }
+    assert.equal(scans, 1, 'bound scan evidence can be cached without a session decision');
   } finally { await proxy.close(); }
 });

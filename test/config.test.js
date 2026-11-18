@@ -15,7 +15,8 @@ const {
   renderConfigEffects,
   mcpConfig,
   mcpToolAllowed,
-  DEFAULTS
+  DEFAULTS,
+  guardDecision
 } = require("../src/config");
 
 function tmpdir() {
@@ -120,10 +121,10 @@ test("invalid enum values fall back to the safe default with a warning", () => {
   assert.equal(warnings.length, 2);
 });
 
-test("policy allow-review explains the explicit decision requirement", () => {
+test("policy allow-review warns about ordinary review permission", () => {
   const warnings = [];
   validateConfig({ policy: "allow-review" }, warnings);
-  assert.ok(warnings.some((w) => /no longer approves REVIEW/.test(w)));
+  assert.ok(warnings.some((w) => /permits ordinary review-grade findings/.test(w)));
 });
 
 // --- applyConfig: mutes ----------------------------------------------------
@@ -288,4 +289,21 @@ test("parent artifact approval cannot clear an incomplete dependency check", () 
   assert.equal(adjusted.configEffects.mutedCount, 0);
   assert.equal(adjusted.configEffects.allowlisted, null);
   assert.equal(adjusted.configEffects.ignoredAllow.reason, "incomplete-dependency-scan");
+});
+
+// Frozen published-1.2.1 policy contract: ordinary reviews may be explicitly
+// permitted, while mandatory evidence gaps and vulnerability blocks may not.
+test("1.x allow-review preserves ordinary policy decisions without clearing mandatory holds", () => {
+  const ordinary = { verdict: "review", findings: [{ category: "install-hook", severity: "medium" }] };
+  assert.equal(guardDecision(ordinary, { policy: "safe-only" }), "review");
+  assert.equal(guardDecision(ordinary, { policy: "allow-review" }), "allow");
+  for (const category of require("../src/approval-policy").MANDATORY_CATEGORIES) {
+    const incomplete = { ...ordinary, findings: [...ordinary.findings, { category, severity: "medium" }] };
+    assert.equal(guardDecision(incomplete, { policy: "allow-review" }), "review", category);
+  }
+  for (const gap of [{ vulnerabilityScanError: "unavailable" }, { sourceCoverage: { complete: false } },
+    { dependencyAudit: { complete: false } }]) {
+    assert.equal(guardDecision(ordinary, { policy: "allow-review", ...gap }), "review");
+  }
+  assert.equal(guardDecision({ verdict: "block", findings: [{ category: "known-vulnerability", severity: "high" }] }, { policy: "allow-review" }), "block");
 });

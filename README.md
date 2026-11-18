@@ -16,7 +16,7 @@
 
 ## First scan
 
-Node.js 18+ and network access; no global install.
+Published CLI: **1.2.1**. Node.js 18+ and network access; no global install. [Test the unpublished 1.3 candidate](docs/testing-1.3.md).
 
 ```bash
 npx --yes pkgxray@1.2.1 guard npm:express@4.21.0
@@ -45,4 +45,4 @@ Checks supplied snippets and npm metadata/advisories on Cloudflare; no package e
 
 ## Documentation
 
-[Compose (experimental, checkout only)](docs/compose.md) · [Docs index](docs/README.md) · [Reference](docs/reference.md) · [Threat model](docs/threat-model.md) · [BLOCK example](docs/reference.md#synthetic-block-example) · [Security](SECURITY.md) · [Website](https://pkgxray.ca)
+[Compose (experimental, 1.3 candidate)](docs/compose.md) · [Docs index](docs/README.md) · [Reference](docs/reference.md) · [Threat model](docs/threat-model.md) · [BLOCK example](docs/reference.md#synthetic-block-example) · [Security](SECURITY.md) · [Website](https://pkgxray.ca)

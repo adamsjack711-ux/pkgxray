@@ -373,8 +373,8 @@ async function guardExtension(reference, options = {}) {
   const reviews = require("./review");
   const reviewId = reviews.reviewIdentity(result.approval, { action: options.promoteTo ? 'promote' : options.reviewAction || 'use', target: options.promoteTo ? path.resolve(options.promoteTo) : null });
   const eligible = require("./approval-policy").receiptAuthorizes(result.approval, { allowReview: true });
+  if (options.reviewChoice && options.reviewId !== reviewId) throw new Error('Artifact, policy or scanner changed; inspect the fresh REVIEW before choosing');
   if (options.reviewChoice && eligible && decision === 'review') {
-    if (options.reviewId !== reviewId) throw new Error('Artifact, policy or scanner changed; inspect the fresh REVIEW before choosing');
     options.reviewDecisions?.choose(options.reviewScope, reviewId, options.reviewChoice);
   }
   Object.assign(result, reviews.reviewOutcome(decision, {
@@ -1691,13 +1691,8 @@ async function startsWithShebang(fullPath) {
 }
 
 function decisionForReport(report, policy) {
-  if (report.verdict === "block") {
-    return "block";
-  }
-  if (report.verdict === "review") {
-    return "review";
-  }
-  return "allow";
+  // Keep legacy callers on the same policy and mandatory-hold path.
+  return cfg.guardDecision(report, { policy });
 }
 
 function shouldPromote(decision) {

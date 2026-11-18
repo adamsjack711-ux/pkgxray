@@ -2,6 +2,7 @@ name: public-mcp
 on:
   pull_request:
     paths:
+      - "package.json"
       - "services/public-mcp/**"
       - "src/**"
       - "browser-extension/auditor.browser.js"
@@ -10,6 +11,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "package.json"
       - "services/public-mcp/**"
       - "src/**"
       - "browser-extension/auditor.browser.js"

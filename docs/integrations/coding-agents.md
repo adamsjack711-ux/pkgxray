@@ -2,6 +2,8 @@
 
 These setup commands target release 1.3.0; use them after npm publication completes.
 
+For testing before publication, use the [packed candidate instructions](../testing-1.3.md). The published npm version remains 1.2.1.
+
 pkgxray can be exposed as an MCP tool or called as a command. Those integrations
 are **advisory unless the host has an execution hook**: an instruction can ask
 an agent to scan first, but cannot prove that every install was intercepted.

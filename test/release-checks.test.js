@@ -1,7 +1,18 @@
 "use strict";
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { verifyReleaseScan } = require('../scripts/verify-release');
+const { verifyReleaseScan, verifyReleaseMetadata } = require('../scripts/verify-release');
+test('release refuses a mismatched tag or registry package before checking the archive', () => {
+  const pkg = { name: 'pkgxray', version: '1.3.0' };
+  const registry = { packages: [{ registryType: 'npm', identifier: 'pkgxray', version: '1.3.0' }] };
+  const release = { GITHUB_EVENT_NAME: 'release', GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: 'v1.3.0' };
+  assert.doesNotThrow(() => verifyReleaseMetadata(pkg, registry, release));
+  assert.doesNotThrow(() => verifyReleaseMetadata(pkg, registry));
+  assert.throws(() => verifyReleaseMetadata(pkg, registry, { ...release, GITHUB_REF_NAME: 'v1.2.1' }), /tag/);
+  assert.throws(() => verifyReleaseMetadata(pkg, registry, { ...release, GITHUB_REF_TYPE: 'branch' }), /tag/);
+  assert.throws(() => verifyReleaseMetadata(pkg, { packages: [] }), /registry/);
+  assert.throws(() => verifyReleaseMetadata(pkg, { packages: [{ ...registry.packages[0], version: '1.2.1' }] }), /versions/);
+});
 const digest = 'a'.repeat(64);
 function fixture() {
   return { resolved: { sha256: digest }, decision: 'review',

@@ -1,0 +1,384 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-17T19:17:24.287170+00:00",
+  "status": "Partial performance fix: lodash production worker completes; zod production worker still times out.",
+  "scope": "Local static analysis of frozen source evidence from two exact npm artifacts. No package installation scripts or package code executed. This is not the full registry/MCP cohort journey.",
+  "environment": {
+    "node": "v26.0.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "osRelease": "27.0.0",
+    "cpu": "Apple M1 Pro",
+    "concurrency": "One measurement subprocess at a time; other agents deferred heavy validation. No repeated-run statistical confidence claim."
+  },
+  "builds": {
+    "before": "20e2cb2e7d31d634f9ff1838738d5cb1f20734a70809f163d89170271d3c55b9",
+    "after": "9eefdc7d717b6380dbd47bc469e8304c1c72a297c616bd75f176c4acc20f4724",
+    "onlyChangedRuntimeFiles": [
+      "src/flow-analysis.js"
+    ],
+    "beforeFlowSha256": "cd77cefe3059f192d36ef69d969576b54a80e0b1051ca7cfea5c0c419a7bea32",
+    "afterFlowSha256": "cd05c6e04d058540194bd8ab5150db75feed625084f4ce11edd34ba91ab51ace",
+    "notes": "Both copies freeze the same in-progress candidate runtime, with only flow-analysis.js changed. Later CLI/source-plan/integration edits are outside this isolated comparison; final cohort uses its separately recorded integration build."
+  },
+  "configuration": {
+    "analysisOptions": {},
+    "policy": "Policy application and network acquisition excluded; raw auditEvidence reports compared.",
+    "evidence": "packageName, sourceFiles and sourceCoverage only; coverage copied from collection snapshot. No npm/GitHub/OSV metadata supplied. Missing metadata and pre-existing coverage gaps are visible.",
+    "directNodeFlags": [
+      "--max-old-space-size=128",
+      "--max-semi-space-size=32"
+    ],
+    "directDeadlineMs": 90000,
+    "worker": "actual src/shared-scans.analyzeShared, .evidence report unwrapped, default SharedScans service",
+    "workerDeadlineMs": 30000,
+    "workerResourceLimits": {
+      "maxOldGenerationSizeMb": 128,
+      "maxYoungGenerationSizeMb": 32
+    },
+    "profilerEnabledForMeasurements": false,
+    "rssInterpretation": "Observed process RSS at completion, not peak RSS; worker RSS is observed in the coordinator after worker exit.",
+    "capsChanged": false
+  },
+  "diagnosis": {
+    "cause": "Whole abstract-heap snapshots and joins repeatedly copy captured closure graphs for dormant bodies and branch alternatives. The cost remains substantial for state-mutating control flow.",
+    "profileEvidence": "Initial V8 statistical profiles identified copyState/joinValues/joinStates as dominant JavaScript stacks; lodash completed about 32.2s with profiling, zod was interrupted at 40s. These diagnostic timings are not the controlled comparison.",
+    "change": "Skip enclosing-heap snapshots only for conservatively read-only dormant parameters/bodies and both read-only if/conditional alternatives. Calls, assignments, classes, imports/exports and loop/switch/try joins retain isolation. Fresh-invocation local declarations may share state only when no branch join will rewrite captured bindings; if arms use the same conservative declaration predicate as stmt.",
+    "limits": "State copying still has a per-context 40000-work cap and the interpreter retains 500000-work/160-depth limits; no deadline or cap was raised, and incomplete results remain held."
+  },
+  "packages": [
+    {
+      "name": "lodash",
+      "version": "4.18.1",
+      "reference": "npm:lodash@4.18.1",
+      "group": "familiar-npm",
+      "integrity": "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==",
+      "tarball": "https://registry.npmjs.org/lodash/-/lodash-4.18.1.tgz",
+      "tarballBytes": 315640,
+      "tarballSha256": "696942c2a488c9d7428e9ca5f12ccf03b52de01dcdbfe4d4751d392f0491ae16",
+      "sourceSnapshotSha256": "856232f92b0e548280055bf76f29a30b1a890a036552c0466ca5d9b08ee4abc8",
+      "sourceSnapshotFiles": 600,
+      "sourceSnapshotBytes": 1111418,
+      "sourceCoverage": {
+        "complete": false,
+        "scannedFiles": 600,
+        "skippedFiles": 450,
+        "truncatedFiles": 0,
+        "inventoryFiles": 1051,
+        "reasons": [
+          "file limit (600) reached"
+        ]
+      },
+      "directComparison": {
+        "fullReportsIdentical": false,
+        "topLevelFieldsDiffering": [
+          "findings"
+        ],
+        "findingCountsEqual": true,
+        "changedFindingCount": 1,
+        "allChangesRemainFlowAnalysisGaps": true,
+        "nonFlowFindingsIdentical": true,
+        "reason": "The unchanged work/state limits are reached at different AST locations; these remain incomplete-analysis REVIEW findings."
+      }
+    },
+    {
+      "name": "zod",
+      "version": "4.6.7",
+      "reference": "npm:zod@4.6.7",
+      "group": "familiar-npm",
+      "integrity": "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==",
+      "tarball": "https://registry.npmjs.org/zod/-/zod-4.6.7.tgz",
+      "tarballBytes": 1141941,
+      "tarballSha256": "84efd155bed93270286e793fc951be270b536cbd5b0eeb111f0fa3967201d698",
+      "sourceSnapshotSha256": "1001b8958d9f250386f85cb421da9fff46a6b1ea0c8289355705679c48bee30e",
+      "sourceSnapshotFiles": 600,
+      "sourceSnapshotBytes": 4235933,
+      "sourceCoverage": {
+        "complete": false,
+        "scannedFiles": 600,
+        "skippedFiles": 179,
+        "truncatedFiles": 0,
+        "inventoryFiles": 840,
+        "reasons": [
+          "file limit (600) reached",
+          "runtime target escapes artifact: ../../scripts/write-stub-package-jsons.ts",
+          "runtime target escapes artifact: ../../scripts/check-versions.ts"
+        ]
+      },
+      "directComparison": {
+        "fullReportsIdentical": false,
+        "topLevelFieldsDiffering": [
+          "findings"
+        ],
+        "findingCountsEqual": true,
+        "changedFindingCount": 17,
+        "allChangesRemainFlowAnalysisGaps": true,
+        "nonFlowFindingsIdentical": true,
+        "reason": "The unchanged work/state limits are reached at different AST locations; these remain incomplete-analysis REVIEW findings."
+      }
+    }
+  ],
+  "measurements": [
+    {
+      "variant": "before",
+      "exitCode": 0,
+      "package": "lodash",
+      "mode": "direct",
+      "buildId": "20e2cb2e7d31d634f9ff1838738d5cb1f20734a70809f163d89170271d3c55b9",
+      "inputSha256": "856232f92b0e548280055bf76f29a30b1a890a036552c0466ca5d9b08ee4abc8",
+      "ms": 30308.620792,
+      "verdict": "review",
+      "findings": 604,
+      "counts": {
+        "flow-analysis-gap": 598,
+        "unresolved-runtime-execution": 1,
+        "incomplete-source-scan": 1,
+        "network-access": 2,
+        "missing-metadata": 2
+      },
+      "rss": 227819520,
+      "reportSha256": "b6056c28a36b05f6853b6bc29eb7c04ab1917260ddbd4459820bef8b77ae5cb1"
+    },
+    {
+      "variant": "before",
+      "exitCode": 0,
+      "package": "zod",
+      "mode": "direct",
+      "buildId": "20e2cb2e7d31d634f9ff1838738d5cb1f20734a70809f163d89170271d3c55b9",
+      "inputSha256": "1001b8958d9f250386f85cb421da9fff46a6b1ea0c8289355705679c48bee30e",
+      "ms": 49550.763416999995,
+      "verdict": "review",
+      "findings": 467,
+      "counts": {
+        "flow-analysis-gap": 461,
+        "incomplete-source-scan": 1,
+        "code-execution": 3,
+        "missing-metadata": 2
+      },
+      "rss": 276938752,
+      "reportSha256": "119cefaa45ba84a3909b9fdd2cf7ade62fe90626d892ddbb600bce74f9166268"
+    },
+    {
+      "variant": "before",
+      "exitCode": 1,
+      "package": "lodash",
+      "mode": "worker",
+      "buildId": "20e2cb2e7d31d634f9ff1838738d5cb1f20734a70809f163d89170271d3c55b9",
+      "ms": 30018.974584,
+      "error": "SCAN_TIMEOUT",
+      "message": "Shared scan deadline exceeded"
+    },
+    {
+      "variant": "before",
+      "exitCode": 1,
+      "package": "zod",
+      "mode": "worker",
+      "buildId": "20e2cb2e7d31d634f9ff1838738d5cb1f20734a70809f163d89170271d3c55b9",
+      "ms": 30053.722,
+      "error": "SCAN_TIMEOUT",
+      "message": "Shared scan deadline exceeded"
+    },
+    {
+      "variant": "after-aligned",
+      "exitCode": 0,
+      "package": "lodash",
+      "mode": "direct",
+      "buildId": "9eefdc7d717b6380dbd47bc469e8304c1c72a297c616bd75f176c4acc20f4724",
+      "inputSha256": "856232f92b0e548280055bf76f29a30b1a890a036552c0466ca5d9b08ee4abc8",
+      "ms": 21435.227417000002,
+      "verdict": "review",
+      "findings": 604,
+      "counts": {
+        "flow-analysis-gap": 598,
+        "unresolved-runtime-execution": 1,
+        "incomplete-source-scan": 1,
+        "network-access": 2,
+        "missing-metadata": 2
+      },
+      "rss": 219168768,
+      "reportSha256": "b9a069c40f9b1e186b455343e1ea527029e524eb57d35051e85cc52339627e7a"
+    },
+    {
+      "variant": "after-aligned",
+      "exitCode": 0,
+      "package": "zod",
+      "mode": "direct",
+      "buildId": "9eefdc7d717b6380dbd47bc469e8304c1c72a297c616bd75f176c4acc20f4724",
+      "inputSha256": "1001b8958d9f250386f85cb421da9fff46a6b1ea0c8289355705679c48bee30e",
+      "ms": 27261.345125,
+      "verdict": "review",
+      "findings": 467,
+      "counts": {
+        "flow-analysis-gap": 461,
+        "incomplete-source-scan": 1,
+        "code-execution": 3,
+        "missing-metadata": 2
+      },
+      "rss": 264142848,
+      "reportSha256": "44ca2eeeaff7035bb03f1654e682860819c46af903236475fce5c0afbae6bf7a"
+    },
+    {
+      "variant": "after-aligned",
+      "exitCode": 0,
+      "package": "lodash",
+      "mode": "worker",
+      "buildId": "9eefdc7d717b6380dbd47bc469e8304c1c72a297c616bd75f176c4acc20f4724",
+      "inputSha256": "856232f92b0e548280055bf76f29a30b1a890a036552c0466ca5d9b08ee4abc8",
+      "ms": 28893.462416000002,
+      "verdict": "review",
+      "findings": 604,
+      "counts": {
+        "flow-analysis-gap": 598,
+        "unresolved-runtime-execution": 1,
+        "incomplete-source-scan": 1,
+        "network-access": 2,
+        "missing-metadata": 2
+      },
+      "rss": 177160192,
+      "reportSha256": "b9a069c40f9b1e186b455343e1ea527029e524eb57d35051e85cc52339627e7a"
+    },
+    {
+      "variant": "after-aligned",
+      "exitCode": 1,
+      "package": "zod",
+      "mode": "worker",
+      "buildId": "9eefdc7d717b6380dbd47bc469e8304c1c72a297c616bd75f176c4acc20f4724",
+      "ms": 30052.947791,
+      "error": "SCAN_TIMEOUT",
+      "message": "Shared scan deadline exceeded"
+    }
+  ],
+  "intermediateConservativeMeasurements": [
+    {
+      "variant": "after-final",
+      "exitCode": 0,
+      "package": "lodash",
+      "mode": "direct",
+      "buildId": "6b180a33a8a782504aa29ca09f00b686ce6288c34e061374ece76056854f4958",
+      "inputSha256": "856232f92b0e548280055bf76f29a30b1a890a036552c0466ca5d9b08ee4abc8",
+      "ms": 28152.050833,
+      "verdict": "review",
+      "findings": 604,
+      "counts": {
+        "flow-analysis-gap": 598,
+        "unresolved-runtime-execution": 1,
+        "incomplete-source-scan": 1,
+        "network-access": 2,
+        "missing-metadata": 2
+      },
+      "rss": 217169920,
+      "reportSha256": "09382a08c5c9ba9b19f40fa8d20df9f58a86360a70dfd1d7224305a8a7b4e879"
+    },
+    {
+      "variant": "after-final",
+      "exitCode": 0,
+      "package": "zod",
+      "mode": "direct",
+      "buildId": "6b180a33a8a782504aa29ca09f00b686ce6288c34e061374ece76056854f4958",
+      "inputSha256": "1001b8958d9f250386f85cb421da9fff46a6b1ea0c8289355705679c48bee30e",
+      "ms": 34396.794292,
+      "verdict": "review",
+      "findings": 467,
+      "counts": {
+        "flow-analysis-gap": 461,
+        "incomplete-source-scan": 1,
+        "code-execution": 3,
+        "missing-metadata": 2
+      },
+      "rss": 267091968,
+      "reportSha256": "4e8cad37140f588dbc8cb6afe85d3a6f40a1bf36dc590198cfa925d1d514a4b1"
+    },
+    {
+      "variant": "after-final",
+      "exitCode": 1,
+      "package": "lodash",
+      "mode": "worker",
+      "buildId": "6b180a33a8a782504aa29ca09f00b686ce6288c34e061374ece76056854f4958",
+      "ms": 30022.662125,
+      "error": "SCAN_TIMEOUT",
+      "message": "Shared scan deadline exceeded"
+    },
+    {
+      "variant": "after-final",
+      "exitCode": 1,
+      "package": "zod",
+      "mode": "worker",
+      "buildId": "6b180a33a8a782504aa29ca09f00b686ce6288c34e061374ece76056854f4958",
+      "ms": 30064.920875,
+      "error": "SCAN_TIMEOUT",
+      "message": "Shared scan deadline exceeded"
+    }
+  ],
+  "validation": {
+    "focusedFlowAndSensitiveTestsPassed": 32,
+    "cliGuardConfigTestsPassed": 8,
+    "auditorRegressionAndAdversarialTestsPassed": 106,
+    "calibration": {
+      "cohort": "all",
+      "total": 84,
+      "malicious": 36,
+      "benign": 48,
+      "correct": 74,
+      "falseBlocks": 0,
+      "knownFalsePositives": 0,
+      "xpasses": 0,
+      "misses": 0,
+      "recallDrops": 0,
+      "maliciousBlocking": 36,
+      "blockRecallFloor": 23,
+      "recallFloorMet": true,
+      "blockPrecision": 1,
+      "blockRecall": 1,
+      "blockF1": 1,
+      "matrix": {
+        "safe": {
+          "safe": 25,
+          "review": 9,
+          "block": 0
+        },
+        "review": {
+          "safe": 1,
+          "review": 13,
+          "block": 0
+        },
+        "block": {
+          "safe": 0,
+          "review": 0,
+          "block": 36
+        }
+      }
+    },
+    "independentReview": "Final aligned variant passed 17 independently checked exported-alias/default/closure/prototype cases. Documentation agent found two exported-alias regressions in a broader prototype; both fixed with conservative isolation and regression tests. Final review independently verified 11 exported-alias and 6 return/default/prototype cases, with no remaining actionable regression found. Root also reviewed final diff.",
+    "supersededMeasurements": "Earlier broader snapshots produced22-27s results but had alias regressions. They are excluded from this comparison. An early worker helper failed to unwrap analyzeShared.evidence; its after results are also excluded."
+  },
+  "reproduction": {
+    "localEvidenceDirectory": "/private/tmp/pkgxray-1.3-perf",
+    "measurementDriver": "measure.cjs",
+    "measurementDriverSha256": "ea03ce721f0cfb73f2bad4c9db9e9d41bca32e637bd4ffc29a0684a06986c436",
+    "frozenRuntimeDirectories": [
+      "runtime-before",
+      "runtime-after-aligned"
+    ],
+    "sourceSnapshotFiles": [
+      "lodash-evidence.json",
+      "zod-evidence.json"
+    ],
+    "command": "node [directNodeFlags for direct only] measure.cjs <frozenRuntimeDirectory> <sourceSnapshotFile> <direct|worker> <outputReport.json>",
+    "sourcePreparation": "Download the exact SRI-pinned tarballs from benchmark/1.3-package-cohort.json; verify integrity; use quarantine.extractTarball and collectSourceEvidence without executing package code. Preserve the recorded source snapshot hashes when comparing; a later collector may select different files.",
+    "driverSource": "'use strict';\nconst fs=require('fs'),{performance}=require('perf_hooks'),crypto=require('crypto');\nconst [root,inputPath,mode,reportPath]=process.argv.slice(2);\nconst inputBytes=fs.readFileSync(inputPath),input=JSON.parse(inputBytes);\ninput.sourceCoverage=input.coverage;delete input.coverage;\nconst {BUILD_ID}=require(root+'/src/artifact');\nconst start=performance.now();\n(async()=>{try {\nconst r=mode==='worker'?(await require(root+'/src/shared-scans').analyzeShared(input)).evidence:require(root+'/src/auditor').auditEvidence(input);\nfs.writeFileSync(reportPath,JSON.stringify(r));\nconsole.log(JSON.stringify({package:input.packageName,mode,buildId:BUILD_ID,inputSha256:crypto.createHash('sha256').update(inputBytes).digest('hex'),ms:performance.now()-start,verdict:r.verdict,findings:r.findings.length,counts:r.findings.reduce((a,f)=>(a[f.category]=(a[f.category]||0)+1,a),{}),rss:process.memoryUsage().rss,reportSha256:crypto.createHash('sha256').update(JSON.stringify(r)).digest('hex')}));\n}catch(e){console.log(JSON.stringify({package:input.packageName,mode,buildId:BUILD_ID,ms:performance.now()-start,error:e.code||e.name,message:e.message}));process.exitCode=1;}})();\n"
+  },
+  "remainingUncertainty": "Zod still exceeds the unchanged 30s production worker deadline. Lodash has only about 1.1s margin in this single worker run, so completion is not guaranteed across machines or concurrent load. The remaining cause is expensive abstract-state copying/joining on large closure graphs, not package fetching. These are static-analysis-only timings; the separate frozen 11 MCP cohort verifies acquisition and final integration. Coverage holds remain even when a worker finishes.",
+  "integrationBuildAtHandoff": "4cd3a4edce46b1c9940228a3919d6bba4769f4b2bf036ac25f6da7334dc4eabc",
+  "productionResult": {
+    "lodash": {
+      "before": "SCAN_TIMEOUT",
+      "after": "review",
+      "afterWorkerReportEqualsDirect": true
+    },
+    "zod": {
+      "before": "SCAN_TIMEOUT",
+      "after": "SCAN_TIMEOUT",
+      "afterWorkerReportEqualsDirect": null
+    }
+  }
+}

@@ -270,6 +270,8 @@ function parseArgs(argv) {
       options.promoteTo = argv[++i];
     } else if (arg === "--review-for-install") {
       options.reviewAction = "install";
+      // Match installProject evidence so its action-bound review ID is reusable.
+      options.githubDiff = false;
     } else if (arg === "--review-id") {
       options.reviewId = argv[++i];
     } else if (arg === "--review-choice") {

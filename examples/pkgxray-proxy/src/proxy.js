@@ -301,6 +301,10 @@ function fromDecision(config, decision, findings, source, cached, note, configEf
   if (decision === 'allow') return plan(true, 200, 'allow', source, findings, cached, note, configEffects);
   if (decision === 'block') return plan(false, 403, 'block', source, findings, cached, note, configEffects);
   if (decision === 'review') {
+    if (['warn', 'allow'].includes(config.reviewPolicy)) {
+      return plan(true, 200, 'review', source, findings, cached,
+        note || `reviewPolicy=${config.reviewPolicy} (ordinary review permitted by operator policy)`, configEffects);
+    }
     return plan(false, 409, 'review', source, findings, cached, note || 'Pending: choose Proceed or Decline for this artifact in your session', configEffects);
   }
   // Shouldn't happen (store only holds cacheable decisions), but fail safe.

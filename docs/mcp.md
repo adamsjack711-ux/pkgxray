@@ -25,7 +25,9 @@ For the full local MCP, use the configuration below. The official Registry
 descriptor advertises both the hosted URL and the local npm package.
 
 The configuration below targets release `pkgxray@1.3.0`; use it after npm
-publication completes.
+publication completes. To test it now, use the extracted package and local
+configuration in [Testing the 1.3 candidate](testing-1.3.md). Published npm
+1.2.1 and the hosted endpoint are separate from this candidate.
 
 Use an exact npm version from any MCP-capable agent:
 
@@ -55,7 +57,7 @@ Registry entry uses.
 
 | Tool | Inputs | Output and security consequence |
 |---|---|---|
-| `guard_agent_extension_install` | exact package reference; optional policy/promotion | downloads and stages a real package, queries npm/OSV/GitHub, and returns cited `SAFE`/`REVIEW`/`BLOCK`; optional promotion writes files |
+| `guard_agent_extension_install` | exact package reference; optional policy and eligible review choice | downloads and stages a real package, queries npm/OSV/GitHub, and returns findings, coverage, decision and advisory review guidance; no promotion or installation |
 | `audit_agent_extension_supply_chain` | caller-supplied source and metadata | pure static structured verdict; no local file read, network, install, or execution |
 | `audit_lockfile_supply_chain` | manifest path under an approved root | reads the manifest, queries OSV, and returns one verdict per resolved package |
 | `triage_lockfile_supply_chain` | manifest path plus bulk `allow` or `block` | writes a sibling `.pkgxray.lock`; `allow` suppresses selected findings in later audits |
@@ -66,9 +68,11 @@ the `mcp` block (`tools`, `packageScanFirst`, `timeoutMs`); see
 
 ### Filesystem boundary
 
-MCP tool arguments cannot grant themselves access to the filesystem. Four kinds
-of path have to resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`: local package
-references, lockfiles, promotion targets, and quarantine roots the caller picks.
+MCP tool arguments cannot grant themselves access to the filesystem.
+Caller-selected paths must resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`: local
+package references, lockfiles, quarantine roots and enabled Compose source roots.
+Guard promotion arguments are rejected; only the separately authorized local CLI
+can promote a package.
 Separate multiple roots with the platform's path delimiter, `:` on macOS and
 Linux, `;` on Windows. Symlinks that escape a root are rejected.
 
@@ -80,9 +84,10 @@ still use pkgxray's own OS quarantine.
 
 The server rejects unknown tool arguments at runtime. Internal test/provider
 options are not part of the MCP API. Guard staging is removed after each call;
-returned staging paths are null, and an authorized promotion occurs before
-cleanup. The server caps frames at 4 MiB and bounds queued/running requests to
-32 tasks, 8 MiB retained input and four concurrent operations.
+staging-path properties are omitted and raw package source is redacted. The server
+caps frames and responses at 4 MiB. Its outer queue allows 128 active / 256 total
+requests and 16 MiB of retained frames; guard preparation and static analysis have
+separate, smaller budgets. See [the shared-scan limits](review-contract.md#high-traffic-mcp-safeguards).
 
 Live proxy pin checks retain initialized capabilities and instructions. A change
 to either holds all tool calls under strict/balanced policy until reapproval.

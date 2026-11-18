@@ -177,30 +177,55 @@ test("failOn changes the exit code for the same verdict", async () => {
   }
 });
 
-test("legacy policy warning explains that REVIEW remains pending", async () => {
-  // The legacy setting emits migration guidance.
+test("ordinary allow-review policy preserves the 1.x CLI decision", async () => {
+  // The explicit policy emits a warning without requiring an interactive choice.
   const dir = await tempProject({ policy: "allow-review" });
   try {
     const evidence = evidenceWithInstallHook();
     const res = runAudit(dir, ["--format", "json"], JSON.stringify(evidence));
     assert.match(res.stderr, /^pkgxray: /m, "warnings are prefixed and go to stderr");
     assert.match(res.stderr, /allow-review/);
-    // A policy setting cannot supply a developer decision.
-    assert.equal(res.status, 3);
+    // Ordinary findings remain visible, while the explicit policy permits use.
+    assert.equal(res.status, 0);
+    assert.equal(JSON.parse(res.stdout).verdict, "review");
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
 });
 
 test("--policy CLI flag overrides the config file policy", async () => {
-  // The CLI flag takes precedence but cannot authorize a pending REVIEW.
+  // The CLI flag takes precedence for ordinary review findings.
   const dir = await tempProject({ policy: "safe-only" });
   try {
     const evidence = evidenceWithInstallHook();
     const res = runAudit(dir, ["--policy", "allow-review", "--format", "json"], JSON.stringify(evidence));
     assert.match(res.stderr, /allow-review/, "CLI --policy override is applied and warns");
-    assert.equal(res.status, 3, "allow-review leaves REVIEW pending");
+    assert.equal(res.status, 0, "allow-review permits ordinary review findings");
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
+});
+
+test('--review-for-install aligns guard evidence with installer regardless of flag order', async () => {
+  const dir = await tempProject(undefined);
+  const preload = path.join(dir, 'capture-guard.cjs');
+  // Stub acquisition at the boundary; drive the real CLI parser/config/wiring.
+  // No registry request, approval persistence, or package execution is needed.
+  await fsp.writeFile(preload, `const q=require(${JSON.stringify(path.join(__dirname, '..', 'src', 'quarantine.js'))});
+q.guardExtension=async(reference,options)=>({decision:'review',allowed:false,report:{verdict:'review'},captured:{reference,reviewAction:options.reviewAction,githubDiff:options.githubDiff,policy:options.policy}});`);
+  try {
+    for (const flags of [
+      ['--review-for-install'],
+      ['--review-for-install', '--no-github-diff'],
+      ['--no-github-diff', '--review-for-install'],
+      ['--review-id', 'test-id', '--review-for-install', '--review-choice', 'proceed']
+    ]) {
+      const res = spawnSync(process.execPath, ['--require', preload, AUDIT_BIN, 'guard', 'npm:fixture@1.0.0', ...flags, '--format', 'json'], {cwd:dir,encoding:'utf8'});
+      assert.equal(res.status, 3, res.stderr);
+      assert.deepEqual(JSON.parse(res.stdout).captured, {reference:'npm:fixture@1.0.0',reviewAction:'install',githubDiff:false,policy:'safe-only'});
+    }
+    const ordinary = spawnSync(process.execPath, ['--require', preload, AUDIT_BIN, 'guard', 'npm:fixture@1.0.0', '--format', 'json'], {cwd:dir,encoding:'utf8'});
+    assert.equal(ordinary.status, 3, ordinary.stderr);
+    assert.equal(Object.hasOwn(JSON.parse(ordinary.stdout).captured, 'githubDiff'), false, 'ordinary guard retains its default GitHub comparison');
+  } finally { await fsp.rm(dir, {recursive:true,force:true}); }
 });

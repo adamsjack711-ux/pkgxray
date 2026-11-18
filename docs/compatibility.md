@@ -31,6 +31,10 @@ pkgxray follows [semantic versioning](https://semver.org/):
 ### 🟢 Stable — safe to build on
 
 Changes here are additive within a major version; removals wait for a major bump.
+The 1.3 candidate retains explicit `allow-review` handling for ordinary review
+findings, while mandatory checks remain enforced. Per-caller review decisions
+are additive for eligible findings held by the default policy; see the
+[review contract](review-contract.md).
 
 | Surface | Contract |
 |---|---|
@@ -52,8 +56,8 @@ to Stable in 0.16 with contract tests pinning their flags and routes.
 
 ### 🟠 Supported, opt-in — executes untrusted code
 
-`pkgxray canary` is supported but sits apart from the rest of the tool: it is the
-one surface that **runs** a package's install lifecycle. It is opt-in
+`pkgxray canary` is a supported probe that **runs** a package's install hooks.
+It is opt-in
 (`--yes-run-untrusted-code`) and governed by a published
 [threat model](canary-threat-model.md) — that document, not this table, is its
 contract. It confirms malice behaviorally but **never clears** a package (a quiet
@@ -69,6 +73,12 @@ is intentionally removed as security hardening of this executes-code surface.
 |---|---|
 | `browser-extension/` | MV3 unpacked extension; not published to any store, load-unpacked only. |
 | hookshot integration (`examples/hookshot/`) | depends on an external project's hook ABI. |
+| `pkgxray compose`, `pkgxray-compose`, `analyze_package_composition` | Bundled in the unpublished 1.3 candidate. Selected-source cross-package analysis; combined results never approve installation. Local MCP requires `PKGXRAY_COMPOSE=1`. See [Compose](compose.md). |
+| `pkgxray vm-scan`, `scan_npm_package_in_vm` | Bundled host/guest source in the unpublished 1.3 candidate; trusted VM assets must be built separately. CLI execution requires `--yes-run-untrusted-code`; local MCP exposure requires operator `PKGXRAY_VM_TESTS=1`. No quiet result clears a package. See the [VM runbook](../services/local-vm/README.md). |
+
+The VM runbook records real guest verification on macOS ARM64/HVF. Linux KVM
+and Windows WHPX have host-side unit coverage but still need actual guest runs.
+Those platform limits are separate from the ordinary CLI/MCP test matrix.
 
 ---
 

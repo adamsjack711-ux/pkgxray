@@ -13,6 +13,7 @@ const { guardExtension } = require("../src/quarantine");
 const { DEFAULTS } = require("../src/config");
 const { parseArgs } = require("../bin/audit");
 const { runCapture } = require("../src/bounded-process");
+const artifact = require("../src/artifact");
 
 async function fixture(t, { scripts = false, bins = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pkgxray-install-test-"));
@@ -74,14 +75,7 @@ test("lifecycle scripts and hostile npm configuration cannot override the instal
   process.env.npm_config_ignore_scripts = "false";
   t.after(() => { if (old === undefined) delete process.env.npm_config_ignore_scripts; else process.env.npm_config_ignore_scripts = old; });
   const config = { ...DEFAULTS, policy: "allow-review" };
-  await assert.rejects(installProject(f.project, { config }, { guard: f.guard }), /refused/);
-  const reviewDecisions = new (require('../src/review').ReviewDecisions)();
-  for (const name of ['demo', 'transitive']) {
-    const scan = await f.guard(`npm:${name}@1.0.0`, { config, reviewAction: 'install', reviewDecisions, reviewScope: 'developer', artifact: { integrity: f.lock.packages[`node_modules/${name}`].integrity } });
-    assert.equal(scan.review.state, 'pending');
-    reviewDecisions.choose('developer', scan.review.id, 'Proceed');
-  }
-  const result = await installProject(f.project, { config, reviewDecisions, reviewScope: 'developer' }, { guard: f.guard });
+  const result = await installProject(f.project, { config }, { guard: f.guard });
   assert.equal(result.installed, 2);
   for (const name of ["demo", "transitive"]) await assert.rejects(fs.stat(path.join(f.project, `node_modules/${name}/SCRIPT-RAN`)), { code: "ENOENT" });
   assert.equal(installEnvironment("/private/home").npm_config_ignore_scripts, undefined);
@@ -312,7 +306,7 @@ test('review promotion requires a bound choice and remembers it only for that de
   assert.equal(repeated.review.requiresDecision, false);
   const bob = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, reviewScope: 'bob', reviewDecisions });
   assert.equal(bob.review.state, 'pending');
-  const newPolicy = { ...DEFAULTS, policy: 'allow-review' };
+  const newPolicy = { ...DEFAULTS, typosquat: true };
   await assert.rejects(f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, config: newPolicy,
     reviewDecisions, reviewId: pending.review.id, reviewChoice: 'Proceed' }), /changed/);
   const changed = await f.guard('npm:demo@1.0.0', { ...opts, promoteTo: undefined, config: newPolicy, reviewDecisions });
@@ -354,4 +348,37 @@ test('cancellation during promotion preparation preserves the existing destinati
   }), { name: 'AbortError' });
   assert.equal(await fs.readFile(path.join(target,'original'),'utf8'),'keep');
   assert.ok(!(await fs.readdir(f.root)).some(name => name.startsWith('.pkgxray-promotion-')));
+});
+
+test("safe-only install accepts only action-bound explicit reviews", async t => {
+  const f = await fixture(t, { scripts: true });
+  await assert.rejects(installProject(f.project, { config: DEFAULTS }, { guard: f.guard }), /refused/);
+  const reviewDecisions = new (require('../src/review').ReviewDecisions)();
+  for (const name of ['demo', 'transitive']) {
+    const scan = await f.guard(`npm:${name}@1.0.0`, { config: DEFAULTS, reviewAction: 'install', reviewDecisions, reviewScope: 'developer', artifact: { integrity: f.lock.packages[`node_modules/${name}`].integrity } });
+    assert.equal(scan.decision, 'review'); assert.equal(scan.allowed, false);
+    reviewDecisions.choose('developer', scan.review.id, 'Proceed');
+  }
+  const result = await installProject(f.project, { config: DEFAULTS, reviewDecisions, reviewScope: 'developer' }, { guard: f.guard });
+  assert.equal(result.installed, 2);
+  for (const name of ['demo', 'transitive']) await assert.rejects(fs.stat(path.join(f.project, `node_modules/${name}/SCRIPT-RAN`)), { code: 'ENOENT' });
+});
+
+test("allow-review promotes an ordinary review with a bound allow receipt and unchanged raw evidence", async t => {
+  const f = await fixture(t, { scripts: true });
+  const target = path.join(f.root, 'policy-promoted');
+  const config = { ...DEFAULTS, policy: 'allow-review' };
+  const artifactInput = { integrity: f.lock.packages['node_modules/demo'].integrity };
+  const pending = await f.guard('npm:demo@1.0.0', { config: DEFAULTS, promoteTo: target, artifact: artifactInput });
+  assert.equal(pending.decision, 'review');
+  await assert.rejects(f.guard('npm:demo@1.0.0', { config, promoteTo: target, artifact: artifactInput,
+    reviewId: pending.review.id, reviewChoice: 'Proceed' }), /changed/);
+  const scan = await f.guard('npm:demo@1.0.0', { config, promoteTo: target, artifact: artifactInput });
+  assert.equal(scan.report.verdict, 'review'); assert.equal(scan.decision, 'allow');
+  assert.equal(scan.allowed, true); assert.equal(scan.review, null); assert.equal(scan.reviewPlan, null);
+  assert.equal(scan.approval.decision, 'allow');
+  assert.equal(scan.approval.policySha256, artifact.fingerprint(config));
+  assert.equal(scan.promotedPath, target);
+  assert.equal(await fs.readFile(path.join(target, 'index.js'), 'utf8'), 'module.exports = 42;\n');
+  await assert.rejects(fs.stat(path.join(target, 'SCRIPT-RAN')), { code: 'ENOENT' });
 });

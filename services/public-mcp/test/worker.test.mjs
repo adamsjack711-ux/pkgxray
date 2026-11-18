@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import worker, { readJson, checkMetadata } from '../src/index.mjs';
+const scannerPackage = JSON.parse(fs.readFileSync(new URL('../../../package.json', import.meta.url)));
+const servicePackage = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url)));
 
 const env = { PUBLIC_ORIGIN: 'https://mcp.pkgxray.ca', MCP_RATE_LIMITER: { limit: async () => ({ success: true }) },
   SCAN_RATE_LIMITER: { limit: async () => ({ success: true }) } };
@@ -15,9 +18,16 @@ const send = (message, options = {}) => worker.fetch(request(message, options), 
 test('initialization and tool discovery advertise only the two static tools', async () => {
   const r = await (await send({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}})).json();
   assert.equal(r.result.protocolVersion,'2025-11-25');
+  assert.equal(r.result.serverInfo.version, scannerPackage.version);
   const list = await (await send({jsonrpc:'2.0',id:2,method:'tools/list'})).json();
   assert.deepEqual(list.result.tools.map(t=>t.name),['audit_agent_extension_supply_chain','check_npm_package_metadata']);
   for (const tool of list.result.tools) assert.equal(tool.annotations.readOnlyHint,true);
+});
+test('health reports the built scanner while recommending the verified published CLI', async () => {
+  const health = await (await worker.fetch(new Request('https://mcp.pkgxray.ca/health'), env)).json();
+  assert.equal(health.version, scannerPackage.version);
+  assert.equal(health.localInstall, `npx --yes --package pkgxray@${servicePackage.publishedCliVersion} pkgxray-mcp`);
+  assert.equal(health.executionEnabled, false);
 });
 test('notifications return empty 202; GET and DELETE do not open sessions',async()=>{
   assert.equal((await send({jsonrpc:'2.0',method:'notifications/initialized'})).status,202);
@@ -81,6 +91,7 @@ test('metadata calls fixed hosts, disallows redirects, filters withdrawn advisor
   const urls=[];
   const report=await checkMetadata({name:'@fixture/pkg',version:'1.0.0'},async(url,options)=>{
     urls.push(url);assert.equal(options.redirect,'manual');assert.ok(options.signal);
+    assert.equal(options.headers['user-agent'], `pkgxray-public-mcp/${scannerPackage.version}`);
     return Response.json(url.includes('registry.npmjs.org')?{name:'@fixture/pkg',version:'1.0.0',dist:{tarball:'http://127.0.0.1'}}:
       {vulns:[{id:'TEST-1'},{id:'TEST-WITHDRAWN',withdrawn:'2020-01-01'}]});
   });

@@ -617,3 +617,30 @@ test("MEDIUM: sanitizeErrorMessage leaves URLs and npm specifiers intact", () =>
   const spec = sanitizeErrorMessage("reference npm:express@4.21.0 could not be resolved");
   assert.match(spec, /npm:express@4\.21\.0/, `npm specifier was mangled: ${spec}`);
 });
+
+test('MCP wire preserves explicit allow-review while safe-only retains the same findings', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-policy-mcp-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const source = path.join(root, 'package'); await fs.mkdir(source);
+  await fs.writeFile(path.join(source, 'package.json'), JSON.stringify({ name: 'policy-fixture', version: '1.0.0', main: 'index.js', scripts: { postinstall: 'node install.js' } }));
+  await fs.writeFile(path.join(source, 'index.js'), 'exports.value = 42;');
+  await fs.writeFile(path.join(source, 'install.js'), 'module.exports = 1;');
+  const preload = path.join(root, 'osv-fixture.cjs');
+  // Stub only the advisory boundary; exercise the actual MCP, guard, policy,
+  // acquisition and source analyzer without making this test depend on OSV.
+  await fs.writeFile(preload, `require(${JSON.stringify(path.resolve(__dirname, '../src/http-client'))}).requestJson = async url => { if (url !== 'https://api.osv.dev/v1/query') throw new Error('Unexpected network request'); return {}; };`);
+  const messages = ['safe-only', 'allow-review'].map((policy, index) => rpc(index + 1, 'tools/call', {
+    name: 'guard_agent_extension_install', arguments: { reference: source, policy, githubMetadata: false, githubDiff: false, outputFormat: 'json' }
+  })).join('');
+  const result = await driveServer(messages, { env: { PKGXRAY_MCP_ALLOWED_ROOTS: root, NODE_OPTIONS: `--require=${preload}` } });
+  assert.equal(result.crashed, false, result.stderr);
+  const responses = result.lines.map(JSON.parse);
+  const pending = responses.find(r => r.id === 1)?.result?.structuredContent;
+  const allowed = responses.find(r => r.id === 2)?.result?.structuredContent;
+  assert.ok(pending && allowed, result.stdout + result.stderr);
+  assert.equal(pending.report.verdict, 'review'); assert.equal(pending.decision, 'review'); assert.equal(pending.allowed, false);
+  assert.equal(allowed.report.verdict, 'review'); assert.equal(allowed.decision, 'allow'); assert.equal(allowed.allowed, true);
+  assert.equal(allowed.assessment.effectivePolicy, 'allow-review');
+  assert.equal(allowed.review, null); assert.equal(allowed.reviewPlan, null);
+  assert.equal(allowed.sourceEvidence.contentReturned, false);
+});

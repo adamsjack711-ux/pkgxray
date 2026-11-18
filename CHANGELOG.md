@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 (2026-11-10) — Compose, evidence review, and runtime guards
+## 1.3.0 (unreleased) — Compose, evidence review, and runtime guards
 
 - Add advisory, evidence-bound review plans to guard CLI and MCP output, with mandatory blockers and bounded retry guidance; plans never approve installation.
 - Compare fresh upgrade findings without hiding incomplete candidates or claiming absence when coverage is incomplete.
@@ -22,9 +22,11 @@
 Reconciles the existing hardening work with main at `8d73ac3`, including
 the opt-in VM runner, read-only MCP guard and mandatory coverage/provenance holds.
 
-- Keep REVIEW pending until an explicit caller-scoped Proceed or Decline,
-  bound to artifact bytes, policy, scanner build and requested action. Share
-  immutable static analysis through bounded queues without sharing approvals.
+- Add caller-scoped Proceed/Decline for eligible reviews held under the default
+  policy, bound to artifact bytes, policy, scanner build and requested action.
+  Preserve explicit `allow-review` and proxy `warn`/`allow` policy handling for
+  ordinary reviews; mandatory checks and receipt validation remain enforced.
+  Share immutable static analysis through bounded queues without sharing choices.
 - Revoke stale proxy delivery approvals after changed administrator rechecks,
   reject stale scanner builds, and prevent in-flight scans from restoring old
   cache entries. Preserve the same developer's choice for unchanged reviews.
@@ -52,9 +54,9 @@ the opt-in VM runner, read-only MCP guard and mandatory coverage/provenance hold
 - Preserve VM operator opt-in on direct MCP calls and cancellation checks at
   the final proxy delivery boundary.
 
-Compatibility: pending artifact reviews now return HTTP 409 and a session-bound
-review ID. Artifact verdict headers use SAFE/UNSAFE/PENDING; JSON retains the
-underlying scan decision. A bare npm client cannot approve a pending review.
+Compatibility: under proxy `reviewPolicy: block`, pending artifact reviews
+return HTTP 409 and a session-bound review ID. Artifact verdict headers use
+SAFE/UNSAFE/PENDING; JSON retains the underlying scan decision. A bare npm client cannot approve a pending review.
 See [the review contract](docs/review-contract.md) before adopting this change.
 
 ## 1.2.1 (2026-10-13) — detector accuracy and scale hardening

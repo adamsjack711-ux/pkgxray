@@ -1,5 +1,14 @@
 "use strict";
 
+function verifyReleaseMetadata(pkg, registry, env = {}) {
+  const entry = registry.packages?.find(p => p.registryType === "npm" && p.identifier === pkg.name);
+  if (!entry || entry.version !== pkg.version) throw new Error("Release package and MCP registry package versions differ");
+  if (env.GITHUB_EVENT_NAME === "release" &&
+      (env.GITHUB_REF_TYPE !== "tag" || env.GITHUB_REF_NAME !== `v${pkg.version}`)) {
+    throw new Error("Release tag must match the checked package version");
+  }
+}
+
 // Release verification permits exactly one deliberate omission: source scanning
 // of the scanner itself. Advisory outages, other review reasons and changed
 // archive bytes are failures, not warnings or generic REVIEW exceptions.
@@ -26,7 +35,9 @@ async function main() {
   if (!["archive", "published"].includes(mode) || !target) throw new Error("Usage: verify-release.js archive <file.tgz> | published <sha256>");
   const { guardExtension } = require("../src/quarantine");
   const { DEFAULTS } = require("../src/config");
-  const { name, version } = require("../package.json");
+  const pkg = require("../package.json");
+  verifyReleaseMetadata(pkg, require("../server.json"), process.env);
+  const { name, version } = pkg;
   let expected = mode === "published" ? target : expectedArgument;
   let artifact;
   if (mode === "archive") {
@@ -44,4 +55,4 @@ async function main() {
   process.stdout.write(`${JSON.stringify(verifyReleaseScan(scan, expected), null, 2)}\n`);
 }
 if (require.main === module) main().catch(error => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
-module.exports = { verifyReleaseScan };
+module.exports = { verifyReleaseScan, verifyReleaseMetadata };

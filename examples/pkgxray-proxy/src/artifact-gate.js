@@ -154,11 +154,15 @@ export async function gateArtifact({ config, store, name, version, snapshot, run
   }
   function map(decision, findings, source, cached, receipt) {
     try { assertFresh(); } catch (error) { return denied(error.code || 'scan-error', error.message); }
-    const state = reviews.reviewOutcome(decision, {
+    // Only bound, complete receipts reach this mapping. Preserve the explicit
+    // operator review policy; session choices remain additive under block.
+    const policyAllowsReview = decision === 'review' && ['warn', 'allow'].includes(config.reviewPolicy);
+    const state = policyAllowsReview ? { outcome: 'SAFE', allowed: true, review: null } : reviews.reviewOutcome(decision, {
       reviewId: reviews.reviewIdentity(receipt, { action: 'deliver', target: context }), scope, decisions
     });
     return { serve: state.allowed, status: state.allowed ? 200 : state.review?.state === 'pending' ? 409 : 403,
-      decision, ...state, findings: findings || [], source, cached, recheckRevision: revision };
+      decision, ...state, findings: findings || [], source, cached, recheckRevision: revision,
+      ...(policyAllowsReview ? { note: `reviewPolicy=${config.reviewPolicy} (ordinary review permitted by operator policy)` } : {}) };
   }
   function assertFresh(checkSignal = signal) {
     assertArtifactCurrent(store, name, version, revision); checkSignal?.throwIfAborted();

@@ -3,10 +3,12 @@
 `pkgxray compose` (also `pkgxray-compose`) traces data between packages and
 combines those connections with Package Xray's package findings. It is an
 experimental part of this repository, migrated from `package-compose-ray`.
-It is available from this checkout; the published `pkgxray@1.2.1` does not yet
-include it. There is no second package to install or scanner path to configure.
+It is bundled in the unpublished 1.3 candidate, including its package archive;
+the published `pkgxray@1.2.1` does not include it. Follow the
+[candidate testing guide](testing-1.3.md) to use the packed build. There is no
+second package to install or scanner path to configure.
 
-## Run from this checkout
+## Run from the candidate checkout
 
 ```sh
 node bin/audit.js compose /path/to/source-snapshot --entry index.js --json
@@ -34,7 +36,7 @@ select trusted scanner code for compatibility testing; normal use needs no overr
 ## Local MCP setup
 
 Add these settings to your local stdio MCP host configuration, using absolute
-paths for your checkout and approved source snapshots:
+paths for your checkout (or extracted candidate package) and approved source snapshots:
 
 ```json
 {

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-17T18:53:27.902Z",
+  "targetExecuted": false,
+  "helperSha256": "2f58944fdbb97a9af9de2479864a18f9c5fcb57566e398b86ff1c3983dd24307",
+  "status": "Counterexamples reported to root; runtime correction pending",
+  "cases": [
+    {
+      "name": "computed-module-prototype-mutation",
+      "source": "const name='node:n';const extra=require(name+'et');extra['BlockList'].prototype.addSubnet=ip=>fetch('http://'+ip);const {BlockList}=require('node:net');const deny=new BlockList();deny.addSubnet('100.64.0.0',10,'ipv4');",
+      "before": true,
+      "after": false,
+      "masked": true
+    },
+    {
+      "name": "literal-table-iterator-mutation",
+      "source": "import {BlockList} from 'node:net';const original=Array.prototype[Symbol.iterator];Array.prototype[Symbol.iterator]=function*(){fetch('http://'+this[0][0]);yield* original.call(this);};const deny=new BlockList();for(const [network,prefix] of [['100.64.0.0',10]]){deny.addSubnet(network,prefix,'ipv4');}",
+      "before": true,
+      "after": false,
+      "masked": true
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "@pkgxray/public-mcp",
-  "version": "1.2.1",
+  "version": "1.3.0",
+  "publishedCliVersion": "1.2.1",
   "private": true,
   "type": "module",
   "scripts": {

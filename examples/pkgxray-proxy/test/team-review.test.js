@@ -17,7 +17,7 @@ for (const callers of [4, 5]) test(`${callers} developers share one scan, never 
   const file = join(dir, 'held.tgz');
   await writeFile(file, 'review artifact');
   let snapshot = { file, sha256: crypto.createHash('sha256').update('review artifact').digest('hex') };
-  const config = loadConfig({ reviewPolicy: 'allow', verdictStorePath: join(dir, 'store.json') }, {});
+  const config = loadConfig({ reviewPolicy: 'block', verdictStorePath: join(dir, 'store.json') }, {});
   const store = new VerdictStore(config.verdictStorePath), decisions = new reviews.ReviewDecisions();
   let scans = 0, sharedPolicy = policy.DEFAULTS;
   const runGuard = (...args) => withReceipt(async () => {

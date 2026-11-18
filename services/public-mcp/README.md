@@ -31,6 +31,9 @@ remote MCP form. Choose Streamable HTTP and no authentication. The `/mcp` URL
 is a protocol endpoint; opening it in a browser returns HTTP 405. `/health`
 returns service information.
 
+The health and MCP initialization versions identify the scanner built into that
+deployment. They do not claim that the same version is published on npm.
+
 Local alternative:
 
 ```json
@@ -74,6 +77,13 @@ The build checks and reuses `browser-extension/auditor.browser.js`, including
 the bundled parser's license. Node-only optional modules are unavailable.
 The Worker imports neither the local MCP transport nor the VM backend.
 The generated files and local dependencies are excluded from git.
+
+The service package version must match the repository's scanner package version.
+The build generates protocol, health and upstream user-agent version information
+from it. `publishedCliVersion` in this service's `package.json` independently
+controls the suggested local install command; advance it only after verifying
+the npm release. Candidate builds can therefore report 1.3.0 while still
+recommending the published 1.2.1 CLI. Building locally changes no deployed service.
 
 Deploy with `npm run deploy`, then run:
 
