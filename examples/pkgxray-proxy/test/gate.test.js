@@ -111,23 +111,23 @@ test('review + reviewPolicy=block remains pending', async () => {
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=warn remains pending with a note', async () => {
+test('review + reviewPolicy=warn permits with a note', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'warn' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [] });
     const d = await gate({ config, store, name: 'sketchy', version: '1.0.0', runGuard });
-    assert.equal(d.serve, false);
+    assert.equal(d.serve, true);
     assert.equal(d.decision, 'review');
-    assert.match(d.note, /Pending/);
+    assert.match(d.note, /reviewPolicy=warn/);
   } finally { cleanup(); }
 });
 
-test('review + reviewPolicy=allow remains pending', async () => {
+test('review + reviewPolicy=allow permits ordinary review', async () => {
   const { config, store, cleanup } = fixture({ reviewPolicy: 'allow' });
   try {
     const runGuard = runnerReturning({ decision: 'review', findings: [] });
     const d = await gate({ config, store, name: 'sketchy', version: '1.0.0', runGuard });
-    assert.equal(d.serve, false);
+    assert.equal(d.serve, true);
   } finally { cleanup(); }
 });
 

@@ -100,7 +100,11 @@ test('fresh and restarted mandatory holds never become discretionary reviews', a
     const store = new VerdictStore(config.verdictStorePath);
     const valid = withReceipt(async () => ({ decision: 'review', findings: [] }));
     const check = runGuard => gateArtifact({ config, store, name: 'demo', version: '1.0.0', snapshot, runGuard });
-    assert.equal((await check(valid)).serve, false, 'ordinary review requires a caller decision under every policy');
+    const ordinary = await check(valid);
+    assert.equal(ordinary.serve, reviewPolicy !== 'block', 'explicit operator review policy remains effective');
+    assert.equal(ordinary.decision, 'review');
+    assert.equal((await check(valid)).serve, reviewPolicy !== 'block', 'cached bound evidence keeps the same policy');
+    if (reviewPolicy !== 'block') assert.match(ordinary.note, /ordinary review permitted by operator policy/);
     for (const category of MANDATORY_CATEGORIES) {
       const config = loadConfig({ reviewPolicy, verdictStorePath: join(dir, `${reviewPolicy}-${category}.json`) }, {});
       let store = new VerdictStore(config.verdictStorePath);

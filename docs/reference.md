@@ -159,6 +159,17 @@ tree shares `guard`'s warm cache.
 version** exists and guards it, so you see the verdict *before* upgrading.
 This is informational (never changes the exit code) unless you pass
 `--fail-on-available-updates`; `--no-version-drift` skips the registry pass.
+An incomplete candidate check or registry failure appears under **UPDATE CHECK
+INCOMPLETE**. A clean same-major candidate does not clear an unscanned latest
+release. With `--fail-on-available-updates`, incomplete checks return `3`;
+a known blocked candidate still takes precedence with `2`.
+
+Each candidate's JSON includes `securityChanges`, comparing findings against
+the fresh scan of the pinned version. This exposes new evidence even when both
+versions remain REVIEW. No additional package scan is needed. Text output shows
+new findings; `--verbose` also includes empty or unavailable comparisons.
+See [upgrade comparisons](upgrade-comparisons.md) for matching, coverage limits,
+and the reproducible regression corpus.
 
 ### Scheduled CI job (GitHub Actions)
 

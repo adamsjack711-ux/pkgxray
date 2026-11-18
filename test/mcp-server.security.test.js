@@ -353,6 +353,50 @@ test("HIGH: MCP guard never returns raw local source or .env values", async () =
   await fs.rm(tmpRoot, { recursive: true, force: true });
 });
 
+test("MCP review guidance is advisory, redacted and present in JSON and Markdown", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-review-plan-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ name: "review-fixture", version: "1.0.0", main: "missing.js" }));
+  for (const outputFormat of ["json", "markdown"]) {
+    const { lines } = await driveServer(rpc(1, "tools/call", {
+      name: "guard_agent_extension_install",
+      arguments: { reference: root, vulnerabilityCheck: false, githubMetadata: false, githubDiff: false, outputFormat }
+    }), { env: { PKGXRAY_MCP_ALLOWED_ROOTS: root } });
+    const reply = lines.map(line => JSON.parse(line)).find(value => value.id === 1);
+    assert.ok(reply?.result, JSON.stringify(reply));
+    const result = reply.result.structuredContent;
+    assert.equal(result.allowed, false);
+    assert.equal(result.review.eligible, false);
+    assert.equal(result.reviewPlan.state, "checks-required");
+    assert.equal(result.assessment.checks.source, "partial");
+    assert.ok(result.reviewPlan.blockers.includes("complete-source-check"));
+    assert.equal(result.reviewPlan.escalation.to, "operator");
+    assert.equal(result.sourceEvidence.contentReturned, false);
+    assert.ok(!JSON.stringify(result.reviewPlan).includes(root));
+    if (outputFormat === "markdown") assert.match(reply.result.content[0].text, /Agent review guidance \(advisory; no approval authority\)/);
+    else assert.equal(JSON.parse(reply.result.content[0].text).reviewPlan.advisoryOnly, true);
+  }
+});
+
+test("guard redaction preserves only known source-check statuses at trusted paths", () => {
+  const { publicGuardResult } = require("../bin/mcp-server");
+  for (const status of ["completed", "partial", "disabled", "skipped", "failed", "not-requested"]) {
+    const result = publicGuardResult({
+      sourceFiles: { "index.js": "private source bytes" },
+      assessment: { checks: { source: status } }, approval: { checks: { source: status } },
+      report: { findings: [{ source: status, snippet: "private source bytes", checks: { source: status } }] }
+    });
+    assert.equal(result.assessment.checks.source, status);
+    assert.equal(result.approval.checks.source, status);
+    assert.equal(result.report.findings[0].source, "<redacted>");
+    assert.equal(result.report.findings[0].checks.source, "<redacted>");
+    assert.ok(!JSON.stringify(result).includes("private source bytes"));
+  }
+  const result = publicGuardResult({ assessment: { checks: { source: "private source bytes" } }, approval: { checks: { source: "private source bytes" } } });
+  assert.equal(result.assessment.checks.source, "<redacted>");
+  assert.equal(result.approval.checks.source, "<redacted>");
+});
+
 test("HIGH: MCP refuses ~ home-relative references", async () => {
   const { lines } = await driveServer(
     rpc(1, "tools/call", {
@@ -572,4 +616,31 @@ test("MEDIUM: sanitizeErrorMessage leaves URLs and npm specifiers intact", () =>
 
   const spec = sanitizeErrorMessage("reference npm:express@4.21.0 could not be resolved");
   assert.match(spec, /npm:express@4\.21\.0/, `npm specifier was mangled: ${spec}`);
+});
+
+test('MCP wire preserves explicit allow-review while safe-only retains the same findings', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pkgxray-policy-mcp-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const source = path.join(root, 'package'); await fs.mkdir(source);
+  await fs.writeFile(path.join(source, 'package.json'), JSON.stringify({ name: 'policy-fixture', version: '1.0.0', main: 'index.js', scripts: { postinstall: 'node install.js' } }));
+  await fs.writeFile(path.join(source, 'index.js'), 'exports.value = 42;');
+  await fs.writeFile(path.join(source, 'install.js'), 'module.exports = 1;');
+  const preload = path.join(root, 'osv-fixture.cjs');
+  // Stub only the advisory boundary; exercise the actual MCP, guard, policy,
+  // acquisition and source analyzer without making this test depend on OSV.
+  await fs.writeFile(preload, `require(${JSON.stringify(path.resolve(__dirname, '../src/http-client'))}).requestJson = async url => { if (url !== 'https://api.osv.dev/v1/query') throw new Error('Unexpected network request'); return {}; };`);
+  const messages = ['safe-only', 'allow-review'].map((policy, index) => rpc(index + 1, 'tools/call', {
+    name: 'guard_agent_extension_install', arguments: { reference: source, policy, githubMetadata: false, githubDiff: false, outputFormat: 'json' }
+  })).join('');
+  const result = await driveServer(messages, { env: { PKGXRAY_MCP_ALLOWED_ROOTS: root, NODE_OPTIONS: `--require=${preload}` } });
+  assert.equal(result.crashed, false, result.stderr);
+  const responses = result.lines.map(JSON.parse);
+  const pending = responses.find(r => r.id === 1)?.result?.structuredContent;
+  const allowed = responses.find(r => r.id === 2)?.result?.structuredContent;
+  assert.ok(pending && allowed, result.stdout + result.stderr);
+  assert.equal(pending.report.verdict, 'review'); assert.equal(pending.decision, 'review'); assert.equal(pending.allowed, false);
+  assert.equal(allowed.report.verdict, 'review'); assert.equal(allowed.decision, 'allow'); assert.equal(allowed.allowed, true);
+  assert.equal(allowed.assessment.effectivePolicy, 'allow-review');
+  assert.equal(allowed.review, null); assert.equal(allowed.reviewPlan, null);
+  assert.equal(allowed.sourceEvidence.contentReturned, false);
 });

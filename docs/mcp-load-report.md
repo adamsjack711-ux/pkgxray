@@ -1,5 +1,43 @@
 # Measured MCP shared-analysis and runtime load
 
+## Runtime validation on 2026-11-10
+
+The new review/upgrade workflow was exercised through real newline-delimited
+stdio MCP on this Mac Studio. `node scripts/check-mcp-runtime.js` runs inert
+source, shared-cache, 25-caller, review-plan, path-denial, and Compose probes.
+Add `--live` to fetch and inspect pinned `npm:ms@2.1.3` with npm/OSV checks;
+it never installs the package or runs its lifecycle scripts. Network/cache
+timings vary; this is a smoke check rather than a production latency claim.
+
+This run found and fixed an MCP redaction bug: the scanner-authored
+`assessment.checks.source` and `approval.checks.source` statuses were replaced
+with `<redacted>`. Recognized statuses at those exact paths now survive, while
+source text, snippets, and similarly named fields elsewhere remain redacted.
+The regression covers both raw-source confidentiality and wire-visible status.
+
+The separate one-round load rerun is saved in
+[`benchmark/mcp-load-validation-2026-11-10.json`](../benchmark/mcp-load-validation-2026-11-10.json).
+It used the review-workflow build before the redaction-only correction, Node
+v26.8.2, local inert fixtures, and no network. Historical three-round data below
+is preserved in its original file. Selected whole-batch timings from the new run:
+
+| Scenario | Requests | Batch time | Underlying scans | Overload replies |
+| --- | ---: | ---: | ---: | ---: |
+| Identical cold source | 100 | 94.282 ms | 1 | 0 |
+| Identical cached source | 100 | 65.294 ms | 0 | 0 |
+| Distinct cold source | 100 | 509.053 ms | 36 | 64 |
+| Mixed cached/distinct source | 100 | 505.731 ms | 36 | 14 |
+
+All 78 scan errors were explicit expected queue-overload responses. The
+fixture runtime matrix processed 1,913,795 total requests including static
+cases, with assertions for unknown-tool denial and poisoned-result withholding.
+These are tiny in-memory fixture calls, not realistic package-scan throughput.
+This matrix uses the standard runtime proxy; credential reuse is separately
+covered by `test/session-secrets.test.js` and the real-proxy test in
+`test/mcp-proxy.test.js`. No user approval or package promotion was issued.
+
+## Historical measurements
+
 These measurements were captured locally using inert fixtures. No production services were used. They predate the follow-up audit fixes below and are not fresh performance measurements of those fixes.
 
 ## Verification

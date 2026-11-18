@@ -40,7 +40,7 @@ test("README leads with the pkg x-ray wordmark and one pinned command", () => {
 
 test("README and canonical documentation relative links and image paths exist", () => {
   const missing = [];
-  for (const file of ["README.md", "docs/README.md", "docs/reference.md", "maintainer/README.md", "maintainer/readme-style.md"]) {
+  for (const file of ["README.md", "docs/README.md", "docs/reference.md", "docs/testing-1.3.md", "docs/project-status.md", "docs/compose.md", "SECURITY.md", "maintainer/README.md", "maintainer/readme-style.md"]) {
     const source = readFileSync(resolve(ROOT, file), "utf8");
     const targets = [
       ...source.matchAll(/!?\[[^\]]*]\(([^)]+)\)/g),

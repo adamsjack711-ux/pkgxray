@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    { "root": ".", "entry": "bin/audit.js", "allowRootOnly": true },
+    { "root": "components/compose", "entry": "bin/compose-ray.mjs", "allowRootOnly": true }
+  ]
+}

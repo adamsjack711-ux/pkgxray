@@ -160,7 +160,8 @@ test('local subprocess targets are collected even when their extension looks ine
   });
   const result = await guardExtension(source,offline);
   assert.ok(result.sourceCoverage.runtimeFiles.includes('worker.dat'));
-  assert.equal(result.sourceCoverage.complete,true);
+  assert.equal(result.sourceCoverage.complete,false);
+  assert.ok(result.sourceCoverage.reasons.some(reason => /computed module specifier/.test(reason)));
   assert.equal(result.decision,'block');
   assert.ok(result.report.findings.some(f=>f.category==='hidden-local-loader'));
 });
@@ -224,4 +225,133 @@ test("external import mappings are not mistaken for missing artifact files", asy
   assert.equal(result.sourceCoverage.complete, true);
   assert.deepEqual(result.sourceCoverage.runtimeFiles, ["entry.dat"]);
   assert.equal(result.report.verdict, "safe");
+});
+
+test("diagnostic import examples are not runtime paths, but actual imports still are", async t => {
+  const { source } = await fixture(t, {
+    "package.json": manifest,
+    "z.js": `const diagnostic = "Try lazy(() => import('./MyComponent'))";
+      // require('./comment-only.dat')
+      const example = \`export { default } from './example-only.dat'\`;
+      module.exports = require('./real.dat');`,
+    "real.dat": "module.exports = 42;"
+  });
+  const result = await guardExtension(source, offline);
+  assert.equal(result.sourceCoverage.complete, true);
+  assert.ok(result.sourceCoverage.runtimeFiles.includes("real.dat"));
+  assert.deepEqual(result.sourceCoverage.reasons, []);
+});
+
+test("real relative import forms retain missing and escaped target gaps", async t => {
+  for (const expression of [
+    "require('./missing.dat');", "import('./missing.dat');", "import './missing.dat';",
+    "export * from './missing.dat';", "export {value} from './missing.dat';",
+    "require(`./missing.dat`);", "const load=require;load('./missing.dat');", "module.require('./missing.dat');",
+    "import('../outside.dat');"
+  ]) {
+    const { source } = await fixture(t, { "package.json": manifest, "z.js": expression });
+    const result = await guardExtension(source, { ...offline, policy: "allow-review" });
+    assert.equal(result.sourceCoverage.complete, false, expression);
+    assert.ok(result.sourceCoverage.reasons.some(reason => /runtime target/.test(reason)), expression);
+    assert.notEqual(result.decision, "allow", expression);
+  }
+});
+
+test("unsupported runtime TypeScript keeps literal imports and explicit parsing gaps", async t => {
+  const { source } = await fixture(t, {
+    "package.json": JSON.stringify({ name: "demo", version: "1.0.0", main: "entry.ts" }),
+    "entry.ts": "const answer: number = 42; require('./payload.dat');",
+    "payload.dat": credentialRead
+  });
+  const result = await guardExtension(source, { ...offline, policy: "allow-review" });
+  assert.ok(result.sourceCoverage.runtimeFiles.includes("payload.dat"));
+  assert.equal(result.sourceCoverage.complete, false);
+  assert.ok(result.sourceCoverage.reasons.some(reason => /runtime import syntax/.test(reason)));
+  assert.equal(result.decision, "block");
+});
+
+test("unresolved computed loaders and evaluated import strings cannot clear review", async t => {
+  for (const code of [
+    "require(process.env.ENTRY);", "import(process.env.ENTRY);", "eval(\"require('./hidden.dat')\");",
+    "const evaluate=eval; evaluate(\"require('./hidden.dat')\");", "(0,eval)(\"import('./hidden.dat')\");",
+    "globalThis.eval(\"require('./hidden.dat')\");", "const build=Function;build(\"return require('./hidden.dat')\")();",
+    "require('node:vm').runInNewContext(\"require('./hidden.dat')\", {});"
+  ]) {
+    const { source, root } = await fixture(t, { "package.json": manifest, "z.js": code });
+    const result = await guardExtension(source, { ...offline, policy: "allow-review", promoteTo: path.join(root, "out") });
+    assert.notEqual(result.decision, "allow", code);
+    assert.equal(result.promotedPath, null, code);
+  }
+});
+
+test("literal evaluators without module loads do not invent import gaps", async t => {
+  const { source } = await fixture(t, { "package.json": manifest,
+    "z.js": "eval('1 + 1'); Function('return 42')(); require('vm').runInNewContext('1 + 1', {});" });
+  const result = await guardExtension(source, offline);
+  assert.equal(result.sourceCoverage.complete, true);
+});
+
+test("import-like strings in required JSON remain inert data", async t => {
+  const { source } = await fixture(t, {
+    "package.json": manifest, "z.js": "module.exports=require('./data.json');",
+    "data.json": JSON.stringify({ example: "import('./Example')" })
+  });
+  const result = await guardExtension(source, offline);
+  assert.equal(result.sourceCoverage.complete, true);
+  assert.ok(result.sourceCoverage.runtimeFiles.includes("data.json"));
+  assert.deepEqual(result.sourceCoverage.reasons, []);
+});
+
+test("omitted developer config paths do not invent runtime escapes", async t => {
+  for (const build of ['echo build', 'tsc && shx chmod +x dist/*.js', 'npm run compile -- dist/*.js']) {
+    const { source } = await fixture(t, {
+      "package.json": JSON.stringify({ name: "demo", version: "1.0.0", main: "z.js", scripts: {
+        prepare: 'npm run "build"', build, compile: 'echo compile', format: 'prettier --write "**/*.js" --ignore-path ../../.prettierignore'
+      } }), "z.js": "module.exports=42;"
+    });
+    const result = await guardExtension(source, offline);
+    assert.equal(result.sourceCoverage.complete, true);
+    assert.deepEqual(result.sourceCoverage.reasons, []);
+  }
+});
+
+test("direct and script-referenced lifecycle targets outside the artifact stay held", async t => {
+  for (const scripts of [
+    { postinstall: "node ../outside.dat" },
+    { postinstall: "npm run build", build: "node ../outside.dat" },
+    { postinstall: "npm run build", build: "npm run setup", setup: "node ../outside.dat" },
+    { postinstall: "npm run build", build: "echo build", prebuild: "node ../outside.dat" },
+    { postinstall: 'npm run "$SETUP"', setup: "node ../outside.dat" },
+    { postinstall: 'npm run bu""ild', build: "node ../outside.dat" },
+    { postinstall: 'npm run "bu"ild', build: "node ../outside.dat" },
+    { postinstall: 'npm run "build"', build: "node ../outside.dat" },
+    { postinstall: 'npm run *', build: "node ../outside.dat" },
+    { postinstall: 'npm run "b*"', build: "node ../outside.dat" },
+    { postinstall: 'eval "npm run build"', build: "node ../outside.dat" },
+    { postinstall: 'sh -c "npm run build"', build: "node ../outside.dat" },
+    { postinstall: 'bash -lc "npm run build"', build: "node ../outside.dat" },
+    { postinstall: 'sh -ec "npm run build"', build: "node ../outside.dat" },
+    { postinstall: 'cat config | xargs npm run', build: "node ../outside.dat" },
+    { postinstall: 'CMD.EXE /K "npm run build"', build: "node ../outside.dat" },
+    { postinstall: 'PowerShell -Command "npm run build"', build: "node ../outside.dat" },
+    { postinstall: 'pwsh -EncodedCommand encoded', build: "node ../outside.dat" },
+    { postinstall: 'n* run b*', build: "node ../outside.dat" },
+    { postinstall: 'env n* run b*', build: "node ../outside.dat" },
+    { postinstall: '(npm run build)', build: "node ../outside.dat" },
+    { postinstall: 'bun run b*', build: "node ../outside.dat" },
+    { postinstall: 'unknown-runner run b*', build: "node ../outside.dat" },
+    { postinstall: 'echo ' + 'x'.repeat(8193), build: "node ../outside.dat" },
+    { postinstall: 'echo ' + 'x '.repeat(513), build: "node ../outside.dat" },
+    { postinstall: 'node missing-install.js' }
+  ]) {
+    const { source, root } = await fixture(t, {
+      "package.json": JSON.stringify({ name: "demo", version: "1.0.0", main: "z.js", scripts }),
+      "z.js": "module.exports=42;"
+    });
+    const result = await guardExtension(source, { ...offline, policy: "allow-review", promoteTo: path.join(root, "out") });
+    assert.equal(result.sourceCoverage.complete, false, JSON.stringify(scripts));
+    assert.ok(result.sourceCoverage.reasons.some(reason => /runtime target escapes artifact|unresolved runtime target/.test(reason)), JSON.stringify(scripts));
+    assert.notEqual(result.decision, "allow");
+    assert.equal(result.promotedPath, null);
+  }
 });

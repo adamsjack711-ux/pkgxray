@@ -311,7 +311,7 @@ function validateConfig(raw, warnings) {
     mcp: validateMcp(raw.mcp, warnings)
   };
   if (config.policy === "allow-review") {
-    warnings.push('policy "allow-review" no longer approves REVIEW; each developer must choose Proceed or Decline.');
+    warnings.push('policy "allow-review" permits ordinary review-grade findings; mandatory checks still apply. This loosens the default safe-only policy.');
   }
   if (config.typosquat) {
     warnings.push("typosquat heuristic enabled — an opt-in name-similarity check with a high false-positive rate on short/intentional names.");
@@ -496,7 +496,9 @@ function floorVerdictForScanGap(verdict, hasGap, config) {
 // remains an explicit operator override.
 function guardDecision(report, { policy = "safe-only", config = DEFAULTS, vulnerabilityScanError, sourceCoverage, dependencyAudit } = {}) {
   let decision = report.verdict === "safe" ? "allow" : report.verdict;
-
+  // Preserve the 1.x operator policy. Interactive review is additive under
+  // safe-only; it does not replace an explicit ordinary-review policy.
+  if (decision === "review" && policy === "allow-review") decision = "allow";
   const authorization = require("./approval-policy").authorizationFor(report, { sourceCoverage, dependencyAudit });
   if (authorization.explicitOverride) return decision;
   if (authorization.mandatoryHoldReasons.length && decision !== "block") return "review";

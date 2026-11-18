@@ -1,0 +1,72 @@
+name: Compose PR evidence
+
+on:
+  pull_request:
+    paths:
+      - "**/*.js"
+      - "**/*.mjs"
+      - "**/*.cjs"
+      - "**/package.json"
+      - "**/package-lock.json"
+      - ".github/compose-report.json"
+      - ".github/workflows/compose-pr-report.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check out trusted base scanner and configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Check out head as inert source data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: proposed
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+
+      # No npm install, target execution, PR-authored scanner, PR config, write
+      # token, pull_request_target, comments, or artifact-consuming follow-up.
+      - name: Compare selected source snapshots
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          REPORT_DIR="$RUNNER_TEMP/compose-pr-report"
+          mkdir -p "$REPORT_DIR"
+          if [ ! -f trusted/scripts/compose-pr-report.js ]; then
+            printf '%s\n' '# Compose report unavailable' '' 'The trusted base does not yet contain the reporter. Merge its reviewed implementation before expecting comparison reports. No approval was issued.' > "$REPORT_DIR/summary.md"
+          else
+            node trusted/scripts/compose-pr-report.js \
+              --base "$GITHUB_WORKSPACE/trusted" \
+              --head "$GITHUB_WORKSPACE/proposed" \
+              --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" \
+              --output "$REPORT_DIR"
+          fi
+          cat "$REPORT_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain advisory evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: compose-pr-evidence
+          path: ${{ runner.temp }}/compose-pr-report/
+          if-no-files-found: warn
+          retention-days: 7

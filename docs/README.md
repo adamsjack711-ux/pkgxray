@@ -8,6 +8,7 @@ index. Everything deeper lives here.
 
 | Doc | What it covers |
 |---|---|
+| [testing-1.3.md](testing-1.3.md) | Test the unpublished 1.3 archive, local MCP setup, and feedback checklist |
 | [compose.md](compose.md) | Experimental cross-package JavaScript tracing, bundled package checks, local MCP setup and migration |
 | [architecture.md](architecture.md) | The analysis pipeline, the surfaces that share it, design principles, repo layout |
 | [threat-model.md](threat-model.md) | What pkgxray defends against, the known blind spot, false-positive philosophy, the honest position on prompt injection |
@@ -19,6 +20,7 @@ index. Everything deeper lives here.
 | [comparison.md](comparison.md) | Dated capability comparisons and source notes |
 | [configuration.md](configuration.md) | The `.pkgxray.json` policy file — schema, precedence, and the "tighten freely, loosen loudly" invariants |
 | [reference.md](reference.md) | Severity policy, `recheck` monitoring, performance numbers, JSON output, browser extension, cache server |
+| [upgrade-comparisons.md](upgrade-comparisons.md) | Fresh version-to-version finding changes, incomplete upgrade checks, and authored regression calibration |
 | [benchmark.md](benchmark.md) | The calibration benchmark — how the 0-false-block claim is measured and regression-gated |
 
 ## Contracts & policies
@@ -29,7 +31,8 @@ index. Everything deeper lives here.
 | [project-status.md](project-status.md) | Current supported, experimental, and planned work |
 | [release.md](release.md) | Maintainer release, verification, and supported-release policy |
 | [json-schema.md](json-schema.md) | The full `--format json` schema (`schemaVersion: 1`, additive-only) |
-| [canary-threat-model.md](canary-threat-model.md) | The threat model for `pkgxray canary` — the one opt-in surface that executes code |
+| [review-contract.md](review-contract.md) | Evidence-bound review guidance, mandatory holds, user decisions, and shared-scan boundaries |
+| [canary-threat-model.md](canary-threat-model.md) | The threat model for the opt-in `pkgxray canary` execution surface |
 | [../SECURITY.md](../SECURITY.md) | Reporting a vulnerability in pkgxray itself |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development, verdict-reporting, and pull-request guidance |
 | [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community participation standards |

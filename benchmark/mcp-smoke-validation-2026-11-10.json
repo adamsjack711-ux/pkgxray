@@ -1,0 +1,112 @@
+{
+  "measuredAt": "2026-11-11T04:18:02.035Z",
+  "transport": "real stdio MCP",
+  "realNetwork": true,
+  "fixtureExecution": false,
+  "checks": [
+    {
+      "label": "tool discovery",
+      "tools": [
+        "audit_agent_extension_supply_chain",
+        "guard_agent_extension_install",
+        "audit_lockfile_supply_chain",
+        "triage_lockfile_supply_chain",
+        "analyze_package_composition"
+      ]
+    },
+    {
+      "label": "benign source and repeated cache",
+      "ms": 59.15,
+      "verdict": "safe",
+      "repeatedSource": "cache"
+    },
+    {
+      "label": "inert credential exfiltration evidence",
+      "ms": 43.33,
+      "verdict": "block",
+      "categories": [
+        "credential-access"
+      ]
+    },
+    {
+      "label": "25 concurrent identical source audits",
+      "ms": 56.43,
+      "responses": 25,
+      "sources": [
+        "scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan",
+        "shared-scan"
+      ]
+    },
+    {
+      "label": "guard review plan, no execution, no approval",
+      "ms": 55.29,
+      "decision": "review",
+      "allowed": false,
+      "planState": "checks-required",
+      "blockers": [
+        "complete-vulnerability-check",
+        "obtain-bound-evidence"
+      ],
+      "buildId": "f2a6decf89ea4708bbb22ff483d1760c73fc0bad73cc5bac86f335901c3a99e3"
+    },
+    {
+      "label": "forbidden promotion and out-of-root input",
+      "ms": 0.62,
+      "denied": 2
+    },
+    {
+      "label": "Compose MCP analyzes inert local source",
+      "ms": 52.37,
+      "decision": "review",
+      "execution": "completed",
+      "installAllowed": false
+    },
+    {
+      "label": "real npm and OSV guard for ms@2.1.3",
+      "ms": 597.81,
+      "decision": "allow",
+      "allowed": true,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "planState": null,
+      "buildId": "f2a6decf89ea4708bbb22ff483d1760c73fc0bad73cc5bac86f335901c3a99e3",
+      "timings": {
+        "stageMs": 61,
+        "vulnerabilityPrecheckMs": 173,
+        "downloadMs": 22,
+        "sourceCollectionMs": 3,
+        "githubMetadataMs": 199,
+        "provenanceMs": 0,
+        "diffMs": 273,
+        "auditMs": 60
+      }
+    }
+  ]
+}

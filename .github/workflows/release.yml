@@ -22,6 +22,8 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - "scripts/verify-release.js"
+      - "scripts/check-packed-runtime.js"
+      - "test/release-checks.test.js"
       - "package.json"
       - "server.json"
   release:
@@ -49,7 +51,9 @@ jobs:
         with:
           node-version: "22"
       - name: Tests
-        run: npm test
+        run: |
+          npm run lint
+          npm test
       - name: Documentation and website checks
         run: |
           npm run test:docs
@@ -66,6 +70,12 @@ jobs:
           mv .pack/pkgxray-*.tgz .pack/package.tgz
       - name: Self-guard (supply-chain layer)
         run: node scripts/verify-release.js archive .pack/package.tgz
+      - name: Exercise the packed CLI, Compose and MCP launchers
+        run: |
+          candidate_unpack_dir="$(mktemp -d)"
+          trap 'rm -rf "$candidate_unpack_dir"' EXIT
+          tar -xzf .pack/package.tgz -C "$candidate_unpack_dir"
+          node scripts/check-packed-runtime.js "$candidate_unpack_dir/package"
       - name: Record checked archive digest
         id: digest
         run: |

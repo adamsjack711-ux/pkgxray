@@ -1,0 +1,719 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-17T18:43:50.525Z",
+  "completedAt": "2026-11-17T18:45:27.064Z",
+  "complete": true,
+  "manifestSha256": "73ae313fb1f491ff7aa402c8d6a1492aa306886c87ac2b70e53adb1343aed382",
+  "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+  "gitHead": "50865008115f799629f3df580965b825a7218cf2",
+  "packageVersion": "1.3.0",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.0.0"
+  },
+  "transport": "real stdio MCP launcher",
+  "targetExecution": false,
+  "configuration": {
+    "schemaVersion": 1,
+    "policy": "safe-only",
+    "failOn": "review",
+    "scanErrorPolicy": "fail-closed",
+    "allow": [],
+    "mute": [],
+    "typosquat": false,
+    "mcp": {
+      "tools": null,
+      "policy": "safe-only",
+      "packageScanFirst": true,
+      "timeoutMs": 15000
+    }
+  },
+  "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+  "directDependenciesRequested": false,
+  "limitations": [
+    "Convenience cohort, not independently adjudicated benign or representative of npm.",
+    "Static scans only; target lifecycle scripts and MCP servers are never started.",
+    "No dependency graph scan, VM run, install action, or human review override.",
+    "Advisories and external metadata are time-dependent; existing metadata caches may be used.",
+    "No throughput or latency claim; runs include live network services."
+  ],
+  "results": [
+    {
+      "reference": "npm:ms@2.1.3",
+      "group": "familiar-npm",
+      "status": "completed",
+      "artifactSha256": "f6616e15e530ed552f9daa2d3ce71963947c6bc7c98c9b64fd3e673fd02622c6",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "safe",
+      "verdict": "safe",
+      "decision": "allow",
+      "allowed": true,
+      "outcome": "SAFE",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": true,
+        "scannedFiles": 4,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [],
+        "reasonCount": 0
+      },
+      "findings": {
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": null,
+      "reviewPlan": null
+    },
+    {
+      "reference": "npm:picocolors@1.1.1",
+      "group": "familiar-npm",
+      "status": "completed",
+      "artifactSha256": "d3aedb2807967b7eb37fd11b03b7e3701e725af79c650d0812ff7213f8f882d9",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "review",
+      "verdict": "review",
+      "decision": "review",
+      "allowed": false,
+      "outcome": null,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": true,
+        "scannedFiles": 6,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [],
+        "reasonCount": 0
+      },
+      "findings": {
+        "medium:lonely-maintainer": 1,
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [
+        {
+          "category": "lonely-maintainer",
+          "severity": "medium",
+          "file": "NPM_METADATA"
+        }
+      ],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": {
+        "state": "pending",
+        "eligible": true
+      },
+      "reviewPlan": {
+        "state": "review-required",
+        "blockers": [],
+        "escalation": "user",
+        "steps": [
+          "inspect-package-identity"
+        ]
+      }
+    },
+    {
+      "reference": "npm:is-number@7.0.0",
+      "group": "familiar-npm",
+      "status": "completed",
+      "artifactSha256": "7b75c1057198cf97696909a9bee176c9c5e9bcb5b03bf3ecef2f484defadd51e",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "safe",
+      "verdict": "safe",
+      "decision": "allow",
+      "allowed": true,
+      "outcome": "SAFE",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": true,
+        "scannedFiles": 3,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [],
+        "reasonCount": 0
+      },
+      "findings": {
+        "info:github-stale": 1,
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": null,
+      "reviewPlan": null
+    },
+    {
+      "reference": "npm:escape-string-regexp@5.0.0",
+      "group": "familiar-npm",
+      "status": "completed",
+      "artifactSha256": "c8b662afe8aa2b852ecc27d766e584a502f8351fbbd890611f2509bf083d28e6",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "review",
+      "verdict": "review",
+      "decision": "review",
+      "allowed": false,
+      "outcome": null,
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": true,
+        "scannedFiles": 4,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [],
+        "reasonCount": 0
+      },
+      "findings": {
+        "medium:lonely-maintainer": 1,
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [
+        {
+          "category": "lonely-maintainer",
+          "severity": "medium",
+          "file": "NPM_METADATA"
+        }
+      ],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": {
+        "state": "pending",
+        "eligible": true
+      },
+      "reviewPlan": {
+        "state": "review-required",
+        "blockers": [],
+        "escalation": "user",
+        "steps": [
+          "inspect-package-identity"
+        ]
+      }
+    },
+    {
+      "reference": "npm:debug@4.4.3",
+      "group": "familiar-npm",
+      "status": "completed",
+      "artifactSha256": "89c1ac9c946ee8905a875837114528e97eeae35e03be3190584b2216af43e4a7",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "safe",
+      "verdict": "safe",
+      "decision": "allow",
+      "allowed": true,
+      "outcome": "SAFE",
+      "checks": {
+        "source": "completed",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "absent"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [],
+        "behavioralCoverage": "completed",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": true,
+        "scannedFiles": 6,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [],
+        "reasonCount": 0
+      },
+      "findings": {
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": null,
+      "reviewPlan": null
+    },
+    {
+      "reference": "npm:lodash@4.18.1",
+      "group": "familiar-npm",
+      "status": "rpc-error",
+      "code": -32002
+    },
+    {
+      "reference": "npm:react@19.3.1",
+      "group": "familiar-npm",
+      "status": "completed",
+      "artifactSha256": "56936913918dcf1f7a6fe58784e79df54b18200a88655ce809cf5e9c4ef871aa",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "review",
+      "verdict": "review",
+      "decision": "review",
+      "allowed": false,
+      "outcome": null,
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "verified"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [
+          "flow-analysis-gap",
+          "incomplete-source-scan"
+        ],
+        "behavioralCoverage": "partial",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": false,
+        "scannedFiles": 26,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [
+          "unresolved runtime target: cjs/MyComponent"
+        ],
+        "reasonCount": 1
+      },
+      "findings": {
+        "medium:flow-analysis-gap": 22,
+        "medium:incomplete-source-scan": 1,
+        "info:provenance-attested": 1
+      },
+      "findingLocations": [
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-compiler-runtime.development.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-compiler-runtime.production.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-compiler-runtime.profiling.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-dev-runtime.development.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-dev-runtime.production.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-dev-runtime.profiling.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-dev-runtime.react-server.development.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-dev-runtime.react-server.production.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-runtime.development.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-runtime.production.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-runtime.profiling.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "cjs/react-jsx-runtime.react-server.development.js"
+        }
+      ],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": {
+        "state": "pending",
+        "eligible": false
+      },
+      "reviewPlan": {
+        "state": "checks-required",
+        "blockers": [
+          "complete-source-check",
+          "resolve-behavioral-coverage"
+        ],
+        "escalation": "operator",
+        "steps": [
+          "complete-source-check",
+          "resolve-behavioral-coverage"
+        ]
+      }
+    },
+    {
+      "reference": "npm:zod@4.6.7",
+      "group": "familiar-npm",
+      "status": "rpc-error",
+      "code": -32002
+    },
+    {
+      "reference": "npm:@modelcontextprotocol/server-filesystem@2.3.0",
+      "group": "mcp-server",
+      "status": "completed",
+      "artifactSha256": "2ead6cadf4d70577025d583d8ad2e8988baa6396eadc9d0ba22fe8f791b3add2",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "review",
+      "verdict": "review",
+      "decision": "review",
+      "allowed": false,
+      "outcome": null,
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "verified"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [
+          "flow-analysis-gap",
+          "incomplete-source-scan"
+        ],
+        "behavioralCoverage": "partial",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": false,
+        "scannedFiles": 13,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [
+          "runtime target escapes artifact: ../../.prettierignore"
+        ],
+        "reasonCount": 1
+      },
+      "findings": {
+        "medium:flow-analysis-gap": 4,
+        "medium:install-hook": 1,
+        "medium:incomplete-source-scan": 1,
+        "info:provenance-attested": 1,
+        "info:dynamic-require": 1,
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/file-resources.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/index.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/lib.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/server.js"
+        },
+        {
+          "category": "install-hook",
+          "severity": "medium",
+          "file": "package.json"
+        },
+        {
+          "category": "incomplete-source-scan",
+          "severity": "medium",
+          "file": "SOURCE_FILES"
+        }
+      ],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": {
+        "state": "pending",
+        "eligible": false
+      },
+      "reviewPlan": {
+        "state": "checks-required",
+        "blockers": [
+          "complete-source-check",
+          "resolve-behavioral-coverage"
+        ],
+        "escalation": "operator",
+        "steps": [
+          "complete-source-check",
+          "resolve-behavioral-coverage",
+          "inspect-installation"
+        ]
+      }
+    },
+    {
+      "reference": "npm:@modelcontextprotocol/server-memory@2.1.1",
+      "group": "mcp-server",
+      "status": "completed",
+      "artifactSha256": "7ecacc53c27db709e8bd148c3e4f5721ae5b2495648d9c5c56fe4e409023564d",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "review",
+      "verdict": "review",
+      "decision": "review",
+      "allowed": false,
+      "outcome": null,
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "verified"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [
+          "incomplete-source-scan"
+        ],
+        "behavioralCoverage": "partial",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": false,
+        "scannedFiles": 4,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [
+          "runtime target escapes artifact: ../../.prettierignore"
+        ],
+        "reasonCount": 1
+      },
+      "findings": {
+        "medium:install-hook": 1,
+        "medium:incomplete-source-scan": 1,
+        "info:provenance-attested": 1,
+        "info:dynamic-require": 1,
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [
+        {
+          "category": "install-hook",
+          "severity": "medium",
+          "file": "package.json"
+        },
+        {
+          "category": "incomplete-source-scan",
+          "severity": "medium",
+          "file": "SOURCE_FILES"
+        }
+      ],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": {
+        "state": "pending",
+        "eligible": false
+      },
+      "reviewPlan": {
+        "state": "checks-required",
+        "blockers": [
+          "complete-source-check"
+        ],
+        "escalation": "operator",
+        "steps": [
+          "complete-source-check",
+          "inspect-installation"
+        ]
+      }
+    },
+    {
+      "reference": "npm:@modelcontextprotocol/server-everything@2.3.0",
+      "group": "mcp-server",
+      "status": "completed",
+      "artifactSha256": "1b53c9faaca471a6432f7c707666ad2f5e8b520865b4ebf73caa0cfa7b6fd239",
+      "scannerBuildId": "596659e55af4953d853ef475432521243f3e82c727cd271c7ec61efa74325a43",
+      "policySha256": "1b862ea46776e7067d7aeb8634089c6cb36bc6b70b824df4ce16b25cc797d217",
+      "rawVerdict": "block",
+      "verdict": "block",
+      "decision": "block",
+      "allowed": false,
+      "outcome": "UNSAFE",
+      "checks": {
+        "source": "partial",
+        "vulnerabilities": "completed",
+        "directDependencies": "not-requested",
+        "provenance": "verified"
+      },
+      "authorization": {
+        "mandatoryHoldReasons": [
+          "flow-analysis-gap",
+          "incomplete-source-scan"
+        ],
+        "behavioralCoverage": "partial",
+        "explicitOverride": false
+      },
+      "coverage": {
+        "complete": false,
+        "scannedFiles": 59,
+        "skippedFiles": 0,
+        "truncatedFiles": 0,
+        "reasons": [
+          "runtime target escapes artifact: ../../.prettierignore"
+        ],
+        "reasonCount": 1
+      },
+      "findings": {
+        "high:network-exfil-or-loader": 1,
+        "medium:flow-analysis-gap": 15,
+        "medium:install-hook": 1,
+        "medium:incomplete-source-scan": 1,
+        "info:provenance-attested": 1,
+        "info:dynamic-require": 1,
+        "info:npm-vs-github-clean": 1
+      },
+      "findingLocations": [
+        {
+          "category": "network-exfil-or-loader",
+          "severity": "high",
+          "file": "dist/tools/gzip-file-as-resource.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/index.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/resources/index.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/resources/minted.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/server/index.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/server/tasks.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/tools/get-header-params.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/tools/gzip-file-as-resource.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/tools/index.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/tools/simulate-research-query.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/tools/trigger-elicitation-request-async.js"
+        },
+        {
+          "category": "flow-analysis-gap",
+          "severity": "medium",
+          "file": "dist/tools/trigger-multi-step-elicitation.js"
+        }
+      ],
+      "vulnerabilities": {
+        "completed": true,
+        "count": 0,
+        "ids": []
+      },
+      "review": null,
+      "reviewPlan": null
+    }
+  ]
+}

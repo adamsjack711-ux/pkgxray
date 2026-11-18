@@ -777,10 +777,9 @@ test("F2: dynamic require + bulk-env harvest blocks", () => {
 });
 
 // FP guard for F2: a BARE plugin loader (dynamic require, no bulk-env, no
-// suspicious destination) is INFO — recorded, but it does not gate the verdict.
-// This is the babel/express case: legit plugin and view-engine loaders must not
-// be pushed to review just for loading a module by computed name.
-test("F2: bare dynamic require (plugin loader) is INFO, not gating", () => {
+// suspicious destination) is not evidence of exfiltration. Its dynamic-require
+// signal stays INFO, but an unresolved target is a separate coverage REVIEW.
+test("F2: bare plugin loading stays INFO while unresolved coverage requires review", () => {
   const report = auditEvidence({
     packageName: "plugin-loader",
     sourceFiles: {
@@ -791,12 +790,13 @@ test("F2: bare dynamic require (plugin loader) is INFO, not gating", () => {
       "index.js": "function load(name){ return require(name); }\nmodule.exports = load;"
     }
   });
-  assert.equal(report.verdict, "safe");
+  assert.equal(report.verdict, "review");
   assert.ok(
     report.findings.some((f) => f.category === "dynamic-require" && f.severity === "info"),
     "the bare dynamic require should be recorded as INFO"
   );
-  assert.ok(!report.findings.some((f) => f.severity === "high" || f.severity === "medium"));
+  assert.ok(!report.findings.some((f) => f.severity === "high"));
+  assert.ok(report.findings.some((f) => f.category === "unresolved-runtime-execution" && f.severity === "medium"));
 });
 
 // Corroboration: a dynamic require in the same file as a suspicious destination

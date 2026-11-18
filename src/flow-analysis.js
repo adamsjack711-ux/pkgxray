@@ -17,8 +17,22 @@ function stateTick(context, depth) {
 // closure environments and cycles within a snapshot, never across branches.
 function copyState(value, context = stateContext(), depth = 0) {
   if (!value || typeof value !== 'object') return value;
-  if (context.copies.has(value)) return context.copies.get(value);
+  const previous = context.copies.get(value);
+  if (previous !== undefined) return previous;
   stateTick(context, depth);
+  // Most nodes in a captured scope are unbound closures or scalar flow
+  // values. Copy those records directly, retaining the shared memo for cycles.
+  if (value.kind === 'function' && value.node && value.scope && Object.keys(value).length === 4) {
+    const out = { bits: value.bits, kind: 'function', node: value.node, scope: null };
+    context.copies.set(value, out);
+    out.scope = copyState(value.scope, context, depth + 1);
+    return out;
+  }
+  if (value.bits !== undefined && Object.keys(value).length === 1) {
+    const out = { bits: value.bits };
+    context.copies.set(value, out);
+    return out;
+  }
   const out = value instanceof Scope ? new Scope() : Array.isArray(value) ? [] : value instanceof Map ? new Map() : {};
   context.copies.set(value, out);
   if (value instanceof Map) for (const [key, item] of value) out.set(key, copyState(item, context, depth + 1));
@@ -233,8 +247,12 @@ function createFlowAnalysis(files) {
       active.add(signature); activeFunctions.set(fn.node, active);
       const context = stateContext();
       const savedExports = result.exports;
-      const local = new Scope(isolated ? fn.scope.clone(context) : fn.scope);
-      if (isolated) result.exports = copyState(result.exports, context);
+      // A fresh invocation owns its declarations. Read-only bodies need no
+      // enclosing-heap snapshot, unless control flow joins captured bindings.
+      // Default parameters are included because their expressions run first.
+      const isolateWrites = isolated && (fn.node.params.some(p => mayWrite(p)) || mayWrite(fn.node.body, true));
+      const local = new Scope(isolateWrites ? fn.scope.clone(context) : fn.scope);
+      if (isolateWrites) result.exports = copyState(result.exports, context);
       local.set('this', thisValue || {bits:0,props:new Map()}, true);
       fn.node.params.forEach((p, i) => bind(p, args[i] || clean(), local));
       try { return fn.node.body.type === 'BlockStatement' ? stmt(fn.node.body, local) : expr(fn.node.body, local); }
@@ -458,16 +476,29 @@ function createFlowAnalysis(files) {
       }
       return value;
     }
-    function mayWrite(node) {
+    function mayWrite(node, localDeclarations = false) {
       if (!node || typeof node !== 'object') return false;
       tick();
       if (['AssignmentExpression', 'UpdateExpression', 'CallExpression', 'NewExpression',
-        'TaggedTemplateExpression', 'ClassExpression', 'ClassDeclaration'].includes(node.type)) return true;
+        'TaggedTemplateExpression', 'ClassExpression', 'ClassDeclaration', 'ImportExpression',
+        'ImportDeclaration', 'ExportNamedDeclaration',
+        'ExportDefaultDeclaration', 'ExportAllDeclaration', 'SwitchStatement', 'TryStatement',
+        'ForStatement', 'ForOfStatement', 'ForInStatement', 'WhileStatement', 'DoWhileStatement'].includes(node.type)) return true;
+      // Loops/switch/try also join snapshot bindings, even with read-only
+      // source bodies; those joins must not rewrite a shared closure scope.
       // Constructing a function does not execute its body. Dormant inspection
       // already isolates its state. Pure boolean tests need no heap snapshot.
       if (['FunctionExpression', 'ArrowFunctionExpression'].includes(node.type)) return false;
+      // Match stmt's branch snapshot predicate. Declarations under an if
+      // force isolation even when the enclosing invocation owns its locals:
+      // branches() joins captured parent bindings as well as local bindings.
+      if (localDeclarations && node.type === 'IfStatement') {
+        return mayWrite(node.test) || mayWrite(node.consequent) || mayWrite(node.alternate);
+      }
+      if (node.type === 'FunctionDeclaration') return !localDeclarations;
+      if (node.type === 'VariableDeclaration' && !localDeclarations) return true;
       return Object.entries(node).some(([key, value]) => key !== 'loc' &&
-        (Array.isArray(value) ? value.some(mayWrite) : value && typeof value === 'object' && mayWrite(value)));
+        (Array.isArray(value) ? value.some(child => mayWrite(child, localDeclarations)) : value && typeof value === 'object' && mayWrite(value, localDeclarations)));
     }
     function expr(node, scope) {
       if (!node) return clean();
@@ -520,8 +551,11 @@ function createFlowAnalysis(files) {
             if (node.operator === '+' && typeof left.value === 'string' && typeof right.value === 'string') return literal(left.value + right.value);
             return merge(left, right);
           }
-          case 'ConditionalExpression': expr(node.test, scope); return branches(scope,
-            s => expr(node.consequent, s), s => expr(node.alternate, s));
+          case 'ConditionalExpression': {
+            expr(node.test, scope);
+            if (!mayWrite(node.consequent) && !mayWrite(node.alternate)) return merge(expr(node.consequent, scope), expr(node.alternate, scope));
+            return branches(scope, s => expr(node.consequent, s), s => expr(node.alternate, s));
+          }
           case 'SequenceExpression': { let v = clean(); for (const n of node.expressions) v = expr(n, scope); return v; }
           case 'AssignmentExpression': {
             const v = node.operator === '=' ? expr(node.right, scope) : merge(expr(node.left, scope), expr(node.right, scope));
@@ -626,6 +660,7 @@ function createFlowAnalysis(files) {
           case 'LabeledStatement': return stmt(node.body, scope);
           case 'IfStatement': {
             expr(node.test, scope);
+            if (!mayWrite(node.consequent) && !mayWrite(node.alternate)) return merge(stmt(node.consequent, scope), stmt(node.alternate, scope));
             return branches(scope, s => stmt(node.consequent, s), s => stmt(node.alternate, s));
           }
           case 'SwitchStatement': {

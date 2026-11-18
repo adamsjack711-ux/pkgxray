@@ -24,6 +24,11 @@ you submit is processed on Cloudflare; do not submit secrets. See the
 For the full local MCP, use the configuration below. The official Registry
 descriptor advertises both the hosted URL and the local npm package.
 
+The configuration below targets release `pkgxray@1.3.0`; use it after npm
+publication completes. To test it now, use the extracted package and local
+configuration in [Testing the 1.3 candidate](testing-1.3.md). Published npm
+1.2.1 and the hosted endpoint are separate from this candidate.
+
 Use an exact npm version from any MCP-capable agent:
 
 ```json
@@ -34,7 +39,7 @@ Use an exact npm version from any MCP-capable agent:
       "args": [
         "--yes",
         "--package",
-        "pkgxray@1.2.1",
+        "pkgxray@1.3.0",
         "pkgxray-mcp"
       ],
       "env": {
@@ -46,13 +51,13 @@ Use an exact npm version from any MCP-capable agent:
 ```
 
 If pkgxray is already installed, `"command": "pkgxray-mcp"` also works. The
-published `pkgxray@1.2.1` package also exposes `pkgxray mcp-server` — the same
+`pkgxray@1.3.0` package also exposes `pkgxray mcp-server` — the same
 stdio server, launched as a subcommand — which is the entry point the MCP
 Registry entry uses.
 
 | Tool | Inputs | Output and security consequence |
 |---|---|---|
-| `guard_agent_extension_install` | exact package reference; optional policy/promotion | downloads and stages a real package, queries npm/OSV/GitHub, and returns cited `SAFE`/`REVIEW`/`BLOCK`; optional promotion writes files |
+| `guard_agent_extension_install` | exact package reference; optional policy and eligible review choice | downloads and stages a real package, queries npm/OSV/GitHub, and returns findings, coverage, decision and advisory review guidance; no promotion or installation |
 | `audit_agent_extension_supply_chain` | caller-supplied source and metadata | pure static structured verdict; no local file read, network, install, or execution |
 | `audit_lockfile_supply_chain` | manifest path under an approved root | reads the manifest, queries OSV, and returns one verdict per resolved package |
 | `triage_lockfile_supply_chain` | manifest path plus bulk `allow` or `block` | writes a sibling `.pkgxray.lock`; `allow` suppresses selected findings in later audits |
@@ -63,9 +68,11 @@ the `mcp` block (`tools`, `packageScanFirst`, `timeoutMs`); see
 
 ### Filesystem boundary
 
-MCP tool arguments cannot grant themselves access to the filesystem. Four kinds
-of path have to resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`: local package
-references, lockfiles, promotion targets, and quarantine roots the caller picks.
+MCP tool arguments cannot grant themselves access to the filesystem.
+Caller-selected paths must resolve under `PKGXRAY_MCP_ALLOWED_ROOTS`: local
+package references, lockfiles, quarantine roots and enabled Compose source roots.
+Guard promotion arguments are rejected; only the separately authorized local CLI
+can promote a package.
 Separate multiple roots with the platform's path delimiter, `:` on macOS and
 Linux, `;` on Windows. Symlinks that escape a root are rejected.
 
@@ -77,9 +84,10 @@ still use pkgxray's own OS quarantine.
 
 The server rejects unknown tool arguments at runtime. Internal test/provider
 options are not part of the MCP API. Guard staging is removed after each call;
-returned staging paths are null, and an authorized promotion occurs before
-cleanup. The server caps frames at 4 MiB and bounds queued/running requests to
-32 tasks, 8 MiB retained input and four concurrent operations.
+staging-path properties are omitted and raw package source is redacted. The server
+caps frames and responses at 4 MiB. Its outer queue allows 128 active / 256 total
+requests and 16 MiB of retained frames; guard preparation and static analysis have
+separate, smaller budgets. See [the shared-scan limits](review-contract.md#high-traffic-mcp-safeguards).
 
 Live proxy pin checks retain initialized capabilities and instructions. A change
 to either holds all tool calls under strict/balanced policy until reapproval.
@@ -202,6 +210,44 @@ There is no automatic downgrade when sandbox startup fails. OS sandbox APIs and
 runtime layouts vary, so validate confinement on each deployment platform.
 
 Without `--sandbox`, the child retains the user's filesystem/network access.
+
+### Credential reuse across calls (opt-in)
+
+```bash
+pkgxray mcp-proxy --guard-secrets --sandbox --policy strict -- /absolute/path/to/node ./server.js
+```
+
+Run from a dedicated project directory. `--guard-secrets` remembers non-empty
+string values in explicitly credential-labelled fields in correlated responses:
+`password`, `passwd`, `apiKey`, `accessToken`, `refreshToken`, `clientSecret`,
+`privateKey`, and `authorization` (case, hyphens and underscores are ignored).
+Nested structured results and valid JSON text are inspected. Bearer/Basic header
+payloads are also retained. A later outbound frame containing a remembered value,
+one URL-encoding layer (including mixed-case escapes), or its standard
+Base64/Base64url representation is denied
+before forwarding. Held tool calls are rechecked after manifest verification.
+The guard applies even when injection-result scanning is disabled or the runtime
+policy is permissive; it never grants an approval. A rejected request gets a
+JSON-RPC error. An uninspectable raw frame, or a credential-bearing notification
+or response without a request to reject, closes the session.
+
+Values are kept only in the proxy's private memory, never in reports, logs, or a
+disk cache. Each proxy has independent state, discarded on exit. Inspection is
+bounded to 128 KiB of strings/keys, 10,000 values and 32 nesting levels per frame,
+with at most 128 credentials of 4 KiB each retained. Exceeding a limit withholds
+the response and holds later traffic until restart instead of forgetting old
+evidence. A malicious server can cause this denial of service; the guard does
+not silently resume with less protection.
+
+This is exact-value correlation within one proxied server session, not general
+cross-server data-flow tracking. It does not identify arbitrary personal data,
+unlabelled credentials in prose, binary attachments, split values, arbitrary
+encodings, or data sent before the response was observed. Even a short labelled
+password can match ordinary later text and cause a false positive. Review the
+workflow separately rather than treating the error as a package verdict. The
+server already possesses its own responses: direct server-side exfiltration is
+outside this check and requires OS network restrictions. `--sandbox` constrains
+the wrapped server and its descendants, not the coding agent or other servers.
 Even with it, explicitly readable directories may contain credentials and
 explicitly passed secrets remain available to the server. System/runtime read
 roots and granted paths are trusted capabilities, not a guarantee against kernel
