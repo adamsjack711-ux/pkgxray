@@ -59,6 +59,16 @@ release matrix must run again against the integrated revision.
   OS sandbox. It confirms observed malice but never clears a package.
 - Compose is experimental and bundled in the 1.3 candidate. It scans selected
   local JavaScript sources without executing them and never approves installation.
+- Executable-distribution scanning is experimental on
+  `feature/executable-distribution-scanners`. It covers bounded ZIP/raw-TAR/gzip-TAR
+  acquisition/extraction, exact-version Open VSX and VS Code Marketplace acquisition
+  with manifest-coordinate binding, source-auditor routing, artifact receipts, CRX and
+  operator-pinned Sigstore SLSA provenance, opt-in npm/PyPI/GitHub guarding and exact-digest anonymous OCI
+  layer dispatch, GitHub/GitLab/Jenkins
+  CI, VSIX/browser/JetBrains extensions, infrastructure/OCI/Linux/desktop
+  descriptors, and agent packages. Authenticated/multi-platform OCI, the remaining
+  store clients, native package extraction, and format-native signature
+  verification remain open.
 - Local VM scans are experimental, explicitly enabled execution in the 1.3
   candidate. Trusted boot assets must be built separately. The VM runbook records
   actual macOS ARM64 guest checks; Linux/Windows guest checks remain outstanding.

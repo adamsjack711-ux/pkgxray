@@ -148,7 +148,7 @@ function certificateOIDPolicy(primary) {
   };
 }
 
-async function runVerifier(backend, bundle, identity, timeoutMs = 15000, identityPattern = null, certificateOIDs = null) {
+async function runVerifier(backend, bundle, identity, timeoutMs = 15000, identityPattern = null, certificateOIDs = null, issuer = ISSUER) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw new Error("Invalid provenance deadline");
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), "pkgxray-provenance-"));
   await fsp.chmod(directory, 0o700);
@@ -188,10 +188,83 @@ async function runVerifier(backend, bundle, identity, timeoutMs = 15000, identit
         return resolve({ status: /^TUF_|FETCH|TIMEOUT/.test(output.code || "") ? "unverified" : "invalid",
           reason: output.code || "signature-verification-failed" });
       });
-      child.stdin.end(JSON.stringify({ bundle, issuer: ISSUER, certificateOIDs,
+      child.stdin.end(JSON.stringify({ bundle, issuer, certificateOIDs,
         identityPattern: identityPattern || `^${escapeRegex(identity)}$` }));
     });
   } finally { await fsp.rm(directory, { recursive: true, force: true }); }
+}
+
+function distributionSubject(statement, artifactSha256, expectedName) {
+  if (!statement || !Array.isArray(statement.subject) || !/^[a-f0-9]{64}$/i.test(String(artifactSha256 || ""))) return null;
+  const expected = Buffer.from(String(artifactSha256).toLowerCase(), "hex");
+  for (const subject of statement.subject) {
+    if (!subject || typeof subject !== "object" || !subject.digest || typeof subject.digest !== "object") continue;
+    if (expectedName !== undefined && subject.name !== expectedName) continue;
+    const claimed = digestBytes(subject.digest.sha256, "sha256");
+    if (claimed && crypto.timingSafeEqual(claimed, expected)) return { name: typeof subject.name === "string" ? subject.name : null };
+  }
+  return null;
+}
+
+function exactPolicyUri(value, label) {
+  if (typeof value !== "string" || !value || value.length > 2048 || /[\x00-\x20\x7f]/.test(value)) return null;
+  let parsed;
+  try { parsed = new URL(value); } catch { return null; }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) return null;
+  return value;
+}
+
+/**
+ * Verify a caller-supplied Sigstore bundle for arbitrary distribution bytes.
+ * Trust policy is never inferred from the bundle: the operator must provide an
+ * exact certificate identity and issuer, while the in-toto subject must bind
+ * the exact SHA-256 artifact bytes (and optional exact subject name).
+ */
+async function verifyDistributionProvenanceBundle(attestation, {
+  artifactSha256, subjectName, certificateIdentity, certificateIssuer,
+  modulePath, timeoutMs, backendRunner = runVerifier
+} = {}) {
+  const bundle = attestation && attestation.bundle ? attestation.bundle : attestation;
+  let encodedBytes;
+  try { encodedBytes = Buffer.byteLength(JSON.stringify(bundle)); } catch { encodedBytes = MAX_BUNDLE_BYTES + 1; }
+  if (!bundle || typeof bundle !== "object" || Array.isArray(bundle) || encodedBytes > MAX_BUNDLE_BYTES) {
+    return { status: "invalid", reason: "malformed-or-oversized-bundle" };
+  }
+  const envelope = bundle.dsseEnvelope;
+  if (!envelope || envelope.payloadType !== "application/vnd.in-toto+json" || typeof envelope.payload !== "string") {
+    return { status: "invalid", reason: "invalid-dsse-envelope" };
+  }
+  let payloadBytes;
+  let statement;
+  try {
+    payloadBytes = Buffer.from(envelope.payload, "base64");
+    if (!payloadBytes.length || payloadBytes.toString("base64").replace(/=+$/, "") !== envelope.payload.replace(/=+$/, "")) throw new Error("non-canonical base64");
+    statement = JSON.parse(payloadBytes.toString("utf8"));
+  } catch { return { status: "invalid", reason: "malformed-provenance" }; }
+  if (payloadBytes.length > 1024 * 1024 ||
+      !["https://in-toto.io/Statement/v0.1", "https://in-toto.io/Statement/v1"].includes(statement && statement._type) ||
+      !["https://slsa.dev/provenance/v0.2", "https://slsa.dev/provenance/v1"].includes(statement && statement.predicateType)) {
+    return { status: "invalid", reason: "invalid-statement-type" };
+  }
+  const subject = distributionSubject(statement, artifactSha256, subjectName);
+  if (!subject) return { status: "invalid", reason: "artifact-subject-mismatch" };
+  const identity = exactPolicyUri(certificateIdentity, "certificate identity");
+  const issuer = exactPolicyUri(certificateIssuer, "certificate issuer");
+  if (!identity || !issuer) return { status: "unverified", reason: "signer-policy-unavailable" };
+  const backend = resolveVerifier(modulePath);
+  if (!backend) return { status: "unverified", reason: "sigstore-verifier-unavailable" };
+  const result = await backendRunner(backend, bundle, identity, timeoutMs, null, null, issuer);
+  return {
+    ...result,
+    format: "sigstore-bundle",
+    cryptographicallyVerified: result.status === "verified",
+    artifactBound: result.status === "verified",
+    identityBound: result.status === "verified",
+    subjectName: subject.name,
+    certificateIdentity: identity,
+    certificateIssuer: issuer,
+    verifier: `sigstore@${backend.version}`
+  };
 }
 
 async function verifyProvenanceBundle(attestation, { packageName, version, digests, repository, modulePath, timeoutMs, backendRunner = runVerifier } = {}) {
@@ -221,5 +294,6 @@ async function verifyProvenanceBundle(attestation, { packageName, version, diges
     certificateIssuer: ISSUER, verifier: `sigstore@${backend.version}` };
 }
 
-module.exports = { verifyProvenanceBundle, resolveVerifier, boundSubject, digestBytes, expectedIdentity,
-  expectedIdentityPattern, certificateOIDPolicy, derUtf8String, runVerifier };
+module.exports = { verifyProvenanceBundle, verifyDistributionProvenanceBundle, resolveVerifier, boundSubject,
+  distributionSubject, digestBytes, expectedIdentity, expectedIdentityPattern, certificateOIDPolicy,
+  derUtf8String, exactPolicyUri, runVerifier };

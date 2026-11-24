@@ -211,6 +211,36 @@ A **diff** against the stored `.pkgxray.lock` baseline, not a full report.
 }
 ```
 
+## `scan-distribution <dir|archive|https-url|registry-ref>` (Experimental)
+
+The command emits `family: "executable-distribution-pipeline"`, `verdict`,
+normalized `components`, `entrypoints`, `findings`, and `coverage`. `descriptors`
+contains the `family: "executable-distribution"` result and each detected
+family. `sourceAudit` and `recursive` are either their completed result or
+`null` when not requested. Coverage reasons are explicit, and incomplete
+coverage floors the result at `review`.
+
+Archive results also contain `artifact`, `extraction`, `provenance`, and a
+`receipt`. The receipt binds artifact SHA-256 and size, scanner build, evidence,
+policy, and per-stage check states. Its `authorization.install` is always
+`false`. `acquisition` is non-null for a digest-bound HTTPS download or an
+exact-version Open VSX / VS Code Marketplace reference. Registry acquisition
+adds `registry`, exact `coordinates`, `manifestIdentityVerified`, transport and
+integrity state, transfer content-encoding/byte metadata, and a verification reason. Without an operator-pinned SHA-256,
+its receipt acquisition check is `partial`, not `completed`. Directory scans do
+not invent an artifact identity or receipt.
+
+`provenance` records embedded CRX verification or operator-pinned Sigstore SLSA
+verification. A verified Sigstore result includes the exact subject,
+certificate identity, issuer, verifier version, and artifact-binding state;
+the raw bundle is not copied into the result or receipt.
+
+The top-level schema is additive within `schemaVersion: 1`; family-specific
+fields remain Experimental.
+
+See [executable distribution scanners](distribution-scanners.md) for supported
+descriptors and current boundaries.
+
 ---
 
 > **Experimental:** `pkgxray canary` emits `{ "static": <audit report>,

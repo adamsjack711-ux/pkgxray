@@ -12,6 +12,7 @@ const { pinMcpManifest, recheckMcpManifest } = require("../src/mcp-pin");
 const { runMcpProxy } = require("../src/mcp-proxy");
 const { runCanarySandbox } = require("../src/sandbox");
 const { scanInVm, exactVmReference } = require("../src/vm-scan");
+const { scanDistributionTarget } = require("../src/distribution/pipeline");
 const cfg = require("../src/config");
 const { version: PACKAGE_VERSION } = require("../package.json");
 
@@ -37,6 +38,10 @@ function printUsage() {
       "                     #   the report cites the missing CVE check.",
       "  pkgxray install [project-dir] [--format json]  # install approved npm lockfile archives offline; lifecycle scripts disabled",
       "  pkgxray audit <package-lock.json|yarn.lock|pnpm-lock.yaml|package.json> [--deep|--deep-all]  # OSV; --deep scans blocked deps, --deep-all scans all resolved deps",
+      "  pkgxray scan-distribution <dir|archive|https-url|registry-ref> [--type <family>] [--recursive] [--acquire-packages] [--sha256 <hex>] [--allow-host <host>] [--format json|markdown]",
+      "                     # safely extract and inspect distributions; remote URLs require a host allowlist and digest.",
+      "                     # exact VSIX refs: openvsx:publisher.name@version or vscode:publisher.name@version [--target-platform <platform>]",
+      "                     # optional Sigstore: --sigstore-bundle <json> --certificate-identity <https-uri> --certificate-issuer <https-uri>",
       "  pkgxray mcp [flags] <https-url | command [args...]>                       # enumerate an MCP server's tool manifest (read-only handshake)",
       "                     [--package <ref>] [--no-package-scan] [--force]        #   package-scan-first: guard the ref BEFORE connecting; block halts",
       "                     [--timeout <ms>]                                       #   NOTE: enumerating a stdio server SPAWNS it — scan first",
@@ -110,6 +115,79 @@ function parseArgs(argv) {
     options.command = "guard";
     options.reference = argv[1];
     argv = argv.slice(2);
+  } else if (argv[0] === "scan-distribution") {
+    options.command = "scanDistribution";
+    options.distributionRoot = argv[1];
+    argv = argv.slice(2);
+    while (argv.length) {
+      const arg = argv.shift();
+      if (arg === "--type") {
+        options.distributionType = argv.shift();
+        if (!options.distributionType || options.distributionType.startsWith("--")) throw new Error("--type requires a scanner family");
+      }
+      else if (arg === "--format") options.format = argv.shift();
+      else if (arg === "--sha256") {
+        options.expectedSha256 = argv.shift();
+        if (!/^[a-f0-9]{64}$/i.test(options.expectedSha256 || "")) throw new Error("--sha256 requires 64 hexadecimal characters");
+      }
+      else if (arg === "--integrity") {
+        options.integrity = argv.shift();
+        if (!options.integrity || options.integrity.startsWith("--")) throw new Error("--integrity requires an SRI value");
+      }
+      else if (arg === "--allow-host") {
+        const host = argv.shift();
+        if (!host || host.startsWith("--") || !/^(?:\[[0-9a-f:]+\]|[A-Za-z0-9.-]+)(?::\d+)?$/.test(host)) throw new Error("--allow-host requires a hostname, optionally with a port");
+        (options.allowedHosts ||= []).push(host);
+      }
+      else if (arg === "--target-platform") {
+        options.targetPlatform = argv.shift();
+        if (!options.targetPlatform || options.targetPlatform.startsWith("--")) throw new Error("--target-platform requires a VSIX platform");
+      }
+      else if (arg === "--sigstore-bundle") {
+        options.sigstoreBundle = argv.shift();
+        if (!options.sigstoreBundle || options.sigstoreBundle.startsWith("--")) throw new Error("--sigstore-bundle requires a JSON file");
+      }
+      else if (arg === "--sigstore-subject") {
+        options.sigstoreSubject = argv.shift();
+        if (!options.sigstoreSubject || options.sigstoreSubject.startsWith("--")) throw new Error("--sigstore-subject requires an exact in-toto subject name");
+      }
+      else if (arg === "--certificate-identity") {
+        options.certificateIdentity = argv.shift();
+        if (!options.certificateIdentity || options.certificateIdentity.startsWith("--")) throw new Error("--certificate-identity requires an exact HTTPS URI");
+      }
+      else if (arg === "--certificate-issuer") {
+        options.certificateIssuer = argv.shift();
+        if (!options.certificateIssuer || options.certificateIssuer.startsWith("--")) throw new Error("--certificate-issuer requires an exact HTTPS URI");
+      }
+      else if (arg === "--recursive") options.recursive = true;
+      else if (arg === "--acquire-packages") options.acquirePackages = true;
+      else if (arg === "--no-source-audit") options.sourceAudit = false;
+      else if (arg === "--keep-extracted") options.keepExtracted = true;
+      else if (arg === "--timeout") options.timeoutMs = Number(argv.shift());
+      else if (arg === "--help" || arg === "-h") options.help = true;
+      else throw new Error(`Unknown scan-distribution argument: ${arg}`);
+    }
+    if (!options.distributionType) options.distributionType = "auto";
+    if (!["json", "markdown"].includes(options.format)) throw new Error("--format must be json or markdown");
+    if (options.acquirePackages && !options.recursive) throw new Error("--acquire-packages requires --recursive");
+    const registryTarget = /^(?:openvsx|vscode):/i.test(options.distributionRoot || "");
+    if (options.targetPlatform && !registryTarget) throw new Error("--target-platform requires an Open VSX or VS Code Marketplace reference");
+    if (registryTarget && options.integrity) throw new Error("VSIX registry references accept --sha256, not --integrity");
+    if (registryTarget && options.allowedHosts) throw new Error("VSIX registry references use a fixed built-in host policy; --allow-host is not accepted");
+    const sigstorePolicy = options.sigstoreBundle || options.sigstoreSubject || options.certificateIdentity || options.certificateIssuer;
+    if (sigstorePolicy && (!options.sigstoreBundle || !options.certificateIdentity || !options.certificateIssuer)) {
+      throw new Error("Sigstore verification requires --sigstore-bundle, --certificate-identity, and --certificate-issuer together");
+    }
+    for (const [flag, value] of [["--certificate-identity", options.certificateIdentity], ["--certificate-issuer", options.certificateIssuer]]) {
+      if (!value) continue;
+      let parsed;
+      try { parsed = new URL(value); } catch { throw new Error(`${flag} requires an exact HTTPS URI`); }
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash || /[\x00-\x20\x7f]/.test(value)) {
+        throw new Error(`${flag} requires a credential-free exact HTTPS URI without a fragment`);
+      }
+    }
+    if (options.timeoutMs !== undefined && (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0)) throw new Error("--timeout must be a positive number of milliseconds");
+    return options;
   } else if (argv[0] === "vm-setup") {
     if (argv.length !== 1) throw new Error("vm-setup takes no arguments");
     options.command = "vm-setup";
@@ -393,6 +471,30 @@ async function main() {
   }
   if (options.help) {
     printUsage();
+    return;
+  }
+  if (options.command === "scanDistribution") {
+    if (!options.distributionRoot) throw new Error("scan-distribution requires a directory, archive, or HTTPS URL");
+    const result = await scanDistributionTarget(options.distributionRoot, {
+      type: options.distributionType,
+      expectedSha256: options.expectedSha256,
+      integrity: options.integrity,
+      allowedHosts: options.allowedHosts,
+      targetPlatform: options.targetPlatform,
+      recursive: options.recursive,
+      acquirePackages: options.acquirePackages,
+      sourceAudit: options.sourceAudit,
+      keepExtracted: options.keepExtracted,
+      timeoutMs: options.timeoutMs,
+      sigstoreBundle: options.sigstoreBundle,
+      sigstoreSubject: options.sigstoreSubject,
+      certificateIdentity: options.certificateIdentity,
+      certificateIssuer: options.certificateIssuer,
+      recursiveOptions: options.timeoutMs ? { timeoutMs: options.timeoutMs } : undefined
+    });
+    if (options.format === "json") process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    else process.stdout.write(`${renderDistributionMarkdown(result)}\n`);
+    process.exitCode = result.verdict === "block" ? 2 : result.verdict === "review" ? 3 : 0;
     return;
   }
   if (options.command === "vm-setup") {
@@ -716,6 +818,44 @@ async function main() {
 
 // Every string in the manifest is attacker-controlled (a hostile server names
 // its own tools) — strip control bytes before it reaches a terminal.
+function renderDistributionMarkdown(result) {
+  const descriptor = result.descriptors || result;
+  const coverage = result.coverage || descriptor.coverage;
+  const lines = [
+    `Executable distribution: **${String(result.verdict).toUpperCase()}**`,
+    `Target: \`${sanitizeForTerminal(result.target || descriptor.root)}\``,
+    `Families: ${(descriptor.families || []).map(item => sanitizeForTerminal(item.family)).join(", ") || "none detected"}`,
+    `Coverage: ${coverage.complete ? "complete" : "incomplete"}${descriptor.coverage?.filesInspected !== undefined ? `; ${descriptor.coverage.filesInspected} descriptor files inspected` : ""}.`,
+    "",
+    "This scan never installs or executes the target. Archives are extracted into a bounded temporary directory."
+  ];
+  if (result.artifact) lines.push("", `Artifact: sha256:${sanitizeForTerminal(result.artifact.sha256)} (${result.artifact.size} bytes)`);
+  if (result.provenance) lines.push(`Provenance: ${sanitizeForTerminal(result.provenance.status)}${result.provenance.reason ? ` — ${sanitizeForTerminal(result.provenance.reason)}` : ""}`);
+  if (coverage.reasons.length) {
+    lines.push("", "Coverage gaps:");
+    for (const reason of coverage.reasons) lines.push(`- ${sanitizeForTerminal(reason)}`);
+  }
+  if (result.components.length) {
+    lines.push("", `Referenced components (${result.components.length}):`);
+    for (const component of result.components.slice(0, 100)) {
+      lines.push(`- \`${sanitizeForTerminal(component.reference || component.name || component.kind || "unknown")}\`${component.kind ? ` — ${sanitizeForTerminal(component.kind)}` : ""}`);
+    }
+  }
+  if (result.entrypoints.length) {
+    lines.push("", `Executable entrypoints (${result.entrypoints.length}):`);
+    for (const entry of result.entrypoints.slice(0, 100)) {
+      lines.push(`- ${sanitizeForTerminal(entry.kind || "entrypoint")}: \`${sanitizeForTerminal(entry.path || entry.command || entry.url || entry.name || "unknown")}\``);
+    }
+  }
+  lines.push("", "Findings:");
+  if (!result.findings.length) lines.push("- no descriptor-level findings");
+  for (const item of result.findings.slice(0, 200)) {
+    lines.push(`- [${String(item.severity || "info").toUpperCase()}] ${sanitizeForTerminal(item.category)} in \`${sanitizeForTerminal(item.file)}\`: ${sanitizeForTerminal(item.rationale)}`);
+  }
+  if (result.findings.length > 200) lines.push(`- ${result.findings.length - 200} additional findings omitted from Markdown; use --format json for the complete result.`);
+  return lines.join("\n");
+}
+
 function renderMcpMarkdown(result) {
   const lines = [];
 

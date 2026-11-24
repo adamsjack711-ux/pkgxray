@@ -75,6 +75,7 @@ is intentionally removed as security hardening of this executes-code surface.
 | hookshot integration (`examples/hookshot/`) | depends on an external project's hook ABI. |
 | `pkgxray compose`, `pkgxray-compose`, `analyze_package_composition` | Bundled in the unpublished 1.3 candidate. Selected-source cross-package analysis; combined results never approve installation. Local MCP requires `PKGXRAY_COMPOSE=1`. See [Compose](compose.md). |
 | `pkgxray vm-scan`, `scan_npm_package_in_vm` | Bundled host/guest source in the unpublished 1.3 candidate; trusted VM assets must be built separately. CLI execution requires `--yes-run-untrusted-code`; local MCP exposure requires operator `PKGXRAY_VM_TESTS=1`. No quiet result clears a package. See the [VM runbook](../services/local-vm/README.md). |
+| `pkgxray scan-distribution` | Experimental bounded static analysis for extracted directories, exact-version Open VSX / VS Code Marketplace references, and local or digest-bound HTTPS ZIP/VSIX/XPI/CRX/raw-TAR/gzip-TAR archives. Includes CI, extension, infrastructure, OCI/Linux/desktop, and agent-package descriptors; source-auditor routing, opt-in recursive package guarding, artifact receipts, CRX verification, and operator-pinned Sigstore SLSA verification. It never installs or executes targets. See [executable distribution scanners](distribution-scanners.md). |
 
 The VM runbook records real guest verification on macOS ARM64/HVF. Linux KVM
 and Windows WHPX have host-side unit coverage but still need actual guest runs.

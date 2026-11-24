@@ -10,6 +10,7 @@ index. Everything deeper lives here.
 |---|---|
 | [testing-1.3.md](testing-1.3.md) | Test the unpublished 1.3 archive, local MCP setup, and feedback checklist |
 | [compose.md](compose.md) | Experimental cross-package JavaScript tracing, bundled package checks, local MCP setup and migration |
+| [distribution-scanners.md](distribution-scanners.md) | Experimental local analysis of CI, extension, infrastructure, OCI/Linux/desktop, and agent-package descriptors |
 | [architecture.md](architecture.md) | The analysis pipeline, the surfaces that share it, design principles, repo layout |
 | [threat-model.md](threat-model.md) | What pkgxray defends against, the known blind spot, false-positive philosophy, the honest position on prompt injection |
 | [mcp.md](mcp.md) | The MCP server, connect-time vetting of MCP servers (`pkgxray mcp`), and the per-call runtime gate (`pkgxray mcp-proxy`) |
