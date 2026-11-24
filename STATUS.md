@@ -1,9 +1,10 @@
 # 1.3 release readiness
 
-## Candidate under review
+## Merged candidate
 
-[Release PR #111](https://github.com/adamsjack711-ux/pkgxray/pull/111) targets
-`main`. Runtime commit `fa646a9` reduces the cost of copying closures and
+[Release PR #111](https://github.com/adamsjack711-ux/pkgxray/pull/111) merged to
+`main` at `b18eca2894b62d89a1de9552d1217772892228f5` on 2026-11-18. Runtime
+commit `fa646a9` reduces the cost of copying closures and
 scalar values during flow analysis. The [worker measurements](benchmark/1.3-worker-reliability-2026-11-18.json)
 record three individual and three concurrent runs per frozen package on macOS
 arm64 with Node 26.8.2. All 12 reports matched the earlier candidate byte for
@@ -20,9 +21,17 @@ An independent agent tested the local archive with SHA-256
 `b0bfe8d307a381fabcbe8911db1431b96acb5e94147b7ff7a3cb844a51117ab3`.
 The CLI allowed `ms@2.1.3` and returned an eligible review for
 `picocolors@1.1.1`. Its feedback about locating cited findings in JSON led to
-a [tested report-reading example](docs/testing-1.3.md). Human usability feedback,
-maintainer review, merge and publication remain open. VM execution remains
-experimental, with Linux and Windows guest validation outstanding.
+a [tested report-reading example](docs/testing-1.3.md). Human usability
+feedback and publication remain open. VM execution remains experimental, with
+Linux and Windows guest validation outstanding.
+
+## Follow-up on 2026-11-24
+
+- GitHub confirmed the merge and passing PR checks. The successful release dry run used runtime commit `fa646a9`. npm `latest` was `1.2.1`, and GitHub had no `v1.3.0` tag.
+- The follow-up docs checkout is `/Users/jackadams-lovell/pkgxray/release-1.3-main`, branch `docs/1.3-review-walkthrough`, based on `b18eca2`. Its local `npm pack --ignore-scripts` archive matched the recorded candidate digest `b0bfe8d307a381fabcbe8911db1431b96acb5e94147b7ff7a3cb844a51117ab3`. The packaged CLI, Compose, and both MCP launchers passed smoke checks.
+- An independent CLI trial of the earlier `f7de2a5` archive identified the need for an exact-archive review walkthrough. Its handoff and sanitized verification are in `~/outputs/pkgxray-1.3.0-independent-test.txt` and `~/outputs/pkgxray-1.3.0-review-walkthrough-verification.txt`. The tester independently ran the integrated [walkthrough](docs/testing-1.3.md#practice-reviewing-an-exact-archive) against the merged archive. Both runs exited 3. With OSV reachable, the review was eligible and pending. With restricted networking, the missing advisory check made the review ineligible. The fixture was left inert and no choice was submitted.
+- Lint passed. The full suite on the merged runtime passed 1,161 tests, with five skipped and zero failed, on macOS arm64 and Node 26.0.0 with fixture-server sockets enabled.
+- The local performance experiment remains separate. Compare its worker results with the merged runtime before deciding whether it belongs in this release.
 
 ## Earlier candidate at f7de2a5
 
