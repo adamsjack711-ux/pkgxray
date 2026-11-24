@@ -86,6 +86,65 @@ The maintainer's [bounded package trial](1.3-package-trial.md) records a fixed
 convenience sample and its limits. Its results do not replace your own review or
 establish a real-world false-positive rate.
 
+## Practice reviewing an exact archive
+
+From the checkout root, use the candidate extracted above and the inert
+`native-dep` fixture. Its `postinstall` script only prints a message. The
+candidate reads the fixture as source and checks its identity with OSV.
+
+```sh
+(
+  set -eu
+  cli="$candidate_test_dir/package/bin/audit.js"
+  trial=$(mktemp -d)
+  trap 'rm -rf -- "$trial"' EXIT
+  mkdir -p "$trial/home" "$trial/project" "$trial/staging/package/scripts"
+
+  node - benchmark/corpus/benign/install-hook-benign.json "$trial/staging/package" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const [fixture, dest] = process.argv.slice(2);
+const { sourceFiles } = JSON.parse(fs.readFileSync(fixture, 'utf8')).evidence;
+const manifest = JSON.parse(sourceFiles['package.json']);
+manifest.version = '1.0.0';
+fs.writeFileSync(path.join(dest, 'package.json'), JSON.stringify(manifest));
+fs.writeFileSync(path.join(dest, 'scripts/rebuild.js'), sourceFiles['scripts/rebuild.js']);
+NODE
+
+  cd "$trial/project"
+  tar -czf ./native-dep-1.0.0.tgz -C "$trial/staging" package
+  sri=$(node -e '
+    const fs = require("node:fs");
+    const crypto = require("node:crypto");
+    const bytes = fs.readFileSync(process.argv[1]);
+    console.log("sha512-" + crypto.createHash("sha512").update(bytes).digest("base64"));
+  ' ./native-dep-1.0.0.tgz)
+
+  rc=0
+  env HOME="$trial/home" XDG_CONFIG_HOME="$trial/home/.config" \
+    XDG_CACHE_HOME="$trial/home/.cache" XDG_STATE_HOME="$trial/home/.local/state" \
+    node "$cli" guard npm:native-dep@1.0.0 --archive ./native-dep-1.0.0.tgz \
+    --integrity "$sri" --format json --receipt-only > review.json || rc=$?
+  printf 'Guard exit %s\n' "$rc"
+  cat review.json
+  printf '\nHook source from the archive\n'
+  tar -xOzf ./native-dep-1.0.0.tgz package/scripts/rebuild.js
+  printf '\n'
+  test "$rc" -eq 3
+)
+```
+
+With a completed clean advisory check, expect exit `3` and a `pending` review
+with `eligible: true`, a review ID, and the `Proceed` and `Decline` actions.
+The plan reports `review-required`, bound to the `use` action. The finding
+points to the `postinstall` hook in `package.json`. Inspect the hook source
+printed by the command, then stop with the review still pending.
+
+If the OSV check cannot complete, exit `3` still holds the archive. Look for
+`eligible: false` and a `checks-required` plan with a
+`complete-vulnerability-check` blocker. Restore access to OSV and rerun the
+exercise to see an eligible review.
+
 ## Local MCP candidate
 
 Keep the extracted package in a stable location while testing. Replace both

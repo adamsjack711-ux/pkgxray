@@ -1,9 +1,10 @@
 # 1.3 release readiness
 
-## Candidate under review
+## Merged candidate
 
-[Release PR #111](https://github.com/adamsjack711-ux/pkgxray/pull/111) targets
-`main`. Runtime commit `fa646a9` reduces the cost of copying closures and
+[Release PR #111](https://github.com/adamsjack711-ux/pkgxray/pull/111) merged to
+`main` at `b18eca2894b62d89a1de9552d1217772892228f5` on 2026-11-18. Runtime
+commit `fa646a9` reduces the cost of copying closures and
 scalar values during flow analysis. The [worker measurements](benchmark/1.3-worker-reliability-2026-11-18.json)
 record three individual and three concurrent runs per frozen package on macOS
 arm64 with Node 26.8.2. All 12 reports matched the earlier candidate byte for
@@ -20,9 +21,27 @@ An independent agent tested the local archive with SHA-256
 `b0bfe8d307a381fabcbe8911db1431b96acb5e94147b7ff7a3cb844a51117ab3`.
 The CLI allowed `ms@2.1.3` and returned an eligible review for
 `picocolors@1.1.1`. Its feedback about locating cited findings in JSON led to
-a [tested report-reading example](docs/testing-1.3.md). Human usability feedback,
-maintainer review, merge and publication remain open. VM execution remains
-experimental, with Linux and Windows guest validation outstanding.
+a [tested report-reading example](docs/testing-1.3.md). Human usability
+feedback and publication remain open. VM execution remains experimental, with
+Linux and Windows guest validation outstanding.
+
+## Follow-up on 2026-11-24
+
+- GitHub confirmed the merge and passing PR checks. The successful release dry run used runtime commit `fa646a9`. npm `latest` was `1.2.1`, and GitHub had no `v1.3.0` tag.
+- The follow-up docs checkout is `/Users/jackadams-lovell/pkgxray/release-1.3-main`, branch `docs/1.3-review-walkthrough`, based on `b18eca2`. Its local `npm pack --ignore-scripts` archive matched the recorded candidate digest `b0bfe8d307a381fabcbe8911db1431b96acb5e94147b7ff7a3cb844a51117ab3`. The packaged CLI, Compose, and both MCP launchers passed smoke checks.
+- An independent CLI trial of the earlier `f7de2a5` archive identified the need for an exact-archive review walkthrough. Its handoff and sanitized verification are in `~/outputs/pkgxray-1.3.0-independent-test.txt` and `~/outputs/pkgxray-1.3.0-review-walkthrough-verification.txt`. The tester independently ran the integrated [walkthrough](docs/testing-1.3.md#practice-reviewing-an-exact-archive) against the merged archive. Both runs exited 3. With OSV reachable, the review was eligible and pending. With restricted networking, the missing advisory check made the review ineligible. The fixture was left inert and no choice was submitted.
+- Lint passed. The full suite on the merged runtime passed 1,161 tests, with five skipped and zero failed, on macOS arm64 and Node 26.0.0 with fixture-server sockets enabled.
+- The exact-merge [CI matrix](https://github.com/adamsjack711-ux/pkgxray/actions/runs/44232938974) and [release dry run](https://github.com/adamsjack711-ux/pkgxray/actions/runs/44232962846) passed. The validator independently downloaded the dry-run archive, which matched its npm 10 local pack byte for byte at SHA-256 `7231ea05e41dc02abc6c110ee9230cf253fa222782ff8eda549504bda24c8c7d`. The full evidence and commands are in `~/pkgxray/validation-1.3.0/`.
+- One fresh Node 22 cohort returned a Lodash timeout while other performance work was active. The cause remains undetermined. A same-commit repeat completed all 11 scans with three allow, eight review, and clean OSV checks. Serial and paired direct worker checks returned both large-package reports in 24.18–24.79 seconds, with matching report hashes.
+- Three additional same-session MCP trials sent the pinned Lodash and Zod requests together under Node 22.20.0 on macOS arm64. All six scans completed with the same archive identities, findings, checks, and mandatory holds as the full-cohort repeat. End-to-end time, including acquisition, ranged from 24.4 to 31.9 seconds. Reports and the adapted harness are in `~/pkgxray/validation-1.3.0/paired-mcp-b18eca2.IyR69H/`. The earlier timeout remains part of the evidence.
+- Independent correctness review of `fa646a9` found no release-blocking issue. The allocator experiment `61b61a6` stays in the performance worktree. Keep `b18eca2` as the release runtime given the passing repeat and paired MCP results.
+
+## Full-scan reconciliation on 2026-11-24
+
+- Updated the Swamp `npm-drift` extension's `npm:zod@4` lock resolution from 4.4.3 to 4.6.7 for [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5). The patched registry integrity matches the lock and the version returned zero OSV advisories. Deno type-checked the model from a fresh cache with the frozen lock. The model schema accepted valid input and rejected invalid input. Swamp's extension doctor, model registration, and repo lint checks passed.
+- The exact CI npm archive contained 80 files, all byte-identical to `b18eca2`. The archive scan with source analysis enabled returned BLOCK with six high findings. Five referred to detector signatures in `src/auditor.js`. The sixth classified the X.509 common-name OID in `src/sandbox.js` as an IP address. The raw verdict and all findings remain in the report. The separate release gate passed its digest and OSV checks with its configured source omission.
+- The archive scanner reported partial behavior coverage because it did not resolve a computed Compose worker launch. The source resolves that executable to the bundled `pkgxray-worker.mjs` relative to `integration.mjs` and passes the scanner root separately as an argument. The coverage hold remains in force. The source checkout scan inspected 544 files and also reported partial coverage. The public MCP npm lockfile check completed with zero OSV advisories across 91 pinned packages.
+- The Deno lockfile is outside the npm archive. An npm 10 repack after the update matched the CI artifact byte for byte at SHA-256 `7231ea05e41dc02abc6c110ee9230cf253fa222782ff8eda549504bda24c8c7d`. Scan outputs and parity evidence are in `~/outputs/pkgxray-1.3.0-full-scan.IzCc1G/`.
 
 ## Earlier candidate at f7de2a5
 
