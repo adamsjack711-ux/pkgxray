@@ -36,6 +36,13 @@ Linux and Windows guest validation outstanding.
 - Three additional same-session MCP trials sent the pinned Lodash and Zod requests together under Node 22.20.0 on macOS arm64. All six scans completed with the same archive identities, findings, checks, and mandatory holds as the full-cohort repeat. End-to-end time, including acquisition, ranged from 24.4 to 31.9 seconds. Reports and the adapted harness are in `~/pkgxray/validation-1.3.0/paired-mcp-b18eca2.IyR69H/`. The earlier timeout remains part of the evidence.
 - Independent correctness review of `fa646a9` found no release-blocking issue. The allocator experiment `61b61a6` stays in the performance worktree. Keep `b18eca2` as the release runtime given the passing repeat and paired MCP results.
 
+## Full-scan reconciliation on 2026-11-24
+
+- Updated the Swamp `npm-drift` extension's `npm:zod@4` lock resolution from 4.4.3 to 4.6.7 for [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5). The patched registry integrity matches the lock and the version returned zero OSV advisories. Deno type-checked the model from a fresh cache with the frozen lock. The model schema accepted valid input and rejected invalid input. Swamp's extension doctor, model registration, and repo lint checks passed.
+- The exact CI npm archive contained 80 files, all byte-identical to `b18eca2`. The archive scan with source analysis enabled returned BLOCK with six high findings. Five referred to detector signatures in `src/auditor.js`. The sixth classified the X.509 common-name OID in `src/sandbox.js` as an IP address. The raw verdict and all findings remain in the report. The separate release gate passed its digest and OSV checks with its configured source omission.
+- The archive scanner reported partial behavior coverage because it did not resolve a computed Compose worker launch. The source resolves that executable to the bundled `pkgxray-worker.mjs` relative to `integration.mjs` and passes the scanner root separately as an argument. The coverage hold remains in force. The source checkout scan inspected 544 files and also reported partial coverage. The public MCP npm lockfile check completed with zero OSV advisories across 91 pinned packages.
+- The Deno lockfile is outside the npm archive. An npm 10 repack after the update matched the CI artifact byte for byte at SHA-256 `7231ea05e41dc02abc6c110ee9230cf253fa222782ff8eda549504bda24c8c7d`. Scan outputs and parity evidence are in `~/outputs/pkgxray-1.3.0-full-scan.IzCc1G/`.
+
 ## Earlier candidate at f7de2a5
 
 Observed 2026-11-17. Local implementation and release validation; no publication or deployment.
